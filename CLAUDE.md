@@ -27,6 +27,12 @@ cmake --build .
 - `core/bindings/swift/` — Swift modulemap，SwiftUI 侧通过 `import AgentCore` 调用
 - `core/bindings/node/` — N-API addon（`agent_core.node`），供 Electron 调用
 
+**UI 层**（`ui/`）：
+
+- `ui/gui/macOS/` — SwiftUI 原生 macOS 客户端（Xcode 项目），通过 modulemap 调用 core
+- `ui/gui/other/` — Electron 跨平台客户端（Node.js），通过 N-API addon 调用 core
+- `ui/tui/` — 终端界面（预留）
+
 公开 API 定义在 `core/header/agent_core.h`，实现在 `core/cpp/`。符号默认隐藏，仅 `AGENT_CORE_API` 标记的函数导出。
 
 新增导出函数需要改三处：
