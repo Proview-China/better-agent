@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# CMake
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Compiled outputs
+*.dylib
+*.node
+*.o
+*.a
+
+# IDE
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+
+# node
+node_modules/

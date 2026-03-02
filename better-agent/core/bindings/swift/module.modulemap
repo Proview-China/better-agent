@@ -1,0 +1,4 @@
+module AgentCore {
+    header "../../header/agent_core.h"
+    export *
+}
