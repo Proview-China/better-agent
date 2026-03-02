@@ -1,0 +1,50 @@
+name: Deploy To VPS
+
+on:
+  push:
+    branches:
+      - deploy
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+
+            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            REPO_URL="${{ secrets.DEPLOY_REPO_URL }}"
+            DEPLOY_BRANCH="deploy"
+            DEPLOY_COMMAND="${{ secrets.DEPLOY_COMMAND }}"
+
+            if [ -z "$APP_DIR" ] || [ -z "$REPO_URL" ] || [ -z "$DEPLOY_COMMAND" ]; then
+              echo "Required secrets missing: VPS_APP_DIR / DEPLOY_REPO_URL / DEPLOY_COMMAND"
+              exit 1
+            fi
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p "$APP_DIR"
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            git fetch --all --prune
+            git checkout "$DEPLOY_BRANCH"
+            git reset --hard "origin/$DEPLOY_BRANCH"
+
+            sh -lc "$DEPLOY_COMMAND"
