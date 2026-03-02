@@ -34,6 +34,10 @@ cmake --build .
 2. `core/cpp/` — 实现函数
 3. `core/bindings/node/agent_core_napi.cpp` — 编写 N-API 包装并注册到 `props` 数组
 
+## Code Rules
+
+- 禁止使用 `#include <bits/stdc++.h>`，必须显式 include 所需的标准库头文件
+
 ## Platform
 
 - macOS arm64 only
