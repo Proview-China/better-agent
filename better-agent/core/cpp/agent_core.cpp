@@ -1,4 +1,5 @@
 #include "agent_core.h"
+#include "tool_call_sdk_bridge.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -310,6 +311,21 @@ std::string extract_provider_call_id(const json &record) {
             if (ev.value("kind", "") == "provider_call_id" && ev.contains("value") && ev.at("value").is_string()) {
                 return ev.at("value").get<std::string>();
             }
+        }
+    }
+    return "";
+}
+
+std::string extract_tool_name_from_record(const json &record) {
+    if (record.is_object() && record.contains("input_raw") && record.at("input_raw").is_object()) {
+        const json &raw = record.at("input_raw");
+        const auto name = get_string_or(raw, "name");
+        if (!name.empty()) {
+            return name;
+        }
+        const auto tool = get_string_or(raw, "tool");
+        if (!tool.empty()) {
+            return tool;
         }
     }
     return "";
@@ -820,9 +836,40 @@ const char *agent_core_execute_openai_function_call(const char *openai_function_
     const char *record_str = agent_core_execute_function_call(openai_function_call_json, policy_json);
     try {
         const json record = json::parse(record_str == nullptr ? "{}" : record_str);
+        const json policy = (policy_json == nullptr)
+            ? json::object()
+            : json::parse(policy_json, nullptr, false).is_object()
+                ? json::parse(policy_json, nullptr, false)
+                : json::object();
+        const std::string tool_name = extract_tool_name_from_record(record);
+
+        std::string tool_description;
+        json tool_parameters = json::object();
+        json tool_constraints = json::object();
+        {
+            std::lock_guard<std::mutex> lk(g_tools_mu);
+            if (!tool_name.empty() && g_tools.contains(tool_name)) {
+                const ToolDefinition &tool = g_tools.at(tool_name);
+                tool_description = tool.description;
+                tool_parameters = tool.parameters;
+                tool_constraints = tool.constraints;
+            }
+        }
+
+        const json sdk_bundle = better_agent::sdk_bridge::build_openai_bundle(
+            tool_name,
+            tool_description,
+            tool_parameters,
+            tool_constraints,
+            record.value("input_normalized", json::object()),
+            policy,
+            extract_provider_call_id(record)
+        );
+
         json out{
             {"execution", record},
-            {"provider_payload", build_openai_function_call_output_payload(record, "")}
+            {"provider_payload", build_openai_function_call_output_payload(record, "")},
+            {"sdk", sdk_bundle}
         };
         g_last_output = out.dump();
         return g_last_output.c_str();
@@ -835,9 +882,40 @@ const char *agent_core_execute_claude_tool_use(const char *claude_tool_use_json,
     const char *record_str = agent_core_execute_function_call(claude_tool_use_json, policy_json);
     try {
         const json record = json::parse(record_str == nullptr ? "{}" : record_str);
+        const json policy = (policy_json == nullptr)
+            ? json::object()
+            : json::parse(policy_json, nullptr, false).is_object()
+                ? json::parse(policy_json, nullptr, false)
+                : json::object();
+        const std::string tool_name = extract_tool_name_from_record(record);
+
+        std::string tool_description;
+        json tool_parameters = json::object();
+        json tool_constraints = json::object();
+        {
+            std::lock_guard<std::mutex> lk(g_tools_mu);
+            if (!tool_name.empty() && g_tools.contains(tool_name)) {
+                const ToolDefinition &tool = g_tools.at(tool_name);
+                tool_description = tool.description;
+                tool_parameters = tool.parameters;
+                tool_constraints = tool.constraints;
+            }
+        }
+
+        const json sdk_bundle = better_agent::sdk_bridge::build_claude_bundle(
+            tool_name,
+            tool_description,
+            tool_parameters,
+            tool_constraints,
+            record.value("input_normalized", json::object()),
+            policy,
+            extract_provider_call_id(record)
+        );
+
         json out{
             {"execution", record},
-            {"provider_payload", build_claude_tool_result_payload(record, "")}
+            {"provider_payload", build_claude_tool_result_payload(record, "")},
+            {"sdk", sdk_bundle}
         };
         g_last_output = out.dump();
         return g_last_output.c_str();

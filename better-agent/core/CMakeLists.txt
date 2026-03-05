@@ -5,6 +5,7 @@ project(agent_core VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # -- Symbol visibility: hide by default, export only marked symbols ----------
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
@@ -50,6 +51,9 @@ target_include_directories(agent_core
 )
 
 target_compile_definitions(agent_core PRIVATE AGENT_CORE_EXPORTS)
+if(AGENT_CORE_USE_CPP_AI_SDK)
+    target_compile_definitions(agent_core PRIVATE BETTER_AGENT_HAVE_CPP_AI_SDK=1)
+endif()
 if(AGENT_CORE_OPTIONAL_LIBS)
     target_link_libraries(agent_core PRIVATE ${AGENT_CORE_OPTIONAL_LIBS})
 endif()
@@ -70,10 +74,7 @@ install(DIRECTORY header/
 # -- Tests -------------------------------------------------------------------
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(agent_core_smoke_test tests/agent_core_smoke_test.cpp)
-    target_include_directories(agent_core_smoke_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third-party)
-    target_link_libraries(agent_core_smoke_test PRIVATE agent_core)
-    add_test(NAME agent_core_smoke_test COMMAND agent_core_smoke_test)
+    add_subdirectory(tests)
 endif()
 
 # -- N-API addon (opt-in) ----------------------------------------------------
