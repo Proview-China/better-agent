@@ -28,6 +28,23 @@ struct ToolDefinition {
     json mock_result;
 };
 
+struct ExecutionRecord {
+    std::string execution_id;
+    std::string tool_kind = "function";
+    std::string provider_kind = "custom";
+    std::string intent;
+    std::string provider_call_id;
+    json input_raw = json::object();
+    json input_normalized = json::object();
+    json policy_snapshot = json::object();
+    std::string status = "failed";
+    json evidence = json::array();
+    json error = nullptr;
+    std::string handoff;
+    std::string timestamp;
+    json result = json::object();
+};
+
 std::mutex g_tools_mu;
 std::unordered_map<std::string, ToolDefinition> g_tools;
 std::unordered_map<std::string, json> g_executions;
@@ -66,6 +83,44 @@ json get_json_or(const json &obj, const char *key, const json &fallback = json()
         return fallback;
     }
     return obj.at(key);
+}
+
+json serialize_execution_record(const ExecutionRecord &record) {
+    return json{
+        {"execution_id", record.execution_id},
+        {"tool_kind", record.tool_kind},
+        {"provider_kind", record.provider_kind},
+        {"intent", record.intent},
+        {"provider_call_id", record.provider_call_id},
+        {"input_raw", record.input_raw},
+        {"input_normalized", record.input_normalized},
+        {"policy_snapshot", record.policy_snapshot},
+        {"status", record.status},
+        {"evidence", record.evidence},
+        {"error", record.error},
+        {"handoff", record.handoff},
+        {"timestamp", record.timestamp},
+        {"result", record.result}
+    };
+}
+
+ExecutionRecord deserialize_execution_record(const json &obj) {
+    ExecutionRecord record;
+    record.execution_id = get_string_or(obj, "execution_id");
+    record.tool_kind = get_string_or(obj, "tool_kind", "function");
+    record.provider_kind = get_string_or(obj, "provider_kind", "custom");
+    record.intent = get_string_or(obj, "intent");
+    record.provider_call_id = get_string_or(obj, "provider_call_id");
+    record.input_raw = get_json_or(obj, "input_raw", json::object());
+    record.input_normalized = get_json_or(obj, "input_normalized", json::object());
+    record.policy_snapshot = get_json_or(obj, "policy_snapshot", json::object());
+    record.status = get_string_or(obj, "status", "failed");
+    record.evidence = get_json_or(obj, "evidence", json::array());
+    record.error = get_json_or(obj, "error", nullptr);
+    record.handoff = get_string_or(obj, "handoff");
+    record.timestamp = get_string_or(obj, "timestamp");
+    record.result = get_json_or(obj, "result", json::object());
+    return record;
 }
 
 std::string get_status_from_codex_item(const std::string &event_type, const json &item) {
