@@ -361,6 +361,61 @@ bool prepare_function_call_request(
     return true;
 }
 
+bool json_string_array_contains(const json &value, const std::string &target) {
+    if (!value.is_array()) {
+        return false;
+    }
+    for (const auto &entry : value) {
+        if (entry.is_string() && entry.get<std::string>() == target) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const ToolDefinition *lookup_registered_tool(const std::string &tool_name) {
+    if (!g_tools.contains(tool_name)) {
+        fail_function_call(json{
+            {"error_code", "E_TOOL_NOT_FOUND"},
+            {"message", "tool is not registered"},
+            {"detail", json{{"tool", tool_name}}}
+        }, "failed", tool_name);
+        return nullptr;
+    }
+    return &g_tools.at(tool_name);
+}
+
+bool validate_tool_call_request(
+    const std::string &tool_name,
+    const ToolDefinition &tool,
+    const json &args,
+    const json &policy
+) {
+    const json schema_err = schema_validate_args(args, tool.parameters);
+    if (!schema_err.empty()) {
+        return fail_function_call(schema_err, "failed", tool_name);
+    }
+
+    if (json_string_array_contains(policy.value("deny_tools", json::array()), tool_name)) {
+        return fail_function_call(json{
+            {"error_code", "E_POLICY_DENY"},
+            {"message", "tool denied by policy"},
+            {"detail", json{{"tool", tool_name}}}
+        }, "blocked", tool_name);
+    }
+
+    if (policy.contains("allow_tools") && policy.at("allow_tools").is_array() &&
+        !json_string_array_contains(policy.at("allow_tools"), tool_name)) {
+        return fail_function_call(json{
+            {"error_code", "E_POLICY_DENY"},
+            {"message", "tool not in allow_tools"},
+            {"detail", json{{"tool", tool_name}}}
+        }, "blocked", tool_name);
+    }
+
+    return true;
+}
+
 std::string extract_provider_call_id(const json &record) {
     if (record.is_object() && record.contains("provider_call_id") && record.at("provider_call_id").is_string()) {
         return record.at("provider_call_id").get<std::string>();
@@ -761,79 +816,19 @@ const char *agent_core_execute_function_call(const char *model_output_json, cons
             }
         }
 
-        if (!g_tools.contains(tool_name)) {
-            json err{
-                {"error_code", "E_TOOL_NOT_FOUND"},
-                {"message", "tool is not registered"},
-                {"detail", json{{"tool", tool_name}}}
-            };
-            g_last_error = err.dump();
-            g_last_output = json{
-                {"status", "failed"},
-                {"tool_name", tool_name},
-                {"error", err}
-            }.dump();
+        const ToolDefinition *tool = lookup_registered_tool(tool_name);
+        if (tool == nullptr) {
             return g_last_output.c_str();
         }
 
-        const ToolDefinition &tool = g_tools.at(tool_name);
         const json args = normalized.value("input_normalized", json::object());
-        const json schema_err = schema_validate_args(args, tool.parameters);
-        if (!schema_err.empty()) {
-            g_last_error = schema_err.dump();
-            g_last_output = json{
-                {"status", "failed"},
-                {"tool_name", tool_name},
-                {"error", schema_err}
-            }.dump();
+        if (!validate_tool_call_request(tool_name, *tool, args, policy)) {
             return g_last_output.c_str();
-        }
-
-        if (policy.contains("deny_tools") && policy.at("deny_tools").is_array()) {
-            for (const auto &denied : policy.at("deny_tools")) {
-                if (denied.is_string() && denied.get<std::string>() == tool_name) {
-                    const json err{
-                        {"error_code", "E_POLICY_DENY"},
-                        {"message", "tool denied by policy"},
-                        {"detail", json{{"tool", tool_name}}}
-                    };
-                    g_last_error = err.dump();
-                    g_last_output = json{
-                        {"status", "blocked"},
-                        {"tool_name", tool_name},
-                        {"error", err}
-                    }.dump();
-                    return g_last_output.c_str();
-                }
-            }
-        }
-        if (policy.contains("allow_tools") && policy.at("allow_tools").is_array()) {
-            bool allowed = false;
-            for (const auto &allowed_tool : policy.at("allow_tools")) {
-                if (allowed_tool.is_string() && allowed_tool.get<std::string>() == tool_name) {
-                    allowed = true;
-                    break;
-                }
-            }
-            if (!allowed) {
-                const json err{
-                    {"error_code", "E_POLICY_DENY"},
-                    {"message", "tool not in allow_tools"},
-                    {"detail", json{{"tool", tool_name}}}
-                };
-                g_last_error = err.dump();
-                g_last_output = json{
-                    {"status", "blocked"},
-                    {"tool_name", tool_name},
-                    {"error", err}
-                }.dump();
-                return g_last_output.c_str();
-            }
         }
 
         const std::string execution_id = next_id("exec");
-        const json result = (tool.mock_result.is_object() && !tool.mock_result.empty())
-            ? tool.mock_result
+        const json result = (tool->mock_result.is_object() && !tool->mock_result.empty())
+            ? tool->mock_result
             : json{{"ok", true}, {"echo", args}};
 
         json record{
