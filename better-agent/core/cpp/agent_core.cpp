@@ -243,6 +243,33 @@ json parse_policy_json(const char *policy_json, json *err_out) {
     }
 }
 
+bool fail_function_call(const json &err, const std::string &status = "failed", const std::string &tool_name = "") {
+    g_last_error = err.dump();
+    json out{
+        {"status", status},
+        {"error", err}
+    };
+    if (!tool_name.empty()) {
+        out["tool_name"] = tool_name;
+    }
+    g_last_output = out.dump();
+    return false;
+}
+
+bool parse_model_output_json(const char *model_output_json, json *raw_out) {
+    try {
+        *raw_out = json::parse(model_output_json);
+        return true;
+    } catch (const std::exception &e) {
+        const json err{
+            {"error_code", "E_PARSE"},
+            {"message", "invalid model_output_json"},
+            {"detail", e.what()}
+        };
+        return fail_function_call(err);
+    }
+}
+
 json normalize_function_call_payload(const json &raw) {
     // OpenAI Responses function_call
     if (raw.is_object() && get_string_or(raw, "type") == "function_call") {
@@ -299,6 +326,39 @@ json normalize_function_call_payload(const json &raw) {
         {"error_code", "E_PARSE"},
         {"message", "unsupported function/custom tool payload"}
     };
+}
+
+bool prepare_function_call_request(
+    const char *model_output_json,
+    const char *policy_json,
+    json *policy_out,
+    json *normalized_out
+) {
+    json raw;
+    if (!parse_model_output_json(model_output_json, &raw)) {
+        return false;
+    }
+
+    json policy_err;
+    *policy_out = parse_policy_json(policy_json, &policy_err);
+    if (!policy_err.is_null()) {
+        return fail_function_call(policy_err);
+    }
+
+    *normalized_out = normalize_function_call_payload(raw);
+    if (normalized_out->contains("error_code")) {
+        return fail_function_call(*normalized_out);
+    }
+
+    const std::string tool_name = normalized_out->value("tool_name", "");
+    if (tool_name.empty()) {
+        return fail_function_call(json{
+            {"error_code", "E_PARSE"},
+            {"message", "normalized tool_name is empty"}
+        });
+    }
+
+    return true;
 }
 
 std::string extract_provider_call_id(const json &record) {
@@ -663,28 +723,13 @@ const char *agent_core_execute_function_call(const char *model_output_json, cons
     }
 
     try {
-        const json raw = json::parse(model_output_json);
-        json policy_err;
-        const json policy = parse_policy_json(policy_json, &policy_err);
-        if (!policy_err.is_null()) {
-            g_last_error = policy_err.dump();
-            g_last_output = json{{"status", "failed"}, {"error", policy_err}}.dump();
-            return g_last_output.c_str();
-        }
-
-        const json normalized = normalize_function_call_payload(raw);
-        if (normalized.contains("error_code")) {
-            g_last_error = normalized.dump();
-            g_last_output = json{{"status", "failed"}, {"error", normalized}}.dump();
+        json policy;
+        json normalized;
+        if (!prepare_function_call_request(model_output_json, policy_json, &policy, &normalized)) {
             return g_last_output.c_str();
         }
 
         const std::string tool_name = normalized.value("tool_name", "");
-        if (tool_name.empty()) {
-            g_last_error = R"({"error_code":"E_PARSE","message":"normalized tool_name is empty"})";
-            g_last_output = json{{"status", "failed"}, {"error", json::parse(g_last_error)}}.dump();
-            return g_last_output.c_str();
-        }
 
         std::lock_guard<std::mutex> lk(g_tools_mu);
 
@@ -821,13 +866,11 @@ const char *agent_core_execute_function_call(const char *model_output_json, cons
         g_last_output = record.dump();
         return g_last_output.c_str();
     } catch (const std::exception &e) {
-        const json err{
+        fail_function_call(json{
             {"error_code", "E_PARSE"},
             {"message", "invalid model_output_json"},
             {"detail", e.what()}
-        };
-        g_last_error = err.dump();
-        g_last_output = json{{"status", "failed"}, {"error", err}}.dump();
+        });
         return g_last_output.c_str();
     }
 }
