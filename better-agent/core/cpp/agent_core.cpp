@@ -21,11 +21,15 @@ std::atomic<unsigned long long> g_seq{1};
 thread_local std::string g_last_error;
 thread_local std::string g_last_output;
 
-struct ToolDefinition {
+struct ToolSpec {
     std::string name;
     std::string description;
     json parameters;
     json constraints;
+};
+
+struct ToolRegistration {
+    ToolSpec spec;
     json mock_result;
 };
 
@@ -79,7 +83,7 @@ struct RuntimeEventRecord {
 };
 
 std::mutex g_tools_mu;
-std::unordered_map<std::string, ToolDefinition> g_tools;
+std::unordered_map<std::string, ToolRegistration> g_tools;
 std::unordered_map<std::string, ExecutionRecord> g_executions;
 std::unordered_map<std::string, std::string> g_idempotency_to_execution;
 std::unordered_map<std::string, std::string> g_idempotency_signature;
@@ -409,6 +413,26 @@ bool parse_model_output_json(const char *model_output_json, json *raw_out) {
     }
 }
 
+bool parse_tool_registration_json(const char *tool_definition_json, ToolRegistration *tool_out) {
+    const json raw = json::parse(tool_definition_json);
+    const std::string name = get_string_or(raw, "name");
+    if (name.empty()) {
+        g_last_error = R"({"error_code":"E_TOOL_DEF","message":"tool definition requires non-empty name"})";
+        return false;
+    }
+
+    *tool_out = ToolRegistration{
+        .spec = ToolSpec{
+            .name = name,
+            .description = get_string_or(raw, "description"),
+            .parameters = raw.value("parameters", json::object()),
+            .constraints = raw.value("constraints", json::object()),
+        },
+        .mock_result = raw.value("mock_result", json::object()),
+    };
+    return true;
+}
+
 bool normalize_function_call_payload(const json &raw, NormalizedCall *call_out, json *err_out) {
     *err_out = nullptr;
 
@@ -528,7 +552,7 @@ bool string_list_contains(const std::vector<std::string> &values, const std::str
     return false;
 }
 
-const ToolDefinition *lookup_registered_tool(const std::string &tool_name) {
+const ToolRegistration *lookup_registered_tool(const std::string &tool_name) {
     if (!g_tools.contains(tool_name)) {
         fail_function_call(json{
             {"error_code", "E_TOOL_NOT_FOUND"},
@@ -541,11 +565,11 @@ const ToolDefinition *lookup_registered_tool(const std::string &tool_name) {
 }
 
 bool validate_tool_call_request(
-    const ToolDefinition &tool,
+    const ToolRegistration &tool,
     const NormalizedCall &call,
     const PolicyView &policy
 ) {
-    const json schema_err = schema_validate_args(call.input_normalized, tool.parameters);
+    const json schema_err = schema_validate_args(call.input_normalized, tool.spec.parameters);
     if (!schema_err.empty()) {
         return fail_function_call(schema_err, "failed", call.tool_name);
     }
@@ -656,7 +680,7 @@ bool execute_prepared_function_call_locked(const PolicyView &policy, const Norma
         return true;
     }
 
-    const ToolDefinition *tool = lookup_registered_tool(call.tool_name);
+    const ToolRegistration *tool = lookup_registered_tool(call.tool_name);
     if (tool == nullptr) {
         return true;
     }
@@ -693,10 +717,10 @@ void load_registered_tool_metadata(
 
     std::lock_guard<std::mutex> lk(g_tools_mu);
     if (!tool_name.empty() && g_tools.contains(tool_name)) {
-        const ToolDefinition &tool = g_tools.at(tool_name);
-        *tool_description_out = tool.description;
-        *tool_parameters_out = tool.parameters;
-        *tool_constraints_out = tool.constraints;
+        const ToolRegistration &tool = g_tools.at(tool_name);
+        *tool_description_out = tool.spec.description;
+        *tool_parameters_out = tool.spec.parameters;
+        *tool_constraints_out = tool.spec.constraints;
     }
 }
 
@@ -1104,23 +1128,13 @@ int agent_core_register_tool(const char *tool_definition_json) {
     }
 
     try {
-        const json raw = json::parse(tool_definition_json);
-        const std::string name = get_string_or(raw, "name");
-        if (name.empty()) {
-            g_last_error = R"({"error_code":"E_TOOL_DEF","message":"tool definition requires non-empty name"})";
+        ToolRegistration tool;
+        if (!parse_tool_registration_json(tool_definition_json, &tool)) {
             return 2;
         }
 
-        ToolDefinition def{
-            .name = name,
-            .description = get_string_or(raw, "description"),
-            .parameters = raw.value("parameters", json::object()),
-            .constraints = raw.value("constraints", json::object()),
-            .mock_result = raw.value("mock_result", json::object()),
-        };
-
         std::lock_guard<std::mutex> lk(g_tools_mu);
-        g_tools[name] = std::move(def);
+        g_tools[tool.spec.name] = std::move(tool);
         return 0;
     } catch (const std::exception &e) {
         g_last_error = json{
