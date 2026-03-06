@@ -62,6 +62,22 @@ struct ExecutionRecord {
     json result = json::object();
 };
 
+struct RuntimeEventRecord {
+    std::string execution_id;
+    std::string source = "unknown";
+    std::string event_type = "unknown";
+    std::string tool_kind = "function";
+    json intent = nullptr;
+    json input_raw = json::object();
+    json input_normalized = json::object();
+    json policy_snapshot = json::object();
+    std::string status = "partial";
+    json evidence = json::array();
+    json error = nullptr;
+    std::string handoff = "continue_observing";
+    std::string timestamp;
+};
+
 std::mutex g_tools_mu;
 std::unordered_map<std::string, ToolDefinition> g_tools;
 std::unordered_map<std::string, ExecutionRecord> g_executions;
@@ -171,6 +187,24 @@ ExecutionRecord deserialize_execution_record(const json &obj) {
     record.timestamp = get_string_or(obj, "timestamp");
     record.result = get_json_or(obj, "result", json::object());
     return record;
+}
+
+json serialize_runtime_event_record(const RuntimeEventRecord &record) {
+    return json{
+        {"execution_id", record.execution_id},
+        {"source", record.source},
+        {"event_type", record.event_type},
+        {"tool_kind", record.tool_kind},
+        {"intent", record.intent},
+        {"input_raw", record.input_raw},
+        {"input_normalized", record.input_normalized},
+        {"policy_snapshot", record.policy_snapshot},
+        {"status", record.status},
+        {"evidence", record.evidence},
+        {"error", record.error},
+        {"handoff", record.handoff},
+        {"timestamp", record.timestamp}
+    };
 }
 
 std::string get_status_from_codex_item(const std::string &event_type, const json &item) {
