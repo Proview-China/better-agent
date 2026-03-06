@@ -641,6 +641,17 @@ ToolExecutionResult execute_mock_tool(const ToolRegistration &tool, const ToolEx
     };
 }
 
+ToolExecutionResult execute_tool_registration(
+    const ToolRegistration &tool,
+    const ToolExecutionRequest &request
+) {
+    switch (tool.executor_kind) {
+        case ExecutorKind::Mock:
+        default:
+            return execute_mock_tool(tool, request);
+    }
+}
+
 std::string build_idempotency_signature(const NormalizedCall &call) {
     return call.provider_kind + "|" + call.tool_name + "|" + call.input_normalized.dump();
 }
