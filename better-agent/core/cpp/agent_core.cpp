@@ -416,6 +416,90 @@ bool validate_tool_call_request(
     return true;
 }
 
+std::string build_idempotency_signature(const json &normalized) {
+    const std::string provider_kind = normalized.value("provider_kind", "custom");
+    return provider_kind + "|" + normalized.value("tool_name", "") + "|" +
+        normalized.value("input_normalized", json::object()).dump();
+}
+
+bool handle_idempotency_replay_locked(
+    const json &policy,
+    const json &normalized,
+    std::string *idempotency_key_out,
+    std::string *idempotency_signature_out
+) {
+    *idempotency_key_out = policy.value("idempotency_key", "");
+    *idempotency_signature_out = build_idempotency_signature(normalized);
+
+    if (idempotency_key_out->empty() || !g_idempotency_to_execution.contains(*idempotency_key_out)) {
+        return false;
+    }
+
+    if (g_idempotency_signature.contains(*idempotency_key_out) &&
+        g_idempotency_signature.at(*idempotency_key_out) != *idempotency_signature_out) {
+        fail_function_call(json{
+            {"error_code", "E_IDEMPOTENCY_CONFLICT"},
+            {"message", "idempotency_key reused with different provider/tool/arguments"},
+            {"detail", json{{"idempotency_key", *idempotency_key_out}}}
+        });
+        return true;
+    }
+
+    const std::string exec_id = g_idempotency_to_execution.at(*idempotency_key_out);
+    if (g_executions.contains(exec_id)) {
+        json replay = g_executions.at(exec_id);
+        replay["handoff"] = "idempotency-hit: reuse previous execution";
+        g_last_output = replay.dump();
+        return true;
+    }
+
+    return false;
+}
+
+json build_execution_record(
+    const json &normalized,
+    const json &policy,
+    const json &args,
+    const json &result
+) {
+    const std::string provider_kind = normalized.value("provider_kind", "custom");
+    return json{
+        {"execution_id", next_id("exec")},
+        {"tool_kind", "function"},
+        {"provider_kind", provider_kind},
+        {"intent", normalized.value("intent", "function_call")},
+        {"provider_call_id", normalized.value("provider_call_id", "")},
+        {"input_raw", normalized.value("input_raw", json::object())},
+        {"input_normalized", args},
+        {"policy_snapshot", policy},
+        {"status", "success"},
+        {"evidence", json::array({
+            json{{"kind", "runtime_event"}, {"value", "tool_executed"}},
+            json{{"kind", "provider_kind"}, {"value", provider_kind}},
+            json{{"kind", "provider_call_id"}, {"value", normalized.value("provider_call_id", "")}},
+            json{{"kind", "timestamp"}, {"value", now_iso8601_utc()}}
+        })},
+        {"error", nullptr},
+        {"handoff", "continue"},
+        {"timestamp", now_iso8601_utc()},
+        {"result", result}
+    };
+}
+
+void store_execution_record_locked(
+    const json &record,
+    const std::string &idempotency_key,
+    const std::string &idempotency_signature
+) {
+    const std::string execution_id = record.at("execution_id").get<std::string>();
+    g_executions[execution_id] = record;
+    if (!idempotency_key.empty()) {
+        g_idempotency_to_execution[idempotency_key] = execution_id;
+        g_idempotency_signature[idempotency_key] = idempotency_signature;
+    }
+    g_last_output = record.dump();
+}
+
 std::string extract_provider_call_id(const json &record) {
     if (record.is_object() && record.contains("provider_call_id") && record.at("provider_call_id").is_string()) {
         return record.at("provider_call_id").get<std::string>();
@@ -788,32 +872,10 @@ const char *agent_core_execute_function_call(const char *model_output_json, cons
 
         std::lock_guard<std::mutex> lk(g_tools_mu);
 
-        const std::string idem = policy.value("idempotency_key", "");
-        const std::string provider_kind = normalized.value("provider_kind", "custom");
-        const std::string idem_signature =
-            provider_kind + "|" + normalized.value("tool_name", "") + "|" +
-            normalized.value("input_normalized", json::object()).dump();
-        if (!idem.empty() && g_idempotency_to_execution.contains(idem)) {
-            if (g_idempotency_signature.contains(idem) && g_idempotency_signature.at(idem) != idem_signature) {
-                const json err{
-                    {"error_code", "E_IDEMPOTENCY_CONFLICT"},
-                    {"message", "idempotency_key reused with different provider/tool/arguments"},
-                    {"detail", json{{"idempotency_key", idem}}}
-                };
-                g_last_error = err.dump();
-                g_last_output = json{
-                    {"status", "failed"},
-                    {"error", err}
-                }.dump();
-                return g_last_output.c_str();
-            }
-            const std::string exec_id = g_idempotency_to_execution.at(idem);
-            if (g_executions.contains(exec_id)) {
-                json replay = g_executions.at(exec_id);
-                replay["handoff"] = "idempotency-hit: reuse previous execution";
-                g_last_output = replay.dump();
-                return g_last_output.c_str();
-            }
+        std::string idem;
+        std::string idem_signature;
+        if (handle_idempotency_replay_locked(policy, normalized, &idem, &idem_signature)) {
+            return g_last_output.c_str();
         }
 
         const ToolDefinition *tool = lookup_registered_tool(tool_name);
@@ -826,39 +888,11 @@ const char *agent_core_execute_function_call(const char *model_output_json, cons
             return g_last_output.c_str();
         }
 
-        const std::string execution_id = next_id("exec");
         const json result = (tool->mock_result.is_object() && !tool->mock_result.empty())
             ? tool->mock_result
             : json{{"ok", true}, {"echo", args}};
-
-        json record{
-            {"execution_id", execution_id},
-            {"tool_kind", "function"},
-            {"provider_kind", provider_kind},
-            {"intent", normalized.value("intent", "function_call")},
-            {"provider_call_id", normalized.value("provider_call_id", "")},
-            {"input_raw", normalized.value("input_raw", json::object())},
-            {"input_normalized", args},
-            {"policy_snapshot", policy},
-            {"status", "success"},
-            {"evidence", json::array({
-                json{{"kind", "runtime_event"}, {"value", "tool_executed"}},
-                json{{"kind", "provider_kind"}, {"value", provider_kind}},
-                json{{"kind", "provider_call_id"}, {"value", normalized.value("provider_call_id", "")}},
-                json{{"kind", "timestamp"}, {"value", now_iso8601_utc()}}
-            })},
-            {"error", nullptr},
-            {"handoff", "continue"},
-            {"timestamp", now_iso8601_utc()},
-            {"result", result}
-        };
-
-        g_executions[execution_id] = record;
-        if (!idem.empty()) {
-            g_idempotency_to_execution[idem] = execution_id;
-            g_idempotency_signature[idem] = idem_signature;
-        }
-        g_last_output = record.dump();
+        json record = build_execution_record(normalized, policy, args, result);
+        store_execution_record_locked(record, idem, idem_signature);
         return g_last_output.c_str();
     } catch (const std::exception &e) {
         fail_function_call(json{
