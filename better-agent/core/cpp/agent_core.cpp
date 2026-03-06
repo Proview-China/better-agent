@@ -485,6 +485,15 @@ bool json_string_array_contains(const json &value, const std::string &target) {
     return false;
 }
 
+bool string_list_contains(const std::vector<std::string> &values, const std::string &target) {
+    for (const auto &value : values) {
+        if (value == target) {
+            return true;
+        }
+    }
+    return false;
+}
+
 const ToolDefinition *lookup_registered_tool(const std::string &tool_name) {
     if (!g_tools.contains(tool_name)) {
         fail_function_call(json{
@@ -498,50 +507,46 @@ const ToolDefinition *lookup_registered_tool(const std::string &tool_name) {
 }
 
 bool validate_tool_call_request(
-    const std::string &tool_name,
     const ToolDefinition &tool,
-    const json &args,
-    const json &policy
+    const NormalizedCall &call,
+    const PolicyView &policy
 ) {
-    const json schema_err = schema_validate_args(args, tool.parameters);
+    const json schema_err = schema_validate_args(call.input_normalized, tool.parameters);
     if (!schema_err.empty()) {
-        return fail_function_call(schema_err, "failed", tool_name);
+        return fail_function_call(schema_err, "failed", call.tool_name);
     }
 
-    if (json_string_array_contains(policy.value("deny_tools", json::array()), tool_name)) {
+    if (string_list_contains(policy.deny_tools, call.tool_name)) {
         return fail_function_call(json{
             {"error_code", "E_POLICY_DENY"},
             {"message", "tool denied by policy"},
-            {"detail", json{{"tool", tool_name}}}
-        }, "blocked", tool_name);
+            {"detail", json{{"tool", call.tool_name}}}
+        }, "blocked", call.tool_name);
     }
 
-    if (policy.contains("allow_tools") && policy.at("allow_tools").is_array() &&
-        !json_string_array_contains(policy.at("allow_tools"), tool_name)) {
+    if (!policy.allow_tools.empty() && !string_list_contains(policy.allow_tools, call.tool_name)) {
         return fail_function_call(json{
             {"error_code", "E_POLICY_DENY"},
             {"message", "tool not in allow_tools"},
-            {"detail", json{{"tool", tool_name}}}
-        }, "blocked", tool_name);
+            {"detail", json{{"tool", call.tool_name}}}
+        }, "blocked", call.tool_name);
     }
 
     return true;
 }
 
-std::string build_idempotency_signature(const json &normalized) {
-    const std::string provider_kind = normalized.value("provider_kind", "custom");
-    return provider_kind + "|" + normalized.value("tool_name", "") + "|" +
-        normalized.value("input_normalized", json::object()).dump();
+std::string build_idempotency_signature(const NormalizedCall &call) {
+    return call.provider_kind + "|" + call.tool_name + "|" + call.input_normalized.dump();
 }
 
 bool handle_idempotency_replay_locked(
-    const json &policy,
-    const json &normalized,
+    const PolicyView &policy,
+    const NormalizedCall &call,
     std::string *idempotency_key_out,
     std::string *idempotency_signature_out
 ) {
-    *idempotency_key_out = policy.value("idempotency_key", "");
-    *idempotency_signature_out = build_idempotency_signature(normalized);
+    *idempotency_key_out = policy.idempotency_key;
+    *idempotency_signature_out = build_idempotency_signature(call);
 
     if (idempotency_key_out->empty() || !g_idempotency_to_execution.contains(*idempotency_key_out)) {
         return false;
@@ -569,26 +574,24 @@ bool handle_idempotency_replay_locked(
 }
 
 ExecutionRecord build_execution_record(
-    const json &normalized,
-    const json &policy,
-    const json &args,
+    const NormalizedCall &call,
+    const PolicyView &policy,
     const json &result
 ) {
-    const std::string provider_kind = normalized.value("provider_kind", "custom");
     return ExecutionRecord{
         .execution_id = next_id("exec"),
         .tool_kind = "function",
-        .provider_kind = provider_kind,
-        .intent = normalized.value("intent", "function_call"),
-        .provider_call_id = normalized.value("provider_call_id", ""),
-        .input_raw = normalized.value("input_raw", json::object()),
-        .input_normalized = args,
-        .policy_snapshot = policy,
+        .provider_kind = call.provider_kind,
+        .intent = call.intent,
+        .provider_call_id = call.provider_call_id,
+        .input_raw = call.input_raw,
+        .input_normalized = call.input_normalized,
+        .policy_snapshot = policy.raw_json,
         .status = "success",
         .evidence = json::array({
             json{{"kind", "runtime_event"}, {"value", "tool_executed"}},
-            json{{"kind", "provider_kind"}, {"value", provider_kind}},
-            json{{"kind", "provider_call_id"}, {"value", normalized.value("provider_call_id", "")}},
+            json{{"kind", "provider_kind"}, {"value", call.provider_kind}},
+            json{{"kind", "provider_call_id"}, {"value", call.provider_call_id}},
             json{{"kind", "timestamp"}, {"value", now_iso8601_utc()}}
         }),
         .error = nullptr,
@@ -612,28 +615,26 @@ void store_execution_record_locked(
     g_last_output = serialize_execution_record(record).dump();
 }
 
-bool execute_prepared_function_call_locked(const json &policy, const json &normalized) {
-    const std::string tool_name = normalized.value("tool_name", "");
+bool execute_prepared_function_call_locked(const PolicyView &policy, const NormalizedCall &call) {
     std::string idem;
     std::string idem_signature;
-    if (handle_idempotency_replay_locked(policy, normalized, &idem, &idem_signature)) {
+    if (handle_idempotency_replay_locked(policy, call, &idem, &idem_signature)) {
         return true;
     }
 
-    const ToolDefinition *tool = lookup_registered_tool(tool_name);
+    const ToolDefinition *tool = lookup_registered_tool(call.tool_name);
     if (tool == nullptr) {
         return true;
     }
 
-    const json args = normalized.value("input_normalized", json::object());
-    if (!validate_tool_call_request(tool_name, *tool, args, policy)) {
+    if (!validate_tool_call_request(*tool, call, policy)) {
         return true;
     }
 
     const json result = (tool->mock_result.is_object() && !tool->mock_result.empty())
         ? tool->mock_result
-        : json{{"ok", true}, {"echo", args}};
-    ExecutionRecord record = build_execution_record(normalized, policy, args, result);
+        : json{{"ok", true}, {"echo", call.input_normalized}};
+    ExecutionRecord record = build_execution_record(call, policy, result);
     store_execution_record_locked(record, idem, idem_signature);
     return true;
 }
@@ -1117,7 +1118,7 @@ const char *agent_core_execute_function_call(const char *model_output_json, cons
         }
 
         std::lock_guard<std::mutex> lk(g_tools_mu);
-        execute_prepared_function_call_locked(policy.raw_json, serialize_normalized_call(normalized));
+        execute_prepared_function_call_locked(policy, normalized);
         return g_last_output.c_str();
     } catch (const std::exception &e) {
         fail_function_call(json{
