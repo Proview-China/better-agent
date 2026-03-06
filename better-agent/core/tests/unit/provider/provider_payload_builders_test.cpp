@@ -4,6 +4,8 @@
 
 int main() {
     using better_agent::tests::expect;
+    using better_agent::tests::expect_execution_record_contract;
+    using better_agent::tests::expect_provider_wrapper_contract;
     using better_agent::tests::parse_json;
 
     expect(agent_core_init() == 0, "agent_core_init should succeed");
@@ -25,6 +27,8 @@ int main() {
         R"({"type":"function_call","name":"lookup_user","call_id":"openai_call_1","arguments":"{\"uid\":\"u-1\"}"})",
         R"({"allow_tools":["lookup_user"]})"
     ));
+    expect_provider_wrapper_contract(openai_exec);
+    expect_execution_record_contract(openai_exec.at("execution"));
     expect(openai_exec.at("execution").at("status") == "success", "openai execution should succeed");
     expect(openai_exec.at("provider_payload").at("type") == "function_call_output", "openai payload type mismatch");
     expect(openai_exec.at("provider_payload").at("call_id") == "openai_call_1", "openai call_id mismatch");
@@ -33,6 +37,8 @@ int main() {
         R"({"type":"tool_use","id":"toolu_1","name":"lookup_user","input":{"uid":"u-1"}})",
         R"({"allow_tools":["lookup_user"]})"
     ));
+    expect_provider_wrapper_contract(claude_exec);
+    expect_execution_record_contract(claude_exec.at("execution"));
     expect(claude_exec.at("execution").at("status") == "success", "claude execution should succeed");
     expect(claude_exec.at("provider_payload").at("type") == "tool_result", "claude payload type mismatch");
     expect(claude_exec.at("provider_payload").at("tool_use_id") == "toolu_1", "claude tool_use_id mismatch");

@@ -20,6 +20,10 @@ add_agent_core_test(
     ${AGENT_CORE_TEST_ROOT}/unit/runtime/policy_and_idempotency_test.cpp
 )
 add_agent_core_test(
+    agent_core_unit_runtime_normalization_contract
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/runtime_normalization_contract_test.cpp
+)
+add_agent_core_test(
     agent_core_unit_provider_payload
     ${AGENT_CORE_TEST_ROOT}/unit/provider/provider_payload_builders_test.cpp
 )

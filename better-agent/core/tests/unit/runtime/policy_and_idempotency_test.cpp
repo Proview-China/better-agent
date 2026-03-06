@@ -3,6 +3,7 @@
 
 int main() {
     using better_agent::tests::expect;
+    using better_agent::tests::expect_execution_record_contract;
     using better_agent::tests::parse_json;
 
     expect(agent_core_init() == 0, "agent_core_init should succeed");
@@ -24,12 +25,14 @@ int main() {
         R"({"type":"function_call","name":"get_weather","arguments":"{\"city\":\"Shanghai\"}"})",
         R"({"allow_tools":["get_weather"],"idempotency_key":"idem-1"})"
     ));
+    expect_execution_record_contract(first);
     expect(first.at("status") == "success", "first call should succeed");
 
     auto replay = parse_json(agent_core_execute_function_call(
         R"({"type":"function_call","name":"get_weather","arguments":"{\"city\":\"Shanghai\"}"})",
         R"({"allow_tools":["get_weather"],"idempotency_key":"idem-1"})"
     ));
+    expect_execution_record_contract(replay);
     expect(replay.at("status") == "success", "idempotent replay should succeed");
     expect(replay.at("handoff") == "idempotency-hit: reuse previous execution", "expected idempotency replay handoff");
 
