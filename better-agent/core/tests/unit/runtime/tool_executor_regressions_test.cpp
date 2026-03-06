@@ -33,6 +33,45 @@ int main() {
     })";
     expect(agent_core_register_tool(fallback_tool) == 0, "fallback tool registration should succeed");
 
+    const char *builtin_tool = R"({
+      "name":"builtin_echo_profile",
+      "description":"builtin echo tool",
+      "parameters":{
+        "type":"object",
+        "properties":{"uid":{"type":"string"}},
+        "required":["uid"],
+        "additionalProperties":false
+      },
+      "constraints":{"executor_kind":"builtin","executor_target":"builtin.echo"}
+    })";
+    expect(agent_core_register_tool(builtin_tool) == 0, "builtin tool registration should succeed");
+
+    const char *missing_builtin_tool = R"({
+      "name":"missing_builtin_profile",
+      "description":"missing builtin target",
+      "parameters":{
+        "type":"object",
+        "properties":{"uid":{"type":"string"}},
+        "required":["uid"],
+        "additionalProperties":false
+      },
+      "constraints":{"executor_kind":"builtin","executor_target":"builtin.missing"}
+    })";
+    expect(agent_core_register_tool(missing_builtin_tool) == 0, "missing builtin tool registration should succeed");
+
+    const char *native_tool = R"({
+      "name":"native_profile",
+      "description":"native placeholder tool",
+      "parameters":{
+        "type":"object",
+        "properties":{"uid":{"type":"string"}},
+        "required":["uid"],
+        "additionalProperties":false
+      },
+      "constraints":{"executor_kind":"native","executor_target":"native.profile"}
+    })";
+    expect(agent_core_register_tool(native_tool) == 0, "native tool registration should succeed");
+
     auto mock_record = parse_json(agent_core_execute_function_call(
         R"({"type":"function_call","name":"lookup_profile","arguments":"{\"uid\":\"u-1\"}"})",
         R"({"allow_tools":["lookup_profile"]})"
@@ -50,6 +89,30 @@ int main() {
     expect(fallback_record.at("result").at("ok") == true, "fallback executor should emit ok=true");
     expect(fallback_record.at("result").at("echo").at("uid") == "u-2", "fallback executor should echo args");
 
+    auto builtin_record = parse_json(agent_core_execute_function_call(
+        R"({"type":"function_call","name":"builtin_echo_profile","arguments":"{\"uid\":\"u-4\"}"})",
+        R"({"allow_tools":["builtin_echo_profile"]})"
+    ));
+    expect_execution_record_contract(builtin_record);
+    expect(builtin_record.at("status") == "success", "builtin executor should succeed");
+    expect(builtin_record.at("result").at("echo").at("uid") == "u-4", "builtin executor should echo args");
+
+    auto missing_builtin_record = parse_json(agent_core_execute_function_call(
+        R"({"type":"function_call","name":"missing_builtin_profile","arguments":"{\"uid\":\"u-5\"}"})",
+        R"({"allow_tools":["missing_builtin_profile"]})"
+    ));
+    expect_execution_record_contract(missing_builtin_record);
+    expect(missing_builtin_record.at("status") == "failed", "missing builtin executor should fail");
+    expect(missing_builtin_record.at("error").at("error_code") == "E_EXECUTOR_NOT_FOUND", "missing builtin executor error mismatch");
+
+    auto native_record = parse_json(agent_core_execute_function_call(
+        R"({"type":"function_call","name":"native_profile","arguments":"{\"uid\":\"u-6\"}"})",
+        R"({"allow_tools":["native_profile"]})"
+    ));
+    expect_execution_record_contract(native_record);
+    expect(native_record.at("status") == "blocked", "native executor placeholder should block");
+    expect(native_record.at("error").at("error_code") == "E_NATIVE_EXECUTOR_UNAVAILABLE", "native executor error mismatch");
+
     auto blocked = parse_json(agent_core_execute_function_call(
         R"({"type":"function_call","name":"lookup_profile","arguments":"{\"uid\":\"u-1\"}"})",
         R"({"deny_tools":["lookup_profile"]})"
@@ -58,10 +121,10 @@ int main() {
     expect(blocked.at("error").at("error_code") == "E_POLICY_DENY", "blocked tool error mismatch");
 
     auto openai_wrapper = parse_json(agent_core_execute_openai_function_call(
-        R"({"type":"function_call","name":"lookup_profile","call_id":"exec_wrap_1","arguments":"{\"uid\":\"u-3\"}"})",
-        R"({"allow_tools":["lookup_profile"]})"
+        R"({"type":"function_call","name":"builtin_echo_profile","call_id":"exec_wrap_1","arguments":"{\"uid\":\"u-3\"}"})",
+        R"({"allow_tools":["builtin_echo_profile"]})"
     ));
-    expect(openai_wrapper.at("execution").at("result").at("tier") == "pro", "openai wrapper execution result mismatch");
+    expect(openai_wrapper.at("execution").at("result").at("echo").at("uid") == "u-3", "openai wrapper execution result mismatch");
     expect(openai_wrapper.at("provider_payload").at("type") == "function_call_output", "openai wrapper payload type mismatch");
 
     agent_core_shutdown();

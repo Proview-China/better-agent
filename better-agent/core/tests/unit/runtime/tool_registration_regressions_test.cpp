@@ -16,6 +16,11 @@ int main() {
     auto parse_error = parse_json(agent_core_last_error());
     expect(parse_error.at("error_code") == "E_PARSE", "tool definition parse error mismatch");
 
+    expect(agent_core_register_tool(R"({"name":"bad_executor","constraints":{"executor_kind":"invalid"}})") == 2,
+        "invalid executor kind should fail with rc=2");
+    auto executor_kind_error = parse_json(agent_core_last_error());
+    expect(executor_kind_error.at("error_code") == "E_TOOL_DEF", "invalid executor kind error mismatch");
+
     const char *initial_tool = R"({
       "name":"lookup_user",
       "description":"first version",
