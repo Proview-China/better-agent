@@ -690,11 +690,37 @@ bool handle_idempotency_replay_locked(
     return false;
 }
 
+ToolExecutionRequest build_tool_execution_request(
+    const NormalizedCall &call,
+    const PolicyView &policy
+) {
+    return ToolExecutionRequest{
+        .tool_name = call.tool_name,
+        .provider_kind = call.provider_kind,
+        .intent = call.intent,
+        .provider_call_id = call.provider_call_id,
+        .args = call.input_normalized,
+        .policy = policy.raw_json
+    };
+}
+
 ExecutionRecord build_execution_record(
     const NormalizedCall &call,
     const PolicyView &policy,
-    const json &result
+    const ToolExecutionResult &execution
 ) {
+    json evidence = json::array({
+        json{{"kind", "runtime_event"}, {"value", "tool_executed"}},
+        json{{"kind", "provider_kind"}, {"value", call.provider_kind}},
+        json{{"kind", "provider_call_id"}, {"value", call.provider_call_id}},
+        json{{"kind", "timestamp"}, {"value", now_iso8601_utc()}}
+    });
+    if (execution.evidence.is_array()) {
+        for (const auto &item : execution.evidence) {
+            evidence.push_back(item);
+        }
+    }
+
     return ExecutionRecord{
         .execution_id = next_id("exec"),
         .tool_kind = "function",
@@ -704,17 +730,12 @@ ExecutionRecord build_execution_record(
         .input_raw = call.input_raw,
         .input_normalized = call.input_normalized,
         .policy_snapshot = policy.raw_json,
-        .status = "success",
-        .evidence = json::array({
-            json{{"kind", "runtime_event"}, {"value", "tool_executed"}},
-            json{{"kind", "provider_kind"}, {"value", call.provider_kind}},
-            json{{"kind", "provider_call_id"}, {"value", call.provider_call_id}},
-            json{{"kind", "timestamp"}, {"value", now_iso8601_utc()}}
-        }),
-        .error = nullptr,
-        .handoff = "continue",
+        .status = execution.status,
+        .evidence = evidence,
+        .error = execution.error,
+        .handoff = execution.handoff,
         .timestamp = now_iso8601_utc(),
-        .result = result
+        .result = execution.result
     };
 }
 
@@ -748,8 +769,9 @@ bool execute_prepared_function_call_locked(const PolicyView &policy, const Norma
         return true;
     }
 
-    const json result = resolve_mock_result(*tool, call.input_normalized);
-    ExecutionRecord record = build_execution_record(call, policy, result);
+    const ToolExecutionRequest request = build_tool_execution_request(call, policy);
+    const ToolExecutionResult execution = execute_tool_registration(*tool, request);
+    ExecutionRecord record = build_execution_record(call, policy, execution);
     store_execution_record_locked(record, idem, idem_signature);
     return true;
 }
