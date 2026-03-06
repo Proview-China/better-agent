@@ -38,7 +38,7 @@ if(AGENT_CORE_USE_CPP_AI_SDK)
 endif()
 
 # -- Shared library target ----------------------------------------------------
-file(GLOB_RECURSE AGENT_CORE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cpp/*.cpp")
+file(GLOB_RECURSE AGENT_CORE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cpp/*.cpp")
 add_library(agent_core SHARED ${AGENT_CORE_SOURCES})
 
 target_include_directories(agent_core
