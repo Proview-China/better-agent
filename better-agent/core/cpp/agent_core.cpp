@@ -687,11 +687,87 @@ ToolExecutionResult execute_mock_tool(const ToolRegistration &tool, const ToolEx
     };
 }
 
+std::string resolve_executor_target(const ToolRegistration &tool) {
+    if (!tool.executor_target.empty()) {
+        return tool.executor_target;
+    }
+    return tool.spec.name;
+}
+
+using BuiltinExecutorFn = ToolExecutionResult (*)(const ToolRegistration &, const ToolExecutionRequest &);
+
+ToolExecutionResult execute_builtin_echo(const ToolRegistration &tool, const ToolExecutionRequest &request) {
+    const std::string executor_target = resolve_executor_target(tool);
+    return ToolExecutionResult{
+        .status = "success",
+        .result = json{{"ok", true}, {"echo", request.args}},
+        .error = nullptr,
+        .evidence = json::array({
+            json{{"kind", "executor_kind"}, {"value", "builtin"}},
+            json{{"kind", "executor_target"}, {"value", executor_target}}
+        }),
+        .handoff = "continue"
+    };
+}
+
+const std::unordered_map<std::string, BuiltinExecutorFn> &builtin_executor_registry() {
+    static const std::unordered_map<std::string, BuiltinExecutorFn> kRegistry = {
+        {"builtin.echo", &execute_builtin_echo},
+    };
+    return kRegistry;
+}
+
+ToolExecutionResult execute_builtin_tool(const ToolRegistration &tool, const ToolExecutionRequest &request) {
+    const std::string executor_target = resolve_executor_target(tool);
+    const auto &registry = builtin_executor_registry();
+    if (registry.contains(executor_target)) {
+        return registry.at(executor_target)(tool, request);
+    }
+
+    return ToolExecutionResult{
+        .status = "failed",
+        .result = json::object(),
+        .error = json{
+            {"error_code", "E_EXECUTOR_NOT_FOUND"},
+            {"message", "builtin executor is not registered"},
+            {"detail", json{{"executor_target", executor_target}}}
+        },
+        .evidence = json::array({
+            json{{"kind", "executor_kind"}, {"value", "builtin"}},
+            json{{"kind", "executor_target"}, {"value", executor_target}}
+        }),
+        .handoff = "manual_takeover"
+    };
+}
+
+ToolExecutionResult execute_native_tool(const ToolRegistration &tool, const ToolExecutionRequest &request) {
+    (void)request;
+    const std::string executor_target = resolve_executor_target(tool);
+    return ToolExecutionResult{
+        .status = "blocked",
+        .result = json::object(),
+        .error = json{
+            {"error_code", "E_NATIVE_EXECUTOR_UNAVAILABLE"},
+            {"message", "native executor is not available in this build"},
+            {"detail", json{{"executor_target", executor_target}}}
+        },
+        .evidence = json::array({
+            json{{"kind", "executor_kind"}, {"value", "native"}},
+            json{{"kind", "executor_target"}, {"value", executor_target}}
+        }),
+        .handoff = "manual_takeover"
+    };
+}
+
 ToolExecutionResult execute_tool_registration(
     const ToolRegistration &tool,
     const ToolExecutionRequest &request
 ) {
     switch (tool.executor_kind) {
+        case ExecutorKind::Builtin:
+            return execute_builtin_tool(tool, request);
+        case ExecutorKind::Native:
+            return execute_native_tool(tool, request);
         case ExecutorKind::Mock:
         default:
             return execute_mock_tool(tool, request);
