@@ -52,6 +52,10 @@ add_agent_core_test(
     ${AGENT_CORE_TEST_ROOT}/unit/runtime/hook_lifecycle_test.cpp
 )
 add_agent_core_test(
+    agent_core_unit_runtime_sandbox_controls
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/sandbox_controls_test.cpp
+)
+add_agent_core_test(
     agent_core_unit_memory_store_query
     ${AGENT_CORE_TEST_ROOT}/unit/memory/memory_store_query_test.cpp
 )
