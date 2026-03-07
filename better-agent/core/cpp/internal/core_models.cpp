@@ -35,9 +35,18 @@ PolicyView build_policy_view(const json &policy) {
         .allow_tools = json_string_array_to_vector(policy.value("allow_tools", json::array())),
         .deny_tools = json_string_array_to_vector(policy.value("deny_tools", json::array())),
         .idempotency_key = policy.value("idempotency_key", ""),
+        .execution_id = policy.value("execution_id", ""),
         .before_tool_hooks = json_string_array_to_vector(policy.value("before_tool_hooks", json::array())),
         .after_tool_hooks = json_string_array_to_vector(policy.value("after_tool_hooks", json::array())),
-        .enable_hook_recursion = policy.value("enable_hook_recursion", false)
+        .enable_hook_recursion = policy.value("enable_hook_recursion", false),
+        .timeout_ms = policy.value("timeout_ms", static_cast<std::uint64_t>(0)),
+        .network_access = policy.value("network_access", false),
+        .max_stdout_bytes = policy.value("max_stdout_bytes", static_cast<std::size_t>(0)),
+        .max_stderr_bytes = policy.value("max_stderr_bytes", static_cast<std::size_t>(0)),
+        .max_artifacts = policy.value("max_artifacts", static_cast<std::size_t>(0)),
+        .require_network = policy.value("requires_network", false),
+        .cpu_limit = policy.value("cpu_limit", nullptr),
+        .memory_limit = policy.value("memory_limit", nullptr)
     };
 }
 
@@ -171,7 +180,7 @@ std::string claude_tool_kind(const std::string &tool_name) {
 }
 
 std::string default_handoff(const std::string &status) {
-    if (status == "failed" || status == "blocked" || status == "timeout") {
+    if (status == "failed" || status == "blocked" || status == "timeout" || status == "interrupted") {
         return "retry_or_manual_takeover";
     }
     if (status == "running" || status == "partial" || status == "queued") {

@@ -148,7 +148,6 @@ const char *agent_core_execute_function_call(const char *model_output_json, cons
             return core_internal::g_last_output.c_str();
         }
 
-        std::lock_guard<std::mutex> lk(core_internal::g_tools_mu);
         core_internal::execute_prepared_function_call_locked(policy, normalized);
         return core_internal::g_last_output.c_str();
     } catch (const std::exception &e) {
@@ -268,6 +267,29 @@ const char *agent_core_get_execution(const char *execution_id) {
     }
 
     core_internal::g_last_output = core_internal::serialize_execution_record(core_internal::g_executions.at(id)).dump();
+    return core_internal::g_last_output.c_str();
+}
+
+const char *agent_core_interrupt_execution(const char *execution_id) {
+    core_internal::g_last_error.clear();
+    core_internal::g_last_output.clear();
+
+    if (execution_id == nullptr) {
+        const json err{
+            {"error_code", "E_INPUT"},
+            {"message", "execution_id is null"}
+        };
+        core_internal::g_last_error = err.dump();
+        core_internal::g_last_output = json{{"status", "failed"}, {"error", err}}.dump();
+        return core_internal::g_last_output.c_str();
+    }
+
+    json err;
+    const json out = core_internal::interrupt_execution(execution_id, &err);
+    if (!err.is_null()) {
+        return fail_memory_api(err);
+    }
+    core_internal::g_last_output = out.dump();
     return core_internal::g_last_output.c_str();
 }
 

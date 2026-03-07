@@ -2,13 +2,19 @@
 
 #include <cstdlib>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
+#include <fcntl.h>
 #include <fstream>
+#include <signal.h>
 #include <sstream>
 #include <string>
 
 #if defined(__APPLE__) || defined(__linux__)
+    #include <poll.h>
+    #include <sys/resource.h>
     #include <sys/wait.h>
+    #include <unistd.h>
 #endif
 
 namespace better_agent::core_internal {
@@ -243,68 +249,387 @@ bool cwd_allowed_by_policy(const json &policy, const fs::path &cwd) {
     return false;
 }
 
+bool is_known_network_command(const std::string &command_token) {
+    return command_token == "curl" ||
+        command_token == "wget" ||
+        command_token == "ssh" ||
+        command_token == "scp" ||
+        command_token == "sftp" ||
+        command_token == "nc" ||
+        command_token == "telnet" ||
+        command_token == "ftp" ||
+        command_token == "ping";
+}
+
+bool is_truthy_bool(const json &obj, const char *key) {
+    return obj.is_object() && obj.contains(key) && obj.at(key).is_boolean() && obj.at(key).get<bool>();
+}
+
+std::string truncate_bytes(const std::string &text, std::size_t max_bytes, bool *truncated_out) {
+    if (truncated_out != nullptr) {
+        *truncated_out = false;
+    }
+    if (max_bytes == 0 || text.size() <= max_bytes) {
+        return text;
+    }
+    if (truncated_out != nullptr) {
+        *truncated_out = true;
+    }
+    return text.substr(0, max_bytes);
+}
+
+#if defined(__APPLE__) || defined(__linux__)
+void set_nonblocking_fd(int fd) {
+    const int flags = fcntl(fd, F_GETFL, 0);
+    if (flags >= 0) {
+        (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+}
+#endif
+
+void append_limit_evidence(
+    json *evidence,
+    const char *kind,
+    std::size_t configured_limit,
+    bool truncated,
+    std::size_t original_size
+) {
+    if (!truncated) {
+        return;
+    }
+    evidence->push_back(json{
+        {"kind", kind},
+        {"configured_limit", configured_limit},
+        {"original_size", original_size},
+        {"status", "truncated"}
+    });
+}
+
+void apply_artifact_limit(
+    json *artifacts,
+    std::size_t max_artifacts,
+    json *result,
+    json *evidence
+) {
+    if (!artifacts->is_array() || max_artifacts == 0 || artifacts->size() <= max_artifacts) {
+        return;
+    }
+    const std::size_t omitted = artifacts->size() - max_artifacts;
+    json trimmed = json::array();
+    for (std::size_t index = 0; index < max_artifacts; ++index) {
+        trimmed.push_back((*artifacts).at(index));
+    }
+    *artifacts = trimmed;
+    (*result)["artifacts_truncated"] = true;
+    (*result)["omitted_artifact_count"] = omitted;
+    evidence->push_back(json{
+        {"kind", "artifacts"},
+        {"configured_limit", max_artifacts},
+        {"omitted_count", omitted},
+        {"status", "truncated"}
+    });
+}
+
+bool interrupt_requested_for_execution(const std::string &execution_id) {
+    std::lock_guard<std::mutex> lk(g_running_mu);
+    if (!g_running_executions.contains(execution_id)) {
+        return false;
+    }
+    return g_running_executions.at(execution_id).interrupt_requested;
+}
+
+#if defined(__APPLE__) || defined(__linux__)
+void apply_posix_resource_limits_in_child(const ToolExecutionRequest &request) {
+    if (request.policy.contains("cpu_limit") && request.policy.at("cpu_limit").is_number_integer()) {
+#if defined(RLIMIT_CPU)
+        const rlim_t cpu_limit = static_cast<rlim_t>(request.policy.at("cpu_limit").get<long long>());
+        struct rlimit limit { cpu_limit, cpu_limit };
+        (void)setrlimit(RLIMIT_CPU, &limit);
+#endif
+    }
+    if (request.policy.contains("memory_limit") && request.policy.at("memory_limit").is_number_integer()) {
+#if defined(RLIMIT_AS)
+        const rlim_t memory_limit = static_cast<rlim_t>(request.policy.at("memory_limit").get<long long>());
+        struct rlimit limit { memory_limit, memory_limit };
+        (void)setrlimit(RLIMIT_AS, &limit);
+#elif defined(RLIMIT_DATA)
+        const rlim_t memory_limit = static_cast<rlim_t>(request.policy.at("memory_limit").get<long long>());
+        struct rlimit limit { memory_limit, memory_limit };
+        (void)setrlimit(RLIMIT_DATA, &limit);
+#endif
+    }
+}
+#endif
+
+ToolExecutionResult run_process_in_temp_dir(
+    const std::string &executor_target,
+    const ToolExecutionRequest &request,
+    const fs::path &cwd,
+    const std::string &runner_command,
+    const json &result_metadata,
+    const json &extra_artifacts
+) {
+    const fs::path temp_dir = fs::temp_directory_path() / next_id("agent-core");
+    fs::create_directories(temp_dir);
+
+    const fs::path stdout_path = temp_dir / "stdout.txt";
+    const fs::path stderr_path = temp_dir / "stderr.txt";
+
+    json evidence = json::array({
+        json{{"kind", "executor_kind"}, {"value", "builtin"}},
+        json{{"kind", "executor_target"}, {"value", executor_target}},
+        json{{"kind", "cwd"}, {"value", cwd.string()}},
+        json{{"kind", "artifact_dir"}, {"value", temp_dir.string()}},
+        json{{"kind", "execution_id"}, {"value", request.execution_id}}
+    });
+
+    json result = result_metadata;
+    result["cwd"] = cwd.string();
+    result["sandbox"] = json{
+        {"timeout_ms", request.policy.value("timeout_ms", 0)},
+        {"network_access", request.policy.value("network_access", false)},
+        {"cpu_limit", request.policy.value("cpu_limit", nullptr)},
+        {"memory_limit", request.policy.value("memory_limit", nullptr)},
+        {"unsupported_limits", json::array()},
+        {"interrupted", false},
+        {"timed_out", false}
+    };
+
+    if (!request.policy.value("cpu_limit", json(nullptr)).is_null()) {
+#if !defined(RLIMIT_CPU)
+        result["sandbox"]["unsupported_limits"].push_back("cpu_limit");
+        evidence.push_back(json{{"kind", "cpu_limit"}, {"status", "unsupported"}});
+#else
+        evidence.push_back(json{{"kind", "cpu_limit"}, {"status", "requested"}, {"value", request.policy.at("cpu_limit")}});
+#endif
+    }
+    if (!request.policy.value("memory_limit", json(nullptr)).is_null()) {
+#if !defined(RLIMIT_AS) && !defined(RLIMIT_DATA)
+        result["sandbox"]["unsupported_limits"].push_back("memory_limit");
+        evidence.push_back(json{{"kind", "memory_limit"}, {"status", "unsupported"}});
+#else
+        evidence.push_back(json{{"kind", "memory_limit"}, {"status", "requested"}, {"value", request.policy.at("memory_limit")}});
+#endif
+    }
+
+#if !defined(__APPLE__) && !defined(__linux__)
+    return make_executor_error(
+        "blocked",
+        "E_PLATFORM_UNSUPPORTED",
+        "POSIX sandbox execution requires macOS or Linux",
+        json{{"platform", current_platform_name(request.policy)}},
+        executor_target
+    );
+#else
+    int stdout_pipe[2] = {-1, -1};
+    int stderr_pipe[2] = {-1, -1};
+    if (pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
+        return make_executor_error(
+            "failed",
+            "E_SANDBOX_PIPE",
+            "failed to create sandbox pipes",
+            json::object(),
+            executor_target
+        );
+    }
+
+    const pid_t pid = fork();
+    if (pid < 0) {
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[0]);
+        close(stderr_pipe[1]);
+        return make_executor_error(
+            "failed",
+            "E_SANDBOX_FORK",
+            "failed to fork sandbox process",
+            json::object(),
+            executor_target
+        );
+    }
+
+    if (pid == 0) {
+        setpgid(0, 0);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stderr_pipe[1], STDERR_FILENO);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[0]);
+        close(stderr_pipe[1]);
+        (void)chdir(cwd.c_str());
+        apply_posix_resource_limits_in_child(request);
+        execl("/bin/sh", "sh", "-c", runner_command.c_str(), static_cast<char *>(nullptr));
+        _exit(127);
+    }
+
+    close(stdout_pipe[1]);
+    close(stderr_pipe[1]);
+    set_nonblocking_fd(stdout_pipe[0]);
+    set_nonblocking_fd(stderr_pipe[0]);
+
+    {
+        std::lock_guard<std::mutex> lk(g_running_mu);
+        g_running_executions[request.execution_id] = RunningExecution{
+            .execution_id = request.execution_id,
+            .tool_name = request.tool_name,
+            .tool_kind = request.tool_kind,
+            .policy_snapshot = request.policy,
+            .pid = static_cast<int>(pid),
+            .interrupt_requested = false
+        };
+    }
+
+    std::string stdout_buffer;
+    std::string stderr_buffer;
+    bool stdout_closed = false;
+    bool stderr_closed = false;
+    bool timed_out = false;
+    bool interrupted = false;
+    int child_status = 0;
+    bool child_exited = false;
+    const auto started_at = std::chrono::steady_clock::now();
+
+    while (!(child_exited && stdout_closed && stderr_closed)) {
+        struct pollfd fds[2];
+        std::size_t nfds = 0;
+        if (!stdout_closed) {
+            fds[nfds++] = pollfd{stdout_pipe[0], POLLIN | POLLHUP, 0};
+        }
+        if (!stderr_closed) {
+            fds[nfds++] = pollfd{stderr_pipe[0], POLLIN | POLLHUP, 0};
+        }
+
+        const int timeout = 50;
+        (void)poll(fds, static_cast<nfds_t>(nfds), timeout);
+
+        auto read_fd = [](int fd, std::string *target, bool *closed) {
+            char buffer[4096];
+            while (true) {
+                const ssize_t read_count = read(fd, buffer, sizeof(buffer));
+                if (read_count > 0) {
+                    target->append(buffer, static_cast<std::size_t>(read_count));
+                    continue;
+                }
+                if (read_count == 0) {
+                    *closed = true;
+                }
+                break;
+            }
+        };
+
+        if (!stdout_closed) {
+            read_fd(stdout_pipe[0], &stdout_buffer, &stdout_closed);
+        }
+        if (!stderr_closed) {
+            read_fd(stderr_pipe[0], &stderr_buffer, &stderr_closed);
+        }
+
+        if (!child_exited) {
+            const pid_t wait_result = waitpid(pid, &child_status, WNOHANG);
+            if (wait_result == pid) {
+                child_exited = true;
+            }
+        }
+
+        if (!timed_out && request.policy.value("timeout_ms", 0ULL) > 0) {
+            const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started_at
+            ).count();
+            if (elapsed_ms > static_cast<long long>(request.policy.value("timeout_ms", 0ULL))) {
+                timed_out = true;
+                killpg(pid, SIGKILL);
+            }
+        }
+        if (!interrupted && interrupt_requested_for_execution(request.execution_id)) {
+            interrupted = true;
+            killpg(pid, SIGKILL);
+        }
+    }
+
+    close(stdout_pipe[0]);
+    close(stderr_pipe[0]);
+
+    if (!child_exited) {
+        (void)waitpid(pid, &child_status, 0);
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(g_running_mu);
+        g_running_executions.erase(request.execution_id);
+    }
+
+    std::ofstream stdout_out(stdout_path);
+    stdout_out << stdout_buffer;
+    std::ofstream stderr_out(stderr_path);
+    stderr_out << stderr_buffer;
+
+    int exit_code = 0;
+    if (WIFEXITED(child_status)) {
+        exit_code = WEXITSTATUS(child_status);
+    } else if (WIFSIGNALED(child_status)) {
+        exit_code = 128 + WTERMSIG(child_status);
+    }
+
+    bool stdout_truncated = false;
+    bool stderr_truncated = false;
+    result["stdout"] = truncate_bytes(stdout_buffer, request.policy.value("max_stdout_bytes", static_cast<std::size_t>(0)), &stdout_truncated);
+    result["stderr"] = truncate_bytes(stderr_buffer, request.policy.value("max_stderr_bytes", static_cast<std::size_t>(0)), &stderr_truncated);
+    result["stdout_truncated"] = stdout_truncated;
+    result["stderr_truncated"] = stderr_truncated;
+    result["exit_code"] = exit_code;
+    result["sandbox"]["timed_out"] = timed_out;
+    result["sandbox"]["interrupted"] = interrupted;
+
+    json artifacts = json::array({
+        json{{"path", stdout_path.string()}, {"kind", "stdout"}},
+        json{{"path", stderr_path.string()}, {"kind", "stderr"}}
+    });
+    if (extra_artifacts.is_array()) {
+        for (const auto &item : extra_artifacts) {
+            artifacts.push_back(item);
+        }
+    }
+    apply_artifact_limit(&artifacts, request.policy.value("max_artifacts", static_cast<std::size_t>(0)), &result, &evidence);
+    result["artifacts"] = artifacts;
+
+    append_limit_evidence(&evidence, "stdout", request.policy.value("max_stdout_bytes", static_cast<std::size_t>(0)), stdout_truncated, stdout_buffer.size());
+    append_limit_evidence(&evidence, "stderr", request.policy.value("max_stderr_bytes", static_cast<std::size_t>(0)), stderr_truncated, stderr_buffer.size());
+
+    std::string status = "success";
+    json error = nullptr;
+    if (interrupted) {
+        status = "interrupted";
+        error = make_error_json("E_SANDBOX_INTERRUPTED", "sandbox execution was interrupted", json{{"execution_id", request.execution_id}});
+        evidence.push_back(json{{"kind", "interrupt"}, {"status", "requested"}});
+    } else if (timed_out) {
+        status = "timeout";
+        error = make_error_json("E_SANDBOX_TIMEOUT", "sandbox execution timed out", json{{"timeout_ms", request.policy.value("timeout_ms", 0ULL)}});
+        evidence.push_back(json{{"kind", "timeout_ms"}, {"value", request.policy.value("timeout_ms", 0ULL)}});
+    } else if (exit_code != 0) {
+        status = "failed";
+        error = make_error_json("E_EXECUTION_FAILED", "executor returned non-zero exit code", json{{"exit_code", exit_code}});
+    }
+
+    return make_execution_result(status, result, error, evidence, default_handoff(status));
+#endif
+}
+
 ToolExecutionResult run_process_in_temp_dir(
     const std::string &executor_target,
     const fs::path &cwd,
     const std::string &runner_command,
     const json &result_metadata
 ) {
-    const fs::path temp_dir = fs::temp_directory_path() / next_id("agent-core");
-    fs::create_directories(temp_dir);
-
-    const fs::path wrapper_path = temp_dir / "run.sh";
-    const fs::path stdout_path = temp_dir / "stdout.txt";
-    const fs::path stderr_path = temp_dir / "stderr.txt";
-    std::ofstream wrapper(wrapper_path);
-    wrapper << "cd " << quote_for_shell(cwd.string()) << " || exit 97\n";
-    wrapper << runner_command << "\n";
-    wrapper.close();
-
-    const std::string system_command = "/bin/sh " + quote_for_shell(wrapper_path.string()) +
-        " > " + quote_for_shell(stdout_path.string()) +
-        " 2> " + quote_for_shell(stderr_path.string());
-
-    const int raw_exit_code = std::system(system_command.c_str());
-    int exit_code = raw_exit_code;
-#if defined(__APPLE__) || defined(__linux__)
-    if (WIFEXITED(raw_exit_code)) {
-        exit_code = WEXITSTATUS(raw_exit_code);
-    } else if (WIFSIGNALED(raw_exit_code)) {
-        exit_code = 128 + WTERMSIG(raw_exit_code);
-    }
-#endif
-
-    json result = result_metadata;
-    result["cwd"] = cwd.string();
-    result["stdout"] = read_text_file(stdout_path);
-    result["stderr"] = read_text_file(stderr_path);
-    result["exit_code"] = exit_code;
-    result["artifacts"] = json::array({
-        json{{"path", wrapper_path.string()}, {"kind", "runner"}},
-        json{{"path", stdout_path.string()}, {"kind", "stdout"}},
-        json{{"path", stderr_path.string()}, {"kind", "stderr"}}
-    });
-
-    json evidence = json::array({
-        json{{"kind", "executor_kind"}, {"value", "builtin"}},
-        json{{"kind", "executor_target"}, {"value", executor_target}},
-        json{{"kind", "cwd"}, {"value", cwd.string()}},
-        json{{"kind", "artifact_dir"}, {"value", temp_dir.string()}}
-    });
-
-    const std::string status = exit_code == 0 ? "success" : "failed";
-    return make_execution_result(
-        status,
-        result,
-        exit_code == 0
-            ? nullptr
-            : json{
-                {"error_code", "E_EXECUTION_FAILED"},
-                {"message", "executor returned non-zero exit code"},
-                {"detail", json{{"exit_code", exit_code}}}
-            },
-        evidence,
-        default_handoff(status)
+    (void)executor_target;
+    (void)cwd;
+    (void)runner_command;
+    (void)result_metadata;
+    return make_executor_error(
+        "failed",
+        "E_SANDBOX_INTERNAL",
+        "deprecated overload should not be used",
+        json::object(),
+        "deprecated"
     );
 }
 
@@ -591,6 +916,29 @@ ToolExecutionResult execute_builtin_shell_posix(const ToolRegistration &tool, co
     }
 
     const std::string command_token = first_command_token(command);
+    const bool requires_network = request.policy.value("requires_network", false) ||
+        is_truthy_bool(request.args, "requires_network") ||
+        is_known_network_command(command_token);
+    if (requires_network && !request.policy.value("network_access", false)) {
+        return make_executor_error(
+            "blocked",
+            "E_SANDBOX_NETWORK_DISABLED",
+            "network access is disabled by sandbox policy",
+            json{{"command", command_token}},
+            executor_target,
+            "retry_or_manual_takeover"
+        );
+    }
+    if (requires_network && request.policy.value("network_access", false)) {
+        return make_executor_error(
+            "blocked",
+            "E_SANDBOX_NETWORK_UNSUPPORTED",
+            "network-enabled sandbox is not supported in this build",
+            json{{"command", command_token}},
+            executor_target,
+            "retry_or_manual_takeover"
+        );
+    }
     if (!string_allowed_by_policy(request.policy.value("allowed_commands", json::array()), command_token)) {
         return make_executor_error(
             "blocked",
@@ -620,7 +968,6 @@ ToolExecutionResult execute_builtin_shell_posix(const ToolRegistration &tool, co
     fs::create_directories(temp_dir);
     const fs::path script_path = temp_dir / "command.sh";
     std::ofstream script(script_path);
-    script << "cd " << quote_for_shell(cwd.string()) << " || exit 97\n";
     script << command << "\n";
     script.close();
 
@@ -630,12 +977,18 @@ ToolExecutionResult execute_builtin_shell_posix(const ToolRegistration &tool, co
     };
     ToolExecutionResult execution = run_process_in_temp_dir(
         executor_target,
+        request,
         cwd,
         quote_for_shell(shell_runner) + " " + quote_for_shell(script_path.string()),
-        result_metadata
+        result_metadata,
+        json::array({
+            json{{"path", script_path.string()}, {"kind", "script"}}
+        })
     );
-    execution.result["artifacts"].push_back(json{{"path", script_path.string()}, {"kind", "script"}});
     execution.evidence.push_back(json{{"kind", "shell"}, {"value", shell_runner}});
+    if (requires_network) {
+        execution.evidence.push_back(json{{"kind", "network_requirement"}, {"value", "requested"}});
+    }
     return execution;
 }
 
@@ -718,6 +1071,28 @@ ToolExecutionResult execute_builtin_code_posix(const ToolRegistration &tool, con
             "retry_or_manual_takeover"
         );
     }
+    const bool requires_network = request.policy.value("requires_network", false) ||
+        is_truthy_bool(request.args, "requires_network");
+    if (requires_network && !request.policy.value("network_access", false)) {
+        return make_executor_error(
+            "blocked",
+            "E_SANDBOX_NETWORK_DISABLED",
+            "network access is disabled by sandbox policy",
+            json{{"runtime", runtime}},
+            executor_target,
+            "retry_or_manual_takeover"
+        );
+    }
+    if (requires_network && request.policy.value("network_access", false)) {
+        return make_executor_error(
+            "blocked",
+            "E_SANDBOX_NETWORK_UNSUPPORTED",
+            "network-enabled sandbox is not supported in this build",
+            json{{"runtime", runtime}},
+            executor_target,
+            "retry_or_manual_takeover"
+        );
+    }
 
     const fs::path cwd = request.args.contains("cwd") && request.args.at("cwd").is_string()
         ? fs::path(request.args.at("cwd").get<std::string>())
@@ -752,12 +1127,18 @@ ToolExecutionResult execute_builtin_code_posix(const ToolRegistration &tool, con
 
     ToolExecutionResult execution = run_process_in_temp_dir(
         executor_target,
+        request,
         cwd,
         command,
-        json{{"runtime", runtime}}
+        json{{"runtime", runtime}},
+        json::array({
+            json{{"path", source_path.string()}, {"kind", "source"}}
+        })
     );
-    execution.result["artifacts"].push_back(json{{"path", source_path.string()}, {"kind", "source"}});
     execution.evidence.push_back(json{{"kind", "runtime"}, {"value", runtime}});
+    if (requires_network) {
+        execution.evidence.push_back(json{{"kind", "network_requirement"}, {"value", "requested"}});
+    }
     return execution;
 }
 
@@ -828,8 +1209,16 @@ bool execute_hook_chain(
     json *blocking_error_out
 ) {
     for (const auto &hook_name : hook_names) {
-        const ToolRegistration *hook_tool = find_registered_tool(hook_name);
-        if (hook_tool == nullptr) {
+        ToolRegistration hook_tool;
+        {
+            std::lock_guard<std::mutex> lk(g_tools_mu);
+            if (!g_tools.contains(hook_name)) {
+                hook_tool = ToolRegistration{};
+            } else {
+                hook_tool = g_tools.at(hook_name);
+            }
+        }
+        if (hook_tool.spec.name.empty()) {
             evidence_out->push_back(json{
                 {"kind", "hook"},
                 {"phase", phase},
@@ -848,7 +1237,7 @@ bool execute_hook_chain(
             continue;
         }
 
-        if (hook_tool->tool_kind != "hooks") {
+        if (hook_tool.tool_kind != "hooks") {
             evidence_out->push_back(json{
                 {"kind", "hook"},
                 {"phase", phase},
@@ -868,15 +1257,16 @@ bool execute_hook_chain(
         }
 
         const ToolExecutionRequest hook_request{
-            .tool_name = hook_tool->spec.name,
-            .tool_kind = hook_tool->tool_kind,
+            .execution_id = target_request.execution_id + ":hook:" + phase + ":" + hook_name,
+            .tool_name = hook_tool.spec.name,
+            .tool_kind = hook_tool.tool_kind,
             .provider_kind = target_request.provider_kind,
             .intent = "hook." + phase,
             .provider_call_id = target_request.provider_call_id,
             .args = build_hook_payload(phase, target_tool, target_request, target_result),
             .policy = policy.raw_json
         };
-        const ToolExecutionResult hook_execution = execute_tool_registration(*hook_tool, hook_request);
+        const ToolExecutionResult hook_execution = execute_tool_registration(hook_tool, hook_request);
         json hook_entry{
             {"kind", "hook"},
             {"phase", phase},
@@ -1028,9 +1418,11 @@ bool handle_idempotency_replay_locked(
 ToolExecutionRequest build_tool_execution_request(
     const ToolRegistration &tool,
     const NormalizedCall &call,
-    const PolicyView &policy
+    const PolicyView &policy,
+    const std::string &execution_id
 ) {
     return ToolExecutionRequest{
+        .execution_id = execution_id,
         .tool_name = call.tool_name,
         .tool_kind = tool.tool_kind,
         .provider_kind = call.provider_kind,
@@ -1045,6 +1437,7 @@ ExecutionRecord build_execution_record(
     const ToolRegistration &tool,
     const NormalizedCall &call,
     const PolicyView &policy,
+    const std::string &execution_id,
     const ToolExecutionResult &execution
 ) {
     json evidence = json::array({
@@ -1057,7 +1450,7 @@ ExecutionRecord build_execution_record(
     append_evidence(&evidence, execution.evidence);
 
     return ExecutionRecord{
-        .execution_id = next_id("exec"),
+        .execution_id = execution_id,
         .tool_kind = tool.tool_kind,
         .provider_kind = call.provider_kind,
         .intent = call.intent,
@@ -1091,28 +1484,64 @@ void store_execution_record_locked(
 bool execute_prepared_function_call_locked(const PolicyView &policy, const NormalizedCall &call) {
     std::string idem;
     std::string idem_signature;
-    if (handle_idempotency_replay_locked(policy, call, &idem, &idem_signature)) {
+    {
+        std::lock_guard<std::mutex> lk(g_tools_mu);
+        if (handle_idempotency_replay_locked(policy, call, &idem, &idem_signature)) {
+            return true;
+        }
+    }
+
+    ToolRegistration tool;
+    {
+        std::lock_guard<std::mutex> lk(g_tools_mu);
+        if (!g_tools.contains(call.tool_name)) {
+            fail_function_call(json{
+                {"error_code", "E_TOOL_NOT_FOUND"},
+                {"message", "tool is not registered"},
+                {"detail", json{{"tool", call.tool_name}}}
+            }, "failed", call.tool_name);
+            return true;
+        }
+        tool = g_tools.at(call.tool_name);
+    }
+
+    if (!validate_tool_call_request(tool, call, policy)) {
         return true;
     }
 
-    const ToolRegistration *tool = lookup_registered_tool(call.tool_name);
-    if (tool == nullptr) {
-        return true;
+    std::string execution_id = policy.execution_id.empty() ? next_id("exec") : policy.execution_id;
+    {
+        std::lock_guard<std::mutex> lk(g_tools_mu);
+        if (g_executions.contains(execution_id)) {
+            fail_function_call(json{
+                {"error_code", "E_EXECUTION_ID_CONFLICT"},
+                {"message", "execution_id already exists"},
+                {"detail", json{{"execution_id", execution_id}}}
+            });
+            return true;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_running_mu);
+        if (g_running_executions.contains(execution_id)) {
+            fail_function_call(json{
+                {"error_code", "E_EXECUTION_ID_CONFLICT"},
+                {"message", "execution_id is already running"},
+                {"detail", json{{"execution_id", execution_id}}}
+            });
+            return true;
+        }
     }
 
-    if (!validate_tool_call_request(*tool, call, policy)) {
-        return true;
-    }
-
-    const ToolExecutionRequest request = build_tool_execution_request(*tool, call, policy);
+    const ToolExecutionRequest request = build_tool_execution_request(tool, call, policy, execution_id);
     json lifecycle_evidence = json::array();
     json hook_block_error = nullptr;
 
-    if (tool->tool_kind == "hooks" && !policy.enable_hook_recursion) {
+    if (tool.tool_kind == "hooks" && !policy.enable_hook_recursion) {
         lifecycle_evidence.push_back(json{
             {"kind", "hook_recursion_guard"},
             {"phase", "all"},
-            {"tool_name", tool->spec.name},
+            {"tool_name", tool.spec.name},
             {"status", "skipped"}
         });
     } else {
@@ -1120,7 +1549,7 @@ bool execute_prepared_function_call_locked(const PolicyView &policy, const Norma
             policy.before_tool_hooks,
             "before_tool",
             policy,
-            *tool,
+            tool,
             request,
             nullptr,
             &lifecycle_evidence,
@@ -1134,23 +1563,24 @@ bool execute_prepared_function_call_locked(const PolicyView &policy, const Norma
                 .evidence = lifecycle_evidence,
                 .handoff = "retry_or_manual_takeover"
             };
-            ExecutionRecord record = build_execution_record(*tool, call, policy, blocked_result);
+            ExecutionRecord record = build_execution_record(tool, call, policy, execution_id, blocked_result);
+            std::lock_guard<std::mutex> lk(g_tools_mu);
             store_execution_record_locked(record, idem, idem_signature);
             return true;
         }
     }
 
-    ToolExecutionResult execution = execute_tool_registration(*tool, request);
+    ToolExecutionResult execution = execute_tool_registration(tool, request);
     append_evidence(&execution.evidence, lifecycle_evidence);
 
-    if (!(tool->tool_kind == "hooks" && !policy.enable_hook_recursion)) {
+    if (!(tool.tool_kind == "hooks" && !policy.enable_hook_recursion)) {
         json after_hook_error = nullptr;
         json after_hook_evidence = json::array();
         execute_hook_chain(
             policy.after_tool_hooks,
             "after_tool",
             policy,
-            *tool,
+            tool,
             request,
             &execution,
             &after_hook_evidence,
@@ -1159,9 +1589,50 @@ bool execute_prepared_function_call_locked(const PolicyView &policy, const Norma
         append_evidence(&execution.evidence, after_hook_evidence);
     }
 
-    ExecutionRecord record = build_execution_record(*tool, call, policy, execution);
-    store_execution_record_locked(record, idem, idem_signature);
+    ExecutionRecord record = build_execution_record(tool, call, policy, execution_id, execution);
+    {
+        std::lock_guard<std::mutex> lk(g_tools_mu);
+        store_execution_record_locked(record, idem, idem_signature);
+    }
     return true;
+}
+
+json interrupt_execution(const std::string &execution_id, json *err_out) {
+    if (err_out != nullptr) {
+        *err_out = nullptr;
+    }
+    if (execution_id.empty()) {
+        if (err_out != nullptr) {
+            *err_out = make_error_json("E_INPUT", "execution_id is empty");
+        }
+        return json::object();
+    }
+
+    std::lock_guard<std::mutex> lk(g_running_mu);
+    if (!g_running_executions.contains(execution_id)) {
+        if (err_out != nullptr) {
+            *err_out = make_error_json(
+                "E_NOT_FOUND",
+                "running execution not found",
+                json{{"execution_id", execution_id}}
+            );
+        }
+        return json::object();
+    }
+
+    RunningExecution &running = g_running_executions.at(execution_id);
+    running.interrupt_requested = true;
+#if defined(__APPLE__) || defined(__linux__)
+    if (running.pid > 0) {
+        (void)killpg(running.pid, SIGKILL);
+    }
+#endif
+    return json{
+        {"status", "success"},
+        {"execution_id", execution_id},
+        {"tool_name", running.tool_name},
+        {"tool_kind", running.tool_kind}
+    };
 }
 
 } // namespace better_agent::core_internal

@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -49,12 +50,22 @@ struct PolicyView {
     std::vector<std::string> allow_tools;
     std::vector<std::string> deny_tools;
     std::string idempotency_key;
+    std::string execution_id;
     std::vector<std::string> before_tool_hooks;
     std::vector<std::string> after_tool_hooks;
     bool enable_hook_recursion = false;
+    std::uint64_t timeout_ms = 0;
+    bool network_access = false;
+    std::size_t max_stdout_bytes = 0;
+    std::size_t max_stderr_bytes = 0;
+    std::size_t max_artifacts = 0;
+    bool require_network = false;
+    json cpu_limit = nullptr;
+    json memory_limit = nullptr;
 };
 
 struct ToolExecutionRequest {
+    std::string execution_id;
     std::string tool_name;
     std::string tool_kind = "function";
     std::string provider_kind;
@@ -105,6 +116,15 @@ struct RuntimeEventRecord {
     std::string timestamp;
 };
 
+struct RunningExecution {
+    std::string execution_id;
+    std::string tool_name;
+    std::string tool_kind;
+    json policy_snapshot = json::object();
+    int pid = -1;
+    bool interrupt_requested = false;
+};
+
 struct MemoryConfig {
     std::string store_path;
     std::size_t max_injection_entries = 5;
@@ -146,10 +166,12 @@ extern thread_local std::string g_last_error;
 extern thread_local std::string g_last_output;
 extern std::mutex g_tools_mu;
 extern std::mutex g_memory_mu;
+extern std::mutex g_running_mu;
 extern std::unordered_map<std::string, ToolRegistration> g_tools;
 extern std::unordered_map<std::string, ExecutionRecord> g_executions;
 extern std::unordered_map<std::string, std::string> g_idempotency_to_execution;
 extern std::unordered_map<std::string, std::string> g_idempotency_signature;
+extern std::unordered_map<std::string, RunningExecution> g_running_executions;
 extern MemoryConfig g_memory_config;
 extern std::unordered_map<std::string, MemoryEntry> g_memory_entries;
 extern std::vector<std::string> g_memory_order;
@@ -221,12 +243,14 @@ bool handle_idempotency_replay_locked(
 ToolExecutionRequest build_tool_execution_request(
     const ToolRegistration &tool,
     const NormalizedCall &call,
-    const PolicyView &policy
+    const PolicyView &policy,
+    const std::string &execution_id
 );
 ExecutionRecord build_execution_record(
     const ToolRegistration &tool,
     const NormalizedCall &call,
     const PolicyView &policy,
+    const std::string &execution_id,
     const ToolExecutionResult &execution
 );
 void store_execution_record_locked(
@@ -235,6 +259,7 @@ void store_execution_record_locked(
     const std::string &idempotency_signature
 );
 bool execute_prepared_function_call_locked(const PolicyView &policy, const NormalizedCall &call);
+json interrupt_execution(const std::string &execution_id, json *err_out);
 
 json build_provider_execution_wrapper(
     const json &record,

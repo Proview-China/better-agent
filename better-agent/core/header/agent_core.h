@@ -56,6 +56,7 @@ AGENT_CORE_API const char *agent_core_execute_claude_tool_use(
 
 /* Fetch a previously stored normalized execution record by id as JSON. */
 AGENT_CORE_API const char *agent_core_get_execution(const char *execution_id);
+AGENT_CORE_API const char *agent_core_interrupt_execution(const char *execution_id);
 
 /* Provider-specific output builders from a stored execution record. */
 AGENT_CORE_API const char *agent_core_build_openai_function_call_output(
