@@ -23,6 +23,9 @@ int main() {
     expect(probe.at("capabilities").contains("cgroup_v2"), "probe should include cgroup v2");
     expect(probe.at("capabilities").contains("seccomp"), "probe should include seccomp");
     expect(probe.contains("supported_policy"), "probe should report supported policy");
+    expect(probe.at("supported_policy").contains("linux_cgroup_mode"), "probe should report linux_cgroup_mode policy");
+    expect(probe.at("supported_policy").contains("linux_seccomp_mode"), "probe should report linux_seccomp_mode policy");
+    expect(probe.at("supported_policy").contains("linux_seccomp_profile"), "probe should report linux_seccomp_profile policy");
 
     const char *shell_tool = R"({
       "name":"shell_linux_probe",
@@ -93,6 +96,44 @@ int main() {
 #else
     expect(net_required.at("status") == "blocked", "non-linux platform should block required linux network isolation");
     expect(net_required.at("error").at("error_code") == "E_SANDBOX_NETWORK_UNSUPPORTED", "network unsupported error mismatch");
+#endif
+
+    auto cgroup_required = parse_json(agent_core_execute_function_call(
+        (std::string(R"({"tool":"shell_linux_probe","arguments":{"command":"printf 'cg'","cwd":")") + cwd + R"("}})").c_str(),
+        (std::string(R"({"allow_tools":["shell_linux_probe"],"allowed_commands":["printf"],"allowed_cwds":)") + allow_cwds_json +
+            R"(,"linux_cgroup_mode":"required","cgroup_pids_max":32})").c_str()
+    ));
+#if defined(__linux__)
+    const std::string cgroup_status = probe.at("capabilities").at("cgroup_v2").at("status").get<std::string>();
+    if (cgroup_status == "available") {
+        expect(cgroup_required.at("status") != "blocked", "required cgroup mode should not be blocked when available");
+        expect(cgroup_required.at("result").at("sandbox").at("linux").at("cgroup_enforcement").contains("status"), "cgroup result should expose status");
+    } else {
+        expect(cgroup_required.at("status") == "blocked", "required cgroup mode should block when unavailable");
+        expect(cgroup_required.at("error").at("error_code") == "E_SANDBOX_CGROUP_UNSUPPORTED", "cgroup unsupported error mismatch");
+    }
+#else
+    expect(cgroup_required.at("status") == "blocked", "non-linux platform should block required cgroup mode");
+    expect(cgroup_required.at("error").at("error_code") == "E_SANDBOX_CGROUP_UNSUPPORTED", "cgroup unsupported error mismatch");
+#endif
+
+    auto seccomp_required = parse_json(agent_core_execute_function_call(
+        (std::string(R"({"tool":"shell_linux_probe","arguments":{"command":"printf 'sc'","cwd":")") + cwd + R"("}})").c_str(),
+        (std::string(R"({"allow_tools":["shell_linux_probe"],"allowed_commands":["printf"],"allowed_cwds":)") + allow_cwds_json +
+            R"(,"linux_seccomp_mode":"required","linux_seccomp_profile":"baseline"})").c_str()
+    ));
+#if defined(__linux__)
+    const std::string seccomp_status = probe.at("capabilities").at("seccomp").at("status").get<std::string>();
+    if (seccomp_status == "available") {
+        expect(seccomp_required.at("status") != "blocked", "required seccomp mode should not be blocked when available");
+        expect(seccomp_required.at("result").at("sandbox").at("linux").at("seccomp").contains("status"), "seccomp result should expose status");
+    } else {
+        expect(seccomp_required.at("status") == "blocked", "required seccomp mode should block when unavailable");
+        expect(seccomp_required.at("error").at("error_code") == "E_SANDBOX_SECCOMP_UNSUPPORTED", "seccomp unsupported error mismatch");
+    }
+#else
+    expect(seccomp_required.at("status") == "blocked", "non-linux platform should block required seccomp mode");
+    expect(seccomp_required.at("error").at("error_code") == "E_SANDBOX_SECCOMP_UNSUPPORTED", "seccomp unsupported error mismatch");
 #endif
 
     agent_core_shutdown();
