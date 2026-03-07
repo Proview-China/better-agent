@@ -52,6 +52,14 @@ add_agent_core_test(
     ${AGENT_CORE_TEST_ROOT}/unit/runtime/hook_lifecycle_test.cpp
 )
 add_agent_core_test(
+    agent_core_unit_memory_store_query
+    ${AGENT_CORE_TEST_ROOT}/unit/memory/memory_store_query_test.cpp
+)
+add_agent_core_test(
+    agent_core_unit_memory_execution_guard
+    ${AGENT_CORE_TEST_ROOT}/unit/memory/memory_execution_guard_test.cpp
+)
+add_agent_core_test(
     agent_core_unit_provider_payload
     ${AGENT_CORE_TEST_ROOT}/unit/provider/provider_payload_builders_test.cpp
 )

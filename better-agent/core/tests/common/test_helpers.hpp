@@ -67,6 +67,33 @@ inline void expect_runtime_record_contract(const nlohmann::json &record) {
     expect_has_key(record, "timestamp", "runtime record contract");
 }
 
+inline void expect_memory_entry_contract(const nlohmann::json &entry) {
+    expect_has_key(entry, "memory_id", "memory entry contract");
+    expect_has_key(entry, "topic", "memory entry contract");
+    expect_has_key(entry, "kind", "memory entry contract");
+    expect_has_key(entry, "layer", "memory entry contract");
+    expect_has_key(entry, "scope", "memory entry contract");
+    expect_has_key(entry, "summary", "memory entry contract");
+    expect_has_key(entry, "evidence", "memory entry contract");
+    expect_has_key(entry, "confidence", "memory entry contract");
+    expect_has_key(entry, "created_at", "memory entry contract");
+    expect_has_key(entry, "updated_at", "memory entry contract");
+    expect_has_key(entry, "expires_at", "memory entry contract");
+    expect_has_key(entry, "status", "memory entry contract");
+    expect_has_key(entry, "supersedes", "memory entry contract");
+    expect_has_key(entry, "conflicts_with", "memory entry contract");
+    expect_has_key(entry, "source", "memory entry contract");
+}
+
+inline void expect_memory_query_contract(const nlohmann::json &result) {
+    expect_has_key(result, "status", "memory query contract");
+    expect_has_key(result, "query", "memory query contract");
+    expect_has_key(result, "total_matches", "memory query contract");
+    expect_has_key(result, "returned_matches", "memory query contract");
+    expect_has_key(result, "results", "memory query contract");
+    expect_has_key(result, "injection", "memory query contract");
+}
+
 } // namespace tests
 } // namespace better_agent
 
