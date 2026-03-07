@@ -1,0 +1,70 @@
+schema: spec-driven
+
+context: |
+  项目名称：better-agent
+  默认与最终用户的交互语言：简体中文。
+
+  项目目标：
+  - 构建现代 agent infra 基座，统一 tool use、上下文隔离、skills/MCP 接入、多智能体拓扑与记忆系统。
+  - 顶层愿景以 `docs/master.md` 和 `docs/ability/` 下的能力文档为主，不要把远期探索性愿景误写成“已经完成的实现”。
+
+  当前实现事实：
+  - 当前已落地的是 `better-agent/core/` 中的 C++23 core M0 垂直切片，重点覆盖工具注册、自定义工具/函数调用归一化、执行记录、provider 适配（OpenAI / Claude / custom）与 runtime event 标准化。
+  - 公开 C API 定义在 `better-agent/core/header/agent_core.h`，当前包含 lifecycle、version、tool registration、function/tool execution、provider-specific execute helper、execution record lookup、provider output builder 与 runtime normalizer。
+  - `better-agent/core/cpp/internal/` 已拆分出 runtime、provider、registry、state、models、execution 等内部实现模块。
+  - `better-agent/core/bindings/node/agent_core_napi.cpp` 已提供 Node N-API 封装；`better-agent/core/bindings/swift/` 提供 Swift modulemap；`better-agent/ui/gui/macOS/` 为 SwiftUI macOS 客户端；`better-agent/ui/gui/other/` 与 `better-agent/ui/tui/` 当前主要是预留目录。
+
+  仓库结构：
+  - `better-agent/core/`：C++23 核心库与 C 接口，`header/` 为公共头文件，`cpp/` 为实现，`tests/` 为测试，`third-party/` 为依赖。
+  - `better-agent/core/bindings/node/`：Electron/Node 使用的 N-API addon。
+  - `better-agent/core/bindings/swift/`：Swift 绑定。
+  - `better-agent/ui/gui/macOS/`：SwiftUI macOS 客户端（仅 arm64）。
+  - `better-agent/ui/gui/other/`：Electron 客户端预留入口。
+  - `better-agent/ui/tui/`：终端界面预留目录。
+  - `docs/`：设计与架构文档，建议从 `docs/master.md` 开始阅读。
+
+  构建与测试：
+  - 构建 core（推荐开启测试）：`cd better-agent/core && cmake --preset clang-release -D BUILD_TESTING=ON && cmake --build --preset build-clang-release`
+  - 构建 Node addon：`cd better-agent/core && cmake --preset clang-release-node && cmake --build --preset build-clang-release-node`
+  - 运行 C++ 测试：`cd better-agent/core/build/clang-release && ctest` 或 `ctest -R agent_core_`
+  - macOS 客户端通过 Xcode 打开 `better-agent/ui/gui/macOS/better-agent/better-agent.xcodeproj` 并运行 `better-agent` scheme。
+
+  代码与接口约束：
+  - C++ 使用 C++23、4 空格缩进、禁止制表符、禁止 `#include <bits/stdc++.h>`、禁止全局 `using namespace`。
+  - 优先使用 RAII 与智能指针；`extern "C"` 导出的 API 不直接抛异常，应返回错误码或标准化 JSON 错误对象。
+  - 宏需使用 `BETTER_AGENT_` 前缀；头文件必须包含 include guard；实现文件先包含对应头文件。
+  - C 接口统一使用 `snake_case`，避免匈牙利命名与无意义缩写。
+  - 新增导出函数通常需要同步更新 `better-agent/core/header/agent_core.h`、`better-agent/core/cpp/` 实现，以及 `better-agent/core/bindings/node/agent_core_napi.cpp`。
+  - 构建系统基于 CMake 3.25+，默认 clang/clang++，目标平台以 macOS arm64 为主；Node addon 与 `cpp-ai-sdk` bridge 都属于可选构建能力。
+
+  测试约束：
+  - 测试位于 `better-agent/core/tests/`，通过 CTest 注册。
+  - 优先复用 `better-agent/core/tests/common/test_helpers.hpp` 中的 `expect`、`parse_json` 以及契约断言辅助函数。
+  - 单元测试命名使用 `agent_core_unit_*`，集成测试命名使用 `agent_core_integration_*`。
+  - 新增公共 API、provider payload 变化、runtime contract 变化或复杂逻辑时，必须补测试。
+
+  分支与部署：
+  - 常用分支：`main`、`dev`、`deploy`。
+  - `deploy` 分支通过 GitHub Actions 走“香港跳板机 -> 美国 VPS”的部署链路。
+
+rules:
+  proposal:
+    - "先对照 `docs/master.md`，明确本次变更属于哪一层能力（如基本实现、包装机架构、上下文管理器、拓扑结构组装器、I/O 抽象化等），并说明它是“当前实现增强”还是“远期能力探索”。"
+    - "`What Changes` 必须明确受影响的仓库目录或模块边界，例如 `better-agent/core/`、`better-agent/core/bindings/node/`、`better-agent/ui/gui/macOS/`、`docs/`。"
+    - "`Capabilities` 名称使用 kebab-case，并尽量贴近项目现有能力边界或文档术语，不要把多个独立能力混成一个 capability。"
+    - "`Impact` 必须说明是否涉及公开 C API、Node/Swift 绑定、测试补充、构建开关、部署链路或文档更新。"
+  specs:
+    - "规范只写“系统必须做什么”，不要把实现猜测、研究路线或未来愿景写成已承诺行为。"
+    - "涉及公开接口时，场景至少覆盖输入 JSON、输出 JSON / 错误码、策略限制 / 幂等行为、兼容性约束中的一项；优先反映当前 `agent_core` 的标准化 JSON 合约。"
+    - "涉及多层架构时，明确 core、bindings、UI 的责任边界，不要把 UI 细节写进 core 合约，也不要让 binding 规范替代 core 规范。"
+    - "若目标目录当前仍是预留实现（如 `ui/tui/`、`ui/gui/other/`），规范必须清楚说明“新增的是能力定义/接口契约/骨架”还是“完整可运行实现”。"
+  design:
+    - "设计必须给出受影响目录、调用链与数据流，例如 `header -> cpp/internal -> bindings/node`、`core -> Swift modulemap -> macOS UI`。"
+    - "涉及 C API 时，必须说明内存所有权、错误模型、异常边界以及 ABI 兼容策略；不要假设可以随意破坏现有导出接口。"
+    - "涉及 provider/runtime 时，说明 OpenAI、Claude 与 custom payload 如何归一化，以及执行记录、证据字段、错误字段如何落盘或返回。"
+    - "涉及构建或平台差异时，明确 `clang-release` / `clang-release-node` preset、`AGENT_CORE_USE_CPP_AI_SDK` / `BUILD_NODE_ADDON` 等开关，以及 macOS arm64 限制。"
+  tasks:
+    - "任务必须拆到可执行粒度，并尽量标注目标文件或目录，避免“完善系统”“处理细节”这类不可验证描述。"
+    - "涉及公开 API、runtime contract、provider payload 或 binding 改动时，默认同时检查 `header` 声明、`cpp` 实现、`bindings/node` 封装、测试与相关文档是否需要更新。"
+    - "新增复杂逻辑时必须显式包含测试任务；如果影响用户面向文档、架构文档或部署行为，也要单列对应文档/验证任务。"
+    - "不要把“调研/讨论”和“编码/验证”混在同一个复选框里，优先拆成一次会话内可完成的独立任务块。"
