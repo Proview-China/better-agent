@@ -15,6 +15,7 @@ const required = [
   "memoryGet",
   "memoryReset",
   "interruptExecution",
+  "sandboxProbe",
 ];
 
 for (const key of required) {
@@ -53,6 +54,11 @@ const queried = JSON.parse(addon.memoryQuery(JSON.stringify({
 })));
 if (queried.status !== "success" || queried.returned_matches < 1) {
   throw new Error("memoryQuery failed");
+}
+
+const probe = JSON.parse(addon.sandboxProbe());
+if (probe.status !== "success" || !probe.capabilities) {
+  throw new Error("sandboxProbe failed");
 }
 
 console.log("agent_core_node_memory_smoke: PASS");

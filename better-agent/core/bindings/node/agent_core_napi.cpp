@@ -126,6 +126,16 @@ static napi_value InterruptExecution(napi_env env, napi_callback_info info) {
     return make_string(env, out);
 }
 
+/* ── agent_core.sandboxProbe(requestJson?) → string ──────────────────────── */
+static napi_value SandboxProbe(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value argv[1];
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    const std::string request = (argc > 0) ? get_string_arg(env, argv[0]) : "";
+    const char *out = agent_core_sandbox_probe(request.empty() ? nullptr : request.c_str());
+    return make_string(env, out);
+}
+
 /* ── agent_core.executeOpenAIFunctionCall(modelJson, policyJson?) → string ─ */
 static napi_value ExecuteOpenAIFunctionCall(napi_env env, napi_callback_info info) {
     size_t argc = 2;
@@ -241,6 +251,7 @@ static napi_value ModuleInit(napi_env env, napi_value exports) {
         {"executeFunctionCall", nullptr, ExecuteFunctionCall, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getExecution", nullptr, GetExecution, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"interruptExecution", nullptr, InterruptExecution, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sandboxProbe", nullptr, SandboxProbe, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"executeOpenAIFunctionCall", nullptr, ExecuteOpenAIFunctionCall, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"executeClaudeToolUse", nullptr, ExecuteClaudeToolUse, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"buildOpenAIFunctionCallOutput", nullptr, BuildOpenAIFunctionCallOutput, nullptr, nullptr, nullptr, napi_default, nullptr},
