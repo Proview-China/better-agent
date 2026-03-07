@@ -28,6 +28,7 @@ enum class ExecutorKind {
 
 struct ToolRegistration {
     ToolSpec spec;
+    std::string tool_kind = "function";
     ExecutorKind executor_kind = ExecutorKind::Mock;
     std::string executor_target;
     json mock_result;
@@ -47,10 +48,14 @@ struct PolicyView {
     std::vector<std::string> allow_tools;
     std::vector<std::string> deny_tools;
     std::string idempotency_key;
+    std::vector<std::string> before_tool_hooks;
+    std::vector<std::string> after_tool_hooks;
+    bool enable_hook_recursion = false;
 };
 
 struct ToolExecutionRequest {
     std::string tool_name;
+    std::string tool_kind = "function";
     std::string provider_kind;
     std::string intent;
     std::string provider_call_id;
@@ -125,6 +130,8 @@ std::string get_status_from_codex_item(const std::string &event_type, const json
 std::string codex_tool_kind(const std::string &item_type);
 std::string claude_tool_kind(const std::string &tool_name);
 std::string default_handoff(const std::string &status);
+bool is_supported_tool_kind(const std::string &tool_kind);
+std::string infer_tool_kind_from_executor_target(const std::string &executor_target);
 
 bool validate_type(const json &value, const std::string &expected);
 json schema_validate_args(const json &args, const json &schema);
@@ -169,8 +176,13 @@ bool handle_idempotency_replay_locked(
     std::string *idempotency_key_out,
     std::string *idempotency_signature_out
 );
-ToolExecutionRequest build_tool_execution_request(const NormalizedCall &call, const PolicyView &policy);
+ToolExecutionRequest build_tool_execution_request(
+    const ToolRegistration &tool,
+    const NormalizedCall &call,
+    const PolicyView &policy
+);
 ExecutionRecord build_execution_record(
+    const ToolRegistration &tool,
     const NormalizedCall &call,
     const PolicyView &policy,
     const ToolExecutionResult &execution

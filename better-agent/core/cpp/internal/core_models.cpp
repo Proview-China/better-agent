@@ -34,7 +34,10 @@ PolicyView build_policy_view(const json &policy) {
         .raw_json = policy,
         .allow_tools = json_string_array_to_vector(policy.value("allow_tools", json::array())),
         .deny_tools = json_string_array_to_vector(policy.value("deny_tools", json::array())),
-        .idempotency_key = policy.value("idempotency_key", "")
+        .idempotency_key = policy.value("idempotency_key", ""),
+        .before_tool_hooks = json_string_array_to_vector(policy.value("before_tool_hooks", json::array())),
+        .after_tool_hooks = json_string_array_to_vector(policy.value("after_tool_hooks", json::array())),
+        .enable_hook_recursion = policy.value("enable_hook_recursion", false)
     };
 }
 
@@ -175,6 +178,42 @@ std::string default_handoff(const std::string &status) {
         return "continue_observing";
     }
     return "continue";
+}
+
+bool is_supported_tool_kind(const std::string &tool_kind) {
+    return tool_kind == "function" ||
+        tool_kind == "web" ||
+        tool_kind == "code" ||
+        tool_kind == "computer" ||
+        tool_kind == "shell" ||
+        tool_kind == "hooks" ||
+        tool_kind == "skills" ||
+        tool_kind == "mcp";
+}
+
+std::string infer_tool_kind_from_executor_target(const std::string &executor_target) {
+    if (executor_target.find(".shell.") != std::string::npos) {
+        return "shell";
+    }
+    if (executor_target.find(".web.") != std::string::npos) {
+        return "web";
+    }
+    if (executor_target.find(".code.") != std::string::npos) {
+        return "code";
+    }
+    if (executor_target.find(".computer.") != std::string::npos) {
+        return "computer";
+    }
+    if (executor_target.find(".hook.") != std::string::npos) {
+        return "hooks";
+    }
+    if (executor_target.find(".skills.") != std::string::npos) {
+        return "skills";
+    }
+    if (executor_target.find(".mcp.") != std::string::npos) {
+        return "mcp";
+    }
+    return "function";
 }
 
 bool validate_type(const json &value, const std::string &expected) {

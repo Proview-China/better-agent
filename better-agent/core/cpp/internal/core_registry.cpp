@@ -38,6 +38,7 @@ bool parse_tool_registration_json(const char *tool_definition_json, ToolRegistra
     const json constraints = raw.value("constraints", json::object());
     ExecutorKind executor_kind = ExecutorKind::Mock;
     std::string executor_target;
+    std::string tool_kind = "function";
 
     if (constraints.is_object() && constraints.contains("executor_kind")) {
         if (!constraints.at("executor_kind").is_string()) {
@@ -76,6 +77,28 @@ bool parse_tool_registration_json(const char *tool_definition_json, ToolRegistra
         executor_target = constraints.at("executor_target").get<std::string>();
     }
 
+    if (constraints.is_object() && constraints.contains("tool_kind")) {
+        if (!constraints.at("tool_kind").is_string()) {
+            g_last_error = json{
+                {"error_code", "E_TOOL_DEF"},
+                {"message", "constraints.tool_kind must be a string"}
+            }.dump();
+            return false;
+        }
+        tool_kind = constraints.at("tool_kind").get<std::string>();
+    } else if (!executor_target.empty()) {
+        tool_kind = infer_tool_kind_from_executor_target(executor_target);
+    }
+
+    if (!is_supported_tool_kind(tool_kind)) {
+        g_last_error = json{
+            {"error_code", "E_TOOL_DEF"},
+            {"message", "unsupported tool_kind"},
+            {"detail", json{{"tool_kind", tool_kind}}}
+        }.dump();
+        return false;
+    }
+
     *tool_out = ToolRegistration{
         .spec = ToolSpec{
             .name = name,
@@ -83,6 +106,7 @@ bool parse_tool_registration_json(const char *tool_definition_json, ToolRegistra
             .parameters = raw.value("parameters", json::object()),
             .constraints = constraints,
         },
+        .tool_kind = tool_kind,
         .executor_kind = executor_kind,
         .executor_target = executor_target,
         .mock_result = raw.value("mock_result", json::object()),
