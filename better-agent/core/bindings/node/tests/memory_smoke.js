@@ -60,5 +60,10 @@ const probe = JSON.parse(addon.sandboxProbe());
 if (probe.status !== "success" || !probe.capabilities) {
   throw new Error("sandboxProbe failed");
 }
+for (const key of ["linux_cgroup_mode", "linux_seccomp_mode", "linux_seccomp_profile"]) {
+  if (!probe.supported_policy || !(key in probe.supported_policy)) {
+    throw new Error(`sandboxProbe missing ${key}`);
+  }
+}
 
 console.log("agent_core_node_memory_smoke: PASS");
