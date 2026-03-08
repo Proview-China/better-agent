@@ -75,6 +75,38 @@ add_agent_core_test(
     agent_core_unit_provider_roundtrip
     ${AGENT_CORE_TEST_ROOT}/unit/provider/execution_record_roundtrip_test.cpp
 )
+add_agent_core_test(
+    agent_core_unit_runtime_rust_gpt_builder
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_gpt_builder_test.cpp
+)
+add_agent_core_test(
+    agent_core_unit_runtime_rust_gpt_builder_variants
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_gpt_builder_variants_test.cpp
+)
+add_agent_core_test(
+    agent_core_unit_runtime_rust_runtime_tools
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_runtime_tools_test.cpp
+)
+add_agent_core_test(
+    agent_core_unit_runtime_rust_toolset
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_toolset_test.cpp
+)
+add_agent_core_test(
+    agent_core_unit_runtime_rust_basic_abilities
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_basic_abilities_test.cpp
+)
+add_agent_core_test(
+    agent_core_unit_runtime_rust_hooks_skills
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_hooks_skills_test.cpp
+)
+add_agent_core_test(
+    agent_core_unit_runtime_rust_openai_provider
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_openai_provider_test.cpp
+)
+add_agent_core_test(
+    agent_core_unit_runtime_rust_ability_preset
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_ability_preset_test.cpp
+)
 
 if(AGENT_CORE_USE_CPP_AI_SDK)
     add_agent_core_test(

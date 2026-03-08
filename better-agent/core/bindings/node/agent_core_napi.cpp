@@ -240,6 +240,60 @@ static napi_value MemoryReset(napi_env env, napi_callback_info /*info*/) {
     return make_string(env, out);
 }
 
+/* ── agent_core.buildGptResponsesRequest(requestJson) → string ───────────── */
+static napi_value BuildGptResponsesRequest(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value argv[1];
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    const std::string request = (argc > 0) ? get_string_arg(env, argv[0]) : "";
+    const char *out = agent_core_build_gpt_responses_request(request.empty() ? nullptr : request.c_str());
+    return make_string(env, out);
+}
+
+/* ── agent_core.buildGptToolset(requestJson) → string ────────────────────── */
+static napi_value BuildGptToolset(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value argv[1];
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    const std::string request = (argc > 0) ? get_string_arg(env, argv[0]) : "";
+    const char *out = agent_core_build_gpt_toolset(request.empty() ? nullptr : request.c_str());
+    return make_string(env, out);
+}
+
+/* ── agent_core.buildGptBasicAbilities(requestJson) → string ─────────────── */
+static napi_value BuildGptBasicAbilities(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value argv[1];
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    const std::string request = (argc > 0) ? get_string_arg(env, argv[0]) : "";
+    const char *out = agent_core_build_gpt_basic_abilities(request.empty() ? nullptr : request.c_str());
+    return make_string(env, out);
+}
+
+static napi_value BuildAfterToolUseHookPayload(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value argv[1];
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    const std::string request = (argc > 0) ? get_string_arg(env, argv[0]) : "";
+    const char *out = agent_core_build_after_tool_use_hook_payload(request.empty() ? nullptr : request.c_str());
+    return make_string(env, out);
+}
+
+static napi_value RenderSkillsSection(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value argv[1];
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    const std::string request = (argc > 0) ? get_string_arg(env, argv[0]) : "";
+    const char *out = agent_core_render_skills_section(request.empty() ? nullptr : request.c_str());
+    return make_string(env, out);
+}
+
+/* ── agent_core.rustRuntimeVersion() → string ────────────────────────────── */
+static napi_value RustRuntimeVersion(napi_env env, napi_callback_info /*info*/) {
+    const char *out = agent_core_rust_runtime_version();
+    return make_string(env, out);
+}
+
 /* ── Module registration ─────────────────────────────────────────────────── */
 static napi_value ModuleInit(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
@@ -261,6 +315,12 @@ static napi_value ModuleInit(napi_env env, napi_value exports) {
         {"memoryQuery", nullptr, MemoryQuery, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"memoryGet", nullptr, MemoryGet, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"memoryReset", nullptr, MemoryReset, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"buildGptResponsesRequest", nullptr, BuildGptResponsesRequest, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"buildGptToolset", nullptr, BuildGptToolset, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"buildGptBasicAbilities", nullptr, BuildGptBasicAbilities, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"buildAfterToolUseHookPayload", nullptr, BuildAfterToolUseHookPayload, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"renderSkillsSection", nullptr, RenderSkillsSection, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"rustRuntimeVersion", nullptr, RustRuntimeVersion, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"lastError", nullptr, LastError, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);

@@ -122,6 +122,14 @@ AGENT_CORE_API const char *agent_core_memory_get(const char *memory_id);
 /* Clear current memory store contents while preserving config. */
 AGENT_CORE_API const char *agent_core_memory_reset(void);
 
+/* ── GPT Runtime Builder (Rust-backed, experimental) ─────────────────────── */
+AGENT_CORE_API const char *agent_core_build_gpt_responses_request(const char *request_json);
+AGENT_CORE_API const char *agent_core_build_gpt_toolset(const char *request_json);
+AGENT_CORE_API const char *agent_core_build_gpt_basic_abilities(const char *request_json);
+AGENT_CORE_API const char *agent_core_build_after_tool_use_hook_payload(const char *request_json);
+AGENT_CORE_API const char *agent_core_render_skills_section(const char *request_json);
+AGENT_CORE_API const char *agent_core_rust_runtime_version(void);
+
 /* ── Unified runtime contract normalizer ─────────────────────────────────── */
 /* Input: raw event JSON from upstream runtimes (codex/claude/others). */
 /* Output: normalized execution record JSON following internal contract. */

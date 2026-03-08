@@ -47,6 +47,16 @@
 
 ### 3) Tool Semantics
 
+`当前实现状态（2026-03-08）`
+- GPT-first 迁移已开始：`Function Calling / Custom Tools`、`Web Search`、`Shell` 的请求构造核心已迁入 Rust，并通过项目内测试与 GPT 上游联调验证。
+- `Code Execution`、`Computer Use`、`MCP` 的工具定义与标准工具集构造已进入 Rust；当前继续从“定义层”推进到“可稳定调用层”。
+- `Hooks`、`Skills` 的运行时能力描述已进入 Rust 标准工具集；当前继续从“能力描述层”推进到“可稳定调用层”。
+- 已新增 GPT 基础能力预设构造，可由上层直接获取包含 4+4 能力的基础工具集合与运行时能力说明。
+- 已新增 `after_tool_use` hook payload 构造与 skills section 渲染输出，供上层中间件直接消费。
+- OpenAI function call output payload 的构造也已下沉到 Rust，GPT 路径进一步脱离旧 C++ 主实现。
+- provider wrapper 所需的 OpenAI/Claude payload 构造已继续下沉到 Rust，C++ 进一步收缩为外观层与桥接层。
+- 本阶段仍保留 C++ 作为统一中间件/外观层，Rust 负责 GPT 系列 infra 内核。
+
 `Function Calling / Custom Tools`
 - 输入：工具清单（名称、描述、参数 schema、调用约束）。
 - 执行：模型给出调用意图；运行时做参数校验、权限校验、幂等控制后执行。

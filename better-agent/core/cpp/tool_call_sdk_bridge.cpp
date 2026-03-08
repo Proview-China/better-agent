@@ -1,4 +1,5 @@
 #include "tool_call_sdk_bridge.hpp"
+#include "internal/core_rust_bridge.hpp"
 
 #include <map>
 #include <string>
@@ -26,33 +27,33 @@ std::string get_string_or(const nlohmann::json &obj, const char *key, const std:
     return obj.at(key).get<std::string>();
 }
 
-bool is_custom_tool(const nlohmann::json &tool_constraints, const nlohmann::json &policy) {
-    if (tool_constraints.is_object() && tool_constraints.value("tool_type", "") == "custom") {
-        return true;
-    }
-    return policy.is_object() && policy.value("tool_type", "") == "custom";
-}
-
 #if defined(BETTER_AGENT_HAVE_CPP_AI_SDK)
-const char *sdk_error_code(ai_sdk::ErrorCategory category) {
-    switch (category) {
-        case ai_sdk::ErrorCategory::Network:
-            return "E_SDK_NETWORK";
-        case ai_sdk::ErrorCategory::Api:
-            return "E_SDK_API";
-        case ai_sdk::ErrorCategory::Parse:
-            return "E_SDK_PARSE";
-        case ai_sdk::ErrorCategory::Unknown:
-        default:
-            return "E_SDK_UNKNOWN";
-    }
+nlohmann::json sdk_error_to_json(const ai_sdk::NetworkException &error) {
+    return nlohmann::json{
+        {"error_code", "E_SDK_NETWORK"},
+        {"message", std::string(error.what())}
+    };
 }
 
-nlohmann::json sdk_error_to_json(const ai_sdk::SDKError &error) {
+nlohmann::json sdk_error_to_json(const ai_sdk::APIException &error) {
     return nlohmann::json{
-        {"error_code", sdk_error_code(error.category)},
-        {"message", error.message},
-        {"status_code", error.status_code}
+        {"error_code", "E_SDK_API"},
+        {"message", std::string(error.what())},
+        {"status_code", error.getStatusCode()}
+    };
+}
+
+nlohmann::json sdk_error_to_json(const ai_sdk::ParseException &error) {
+    return nlohmann::json{
+        {"error_code", "E_SDK_PARSE"},
+        {"message", std::string(error.what())}
+    };
+}
+
+nlohmann::json sdk_error_to_json(const ai_sdk::SDKException &error) {
+    return nlohmann::json{
+        {"error_code", "E_SDK_UNKNOWN"},
+        {"message", std::string(error.what())}
     };
 }
 #endif
@@ -81,71 +82,45 @@ nlohmann::json build_openai_bundle(
     (void)provider_call_id;
     return sdk_disabled_result("openai");
 #else
-    ai_sdk::ChatRequest request;
-    request.model = policy.value("openai_model", std::string("gpt-4.1"));
-    request.messages = {
-        ai_sdk::Message{
-            "user",
-            policy.value("user_prompt", std::string("Please continue by calling the requested tool."))
-        }
-    };
-
-    if (policy.contains("temperature") && policy.at("temperature").is_number()) {
-        request.temperature = policy.at("temperature").get<float>();
-    }
-    if (policy.contains("max_tokens") && policy.at("max_tokens").is_number_integer()) {
-        request.max_tokens = policy.at("max_tokens").get<int>();
-    }
-
-    nlohmann::json request_json = request;
-
-    const bool custom_tool = is_custom_tool(tool_constraints, policy);
-    if (custom_tool) {
-        request_json["tools"] = nlohmann::json::array({
-            nlohmann::json{
-                {"type", "custom"},
-                {"name", tool_name},
-                {"description", tool_description},
-                {"input_schema", tool_parameters}
-            }
-        });
-        request_json["tool_choice"] = policy.value(
-            "tool_choice",
-            nlohmann::json{{"type", "custom"}, {"name", tool_name}}
-        );
-    } else {
-        request_json["tools"] = nlohmann::json::array({
-            nlohmann::json{
-                {"type", "function"},
-                {"function", nlohmann::json{
-                    {"name", tool_name},
-                    {"description", tool_description},
-                    {"parameters", tool_parameters}
-                }}
-            }
-        });
-        request_json["tool_choice"] = policy.value(
-            "tool_choice",
-            nlohmann::json{{"type", "function"}, {"function", nlohmann::json{{"name", tool_name}}}}
-        );
-    }
-
-    request_json["parallel_tool_calls"] = policy.value("parallel_tool_calls", false);
-    request_json["input"] = nlohmann::json::array({
+    nlohmann::json err;
+    const nlohmann::json request_json = better_agent::core_internal::build_openai_request_from_execution_via_rust(
         nlohmann::json{
-            {"type", custom_tool ? "custom_tool_call" : "function_call"},
-            {"name", tool_name},
-            {"call_id", provider_call_id},
-            {"arguments", args.dump()}
-        }
-    });
+            {"tool_name", tool_name},
+            {"tool_description", tool_description},
+            {"tool_parameters", tool_parameters},
+            {"tool_constraints", tool_constraints},
+            {"args", args},
+            {"policy", policy},
+            {"provider_call_id", provider_call_id}
+        },
+        &err
+    );
+    if (!err.is_null()) {
+        return nlohmann::json{
+            {"provider", "openai"},
+            {"sdk_enabled", true},
+            {"request", request_json},
+            {"error", err}
+        };
+    }
+    return build_openai_bundle_from_request(request_json, policy);
+#endif
+}
 
+nlohmann::json build_openai_bundle_from_request(
+    const nlohmann::json &request_json,
+    const nlohmann::json &policy
+) {
+#if !defined(BETTER_AGENT_HAVE_CPP_AI_SDK)
+    (void)request_json;
+    (void)policy;
+    return sdk_disabled_result("openai");
+#else
     nlohmann::json out{
         {"provider", "openai"},
         {"sdk_enabled", true},
         {"request", request_json}
     };
-
     if (policy.value("sdk_execute", false)) {
         try {
             const auto api_key = get_string_or(policy, "openai_api_key");
@@ -166,12 +141,16 @@ nlohmann::json build_openai_bundle(
                 {"Content-Type", "application/json"},
                 {"Authorization", "Bearer " + api_key}
             };
-            auto response = client.post(url, request_json.dump(), headers);
-            if (!response) {
-                out["error"] = sdk_error_to_json(response.error());
-                return out;
-            }
-            out["response"] = nlohmann::json::parse(response.value());
+            const std::string response = client.post(url, request_json.dump(), headers);
+            out["response"] = nlohmann::json::parse(response);
+        } catch (const ai_sdk::APIException &e) {
+            out["error"] = sdk_error_to_json(e);
+        } catch (const ai_sdk::ParseException &e) {
+            out["error"] = sdk_error_to_json(e);
+        } catch (const ai_sdk::NetworkException &e) {
+            out["error"] = sdk_error_to_json(e);
+        } catch (const ai_sdk::SDKException &e) {
+            out["error"] = sdk_error_to_json(e);
         } catch (const std::exception &e) {
             out["error"] = nlohmann::json{
                 {"error_code", "E_SDK_UNKNOWN"},
@@ -269,12 +248,16 @@ nlohmann::json build_claude_bundle(
                 {"x-api-key", api_key},
                 {"anthropic-version", policy.value("anthropic_version", std::string("2023-06-01"))}
             };
-            auto response = client.post(url, request_json.dump(), headers);
-            if (!response) {
-                out["error"] = sdk_error_to_json(response.error());
-                return out;
-            }
-            out["response"] = nlohmann::json::parse(response.value());
+            const std::string response = client.post(url, request_json.dump(), headers);
+            out["response"] = nlohmann::json::parse(response);
+        } catch (const ai_sdk::APIException &e) {
+            out["error"] = sdk_error_to_json(e);
+        } catch (const ai_sdk::ParseException &e) {
+            out["error"] = sdk_error_to_json(e);
+        } catch (const ai_sdk::NetworkException &e) {
+            out["error"] = sdk_error_to_json(e);
+        } catch (const ai_sdk::SDKException &e) {
+            out["error"] = sdk_error_to_json(e);
         } catch (const std::exception &e) {
             out["error"] = nlohmann::json{
                 {"error_code", "E_SDK_UNKNOWN"},

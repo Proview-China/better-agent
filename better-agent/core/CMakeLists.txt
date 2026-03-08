@@ -7,6 +7,47 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+option(BUILD_RUST_RUNTIME "Build the GPT-first Rust infra runtime" ON)
+
+set(AGENT_CORE_RUST_LIB "")
+if(BUILD_RUST_RUNTIME)
+    find_program(CARGO_EXECUTABLE cargo)
+    if(CARGO_EXECUTABLE)
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+            set(AGENT_CORE_RUST_PROFILE "dev")
+            set(AGENT_CORE_RUST_DIR_SUFFIX "debug")
+        else()
+            set(AGENT_CORE_RUST_PROFILE "release")
+            set(AGENT_CORE_RUST_DIR_SUFFIX "release")
+        endif()
+
+        set(AGENT_CORE_RUST_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/rust/Cargo.toml)
+        set(AGENT_CORE_RUST_TARGET_DIR ${CMAKE_CURRENT_SOURCE_DIR}/rust/target)
+        set(AGENT_CORE_RUST_LIB ${AGENT_CORE_RUST_TARGET_DIR}/${AGENT_CORE_RUST_DIR_SUFFIX}/libbetter_agent_core_rust.a)
+
+        file(GLOB_RECURSE AGENT_CORE_RUST_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/*.rs"
+            "${CMAKE_CURRENT_SOURCE_DIR}/rust/Cargo.toml"
+        )
+
+        add_custom_command(
+            OUTPUT ${AGENT_CORE_RUST_LIB}
+            COMMAND ${CARGO_EXECUTABLE} build --manifest-path ${AGENT_CORE_RUST_MANIFEST} --lib --profile ${AGENT_CORE_RUST_PROFILE}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/rust
+            DEPENDS ${AGENT_CORE_RUST_SOURCES}
+            COMMENT "Building better_agent_core_rust (${AGENT_CORE_RUST_PROFILE})"
+            VERBATIM
+        )
+
+        add_custom_target(agent_core_rust_build DEPENDS ${AGENT_CORE_RUST_LIB})
+        add_library(agent_core_rust STATIC IMPORTED GLOBAL)
+        set_target_properties(agent_core_rust PROPERTIES IMPORTED_LOCATION ${AGENT_CORE_RUST_LIB})
+        add_dependencies(agent_core_rust agent_core_rust_build)
+    else()
+        message(WARNING "BUILD_RUST_RUNTIME=ON but cargo was not found; Rust runtime will be skipped.")
+    endif()
+endif()
+
 # -- Symbol visibility: hide by default, export only marked symbols ----------
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
@@ -56,6 +97,10 @@ if(AGENT_CORE_USE_CPP_AI_SDK)
 endif()
 if(AGENT_CORE_OPTIONAL_LIBS)
     target_link_libraries(agent_core PRIVATE ${AGENT_CORE_OPTIONAL_LIBS})
+endif()
+if(TARGET agent_core_rust)
+    find_package(Threads REQUIRED)
+    target_link_libraries(agent_core PRIVATE agent_core_rust Threads::Threads ${CMAKE_DL_LIBS})
 endif()
 
 # -- Install rules ------------------------------------------------------------

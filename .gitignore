@@ -24,3 +24,7 @@ xcuserdata/
 # node
 node_modules/
 openspec/changes
+
+# local experiments
+codex-experiments/
+better-agent/core/rust/target/

@@ -264,19 +264,10 @@ void store_execution_record_locked(
 bool execute_prepared_function_call_locked(const PolicyView &policy, const NormalizedCall &call);
 json interrupt_execution(const std::string &execution_id, json *err_out);
 
-json build_provider_execution_wrapper(
-    const json &record,
-    const json &provider_payload,
-    const json &sdk_bundle
-);
 std::string extract_provider_call_id(const json &record);
 std::string extract_provider_call_id(const ExecutionRecord &record);
 std::string extract_tool_name_from_record(const json &record);
 std::string extract_tool_name_from_record(const ExecutionRecord &record);
-json build_openai_function_call_output_payload(const json &record, const std::string &call_id_override);
-json build_openai_function_call_output_payload(const ExecutionRecord &record, const std::string &call_id_override);
-json build_claude_tool_result_payload(const json &record, const std::string &tool_use_id_override);
-json build_claude_tool_result_payload(const ExecutionRecord &record, const std::string &tool_use_id_override);
 
 RuntimeEventRecord base_runtime_record(const json &raw);
 RuntimeEventRecord normalize_codex(const json &raw);
@@ -303,6 +294,8 @@ json ingest_memory_locked(const json &input_json, json *err_out);
 json query_memory_locked(const json &query_json, json *err_out);
 json get_memory_locked(const std::string &memory_id, json *err_out);
 json reset_memory_store_locked(json *err_out);
+std::string rust_runtime_version();
+json build_gpt_responses_request_via_rust(const json &request_json, json *err_out);
 
 } // namespace better_agent::core_internal
 

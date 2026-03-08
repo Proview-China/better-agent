@@ -12,10 +12,16 @@
 
 #if defined(__APPLE__) || defined(__linux__)
     #include <poll.h>
+    #include <sched.h>
+    #include <sys/prctl.h>
     #include <sys/resource.h>
+    #include <sys/syscall.h>
     #include <sys/wait.h>
     #include <unistd.h>
 #if defined(__linux__)
+    #if __has_include(<linux/landlock.h>)
+        #include <linux/landlock.h>
+    #endif
     #if __has_include(<linux/seccomp.h>)
         #include <linux/seccomp.h>
     #endif

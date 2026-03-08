@@ -16,6 +16,10 @@ nlohmann::json build_openai_bundle(
     const nlohmann::json &policy,
     const std::string &provider_call_id
 );
+nlohmann::json build_openai_bundle_from_request(
+    const nlohmann::json &request_json,
+    const nlohmann::json &policy
+);
 
 nlohmann::json build_claude_bundle(
     const std::string &tool_name,

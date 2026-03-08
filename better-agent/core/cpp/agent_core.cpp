@@ -1,6 +1,7 @@
 #include "agent_core.h"
 #include "tool_call_sdk_bridge.hpp"
 #include "internal/agent_core_internal.hpp"
+#include "internal/core_rust_bridge.hpp"
 
 namespace {
 
@@ -174,10 +175,8 @@ const char *agent_core_execute_openai_function_call(const char *openai_function_
     const char *record_str = agent_core_execute_function_call(openai_function_call_json, policy_json);
     try {
         const json record_json = json::parse(record_str == nullptr ? "{}" : record_str);
-        const core_internal::ExecutionRecord record = core_internal::deserialize_execution_record(record_json);
         const json policy = core_internal::parse_optional_object_json(policy_json);
-        const std::string tool_name = core_internal::extract_tool_name_from_record(record);
-
+        const std::string tool_name = core_internal::extract_tool_name_from_record(record_json);
         std::string tool_description;
         json tool_parameters = json::object();
         json tool_constraints = json::object();
@@ -188,21 +187,38 @@ const char *agent_core_execute_openai_function_call(const char *openai_function_
             &tool_constraints
         );
 
-        const json sdk_bundle = better_agent::sdk_bridge::build_openai_bundle(
-            tool_name,
-            tool_description,
-            tool_parameters,
-            tool_constraints,
-            record.input_normalized,
-            policy,
-            core_internal::extract_provider_call_id(record)
+        json bridge_err;
+        const json bridge = core_internal::build_openai_bridge_outputs_via_rust(
+            json{
+                {"record", record_json},
+                {"tool_description", tool_description},
+                {"tool_parameters", tool_parameters},
+                {"tool_constraints", tool_constraints},
+                {"policy", policy}
+            },
+            &bridge_err
+        );
+        if (!bridge_err.is_null()) {
+            return fail_memory_api(bridge_err);
+        }
+
+        const json sdk_bundle = better_agent::sdk_bridge::build_openai_bundle_from_request(
+            bridge.at("request"),
+            policy
         );
 
-        json out = core_internal::build_provider_execution_wrapper(
-            record_json,
-            core_internal::build_openai_function_call_output_payload(record, ""),
-            sdk_bundle
+        json wrapper_err;
+        json out = core_internal::build_provider_execution_wrapper_via_rust(
+            json{
+                {"record", record_json},
+                {"provider_payload", bridge.at("provider_payload")},
+                {"sdk_bundle", sdk_bundle}
+            },
+            &wrapper_err
         );
+        if (!wrapper_err.is_null()) {
+            return fail_memory_api(wrapper_err);
+        }
         core_internal::g_last_output = out.dump();
         return core_internal::g_last_output.c_str();
     } catch (...) {
@@ -238,11 +254,29 @@ const char *agent_core_execute_claude_tool_use(const char *claude_tool_use_json,
             core_internal::extract_provider_call_id(record)
         );
 
-        json out = core_internal::build_provider_execution_wrapper(
-            record_json,
-            core_internal::build_claude_tool_result_payload(record, ""),
-            sdk_bundle
+        json payload_err;
+        const json provider_payload = core_internal::build_claude_tool_result_payload_via_rust(
+            json{
+                {"record", record_json},
+                {"tool_use_id_override", ""}
+            },
+            &payload_err
         );
+        if (!payload_err.is_null()) {
+            return fail_memory_api(payload_err);
+        }
+        json wrapper_err;
+        json out = core_internal::build_provider_execution_wrapper_via_rust(
+            json{
+                {"record", record_json},
+                {"provider_payload", provider_payload},
+                {"sdk_bundle", sdk_bundle}
+            },
+            &wrapper_err
+        );
+        if (!wrapper_err.is_null()) {
+            return fail_memory_api(wrapper_err);
+        }
         core_internal::g_last_output = out.dump();
         return core_internal::g_last_output.c_str();
     } catch (...) {
@@ -352,7 +386,14 @@ const char *agent_core_build_openai_function_call_output(
 
     const core_internal::ExecutionRecord &record = core_internal::g_executions.at(id);
     const std::string call_id = (call_id_override == nullptr) ? "" : std::string(call_id_override);
-    core_internal::g_last_output = core_internal::build_openai_function_call_output_payload(record, call_id).dump();
+    json err;
+    core_internal::g_last_output = core_internal::build_openai_function_call_output_payload_via_rust(
+        json{
+            {"record", core_internal::serialize_execution_record(record)},
+            {"call_id_override", call_id}
+        },
+        &err
+    ).dump();
     return core_internal::g_last_output.c_str();
 }
 
@@ -385,7 +426,14 @@ const char *agent_core_build_claude_tool_result(
 
     const core_internal::ExecutionRecord &record = core_internal::g_executions.at(id);
     const std::string tool_use_id = (tool_use_id_override == nullptr) ? "" : std::string(tool_use_id_override);
-    core_internal::g_last_output = core_internal::build_claude_tool_result_payload(record, tool_use_id).dump();
+    json err;
+    core_internal::g_last_output = core_internal::build_claude_tool_result_payload_via_rust(
+        json{
+            {"record", core_internal::serialize_execution_record(record)},
+            {"tool_use_id_override", tool_use_id}
+        },
+        &err
+    ).dump();
     return core_internal::g_last_output.c_str();
 }
 
@@ -537,5 +585,121 @@ const char *agent_core_memory_reset(void) {
         return fail_memory_api(err);
     }
     core_internal::g_last_output = out.dump();
+    return core_internal::g_last_output.c_str();
+}
+
+const char *agent_core_build_gpt_responses_request(const char *request_json) {
+    core_internal::g_last_error.clear();
+    core_internal::g_last_output.clear();
+
+    json request;
+    json parse_err;
+    if (!parse_json_object_arg(request_json, "request_json", &request, &parse_err)) {
+        return fail_memory_api(parse_err);
+    }
+
+    json err;
+    const json out = core_internal::build_gpt_responses_request_via_rust(request, &err);
+    if (!err.is_null()) {
+        return fail_memory_api(err);
+    }
+
+    core_internal::g_last_output = out.dump();
+    return core_internal::g_last_output.c_str();
+}
+
+const char *agent_core_build_gpt_toolset(const char *request_json) {
+    core_internal::g_last_error.clear();
+    core_internal::g_last_output.clear();
+
+    json request;
+    json parse_err;
+    if (!parse_json_object_arg(request_json, "request_json", &request, &parse_err)) {
+        return fail_memory_api(parse_err);
+    }
+
+    json err;
+    const json out = core_internal::build_gpt_toolset_via_rust(request, &err);
+    if (!err.is_null()) {
+        return fail_memory_api(err);
+    }
+
+    core_internal::g_last_output = out.dump();
+    return core_internal::g_last_output.c_str();
+}
+
+const char *agent_core_build_gpt_basic_abilities(const char *request_json) {
+    core_internal::g_last_error.clear();
+    core_internal::g_last_output.clear();
+
+    json request;
+    json parse_err;
+    if (!parse_json_object_arg(request_json, "request_json", &request, &parse_err)) {
+        return fail_memory_api(parse_err);
+    }
+
+    json err;
+    const json out = core_internal::build_gpt_basic_abilities_via_rust(request, &err);
+    if (!err.is_null()) {
+        return fail_memory_api(err);
+    }
+
+    core_internal::g_last_output = out.dump();
+    return core_internal::g_last_output.c_str();
+}
+
+const char *agent_core_build_after_tool_use_hook_payload(const char *request_json) {
+    core_internal::g_last_error.clear();
+    core_internal::g_last_output.clear();
+
+    json request;
+    json parse_err;
+    if (!parse_json_object_arg(request_json, "request_json", &request, &parse_err)) {
+        return fail_memory_api(parse_err);
+    }
+
+    json err;
+    const json out = core_internal::build_after_tool_use_hook_payload_via_rust(request, &err);
+    if (!err.is_null()) {
+        return fail_memory_api(err);
+    }
+
+    core_internal::g_last_output = out.dump();
+    return core_internal::g_last_output.c_str();
+}
+
+const char *agent_core_render_skills_section(const char *request_json) {
+    core_internal::g_last_error.clear();
+    core_internal::g_last_output.clear();
+
+    json request;
+    json parse_err;
+    if (request_json == nullptr) {
+        request = json::array();
+    } else {
+        try {
+            request = json::parse(request_json);
+        } catch (const std::exception &e) {
+            return fail_memory_api(core_internal::make_error_json("E_PARSE", "request_json must be valid JSON", e.what()));
+        }
+    }
+
+    json err;
+    const json out = core_internal::render_skills_section_via_rust(request, &err);
+    if (!err.is_null()) {
+        return fail_memory_api(err);
+    }
+
+    core_internal::g_last_output = out.dump();
+    return core_internal::g_last_output.c_str();
+}
+
+const char *agent_core_rust_runtime_version(void) {
+    core_internal::g_last_error.clear();
+    core_internal::g_last_output = json{
+        {"status", "success"},
+        {"runtime", "rust"},
+        {"version", core_internal::rust_runtime_version()}
+    }.dump();
     return core_internal::g_last_output.c_str();
 }
