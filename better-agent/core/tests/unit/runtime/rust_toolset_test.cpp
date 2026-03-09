@@ -26,7 +26,7 @@ int main() {
               }
             }
           ],
-          "shell_tool":"shell_command",
+          "shell_tool":"local_shell",
           "web_search":{"external_web_access":true},
           "js_repl_enabled":true,
           "artifacts_enabled":true,
@@ -52,7 +52,6 @@ int main() {
         }
     }
     expect(names.contains("ping"), "missing ping");
-    expect(names.contains("shell_command"), "missing shell_command");
     expect(has_web_search, "missing web_search");
     expect(names.contains("js_repl"), "missing js_repl");
     expect(names.contains("artifacts"), "missing artifacts");
@@ -60,6 +59,13 @@ int main() {
     expect(names.contains("list_mcp_resources"), "missing list_mcp_resources");
     expect(names.contains("list_mcp_resource_templates"), "missing list_mcp_resource_templates");
     expect(names.contains("read_mcp_resource"), "missing read_mcp_resource");
+    bool has_local_shell = false;
+    for (const auto &tool : out.at("tools")) {
+        if (tool.contains("type") && tool.at("type") == "local_shell") {
+            has_local_shell = true;
+        }
+    }
+    expect(has_local_shell, "missing local_shell");
 
     expect(out.at("runtime_capabilities").at("hooks").at("enabled") == true, "hooks should be enabled");
     expect(out.at("runtime_capabilities").at("skills").at("enabled") == true, "skills should be enabled");

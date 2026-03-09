@@ -53,13 +53,13 @@
 - `Web Search`
 - `Shell`
 
-通过项目内构造测试验证，已纳入 Rust runtime 工具定义的能力：
+通过项目内构造测试验证，已纳入 Rust runtime 工具定义 / payload / capability description 的能力：
 
 - `Code Execution`（当前以 `js_repl` / `artifacts` 工具形态进入 Rust）
 - `Computer Use`（当前以 `view_image` 工具形态进入 Rust）
 - `MCP`（当前以 `list/read mcp resource` 工具形态进入 Rust）
-- `Hooks`（当前以运行时能力描述形态进入 Rust）
-- `Skills`（当前以运行时能力描述形态进入 Rust）
+- `Hooks`（当前以 `after_tool_use` payload / 运行时能力描述形态进入 Rust）
+- `Skills`（当前以 skills section 渲染 / 运行时能力描述形态进入 Rust）
 
 ### 5. 上层可调用状态
 
@@ -91,6 +91,10 @@ Rust 已接管的 GPT/Codex 路线相关内容新增包括：
 - `model_output_json` 解析已切换为 Rust-first
 - 旧的 GPT/Codex runtime status/tool-kind 辅助函数已从 `core_models.cpp` 清理
 - `prepare_function_call_request` 已切换为 Rust-first
+- `local_shell` 已进入 GPT Rust toolset / preset 主路径，基础能力预设不再默认使用 `shell_command`
+- `shell` schema 已补齐 `sandbox_permissions` / `additional_permissions` / `prefix_rule` / `justification` 等关键参数形态
+- `local_shell_call` / `custom_tool_call` 的 payload normalization 与 runtime normalization 已切到 Rust-first
+- OpenAI `custom_tool_call_output` payload 已进入 Rust-first，`function_call_output` 也已修正为符合字符串 / content items 数组语义
 
 Node binding 已同步暴露：
 
@@ -111,29 +115,30 @@ Node binding 已同步暴露：
 - 当前保留的公开接口聚焦于八相能力定义/构造与最小 facade，不再继续把项目往“替上层写 agent 主链”方向推
 - `core_execution.cpp` 已从当前主构建链退场，历史执行编排实现已整体丢入 git 历史
 
-### 6. `gmn` 上游八项能力全量测试（2026-03-08）
+### 6. `gmn` 上游八项能力分层验证（2026-03-08）
 
 使用目标：
 
 - 上游：`https://gmn.chuangzuoli.com`
 - 模型：`gpt-5.4`
 
-结论：
+结论（注意这里是“分层验证”，不是“八项都已完成 Rust 执行 primitive”）：
 
 - `Function Calling / Custom Tools`：通过
 - `Web Search`：通过
-- `Code Execution`：通过（当前以 `js_repl` 自定义工具调用形态验证）
-- `Computer Use`：通过（当前以 `view_image` 函数工具调用形态验证）
+- `Code Execution`：定义层 / 调用层验证通过（当前以 `js_repl` 自定义工具调用形态验证）
+- `Computer Use`：定义层 / 调用层验证通过（当前以 `view_image` 函数工具调用形态验证）
 - `Shell`：通过（当前以 `shell_command` 函数工具调用形态验证）
-- `MCP`：通过（当前以 `list_mcp_resources` 函数工具调用形态验证）
-- `Hooks`：本地运行时闭环通过（`after_tool_use` payload 构造已验证）
-- `Skills`：本地运行时闭环通过（skills section 渲染已验证）
+- `MCP`：定义层 / 调用层验证通过（当前以 `list_mcp_resources` 函数工具调用形态验证）
+- `Hooks`：本地 payload / capability 层验证通过（`after_tool_use` payload 构造已验证）
+- `Skills`：本地渲染 / capability 层验证通过（skills section 渲染已验证）
 
 说明：
 
 - 对于 `Code Execution / Computer Use / MCP / Hooks / Skills`，本轮验证遵循 Codex `0.111` 的运行时分层思路：
   - 能走上游调用的部分，验证模型是否能正确发起对应工具调用
   - 不应由上游承担的部分，验证本地运行时结构化输出是否稳定可用
+  - 这些结果只能证明“相关 Rust infra 已经进入定义层 / 构造层 / payload 层 / capability 层”，不能据此断言“完整执行 primitive 已全部迁完”
 
 对应联调目标模型：
 
@@ -144,9 +149,11 @@ Node binding 已同步暴露：
 以下内容尚未完成迁移或清理：
 
 - 旧 C++ 重叠实现尚未完全删除
-- `Code Execution` 尚未迁入 Rust 内核
-- `Computer Use` 尚未迁入 Rust 内核
-- `Hooks / Skills / MCP` 尚未正式迁移到 Rust 实现层
+- `Code Execution` 尚未迁入完整 Rust 执行 primitive 层（当前主要是 `js_repl` / `artifacts` 工具定义）
+- `Computer Use` 尚未迁入完整 Rust 执行 primitive 层（当前主要是 `view_image` 工具定义）
+- `Hooks / Skills / MCP` 尚未从 payload / description / tool-definition 层推进到完整 Rust 执行 primitive 层
+- `Shell(local_shell)` 虽已完成工具定义、参数结构、payload normalization、runtime normalization 与统一结果结构，但仍未迁入真正的 Rust 执行 runtime
+- 旧 C++ 内部残留（如 `ExecutionRecord` / `g_executions` / 部分 `core_rust_bridge` 执行时代 helper）尚未完全清走
 - `Unified Runtime Contract` 仍未完成按 Rust 内核重组
 
 ## 当前工程原则

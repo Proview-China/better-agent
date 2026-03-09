@@ -83,6 +83,7 @@ pub struct CustomToolFormat {
 #[derive(Debug, Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum ShellToolKind {
+    LocalShell,
     Shell,
     ShellCommand,
     ExecCommand,

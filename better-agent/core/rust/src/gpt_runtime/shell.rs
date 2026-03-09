@@ -4,6 +4,9 @@ use crate::gpt_runtime::config::ShellToolKind;
 
 pub fn build_shell_tool(kind: ShellToolKind) -> Value {
     match kind {
+        ShellToolKind::LocalShell => json!({
+            "type": "local_shell"
+        }),
         ShellToolKind::Shell => json!({
             "type": "function",
             "name": "shell",
@@ -24,6 +27,23 @@ pub fn build_shell_tool(kind: ShellToolKind) -> Value {
                     "timeout_ms": {
                         "type": "number",
                         "description": "The timeout for the command in milliseconds"
+                    },
+                    "sandbox_permissions": {
+                        "type": "object",
+                        "description": "Sandbox policy to use for this shell call."
+                    },
+                    "prefix_rule": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Suggests a command prefix to persist for future sessions."
+                    },
+                    "additional_permissions": {
+                        "type": "object",
+                        "description": "Additional filesystem, network, or OS permissions requested for this shell call."
+                    },
+                    "justification": {
+                        "type": "string",
+                        "description": "Short explanation for why elevated access is needed."
                     }
                 },
                 "required": ["command"],
@@ -53,6 +73,23 @@ pub fn build_shell_tool(kind: ShellToolKind) -> Value {
                     "login": {
                         "type": "boolean",
                         "description": "Whether to run the shell with login shell semantics. Defaults to true."
+                    },
+                    "sandbox_permissions": {
+                        "type": "object",
+                        "description": "Sandbox policy to use for this shell call."
+                    },
+                    "prefix_rule": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Suggests a command prefix to persist for future sessions."
+                    },
+                    "additional_permissions": {
+                        "type": "object",
+                        "description": "Additional filesystem, network, or OS permissions requested for this shell call."
+                    },
+                    "justification": {
+                        "type": "string",
+                        "description": "Short explanation for why elevated access is needed."
                     }
                 },
                 "required": ["command"],
@@ -90,6 +127,23 @@ pub fn build_shell_tool(kind: ShellToolKind) -> Value {
                     "max_output_tokens": {
                         "type": "number",
                         "description": "Maximum number of tokens to return."
+                    },
+                    "sandbox_permissions": {
+                        "type": "object",
+                        "description": "Sandbox policy to use for this shell call."
+                    },
+                    "prefix_rule": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Suggests a command prefix to persist for future sessions."
+                    },
+                    "additional_permissions": {
+                        "type": "object",
+                        "description": "Additional filesystem, network, or OS permissions requested for this shell call."
+                    },
+                    "justification": {
+                        "type": "string",
+                        "description": "Short explanation for why elevated access is needed."
                     }
                 },
                 "required": ["cmd"],

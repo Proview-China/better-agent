@@ -15,7 +15,8 @@ use crate::gpt_runtime::executors::{
 use crate::gpt_runtime::openai_execution::OpenAiExecutionContext;
 use crate::gpt_runtime::openai_execution::build_openai_request_from_execution;
 use crate::gpt_runtime::openai_provider::{
-    build_openai_function_call_output_payload, extract_provider_call_id, extract_tool_name,
+    build_openai_custom_tool_call_output_payload, build_openai_function_call_output_payload,
+    extract_provider_call_id, extract_tool_name,
 };
 use crate::gpt_runtime::payload_normalization::normalize_tool_payload;
 use crate::gpt_runtime::parsing::parse_json_object_text;
@@ -358,7 +359,24 @@ pub extern "C" fn better_agent_rs_build_openai_bridge_outputs(
         provider_call_id: provider_call_id.clone(),
     });
 
-    let provider_payload = build_openai_function_call_output_payload(&record, None);
+    let is_custom_tool = input
+        .get("tool_constraints")
+        .and_then(Value::as_object)
+        .and_then(|constraints| constraints.get("tool_type"))
+        .and_then(Value::as_str)
+        == Some("custom")
+        || record
+            .get("input_raw")
+            .and_then(Value::as_object)
+            .and_then(|raw| raw.get("type"))
+            .and_then(Value::as_str)
+            == Some("custom_tool_call");
+
+    let provider_payload = if is_custom_tool {
+        build_openai_custom_tool_call_output_payload(&record, None)
+    } else {
+        build_openai_function_call_output_payload(&record, None)
+    };
 
     LAST_ERROR.with(|cell| {
         *cell.borrow_mut() = None;

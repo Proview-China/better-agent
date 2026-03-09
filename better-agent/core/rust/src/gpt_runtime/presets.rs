@@ -10,7 +10,7 @@ pub fn build_basic_abilities_config(model: String) -> GptRequestConfig {
         input_items: Vec::new(),
         function_tools: Vec::new(),
         custom_tools: Vec::new(),
-        shell_tool: Some(ShellToolKind::ShellCommand),
+        shell_tool: Some(ShellToolKind::LocalShell),
         web_search: Some(WebSearchConfig {
             external_web_access: true,
             search_content_types: None,

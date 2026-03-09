@@ -30,11 +30,17 @@ int main() {
     }
 
     expect(has_web_search, "preset should enable web_search");
-    expect(names.contains("shell_command"), "preset should enable shell_command");
     expect(names.contains("js_repl"), "preset should enable js_repl");
     expect(names.contains("artifacts"), "preset should enable artifacts");
     expect(names.contains("view_image"), "preset should enable view_image");
     expect(names.contains("list_mcp_resources"), "preset should enable mcp");
+    bool has_local_shell = false;
+    for (const auto &tool : out.at("tools")) {
+        if (tool.contains("type") && tool.at("type") == "local_shell") {
+            has_local_shell = true;
+        }
+    }
+    expect(has_local_shell, "preset should enable local_shell");
     expect(out.at("runtime_capabilities").at("hooks").at("enabled") == true, "preset should enable hooks");
     expect(out.at("runtime_capabilities").at("skills").at("enabled") == true, "preset should enable skills");
 

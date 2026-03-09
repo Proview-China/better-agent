@@ -51,3 +51,7 @@ add_agent_core_test(
     agent_core_unit_runtime_rust_ability_preset
     ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_ability_preset_test.cpp
 )
+add_agent_core_test(
+    agent_core_unit_runtime_rust_local_shell_and_payloads
+    ${AGENT_CORE_TEST_ROOT}/unit/runtime/rust_local_shell_and_payloads_test.cpp
+)

@@ -48,7 +48,7 @@ fn infer_tool_kind(tool_constraints: &Value, tool_name: &str) -> String {
     if let Some(kind) = string_field(tool_constraints, "tool_kind") {
         return kind;
     }
-    if matches!(tool_name, "shell" | "shell_command" | "exec_command") {
+    if matches!(tool_name, "local_shell" | "shell" | "shell_command" | "exec_command") {
         return "shell".to_string();
     }
     "function".to_string()
@@ -116,15 +116,21 @@ pub fn build_openai_request_from_execution(context: OpenAiExecutionContext) -> V
 
     if tool_kind == "shell" {
         let executor_target = string_field(&context.tool_constraints, "executor_target").unwrap_or_default();
-        config.shell_tool = Some(if context.tool_name == "exec_command" || executor_target == "builtin.exec_command" {
+        config.shell_tool = Some(if context.tool_name == "local_shell" {
+            ShellToolKind::LocalShell
+        } else if context.tool_name == "exec_command" || executor_target == "builtin.exec_command" {
             ShellToolKind::ExecCommand
         } else if context.tool_name == "shell_command" {
             ShellToolKind::ShellCommand
         } else {
             ShellToolKind::Shell
         });
-        config.input_text = "Use the provided shell tool exactly once.".to_string();
-        if context.policy.get("tool_choice").is_none() {
+        config.input_text = if context.tool_name == "local_shell" {
+            "Use the provided local shell tool exactly once.".to_string()
+        } else {
+            "Use the provided shell tool exactly once.".to_string()
+        };
+        if context.policy.get("tool_choice").is_none() && context.tool_name != "local_shell" {
             config.tool_choice = json!({
                 "type": "function",
                 "name": context.tool_name

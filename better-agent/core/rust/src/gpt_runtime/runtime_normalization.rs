@@ -44,6 +44,7 @@ fn default_handoff(status: &str) -> &'static str {
 fn codex_tool_kind(item_type: &str) -> &'static str {
     match item_type {
         "command_execution" => "shell",
+        "local_shell_call" => "shell",
         "mcp_tool_call" => "mcp",
         "web_search" => "web",
         "file_change" => "function",
@@ -123,8 +124,13 @@ fn normalize_codex(raw: &Value) -> Value {
                 "command_execution" => {
                     out["input_normalized"] = json!({ "command": item.get("command").and_then(Value::as_str).unwrap_or("") });
                     out["evidence"] = json!([{
+                        "stdout": item.get("stdout").cloned().unwrap_or(Value::Null),
+                        "stderr": item.get("stderr").cloned().unwrap_or(Value::Null),
                         "aggregated_output": item.get("aggregated_output").cloned().unwrap_or(Value::String(String::new())),
-                        "exit_code": item.get("exit_code").cloned().unwrap_or(Value::Null)
+                        "exit_code": item.get("exit_code").cloned().unwrap_or(Value::Null),
+                        "duration_ms": item.get("duration_ms").cloned().unwrap_or(Value::Null),
+                        "formatted_output": item.get("formatted_output").cloned().unwrap_or(Value::Null),
+                        "status": item.get("status").cloned().unwrap_or(Value::Null)
                     }]);
                 }
                 "mcp_tool_call" => {
@@ -223,9 +229,71 @@ fn normalize_claude(raw: &Value) -> Value {
 
 fn normalize_unknown(raw: &Value) -> Value {
     let mut out = base_runtime_record(raw);
-    out["status"] = json!("partial");
-    out["intent"] = json!("unknown_event");
-    out["handoff"] = json!("manual_classification");
+    let event_type = raw.get("type").and_then(Value::as_str).unwrap_or("unknown");
+    match event_type {
+        "function_call" => {
+            out["source"] = json!("openai_responses");
+            out["event_type"] = json!("function_call");
+            out["execution_id"] = raw.get("call_id").cloned().unwrap_or_else(|| json!(next_id("function_call", raw)));
+            out["tool_kind"] = json!("function");
+            out["intent"] = json!(raw.get("name").and_then(Value::as_str).unwrap_or("function_call"));
+            out["status"] = json!("running");
+            out["input_normalized"] = json!({
+                "tool_name": raw.get("name").and_then(Value::as_str).unwrap_or(""),
+                "arguments": raw.get("arguments").cloned().unwrap_or_else(|| Value::String(String::new()))
+            });
+            out["handoff"] = json!("continue_observing");
+        }
+        "custom_tool_call" => {
+            out["source"] = json!("openai_responses");
+            out["event_type"] = json!("custom_tool_call");
+            out["execution_id"] = raw.get("call_id").cloned().unwrap_or_else(|| json!(next_id("custom_tool_call", raw)));
+            out["tool_kind"] = json!("custom");
+            out["intent"] = json!(raw.get("name").and_then(Value::as_str).unwrap_or("custom_tool_call"));
+            out["status"] = json!("running");
+            out["input_normalized"] = json!({
+                "tool_name": raw.get("name").and_then(Value::as_str).unwrap_or(""),
+                "input": raw.get("input").cloned().unwrap_or_else(|| Value::String(String::new()))
+            });
+            out["handoff"] = json!("continue_observing");
+        }
+        "local_shell_call" => {
+            let action = raw.get("action").cloned().unwrap_or_else(|| json!({}));
+            let exec = if action.get("type").and_then(Value::as_str) == Some("exec") {
+                action.clone()
+            } else {
+                json!({})
+            };
+            out["source"] = json!("openai_responses");
+            out["event_type"] = json!("local_shell_call");
+            out["execution_id"] = raw
+                .get("call_id")
+                .cloned()
+                .or_else(|| raw.get("id").cloned())
+                .unwrap_or_else(|| json!(next_id("local_shell_call", raw)));
+            out["tool_kind"] = json!("shell");
+            out["intent"] = json!("local_shell");
+            out["status"] = match raw.get("status").and_then(Value::as_str).unwrap_or("in_progress") {
+                "completed" => json!("success"),
+                "in_progress" => json!("running"),
+                "incomplete" => json!("partial"),
+                _ => json!("partial"),
+            };
+            out["input_normalized"] = json!({
+                "command": exec.get("command").cloned().unwrap_or_else(|| json!([])),
+                "timeout_ms": exec.get("timeout_ms").cloned().unwrap_or(Value::Null),
+                "workdir": exec.get("working_directory").cloned().unwrap_or(Value::Null),
+                "env": exec.get("env").cloned().unwrap_or(Value::Null),
+                "user": exec.get("user").cloned().unwrap_or(Value::Null)
+            });
+            out["handoff"] = json!(default_handoff(out.get("status").and_then(Value::as_str).unwrap_or("partial")));
+        }
+        _ => {
+            out["status"] = json!("partial");
+            out["intent"] = json!("unknown_event");
+            out["handoff"] = json!("manual_classification");
+        }
+    }
     out
 }
 

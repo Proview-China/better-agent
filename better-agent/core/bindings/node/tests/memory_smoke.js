@@ -79,7 +79,7 @@ if (rustVersion.status !== "success" || rustVersion.runtime !== "rust") {
 const built = JSON.parse(addon.buildGptResponsesRequest(JSON.stringify({
   model: "gpt-5.4",
   input_text: "Reply with exactly OK",
-  shell_tool: "shell_command",
+  shell_tool: "local_shell",
   web_search: { external_web_access: true },
   text: { verbosity: "low" },
 })));
@@ -89,7 +89,7 @@ if (built.model !== "gpt-5.4" || !Array.isArray(built.tools) || built.tools.leng
 
 const toolset = JSON.parse(addon.buildGptToolset(JSON.stringify({
   model: "gpt-5.4",
-  shell_tool: "shell_command",
+  shell_tool: "local_shell",
   web_search: { external_web_access: true },
   js_repl_enabled: true,
   artifacts_enabled: true,

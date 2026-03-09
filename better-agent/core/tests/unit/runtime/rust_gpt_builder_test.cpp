@@ -29,7 +29,7 @@ int main() {
           }
         }
       ],
-      "shell_tool":"shell_command",
+      "shell_tool":"local_shell",
       "web_search":{"external_web_access":true},
       "tool_choice":"auto",
       "parallel_tool_calls":true,
@@ -47,8 +47,7 @@ int main() {
     expect(tools.size() == 3, "tools should include function, shell, and web search");
     expect(tools.at(0).at("type") == "function", "first tool should be function");
     expect(tools.at(0).at("name") == "ping", "function tool name mismatch");
-    expect(tools.at(1).at("type") == "function", "second tool should be shell function");
-    expect(tools.at(1).at("name") == "shell_command", "shell tool name mismatch");
+    expect(tools.at(1).at("type") == "local_shell", "second tool should be local_shell");
     expect(tools.at(2).at("type") == "web_search", "third tool should be web_search");
     expect(tools.at(2).at("external_web_access") == true, "web search access mismatch");
 

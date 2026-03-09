@@ -22,7 +22,7 @@ pub fn apply_ability_preset(config: &mut GptRequestConfig) {
 
     if enable_ext4 {
         if config.shell_tool.is_none() {
-            config.shell_tool = Some(ShellToolKind::ShellCommand);
+            config.shell_tool = Some(ShellToolKind::LocalShell);
         }
         config.hooks_enabled = true;
         config.skills_enabled = true;

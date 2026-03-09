@@ -22,6 +22,8 @@ pub mod request;
 pub mod runtime_normalization;
 pub mod runtime_capabilities;
 pub mod shell;
+pub mod shell_runtime;
 pub mod skills;
+pub mod tool_outputs;
 pub mod validation;
 pub mod web_search;

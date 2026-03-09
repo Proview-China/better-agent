@@ -49,6 +49,7 @@
 
 `当前实现状态（2026-03-08）`
 - GPT-first 迁移已开始：`Function Calling / Custom Tools`、`Web Search`、`Shell` 的请求构造核心已迁入 Rust，并通过项目内测试与 GPT 上游联调验证。
+- `Shell` 当前默认优先走 Codex 风格的 `local_shell` 能力；`shell` / `shell_command` / `exec_command` 作为兼容与扩展形态继续保留。
 - `Code Execution`、`Computer Use`、`MCP` 的工具定义与标准工具集构造已进入 Rust；当前继续从“定义层”推进到“可稳定调用层”。
 - `Hooks`、`Skills` 的运行时能力描述已进入 Rust 标准工具集；当前继续从“能力描述层”推进到“可稳定调用层”。
 - 已新增 GPT 基础能力预设构造，可由上层直接获取包含 4+4 能力的基础工具集合与运行时能力说明。
@@ -58,6 +59,7 @@
 - `core_provider.cpp` 中旧的 provider payload/helper 实现已退场，相关逻辑转由 Rust + bridge 承接。
 - `tool registration` 解析也已切到 Rust，`core_registry.cpp` 中最重的 GPT 路径解析逻辑开始退场。
 - `function/custom/tool_use` payload 归一化也已切到 Rust-first，C++ 侧继续退化为外观层和数据映射层。
+- `local_shell_call`、`custom_tool_call` 的基础 payload normalization / runtime normalization 现已进入 Rust，供上层执行器与调度层后续继续承接。
 - 参数 schema 校验与 allow/deny 策略校验也已切到 Rust-first，`core_registry.cpp` 的 GPT 校验路径继续收缩。
 - `build_tool_execution_request` 与 `build_execution_record` 也已切到 Rust-first，旧 C++ 请求/记录组装路径已退场。
 - mock result 解析与 mock tool 执行结果构造也已切到 Rust-first，旧 C++ 简单执行路径已退场。
@@ -69,6 +71,7 @@
 - `model_output_json` 解析也已切到 Rust-first，`core_models.cpp` 的 GPT 路线解析职责进一步收缩。
 - 旧的 GPT/Codex runtime status/tool-kind 辅助函数已从 `core_models.cpp` 清理，相关语义由 Rust-first runtime normalization 承接。
 - `prepare_function_call_request` 已切到 Rust-first，相关旧桥接辅助也已清理。
+- OpenAI `function_call_output` / `custom_tool_call_output` 的输出 payload 现在也由 Rust 统一构造，并统一遵循“字符串或 content items 数组”的 wire 语义。
 - 本阶段仍保留 C++ 作为统一中间件/外观层，Rust 负责 GPT 系列、尤其 Codex 系列模型的 infra 内核；Claude 路线后续单列。
 - 为避免继续越界到“替上层写 agent”，旧 C++ hook lifecycle 与 idempotency replay 主链已从当前 GPT 执行主路径退场。
 - 为避免继续越界到“替上层写 agent”，旧的 `agent_core_execute_*`、execution record 读取/中断、provider wrapper 公开执行接口已从当前公开 surface 退场。
