@@ -1,0 +1,29 @@
+# System
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+
+# Node / Web
+node_modules/
+dist/
+.next/
+
+# Rust
+target/
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+
+# Build outputs
+build/
+out/
+tmp/
+
+# Logs
+*.log
