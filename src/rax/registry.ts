@@ -161,6 +161,21 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     }
   }),
   defineCapability({
+    key: "mcp.listConnections",
+    namespace: "mcp",
+    action: "listConnections",
+    plane: "tool",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "List active MCP connections inside the current route scope.",
+    providerSupport: {
+      openai: { status: "inferred", preferredLayer: "agent", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." },
+      anthropic: { status: "inferred", preferredLayer: "api", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." },
+      deepmind: { status: "inferred", preferredLayer: "agent", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." }
+    }
+  }),
+  defineCapability({
     key: "mcp.listTools",
     namespace: "mcp",
     action: "listTools",
@@ -169,6 +184,66 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     weight: "thick",
     defaultLayer: "auto",
     description: "Discover the tools exposed by a connected MCP server.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent" },
+      anthropic: { status: "documented", preferredLayer: "api" },
+      deepmind: { status: "documented", preferredLayer: "agent" }
+    }
+  }),
+  defineCapability({
+    key: "mcp.listResources",
+    namespace: "mcp",
+    action: "listResources",
+    plane: "tool",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "List resources exposed by a connected MCP server.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent" },
+      anthropic: { status: "documented", preferredLayer: "api" },
+      deepmind: { status: "documented", preferredLayer: "agent" }
+    }
+  }),
+  defineCapability({
+    key: "mcp.readResource",
+    namespace: "mcp",
+    action: "readResource",
+    plane: "tool",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Read the contents of a resource exposed by a connected MCP server.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent" },
+      anthropic: { status: "documented", preferredLayer: "api" },
+      deepmind: { status: "documented", preferredLayer: "agent" }
+    }
+  }),
+  defineCapability({
+    key: "mcp.listPrompts",
+    namespace: "mcp",
+    action: "listPrompts",
+    plane: "tool",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "List prompt templates exposed by a connected MCP server.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent" },
+      anthropic: { status: "documented", preferredLayer: "api" },
+      deepmind: { status: "documented", preferredLayer: "agent" }
+    }
+  }),
+  defineCapability({
+    key: "mcp.getPrompt",
+    namespace: "mcp",
+    action: "getPrompt",
+    plane: "tool",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Resolve a prompt template exposed by a connected MCP server into concrete messages.",
     providerSupport: {
       openai: { status: "documented", preferredLayer: "agent" },
       anthropic: { status: "documented", preferredLayer: "api" },
@@ -188,6 +263,36 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
       openai: { status: "documented", preferredLayer: "agent" },
       anthropic: { status: "documented", preferredLayer: "api" },
       deepmind: { status: "documented", preferredLayer: "agent" }
+    }
+  }),
+  defineCapability({
+    key: "mcp.disconnect",
+    namespace: "mcp",
+    action: "disconnect",
+    plane: "tool",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Close a specific MCP connection inside the current route scope.",
+    providerSupport: {
+      openai: { status: "inferred", preferredLayer: "agent", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." },
+      anthropic: { status: "inferred", preferredLayer: "api", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." },
+      deepmind: { status: "inferred", preferredLayer: "agent", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." }
+    }
+  }),
+  defineCapability({
+    key: "mcp.disconnectAll",
+    namespace: "mcp",
+    action: "disconnectAll",
+    plane: "tool",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Close all active MCP connections inside the current route scope.",
+    providerSupport: {
+      openai: { status: "inferred", preferredLayer: "agent", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." },
+      anthropic: { status: "inferred", preferredLayer: "api", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." },
+      deepmind: { status: "inferred", preferredLayer: "agent", notes: "This is a rax runtime lifecycle surface layered over MCP client connections." }
     }
   }),
   defineCapability({
@@ -230,7 +335,7 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "api",
     description: "Fetch targeted URL/page content through provider-supported retrieval tools.",
     providerSupport: {
-      openai: { status: "unconfirmed", notes: "OpenAI exposes search/connectors, but a dedicated fetch semantic should be verified per tool." },
+      openai: { status: "unsupported", notes: "OpenAI native search on the Responses path does not expose a separate first-class fetch tool." },
       anthropic: { status: "documented", preferredLayer: "api", notes: "Web fetch is explicitly documented." },
       deepmind: { status: "documented", preferredLayer: "api", notes: "URL Context is the nearest documented analog." }
     }
@@ -245,9 +350,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "api",
     description: "Ground a response in external sources or provider-specific search/context systems.",
     providerSupport: {
-      openai: { status: "inferred", preferredLayer: "api", notes: "Grounding is achievable via search/file tools but not always named this way." },
-      anthropic: { status: "documented", preferredLayer: "api", notes: "Search result content blocks and source-linked responses are documented." },
-      deepmind: { status: "documented", preferredLayer: "api", notes: "Google Search/Maps/URL Context grounding is explicit." }
+      openai: { status: "documented", preferredLayer: "api", notes: "Responses web_search can return source-linked search outputs and web search call sources." },
+      anthropic: { status: "documented", preferredLayer: "agent", notes: "Claude Code / agent runtime is the most reliable native grounding path on current Anthropic routes; API server tools remain available as a lower-level variant." },
+      deepmind: { status: "documented", preferredLayer: "api", notes: "Google Search grounding is explicit; URL Context composes when specific pages are supplied." }
     }
   }),
   defineCapability({

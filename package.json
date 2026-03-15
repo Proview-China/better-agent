@@ -15,6 +15,9 @@
     "check": "npm run typecheck && npm run build",
     "test": "npm run build && node --test dist/**/*.test.js",
     "smoke:thin:live": "tsx src/rax/live-smoke.ts",
+    "smoke:websearch:live": "tsx src/rax/websearch-live-smoke.ts",
+    "smoke:mcp:playwright": "tsx src/rax/mcp-playwright-smoke.ts",
+    "smoke:mcp:models": "tsx src/rax/mcp-model-live-smoke.ts",
     "start": "node dist/index.js"
   },
   "devDependencies": {

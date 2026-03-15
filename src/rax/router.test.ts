@@ -5,6 +5,9 @@ import type { CapabilityAdapterDescriptor } from "./contracts.js";
 import { createRaxFacade } from "./facade.js";
 import { UnsupportedCapabilityError } from "./errors.js";
 import { CapabilityRouter } from "./router.js";
+import type { CapabilityResult } from "./types.js";
+import type { WebSearchOutput } from "./websearch-types.js";
+import type { WebSearchRuntimeLike } from "./websearch-runtime.js";
 
 const mockOpenAiGenerateCreate: CapabilityAdapterDescriptor<
   { prompt: string },
@@ -191,4 +194,71 @@ test("createRaxFacade routes top-level methods through the router", () => {
   assert.equal(generation.key, "generate.create");
   assert.equal(embedding.key, "embed.create");
   assert.equal(embedding.sdk.entrypoint, "models.embedContent");
+});
+
+test("createRaxFacade routes websearch.create through the injected runtime", async () => {
+  const mockWebSearchGround: CapabilityAdapterDescriptor<
+    { query: string },
+    { endpoint: string; body: object }
+  > = {
+    id: "mock.openai.search.ground",
+    key: "search.ground",
+    namespace: "search",
+    action: "ground",
+    provider: "openai",
+    layer: "api",
+    description: "Mock OpenAI search.ground adapter.",
+    prepare(request) {
+      return {
+        key: this.key,
+        provider: request.provider,
+        model: request.model,
+        layer: this.layer,
+        adapterId: this.id,
+        sdk: {
+          packageName: "openai",
+          entrypoint: "responses.create"
+        },
+        payload: {
+          endpoint: "responses.create",
+          body: {
+            query: request.input.query
+          }
+        }
+      };
+    }
+  };
+
+  const fakeWebSearchRuntime: WebSearchRuntimeLike = {
+    async executePreparedInvocation(invocation): Promise<CapabilityResult<WebSearchOutput>> {
+      return {
+        status: "success",
+        provider: invocation.provider,
+        model: invocation.model,
+        layer: invocation.layer,
+        capability: "search",
+        action: "ground",
+        output: {
+          answer: "mock answer",
+          citations: [],
+          sources: []
+        }
+      };
+    },
+    createErrorResult() {
+      throw new Error("createErrorResult should not be called in this test.");
+    }
+  };
+
+  const router = new CapabilityRouter([mockOpenAiGenerateCreate, mockDeepMindEmbedCreate, mockWebSearchGround]);
+  const rax = createRaxFacade(router, undefined, undefined, fakeWebSearchRuntime);
+
+  const result = await rax.websearch.create({
+    provider: "openai",
+    model: "gpt-5",
+    input: { query: "route me" }
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.output?.answer, "mock answer");
 });

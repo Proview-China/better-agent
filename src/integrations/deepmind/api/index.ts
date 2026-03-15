@@ -4,13 +4,15 @@ import { deepMindGenerateStreamDescriptor } from "./generation/generate_content/
 import { deepMindEmbedCreateDescriptor } from "./modalities/embeddings/create.js";
 import { deepMindBatchSubmitDescriptor } from "./operations/batches/submit.js";
 import { deepMindFileUploadDescriptor } from "./resources/files/upload.js";
+import { deepMindSearchGroundDescriptor } from "./tools/search/ground.js";
 
 export {
   deepMindBatchSubmitDescriptor,
   deepMindEmbedCreateDescriptor,
   deepMindFileUploadDescriptor,
   deepMindGenerateCreateDescriptor,
-  deepMindGenerateStreamDescriptor
+  deepMindGenerateStreamDescriptor,
+  deepMindSearchGroundDescriptor
 };
 
 export const deepMindApiCapabilityDescriptors: readonly CapabilityAdapterDescriptor[] = [
@@ -18,5 +20,6 @@ export const deepMindApiCapabilityDescriptors: readonly CapabilityAdapterDescrip
   deepMindGenerateStreamDescriptor,
   deepMindEmbedCreateDescriptor,
   deepMindFileUploadDescriptor,
-  deepMindBatchSubmitDescriptor
+  deepMindBatchSubmitDescriptor,
+  deepMindSearchGroundDescriptor
 ];

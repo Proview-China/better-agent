@@ -113,6 +113,78 @@ test("default rax runtime routes file.upload and batch.submit across providers",
   assert.equal(deepMindPayload.method, "ai.batches.create");
 });
 
+test("default rax runtime routes OpenAI websearch.prepare to native Responses web_search", () => {
+  const invocation = rax.websearch.prepare({
+    provider: "openai",
+    model: "gpt-5",
+    input: {
+      query: "latest OpenAI SDK search docs",
+      goal: "Return a grounded answer with citations",
+      allowedDomains: ["platform.openai.com"],
+      citations: "required",
+      searchContextSize: "high"
+    }
+  });
+  const payload = invocation.payload as OpenAIInvocationPayload<Record<string, unknown>>;
+  const params = payload.params as {
+    include: string[];
+    tools: Array<Record<string, unknown>>;
+  };
+
+  assert.equal(invocation.adapterId, "openai.responses.search.ground");
+  assert.equal(payload.surface, "responses");
+  assert.deepEqual(params.include, ["web_search_call.action.sources"]);
+  assert.equal(params.tools[0]?.type, "web_search");
+});
+
+test("default rax runtime routes Anthropic websearch.prepare to Claude Code agent search path", () => {
+  const invocation = rax.websearch.prepare({
+    provider: "anthropic",
+    model: "claude-sonnet-4",
+    input: {
+      query: "Anthropic web search tool behavior",
+      urls: ["https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/web-search-tool"],
+      citations: "required"
+    }
+  });
+  const payload = invocation.payload as {
+    command: string;
+    args: string[];
+    prompt: string;
+  };
+
+  assert.equal(invocation.adapterId, "anthropic.agent.search.ground.claude-code");
+  assert.equal(invocation.layer, "agent");
+  assert.equal(invocation.sdk.packageName, "@anthropic-ai/claude-agent-sdk");
+  assert.equal(payload.command, "claude");
+  assert.deepEqual(payload.args, ["-p", "--model", "claude-sonnet-4", "--output-format", "json"]);
+  assert.equal(payload.prompt, "Anthropic web search tool behavior");
+});
+
+test("default rax runtime routes Gemini websearch.prepare to native interactions search tools", () => {
+  const invocation = rax.websearch.prepare({
+    provider: "deepmind",
+    model: "gemini-2.5-flash",
+    input: {
+      query: "Gemini grounding with Google Search",
+      urls: ["https://ai.google.dev/gemini-api/docs/google-search"]
+    }
+  });
+  const payload = invocation.payload as {
+    method: string;
+    params: {
+      tools: Array<{ type: string }>;
+    };
+  };
+
+  assert.equal(invocation.adapterId, "deepmind.api.search.ground.interactions-create");
+  assert.equal(payload.method, "ai.interactions.create");
+  assert.deepEqual(
+    payload.params.tools.map((tool) => tool.type),
+    ["google_search", "url_context"]
+  );
+});
+
 test("raxLocal uses compatibility profile to default OpenAI generation to chat_completions_compat", () => {
   const invocation = raxLocal.generate.create({
     provider: "openai",
@@ -126,6 +198,30 @@ test("raxLocal uses compatibility profile to default OpenAI generation to chat_c
 
   assert.equal(invocation.adapterId, "openai.chat_completions_compat.generate.create");
   assert.equal(invocation.variant, "chat_completions_compat");
+});
+
+test("raxLocal websearch.create returns a blocked result on unofficial OpenAI-compatible gateway", async () => {
+  const result = await raxLocal.websearch.create({
+    provider: "openai",
+    model: "gpt-5",
+    compatibilityProfileId: "openai-chat-only-gateway",
+    input: {
+      query: "compat gateway should not imply official search"
+    }
+  });
+
+  assert.equal(result.status, "blocked");
+  const error = result.error as {
+    code: string;
+    message: string;
+    raw: CompatibilityBlockedError;
+  };
+  assert.equal(error.code, "blocked_by_compatibility_profile");
+  assert.match(error.message, /openai search\.ground is disabled by compatibility profile openai-chat-only-gateway\./u);
+  const raw = error.raw;
+  assert.ok(raw instanceof CompatibilityBlockedError);
+  assert.equal(raw.key, "search.ground");
+  assert.equal(raw.profileId, "openai-chat-only-gateway");
 });
 
 test("raxLocal blocks Anthropic file.upload on messages-only compatibility profile", () => {

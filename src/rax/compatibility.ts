@@ -105,6 +105,8 @@ export const LOCAL_GATEWAY_COMPATIBILITY_PROFILES: readonly CompatibilityProfile
     id: "openai-chat-only-gateway",
     provider: "openai",
     protocolFlavor: "openai-chat-only-gateway",
+    disableCapabilities: ["search.web", "search.fetch", "search.ground"],
+    unsupportedMode: "blocked",
     baseUrlNeedsV1: true,
     defaultGenerationVariant: "chat_completions_compat",
     supportsModels: true,
@@ -116,7 +118,8 @@ export const LOCAL_GATEWAY_COMPATIBILITY_PROFILES: readonly CompatibilityProfile
     supportsBatches: false,
     notes: [
       "Treat this upstream as a chat/completions-compatible gateway rather than a full OpenAI platform proxy.",
-      "Responses fails at the gateway layer; embeddings/files/batches appear unimplemented."
+      "Responses fails at the gateway layer; embeddings/files/batches appear unimplemented.",
+      "Official native web search semantics should not be assumed on this gateway."
     ]
   },
   {
@@ -127,7 +130,7 @@ export const LOCAL_GATEWAY_COMPATIBILITY_PROFILES: readonly CompatibilityProfile
     supportsStreamingMessages: true,
     supportsFilesBeta: false,
     supportsMessageBatches: false,
-    disableCapabilities: ["file.upload", "batch.submit"],
+    disableCapabilities: ["file.upload", "batch.submit", "search.web", "search.fetch", "search.ground"],
     unsupportedMode: "blocked",
     preferredModelNames: [
       "claude-opus-4-6-thinking",
@@ -137,14 +140,15 @@ export const LOCAL_GATEWAY_COMPATIBILITY_PROFILES: readonly CompatibilityProfile
     modelFallbackStrategy: "ordered-first-success",
     notes: [
       "Treat this upstream as Messages plus streaming only.",
-      "Files and message batches are not reliably supported."
+      "Files and message batches are not reliably supported.",
+      "Do not assume Anthropic native web search/web fetch server tools exist on this gateway."
     ]
   },
   {
     id: "deepmind-openai-compatible-gateway",
     provider: "deepmind",
     protocolFlavor: "openai-compatible-gemini-backend",
-    disableCapabilities: ["file.upload", "batch.submit"],
+    disableCapabilities: ["file.upload", "batch.submit", "search.web", "search.fetch", "search.ground"],
     unsupportedMode: "blocked",
     supportsOpenAIChatCompletions: true,
     supportsOpenAIEmbeddings: true,
@@ -162,7 +166,8 @@ export const LOCAL_GATEWAY_COMPATIBILITY_PROFILES: readonly CompatibilityProfile
     ],
     notes: [
       "Prefer OpenAI-compatible chat/embeddings protocol for this gateway when reliability matters.",
-      "Official Gemini file upload and batch semantics are not fully compatible."
+      "Official Gemini file upload and batch semantics are not fully compatible.",
+      "Official Google Search grounding and URL Context should not be assumed on this gateway."
     ]
   }
 ] as const;

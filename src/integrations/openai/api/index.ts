@@ -7,6 +7,7 @@ export type {
   OpenAIInvocationPayload,
   OpenAIResponsesGenerateInput,
   OpenAIResponsesGenerateStreamInput,
+  OpenAIWebSearchCreateInput,
 } from "./types.js";
 
 export {
@@ -22,6 +23,7 @@ export {
 export { openAIEmbeddingsCreateDescriptor } from "./modalities/embeddings/adapter.js";
 export { openAIFilesUploadDescriptor } from "./resources/files/adapter.js";
 export { openAIBatchesSubmitDescriptor } from "./operations/batches/adapter.js";
+export { openAIResponsesSearchGroundDescriptor } from "./tools/websearch/adapter.js";
 
 import {
   openAIBatchesSubmitDescriptor,
@@ -40,6 +42,7 @@ import {
   openAIResponsesGenerateCreateDescriptor,
   openAIResponsesGenerateStreamDescriptor,
 } from "./generation/responses/adapter.js";
+import { openAIResponsesSearchGroundDescriptor } from "./tools/websearch/adapter.js";
 
 export const openAIApiThinCapabilityDescriptors = [
   openAIResponsesGenerateCreateDescriptor,
@@ -49,4 +52,5 @@ export const openAIApiThinCapabilityDescriptors = [
   openAIEmbeddingsCreateDescriptor,
   openAIFilesUploadDescriptor,
   openAIBatchesSubmitDescriptor,
+  openAIResponsesSearchGroundDescriptor,
 ] as const;

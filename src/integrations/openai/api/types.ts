@@ -21,6 +21,9 @@ import type {
   CapabilityAdapterDescriptor,
   PreparedInvocation,
 } from "../../../rax/contracts.js";
+import type {
+  WebSearchCreateInput,
+} from "../../../rax/websearch-types.js";
 
 export interface OpenAIInvocationPayload<TParams> {
   surface: "responses" | "chat_completions" | "embeddings" | "files" | "batches";
@@ -76,6 +79,11 @@ export interface OpenAIChatCompletionsGenerateInput {
   user?: ChatCompletionCreateParamsBase["user"];
   reasoningEffort?: ChatCompletionCreateParamsBase["reasoning_effort"];
   webSearchOptions?: ChatCompletionCreateParamsBase["web_search_options"];
+}
+
+export interface OpenAIWebSearchCreateInput extends WebSearchCreateInput {
+  model?: ResponseCreateParamsBase["model"];
+  metadata?: ResponseCreateParamsBase["metadata"];
 }
 
 export interface OpenAIEmbeddingsCreateInput {
