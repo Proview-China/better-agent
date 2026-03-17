@@ -351,7 +351,7 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     description: "Ground a response in external sources or provider-specific search/context systems.",
     providerSupport: {
       openai: { status: "documented", preferredLayer: "api", notes: "Responses web_search can return source-linked search outputs and web search call sources." },
-      anthropic: { status: "documented", preferredLayer: "agent", notes: "Claude Code / agent runtime is the most reliable native grounding path on current Anthropic routes; API server tools remain available as a lower-level variant." },
+      anthropic: { status: "documented", preferredLayer: "api", notes: "Anthropic Messages API server tools are the default grounded search path; Claude Code / agent runtime remains available as an explicit experimental variant." },
       deepmind: { status: "documented", preferredLayer: "api", notes: "Google Search grounding is explicit; URL Context composes when specific pages are supplied." }
     }
   }),

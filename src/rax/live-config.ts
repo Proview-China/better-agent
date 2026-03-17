@@ -66,10 +66,14 @@ function requireField(source: Record<string, string>, field: string): string {
   return value;
 }
 
+export function resolveLiveConfigPath(envPath?: string): string {
+  return envPath ?? process.env.PRAXIS_LIVE_ENV_FILE ?? resolve(process.cwd(), ".env.local");
+}
+
 export function loadLiveProviderConfig(
-  envPath = resolve(process.cwd(), ".env.local")
+  envPath?: string
 ): LiveProviderConfig {
-  const values = parseEnvFile(envPath);
+  const values = parseEnvFile(resolveLiveConfigPath(envPath));
 
   const anthropicAltConfigured =
     values.ANTHROPIC_ALT_API_KEY !== undefined &&

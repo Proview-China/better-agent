@@ -15,7 +15,9 @@ export interface WebSearchCreateInput {
   urls?: string[];
   allowedDomains?: string[];
   blockedDomains?: string[];
+  // Some providers can enforce this directly while others only consume it as prompt guidance.
   maxSources?: number;
+  // Some providers map this to a native output budget and others may ignore it until adapter support lands.
   maxOutputTokens?: number;
   searchContextSize?: "low" | "medium" | "high";
   citations?: WebSearchCitationMode;

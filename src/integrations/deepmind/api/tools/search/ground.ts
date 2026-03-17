@@ -19,7 +19,7 @@ export const deepMindSearchGroundDescriptor: CapabilityAdapterDescriptor<
   provider: "deepmind",
   layer: "api",
   description:
-    "Lower a grounded web search request into Gemini generateContent using googleSearch and optional urlContext tools.",
+    "Lower a grounded web search request into the default Gemini generateContent grounding path using googleSearch and optional urlContext tools.",
   prepare(
     request: CapabilityRequest<DeepMindWebSearchCreateInput>
   ) {
@@ -43,10 +43,10 @@ export const deepMindSearchGroundDescriptor: CapabilityAdapterDescriptor<
         }
       },
       [
-        "Gemini grounded web search uses generateContent with the native googleSearch tool.",
+        "Gemini grounded web search defaults to generateContent with the native googleSearch tool.",
         input.urls?.length
-          ? "Known URLs trigger urlContext so the runtime can inspect provided pages without a custom fetch stack."
-          : "No explicit urlContext tool was added because the task does not provide target URLs."
+          ? "Known URLs trigger urlContext so the default route can inspect provided pages without a custom fetch stack."
+          : "No explicit urlContext tool was added because the task does not provide target URLs on the default generateContent route."
       ]
     );
   }

@@ -166,6 +166,7 @@
 注意：
 - 进入 `provider` 池不代表不重要。
 - 它只表示不能被假装成“所有厂商都一样”。
+- 对 `search.ground` 这类 shared 能力，统一 contract 允许 provider 侧同时存在硬映射与 prompt-level hint，但 adapter notes 与测试必须显式写清楚差异。
 
 ---
 

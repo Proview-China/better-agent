@@ -119,7 +119,8 @@ export const LOCAL_GATEWAY_COMPATIBILITY_PROFILES: readonly CompatibilityProfile
     notes: [
       "Treat this upstream as a chat/completions-compatible gateway rather than a full OpenAI platform proxy.",
       "Responses fails at the gateway layer; embeddings/files/batches appear unimplemented.",
-      "Official native web search semantics should not be assumed on this gateway."
+      "Official native web search semantics should not be assumed on this gateway.",
+      "If search.ground is blocked on this profile, interpret it as a compatibility contract decision rather than an upstream provider outage."
     ]
   },
   {
@@ -141,7 +142,8 @@ export const LOCAL_GATEWAY_COMPATIBILITY_PROFILES: readonly CompatibilityProfile
     notes: [
       "Treat this upstream as Messages plus streaming only.",
       "Files and message batches are not reliably supported.",
-      "Do not assume Anthropic native web search/web fetch server tools exist on this gateway."
+      "Do not assume Anthropic native web search/web fetch server tools exist on this gateway.",
+      "Blocked search.ground results on this profile mean the gateway contract is narrower than the official Anthropic platform."
     ]
   },
   {

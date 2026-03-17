@@ -228,6 +228,25 @@ test("toWebSearchCapabilityResult marks Anthropic tool_use-only search as partia
   });
 });
 
+test("toWebSearchCapabilityResult keeps Anthropic grounded answers as success once text is finalized", () => {
+  const result = toWebSearchCapabilityResult("anthropic", "claude-opus-4-6-thinking", "api", {
+    stop_reason: "tool_use",
+    content: [
+      {
+        type: "text",
+        text: "The official documentation domain for Anthropic is docs.anthropic.com."
+      }
+    ]
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(
+    result.output?.answer,
+    "The official documentation domain for Anthropic is docs.anthropic.com."
+  );
+  assert.equal(result.error, undefined);
+});
+
 test("toWebSearchFailureResult preserves error context", () => {
   const result = toWebSearchFailureResult(
     "anthropic",

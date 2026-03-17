@@ -44,6 +44,18 @@ function formatError(error: unknown): { summary: string; details: Record<string,
   };
 }
 
+function summarizeWebSearchResult(
+  result: Awaited<ReturnType<typeof rax.websearch.create>>,
+  details: Record<string, unknown> = {}
+): SmokeRow["details"] {
+  return {
+    status: result.status,
+    sources: result.output?.sources.length ?? 0,
+    citations: result.output?.citations.length ?? 0,
+    ...details
+  };
+}
+
 async function smokeOpenAI(): Promise<SmokeRow[]> {
   const rows: SmokeRow[] = [];
   const config = loadLiveProviderConfig().openai;
@@ -131,11 +143,36 @@ async function smokeOpenAI(): Promise<SmokeRow[]> {
         (result.error && typeof result.error === "object" && "message" in result.error
           ? String((result.error as Record<string, unknown>).message)
           : result.status),
-      details: {
-        status: result.status,
-        sources: result.output?.sources.length ?? 0,
-        citations: result.output?.citations.length ?? 0
+      details: summarizeWebSearchResult(result)
+    });
+
+    const constrainedResult = await rax.websearch.create({
+      provider: "openai",
+      model,
+      input: {
+        query: "What is the official documentation domain for OpenAI?",
+        goal: "Return one short grounded answer from official sources only.",
+        allowedDomains: ["platform.openai.com"],
+        freshness: "month",
+        maxSources: 2,
+        maxOutputTokens: 64,
+        citations: "required"
       }
+    });
+
+    rows.push({
+      provider: "openai",
+      step: "rax_websearch_contract",
+      ok: constrainedResult.status === "success",
+      model,
+      summary:
+        constrainedResult.output?.answer?.slice(0, 160) ??
+        (constrainedResult.error && typeof constrainedResult.error === "object" && "message" in constrainedResult.error
+          ? String((constrainedResult.error as Record<string, unknown>).message)
+          : constrainedResult.status),
+      details: summarizeWebSearchResult(constrainedResult, {
+        contract: ["allowedDomains", "freshness", "maxOutputTokens"]
+      })
     });
   }
 
@@ -236,11 +273,36 @@ async function smokeAnthropic(): Promise<SmokeRow[]> {
       (result.error && typeof result.error === "object" && "message" in result.error
         ? String((result.error as Record<string, unknown>).message)
         : result.status),
-    details: {
-      status: result.status,
-      sources: result.output?.sources.length ?? 0,
-      citations: result.output?.citations.length ?? 0
+    details: summarizeWebSearchResult(result)
+  });
+
+  const constrainedResult = await rax.websearch.create({
+    provider: "anthropic",
+    model,
+    input: {
+      query: "What is the official documentation domain for Anthropic?",
+      goal: "Return one short grounded answer from official sources only.",
+      allowedDomains: ["docs.anthropic.com"],
+      freshness: "month",
+      maxSources: 2,
+      maxOutputTokens: 64,
+      citations: "required"
     }
+  });
+
+  rows.push({
+    provider: "anthropic",
+    step: "rax_websearch_contract",
+    ok: constrainedResult.status === "success",
+    model,
+    summary:
+      constrainedResult.output?.answer?.slice(0, 160) ??
+      (constrainedResult.error && typeof constrainedResult.error === "object" && "message" in constrainedResult.error
+        ? String((constrainedResult.error as Record<string, unknown>).message)
+        : constrainedResult.status),
+    details: summarizeWebSearchResult(constrainedResult, {
+      contract: ["allowedDomains", "freshness", "maxOutputTokens"]
+    })
   });
 
   return rows;
@@ -295,7 +357,10 @@ async function smokeDeepMind(): Promise<SmokeRow[]> {
       step: "native_search",
       ok: true,
       model,
-      summary: response.text?.slice(0, 160) ?? "native search succeeded"
+      summary: response.text?.slice(0, 160) ?? "native generateContent search succeeded",
+      details: {
+        route: "generateContent+googleSearch"
+      }
     });
   } catch (error) {
     const formatted = formatError(error);
@@ -332,11 +397,39 @@ async function smokeDeepMind(): Promise<SmokeRow[]> {
       (result.error && typeof result.error === "object" && "message" in result.error
         ? String((result.error as Record<string, unknown>).message)
         : result.status),
-    details: {
-      status: result.status,
-      sources: result.output?.sources.length ?? 0,
-      citations: result.output?.citations.length ?? 0
+    details: summarizeWebSearchResult(result, {
+      route: "generateContent+googleSearch"
+    })
+  });
+
+  const constrainedResult = await rax.websearch.create({
+    provider: "deepmind",
+    model,
+    input: {
+      query: "What is the official documentation domain for Google Gemini?",
+      goal: "Return one short grounded answer from official sources only.",
+      allowedDomains: ["ai.google.dev"],
+      freshness: "month",
+      maxSources: 2,
+      maxOutputTokens: 64,
+      citations: "required"
     }
+  });
+
+  rows.push({
+    provider: "deepmind",
+    step: "rax_websearch_contract",
+    ok: constrainedResult.status === "success",
+    model,
+    summary:
+      constrainedResult.output?.answer?.slice(0, 160) ??
+      (constrainedResult.error && typeof constrainedResult.error === "object" && "message" in constrainedResult.error
+        ? String((constrainedResult.error as Record<string, unknown>).message)
+        : constrainedResult.status),
+    details: summarizeWebSearchResult(constrainedResult, {
+      route: "generateContent+googleSearch",
+      contract: ["allowedDomains", "freshness", "maxOutputTokens"]
+    })
   });
 
   return rows;

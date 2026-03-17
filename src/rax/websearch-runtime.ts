@@ -213,6 +213,13 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
   }
 
   async #executeAnthropicAgent(invocation: PreparedInvocation): Promise<unknown> {
+    if (process.platform === "win32") {
+      throw new RaxRoutingError(
+        "anthropic_agent_unavailable_on_windows",
+        "Anthropic Claude Code agent websearch currently requires a Unix-like shell via script(1); use layer: \"api\" on Windows."
+      );
+    }
+
     const payload = invocation.payload as {
       command: string;
       args: string[];

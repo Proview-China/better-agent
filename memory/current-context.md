@@ -31,11 +31,16 @@
 - 已补真实 `rax.websearch.create()` smoke，当前 `.env.local` 下结论更细化了：
   - OpenAI route on `gmn.chuangzuoli.com/v1` 可正常承接原生 web search，但当前可用模型是 `gpt-5.4`
   - 同一路由下 `gpt-5` 仍返回 `502`
+  - Anthropic 默认 websearch 路线已回到 Messages API server tools；Claude Code / agent path 仅保留给显式 `layer: "agent"` 的实验调用
   - Anthropic route 不是完全不可用：
     - `.env.local` 里的 `claude-opus-4.6-thinking` 在当前主上游会 `503`
     - 同一路由下 `claude-opus-4-6-thinking` 可跑普通 `messages.create`
-    - 但 web search 行为不稳定，常返回 `tool_use` 未闭环或异常防御性回答
-  - DeepMind route 当前对 `interactions` 返回 `404`
+    - 但 web search 行为仍不稳定，常返回 `tool_use` 未闭环或异常防御性回答
+    - Windows 上 Anthropic Claude Code agent route 不再作为默认 websearch 路线；显式调用时会快速提示改用 `layer: "api"`
+  - DeepMind 默认 websearch 路线已切到 `generateContent + googleSearch/urlContext`，当前测试与 smoke 也按这条默认路线对齐
+  - 旧 DeepMind `interactions` 路线在当前 upstream 上仍返回 `404`，不再作为默认 websearch 路径
+  - `websearch-live-smoke.ts` 现在除了基础问答 smoke，还会额外记录一组 contract-oriented case，用来观察 `allowedDomains` / `freshness` / `maxOutputTokens` 这类约束是否影响真实结果
+  - `loadLiveProviderConfig()` 现已支持 `PRAXIS_LIVE_ENV_FILE`，便于切换并行 smoke 环境而不强绑仓库根目录 `.env.local`
 - 当前重点已从前一阶段的 `search.ground` / `MCP` 收口，切换到 `skill` 薄承载层启动：
   - `skill` 现在明确回收到 infra/adapter 层，目标是贴着 OpenAI / Anthropic / Google ADK 的官方 skill carrier 做统一接入
   - 更复杂的能力组织、上下文治理与长期演化，继续放回包装机架构、Context Manager、policy、ledger 等上层部件

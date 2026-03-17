@@ -65,6 +65,7 @@ export interface RaxFacade {
     create(
       options: FacadeCallOptions<WebSearchCreateInput>
     ): Promise<CapabilityResult<WebSearchOutput>>;
+    // Internal/testing surface for inspecting the routed provider payload before execution.
     prepare<TPayload = unknown>(
       options: FacadeCallOptions<WebSearchCreateInput>
     ): PreparedInvocation<TPayload>;
