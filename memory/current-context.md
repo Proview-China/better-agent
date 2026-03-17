@@ -225,6 +225,43 @@
     - `discover()` 现在支持扫描父目录下的多个 skill 子目录
     - `loadLocal()` 在父目录只包含一个 skill 子目录时可自动解析，多个时会明确报 `skill_source_ambiguous`
   - `docs/ability/14-skill-execution-roadmap.md` 已落地，当前对 skill 路线的完成度估算约为 `94%`
+- `agent_core` 当前已开始单独收口：
+  - 第一版先不把治理层、包装机、拓扑和上下文装载塞进 kernel
+  - 当前先把 `raw runtime kernel` 总纲定为：
+    - `AgentSession`
+    - `AgentRun`
+    - `AgentState`
+    - `CapabilityPort`
+    - `CheckpointStore`
+  - 同时明确 3 条必需运行语义：
+    - `GoalFrame`
+    - `StepTransition`
+    - `EventJournal`
+  - 当前已补第一版高性能方向：
+    - `event-first`
+    - `delta-state`
+    - `queued-port`
+    - `tiered-checkpoint`
+    - `hot/cold split`
+  - 当前建议的对象级优化也已收口：
+    - `AgentSession` -> `hot header + cold log`
+    - `AgentRun` -> `single decision lane + async execution lanes`
+    - `AgentState` -> `small structured state + state_delta`
+    - `CapabilityPort` -> `broker + queue + cache + backpressure`
+    - `CheckpointStore` -> `fast checkpoint + durable checkpoint`
+  - 新总纲文档：
+    - `docs/ability/16-agent-core-runtime-kernel-outline.md`
+  - 当前也已补可直接分发给并行 Codex 的任务包：
+    - `docs/ability/agent-core-runtime-kernel-task-pack/README.md`
+    - `00-phase0-protocol-freeze.md`
+    - `01-agent-session.md`
+    - `02-agent-run.md`
+    - `03-agent-state.md`
+    - `04-capability-port.md`
+    - `05-checkpoint-store.md`
+    - `06-goal-frame.md`
+    - `07-step-transition.md`
+    - `08-event-journal.md`
   - 路线图现在也已明确：
     - `09-12` 是研究与草案记录
     - `14` 是当前实际执行路线图
@@ -365,3 +402,4 @@
    - metadata -> entry markdown -> resources/helpers 三层加载
 4. 如果后续要让 `skill` 使用 MCP，优先复用 `mcp.use()` 作为统一会话入口，而不是重做三套 provider-specific MCP 逻辑。
 5. 保持 `memory/` 作为并行协作下的项目长期记忆层。
+6. 先把 `agent_core` 的 raw runtime kernel 细化完，再进入 topology / io / ooa / autonomy 这些治理层细化。

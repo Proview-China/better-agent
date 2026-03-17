@@ -96,3 +96,7 @@
 
 - MCP 官方对齐与分阶段执行路线图：
   - [13-mcp-official-alignment-roadmap.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/13-mcp-official-alignment-roadmap.md)
+- Agent Core raw runtime kernel 总纲：
+  - [16-agent-core-runtime-kernel-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/16-agent-core-runtime-kernel-outline.md)
+- Agent Core 并行编码任务包：
+  - [agent-core-runtime-kernel-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/agent-core-runtime-kernel-task-pack/README.md)
