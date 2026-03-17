@@ -86,6 +86,171 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     }
   }),
   defineCapability({
+    key: "skill.define",
+    namespace: "skill",
+    action: "define",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Define a provider-agnostic skill carrier from a local or managed skill package.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent", notes: "Maps to OpenAI skill bundles and shell skill carriers." },
+      anthropic: { status: "documented", preferredLayer: "agent", notes: "Maps to Anthropic skill packages across SDK and API managed skills." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "Maps to ADK Skills as local or code-defined carriers." }
+    }
+  }),
+  defineCapability({
+    key: "skill.discover",
+    namespace: "skill",
+    action: "discover",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Discover available skills through metadata without fully expanding the skill package.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent", notes: "OpenAI skill carriers expose metadata before full bundle expansion." },
+      anthropic: { status: "documented", preferredLayer: "agent", notes: "Anthropic skills are discovered through metadata before full instructions load." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "ADK Skills expose L1 metadata for discovery." }
+    }
+  }),
+  defineCapability({
+    key: "skill.bind",
+    namespace: "skill",
+    action: "bind",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Bind a skill carrier to the official runtime surface of a specific provider.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent", notes: "Binds to shell environment skills, including local shell skills, hosted shell skill_reference attachments, and inline skill bundles." },
+      anthropic: { status: "documented", preferredLayer: "agent", notes: "Binds to API container.skills or SDK filesystem Skill carriers." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "Binds to ADK SkillToolset." }
+    }
+  }),
+  defineCapability({
+    key: "skill.activate",
+    namespace: "skill",
+    action: "activate",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Activate a bound skill carrier and translate it into provider-specific official execution payloads.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent", notes: "Activates shell skill carriers by expanding official shell environment payloads, including hosted skill_reference attachments, inline skill bundles, and hosted shell settings." },
+      anthropic: { status: "documented", preferredLayer: "agent", notes: "Activates API or SDK skill carriers by expanding official Anthropic request/options payloads." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "Activates ADK skill carriers through SkillToolset payload generation." }
+    }
+  }),
+  defineCapability({
+    key: "skill.use",
+    namespace: "skill",
+    action: "use",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Use a skill source through the unified Praxis public language and translate it into the official carrier for the selected provider.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent", notes: "Uses local or hosted shell skills through the unified skill path." },
+      anthropic: { status: "documented", preferredLayer: "agent", notes: "Uses Anthropic skill carriers through SDK filesystem or API managed routes." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "Uses ADK Skills through SkillToolset preparation." }
+    }
+  }),
+  defineCapability({
+    key: "skill.load",
+    namespace: "skill",
+    action: "load",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "auto",
+    description: "Load a local skill package from a directory or bundle into the unified skill carrier format.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "agent", notes: "OpenAI supports local shell skill directories." },
+      anthropic: { status: "documented", preferredLayer: "agent", notes: "Anthropic SDK skills are filesystem-first." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "ADK Skills support local directory loading." }
+    }
+  }),
+  defineCapability({
+    key: "skill.list",
+    namespace: "skill",
+    action: "list",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "api",
+    description: "List managed or hosted skills from the provider registry where that lifecycle is officially documented.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "api", notes: "Maps to client.skills.list and client.skills.versions.list." },
+      anthropic: { status: "documented", preferredLayer: "api", notes: "Maps to client.beta.skills.list and client.beta.skills.versions.list." },
+      deepmind: { status: "unsupported", notes: "Google ADK does not currently document a hosted skill registry list surface." }
+    }
+  }),
+  defineCapability({
+    key: "skill.read",
+    namespace: "skill",
+    action: "read",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "api",
+    description: "Read managed or hosted skill metadata from the provider registry where that lifecycle is officially documented.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "api", notes: "Maps to client.skills.retrieve and client.skills.versions.retrieve." },
+      anthropic: { status: "documented", preferredLayer: "api", notes: "Maps to client.beta.skills.retrieve and client.beta.skills.versions.retrieve." },
+      deepmind: { status: "unsupported", notes: "Google ADK does not currently document a hosted skill registry get surface." }
+    }
+  }),
+  defineCapability({
+    key: "skill.create",
+    namespace: "skill",
+    action: "create",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "api",
+    description: "Publish a managed or hosted skill bundle where the provider exposes a documented skill registry lifecycle.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "api", notes: "Maps to client.skills.create and client.skills.versions.create." },
+      anthropic: { status: "documented", preferredLayer: "api", notes: "Maps to client.beta.skills.create and client.beta.skills.versions.create; upload surfaces auto-merge official skills and files-api betas." },
+      deepmind: { status: "unsupported", notes: "Google ADK does not currently document a hosted skill publish surface." }
+    }
+  }),
+  defineCapability({
+    key: "skill.update",
+    namespace: "skill",
+    action: "update",
+    plane: "runtime",
+    pool: "provider",
+    weight: "thick",
+    defaultLayer: "api",
+    description: "Update managed skill registry state where the provider exposes a documented mutable lifecycle, such as a default-version pointer.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "api", notes: "Maps to client.skills.update for default_version pointer changes." },
+      anthropic: { status: "unsupported", notes: "Anthropic beta.skills does not currently document a default-version update surface." },
+      deepmind: { status: "unsupported", notes: "Google ADK does not currently document a hosted skill update surface." }
+    }
+  }),
+  defineCapability({
+    key: "skill.remove",
+    namespace: "skill",
+    action: "remove",
+    plane: "runtime",
+    pool: "shared",
+    weight: "thick",
+    defaultLayer: "api",
+    description: "Delete a managed or hosted skill bundle or skill version where the provider exposes a documented registry lifecycle.",
+    providerSupport: {
+      openai: { status: "documented", preferredLayer: "api", notes: "Maps to client.skills.delete and client.skills.versions.delete." },
+      anthropic: { status: "documented", preferredLayer: "api", notes: "Maps to client.beta.skills.delete and client.beta.skills.versions.delete." },
+      deepmind: { status: "unsupported", notes: "Google ADK does not currently document a hosted skill delete surface." }
+    }
+  }),
+  defineCapability({
     key: "tool.define",
     namespace: "tool",
     action: "define",
@@ -155,9 +320,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "auto",
     description: "Connect to an MCP server for remote tool discovery and invocation.",
     providerSupport: {
-      openai: { status: "documented", preferredLayer: "agent", notes: "Best surfaced through Agents SDK MCP tooling." },
-      anthropic: { status: "documented", preferredLayer: "api", notes: "Documented via MCP connector and Claude SDK MCP." },
-      deepmind: { status: "documented", preferredLayer: "agent", notes: "Documented in ADK MCP support." }
+      openai: { status: "documented", preferredLayer: "agent", notes: "OpenAI documents MCP carriers on both API and agent sides; current rax lowering still uses a shared MCP client runtime." },
+      anthropic: { status: "documented", preferredLayer: "api", notes: "Anthropic documents MCP on both API connector and agent/runtime paths; current rax lowering still uses a shared MCP client runtime." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "Gemini and ADK document MCP carriers, while current rax lowering still uses a shared MCP client runtime." }
     }
   }),
   defineCapability({
@@ -185,9 +350,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "auto",
     description: "Discover the tools exposed by a connected MCP server.",
     providerSupport: {
-      openai: { status: "documented", preferredLayer: "agent" },
-      anthropic: { status: "documented", preferredLayer: "api" },
-      deepmind: { status: "documented", preferredLayer: "agent" }
+      openai: { status: "documented", preferredLayer: "agent", notes: "Tool discovery is a documented MCP concept, but this action is currently exposed through the shared rax MCP runtime rather than a provider-native helper." },
+      anthropic: { status: "documented", preferredLayer: "api", notes: "Tool discovery is a documented MCP concept, but this action is currently exposed through the shared rax MCP runtime rather than a provider-native helper." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "Tool discovery is a documented MCP concept, but this action is currently exposed through the shared rax MCP runtime rather than a provider-native helper." }
     }
   }),
   defineCapability({
@@ -200,9 +365,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "auto",
     description: "List resources exposed by a connected MCP server.",
     providerSupport: {
-      openai: { status: "documented", preferredLayer: "agent" },
-      anthropic: { status: "documented", preferredLayer: "api" },
-      deepmind: { status: "documented", preferredLayer: "agent" }
+      openai: { status: "inferred", preferredLayer: "agent", notes: "This is a shared rax MCP client surface over MCP resources, not a first-class OpenAI SDK action." },
+      anthropic: { status: "inferred", preferredLayer: "api", notes: "This is a shared rax MCP client surface over MCP resources; Anthropic API connector semantics are narrower than the generic runtime surface." },
+      deepmind: { status: "inferred", preferredLayer: "agent", notes: "This is a shared rax MCP client surface over MCP resources, not a first-class Gemini or ADK SDK action." }
     }
   }),
   defineCapability({
@@ -215,9 +380,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "auto",
     description: "Read the contents of a resource exposed by a connected MCP server.",
     providerSupport: {
-      openai: { status: "documented", preferredLayer: "agent" },
-      anthropic: { status: "documented", preferredLayer: "api" },
-      deepmind: { status: "documented", preferredLayer: "agent" }
+      openai: { status: "inferred", preferredLayer: "agent", notes: "This is a shared rax MCP client surface over MCP resources, not a first-class OpenAI SDK action." },
+      anthropic: { status: "inferred", preferredLayer: "api", notes: "This is a shared rax MCP client surface over MCP resources; Anthropic API connector semantics are narrower than the generic runtime surface." },
+      deepmind: { status: "inferred", preferredLayer: "agent", notes: "This is a shared rax MCP client surface over MCP resources, not a first-class Gemini or ADK SDK action." }
     }
   }),
   defineCapability({
@@ -230,9 +395,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "auto",
     description: "List prompt templates exposed by a connected MCP server.",
     providerSupport: {
-      openai: { status: "documented", preferredLayer: "agent" },
-      anthropic: { status: "documented", preferredLayer: "api" },
-      deepmind: { status: "documented", preferredLayer: "agent" }
+      openai: { status: "inferred", preferredLayer: "agent", notes: "This is a shared rax MCP client surface over MCP prompts, not a first-class OpenAI SDK action." },
+      anthropic: { status: "inferred", preferredLayer: "api", notes: "This is a shared rax MCP client surface over MCP prompts; Anthropic API connector semantics are narrower than the generic runtime surface." },
+      deepmind: { status: "inferred", preferredLayer: "agent", notes: "This is a shared rax MCP client surface over MCP prompts, not a first-class Gemini or ADK SDK action." }
     }
   }),
   defineCapability({
@@ -245,9 +410,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "auto",
     description: "Resolve a prompt template exposed by a connected MCP server into concrete messages.",
     providerSupport: {
-      openai: { status: "documented", preferredLayer: "agent" },
-      anthropic: { status: "documented", preferredLayer: "api" },
-      deepmind: { status: "documented", preferredLayer: "agent" }
+      openai: { status: "inferred", preferredLayer: "agent", notes: "This is a shared rax MCP client surface over MCP prompts, not a first-class OpenAI SDK action." },
+      anthropic: { status: "inferred", preferredLayer: "api", notes: "This is a shared rax MCP client surface over MCP prompts; Anthropic API connector semantics are narrower than the generic runtime surface." },
+      deepmind: { status: "inferred", preferredLayer: "agent", notes: "This is a shared rax MCP client surface over MCP prompts, not a first-class Gemini or ADK SDK action." }
     }
   }),
   defineCapability({
@@ -260,9 +425,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     defaultLayer: "auto",
     description: "Call a tool exposed through an MCP server.",
     providerSupport: {
-      openai: { status: "documented", preferredLayer: "agent" },
-      anthropic: { status: "documented", preferredLayer: "api" },
-      deepmind: { status: "documented", preferredLayer: "agent" }
+      openai: { status: "documented", preferredLayer: "agent", notes: "Tool execution through MCP is documented, while the current lowering still runs through the shared rax MCP client runtime." },
+      anthropic: { status: "documented", preferredLayer: "api", notes: "Tool execution through MCP is documented, while the current lowering still runs through the shared rax MCP client runtime." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "Tool execution through MCP is documented, while the current lowering still runs through the shared rax MCP client runtime." }
     }
   }),
   defineCapability({
@@ -306,8 +471,8 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     description: "Expose an MCP server from the local runtime/app side.",
     providerSupport: {
       openai: { status: "unsupported", notes: "No first-class MCP server hosting surface is documented in the current baseline." },
-      anthropic: { status: "documented", preferredLayer: "agent", notes: "Claude SDK docs mention custom MCP server support." },
-      deepmind: { status: "documented", preferredLayer: "agent", notes: "ADK documents both MCP consumption and exposure." }
+      anthropic: { status: "documented", preferredLayer: "agent", notes: "Claude Agent SDK exposes createSdkMcpServer() for in-process MCP server config on the agent/runtime side." },
+      deepmind: { status: "documented", preferredLayer: "agent", notes: "ADK docs mention both MCP consumption and exposure, but current rax JS baseline has not yet exposed a first-class ADK server builder." }
     }
   }),
   defineCapability({

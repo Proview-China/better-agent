@@ -17,6 +17,7 @@ export const openAIResponsesGenerateCreateDescriptor: OpenAIApiAdapterDescriptor
   OpenAIResponsesCreateParams
 > = {
   id: "openai.responses.generate.create",
+  variant: "responses",
   key: "generate.create",
   namespace: "generate",
   action: "create",
@@ -70,6 +71,7 @@ export const openAIResponsesGenerateStreamDescriptor: OpenAIApiAdapterDescriptor
   OpenAIResponsesStreamParams
 > = {
   id: "openai.responses.generate.stream",
+  variant: "responses",
   key: "generate.stream",
   namespace: "generate",
   action: "stream",

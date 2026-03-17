@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-03-16T05:11:03.212Z",
+  "provider": "openai",
+  "rows": [
+    {
+      "provider": "openai",
+      "step": "managed_registry",
+      "ok": false,
+      "model": "gpt-5.4",
+      "summary": "404 404 page not found",
+      "details": {
+        "name": "Error",
+        "status": 404,
+        "code": null
+      }
+    }
+  ]
+}

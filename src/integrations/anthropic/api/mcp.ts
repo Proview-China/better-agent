@@ -1,16 +1,66 @@
-import type { McpProviderShell } from "../../../rax/mcp-types.js";
+import type {
+  AnthropicApiNativeMcpPreparePayload,
+  McpProviderShell,
+  McpTransportConfig
+} from "../../../rax/mcp-types.js";
 
 export const ANTHROPIC_MCP_PROVIDER_SHELL: McpProviderShell = {
   id: "anthropic-mcp-api-shell",
   provider: "anthropic",
-  defaultLayer: "api",
-  supportedTransports: ["stdio", "streamable-http", "in-memory"],
+  layer: "api",
+  officialCarrier: "anthropic-api-mcp-connector",
+  carrierKind: "shared-runtime",
+  loweringMode: "shared-runtime",
+  isDefault: true,
+  supportedTransports: ["streamable-http", "in-memory"],
+  nativeSupportedTransports: ["streamable-http"],
+  nativeSupportsResources: false,
+  nativeSupportsPrompts: false,
+  nativeSupportsServe: false,
   supportsServe: false,
-  supportsResources: true,
-  supportsPrompts: true,
+  supportsResources: false,
+  supportsPrompts: false,
   notes: [
-    "Anthropic first-phase MCP is modeled as an API-first connector shell.",
-    "Messages API MCP connector is the closest official entrypoint, while shared runtime currently exposes tools/resources/prompts.",
-    "For practical local MCP interoperability, the shared runtime also accepts stdio transports under the Anthropic route."
+    "Anthropic API MCP is modeled as the official remote MCP connector surface in rax.",
+    "This API shell is remote-first and tool-first: treat it as connector wiring for MCP tool use, not as a richer Claude runtime carrier.",
+    "Resources/prompts are intentionally not claimed on this shell; in-memory transport remains enabled only for local tests and internal runtime fixtures."
   ]
 };
+
+export function buildAnthropicApiNativeMcpPayload(
+  transport: McpTransportConfig,
+  serverName: string
+): {
+  sdkPackageName: "@anthropic-ai/sdk";
+  entrypoint: "client.messages.create";
+  payload: AnthropicApiNativeMcpPreparePayload;
+} | undefined {
+  if (transport.kind !== "streamable-http") {
+    return undefined;
+  }
+
+  return {
+    sdkPackageName: "@anthropic-ai/sdk",
+    entrypoint: "client.messages.create",
+    payload: {
+      carrier: {
+        type: "anthropic-api-mcp-connector",
+        shape: "messages-mcp-connector"
+      },
+      toolsOnly: true,
+      mcp_servers: [
+        {
+          type: "url",
+          name: serverName,
+          url: transport.url
+        }
+      ],
+      tools: [
+        {
+          type: "mcp_toolset",
+          mcp_server_name: serverName
+        }
+      ]
+    }
+  };
+}

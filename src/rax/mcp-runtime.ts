@@ -41,6 +41,12 @@ interface McpConnectionRecord {
   model: string;
   layer: Exclude<SdkLayer, "auto">;
   profileId?: string;
+  shellId: string;
+  officialCarrier: string;
+  carrierKind: McpProviderShell["carrierKind"];
+  loweringMode: McpProviderShell["loweringMode"];
+  supportsResources: boolean;
+  supportsPrompts: boolean;
   client: Client;
   transportKind: McpTransportConfig["kind"];
   metadata?: Record<string, unknown>;
@@ -97,9 +103,13 @@ export class McpRuntime {
     return [...this.#connections.keys()];
   }
 
-  getProviderShell(provider: ProviderId): McpProviderShell {
-    const shell = this.#providerShells.find((entry) => entry.provider === provider);
-    if (!shell) {
+  getProviderShell(
+    provider: ProviderId,
+    layer?: SdkLayer,
+    transportKind?: McpTransportConfig["kind"]
+  ): McpProviderShell {
+    const shells = this.#providerShells.filter((entry) => entry.provider === provider);
+    if (shells.length === 0) {
       throw new MissingAdapterError(
         "mcp.connect",
         provider,
@@ -107,7 +117,26 @@ export class McpRuntime {
         `Missing MCP provider shell for ${provider}.`
       );
     }
-    return shell;
+
+    if (layer !== undefined && layer !== "auto") {
+      const exact = shells.find((entry) => entry.layer === layer);
+      if (!exact) {
+        throw new RaxRoutingError(
+          "mcp_layer_mismatch",
+          `${provider} MCP shells are registered for layers ${shells.map((entry) => entry.layer).join(", ")}, received ${layer}.`
+        );
+      }
+      return exact;
+    }
+
+    const transportMatched = transportKind === undefined
+      ? shells
+      : shells.filter((entry) => entry.supportedTransports.includes(transportKind));
+
+    return transportMatched.find((entry) => entry.isDefault)
+      ?? shells.find((entry) => entry.isDefault)
+      ?? transportMatched[0]
+      ?? shells[0]!;
   }
 
   async connect(params: {
@@ -117,17 +146,12 @@ export class McpRuntime {
     compatibilityProfileId?: string;
     input: McpConnectInput;
   }): Promise<McpConnectionSummary> {
-    const shell = this.getProviderShell(params.provider);
-    const layer = params.layer === undefined || params.layer === "auto"
-      ? shell.defaultLayer
-      : params.layer;
-
-    if (params.layer !== undefined && params.layer !== "auto" && params.layer !== shell.defaultLayer) {
-      throw new RaxRoutingError(
-        "mcp_layer_mismatch",
-        `${params.provider} MCP shell expects layer ${shell.defaultLayer}, received ${params.layer}.`
-      );
-    }
+    const shell = this.getProviderShell(
+      params.provider,
+      params.layer,
+      params.input.transport.kind
+    );
+    const layer = shell.layer;
 
     if (!shell.supportedTransports.includes(params.input.transport.kind)) {
       throw new RaxRoutingError(
@@ -160,6 +184,12 @@ export class McpRuntime {
       model: params.model,
       layer,
       profileId: params.compatibilityProfileId,
+      shellId: shell.id,
+      officialCarrier: shell.officialCarrier,
+      carrierKind: shell.carrierKind,
+      loweringMode: shell.loweringMode,
+      supportsResources: shell.supportsResources ?? false,
+      supportsPrompts: shell.supportsPrompts ?? false,
       client,
       transportKind: params.input.transport.kind,
       metadata: params.input.metadata
@@ -174,6 +204,10 @@ export class McpRuntime {
       provider: params.provider,
       model: params.model,
       layer,
+      shellId: shell.id,
+      officialCarrier: shell.officialCarrier,
+      carrierKind: shell.carrierKind,
+      loweringMode: shell.loweringMode,
       transportKind: params.input.transport.kind,
       profileId: params.compatibilityProfileId,
       serverCapabilities: client.getServerCapabilities(),
@@ -300,6 +334,7 @@ export class McpRuntime {
   }): Promise<McpListResourcesResult> {
     const record = this.getConnectionOrThrow(params.input.connectionId);
     this.assertConnectionRoute(record, params);
+    this.assertResourceSurface(record);
 
     try {
       const response = await record.client.listResources();
@@ -329,6 +364,7 @@ export class McpRuntime {
   }): Promise<McpReadResourceResult> {
     const record = this.getConnectionOrThrow(params.input.connectionId);
     this.assertConnectionRoute(record, params);
+    this.assertResourceSurface(record);
 
     try {
       const result = await record.client.readResource({ uri: params.input.uri });
@@ -352,6 +388,7 @@ export class McpRuntime {
   }): Promise<McpListPromptsResult> {
     const record = this.getConnectionOrThrow(params.input.connectionId);
     this.assertConnectionRoute(record, params);
+    this.assertPromptSurface(record);
 
     try {
       const response = await record.client.listPrompts();
@@ -383,6 +420,7 @@ export class McpRuntime {
   }): Promise<McpGetPromptResult> {
     const record = this.getConnectionOrThrow(params.input.connectionId);
     this.assertConnectionRoute(record, params);
+    this.assertPromptSurface(record);
 
     try {
       const result = await record.client.getPrompt({
@@ -399,6 +437,28 @@ export class McpRuntime {
     } catch (error) {
       throw classifyMcpError(error, "mcp_get_prompt_failed");
     }
+  }
+
+  private assertResourceSurface(record: McpConnectionRecord): void {
+    if (record.supportsResources) {
+      return;
+    }
+
+    throw new RaxRoutingError(
+      "mcp_surface_unsupported",
+      `MCP connection ${record.id} on shell ${record.shellId} does not expose resources in the current carrier model.`
+    );
+  }
+
+  private assertPromptSurface(record: McpConnectionRecord): void {
+    if (record.supportsPrompts) {
+      return;
+    }
+
+    throw new RaxRoutingError(
+      "mcp_surface_unsupported",
+      `MCP connection ${record.id} on shell ${record.shellId} does not expose prompts in the current carrier model.`
+    );
   }
 
   async call(params: {
@@ -490,6 +550,10 @@ export class McpRuntime {
       provider: record.provider,
       model: record.model,
       layer: record.layer,
+      shellId: record.shellId,
+      officialCarrier: record.officialCarrier,
+      carrierKind: record.carrierKind,
+      loweringMode: record.loweringMode,
       transportKind: record.transportKind,
       profileId: record.profileId,
       metadata: record.metadata

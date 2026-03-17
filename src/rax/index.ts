@@ -25,7 +25,11 @@ export type {
 export type {
   SkillActivateInput,
   SkillActivationPlan,
+  SkillActivationPlanLike,
+  SkillActivationPayload,
   SkillBindInput,
+  SkillBindingDetails,
+  SkillBindingDetailsInput,
   SkillBindingMode,
   SkillContainer,
   SkillContainerCreateInput,
@@ -40,12 +44,44 @@ export type {
   SkillLoadingPolicy,
   SkillLoadLocalInput,
   SkillLocalPackage,
+  SkillManagedGetInput,
+  SkillManagedContentGetInput,
+  SkillManagedListInput,
+  SkillManagedPublishInput,
+  SkillManagedRemoveInput,
+  SkillMountInput,
+  SkillMountResult,
   SkillProviderBinding,
+  SkillProviderBindingLike,
   SkillResourceFile,
   SkillResourceKind,
   SkillSourceKind,
   SkillSourceRef,
+  SkillSetDefaultVersionInput,
+  SkillUploadBundle,
+  SkillUploadFile,
+  SkillUseInput,
+  SkillUseResult,
+  SkillVersionGetInput,
+  SkillVersionContentGetInput,
+  SkillVersionListInput,
+  SkillVersionPublishInput,
+  SkillVersionRemoveInput,
 } from "./skill-types.js";
+export type {
+  OpenAILocalShellSkillReferenceOverrides,
+  OpenAIInlineShellSkillOverrides,
+  OpenAIHostedShellEnvironmentOverrides,
+  OpenAIHostedShellSkillLifecycleOverrides
+} from "../integrations/openai/api/tools/skills/carrier.js";
+export type {
+  AnthropicFilesystemSkillBindingOverrides,
+  AnthropicManagedSkillBindingOverrides
+} from "../integrations/anthropic/api/tools/skills/carrier.js";
+export type {
+  DeepMindLocalSkillReferenceOverrides,
+  DeepMindCodeDefinedSkillReferenceOverrides
+} from "../integrations/deepmind/api/tools/skills/carrier.js";
 export type {
   AdapterSdkSurface,
   CapabilityAdapterDescriptor,
@@ -53,23 +89,29 @@ export type {
   PreparedInvocation
 } from "./contracts.js";
 export type {
+  McpCarrierKind,
   McpCallInput,
   McpCallResult,
   McpConnectInput,
   McpConnectionSummary,
   McpGetPromptInput,
   McpGetPromptResult,
+  McpLoweringMode,
   McpListPromptsInput,
   McpListPromptsResult,
   McpListResourcesInput,
   McpListResourcesResult,
   McpListToolsInput,
   McpListToolsResult,
+  McpNativePrepareResult,
   McpProviderShell,
   McpPromptSummary,
   McpReadResourceInput,
   McpReadResourceResult,
   McpResourceSummary,
+  McpServeInput,
+  McpServeResult,
+  McpServeToolDefinition,
   McpRuntimeOptions,
   McpSessionCallInput,
   McpSessionGetPromptInput,
@@ -83,6 +125,8 @@ export type {
   AnthropicCompatibilityProfile,
   CompatibilityProfile,
   DeepMindCompatibilityProfile,
+  McpCompatibilityProfile,
+  McpLayerCompatibility,
   OpenAICompatibilityProfile
 } from "./compatibility.js";
 
@@ -108,6 +152,9 @@ export {
 export type { WebSearchRuntimeLike } from "./websearch-runtime.js";
 export { WebSearchRuntime } from "./websearch-runtime.js";
 export { createConfiguredRaxFacade, createRaxFacade } from "./facade.js";
+export { composeNativeMcpInvocation } from "./mcp-native-compose.js";
+export type { McpNativeRuntimeLike } from "./mcp-native-runtime.js";
+export { McpNativeRuntime } from "./mcp-native-runtime.js";
 export { McpRuntime, toMcpCapabilityResult } from "./mcp-runtime.js";
 export { SkillRuntime } from "./skill-runtime.js";
 export { CapabilityRouter, createCapabilityRequest } from "./router.js";
@@ -140,9 +187,11 @@ export {
 export {
   defaultCapabilityRouter,
   defaultMcpRuntime,
+  defaultMcpNativeRuntime,
   defaultSkillRuntime,
   localGatewayCapabilityRouter,
   localGatewayMcpRuntime,
+  localGatewayMcpNativeRuntime,
   localGatewaySkillRuntime,
   rax,
   raxLocal

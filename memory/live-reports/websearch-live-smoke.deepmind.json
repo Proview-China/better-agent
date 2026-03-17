@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-03-16T05:10:41.419Z",
+  "provider": "deepmind",
+  "rows": [
+    {
+      "provider": "deepmind",
+      "step": "native_plain",
+      "ok": true,
+      "model": "gemini-3.1-pro-preview",
+      "summary": "OK"
+    },
+    {
+      "provider": "deepmind",
+      "step": "native_search",
+      "ok": true,
+      "model": "gemini-3.1-pro-preview",
+      "summary": "ai.google.dev"
+    },
+    {
+      "provider": "deepmind",
+      "step": "rax_websearch",
+      "ok": true,
+      "model": "gemini-3.1-pro-preview",
+      "summary": "The official documentation",
+      "details": {
+        "status": "success",
+        "sources": 0,
+        "citations": 0
+      }
+    }
+  ]
+}

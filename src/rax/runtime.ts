@@ -1,6 +1,7 @@
-import { LOCAL_GATEWAY_COMPATIBILITY_PROFILES } from "./compatibility.js";
+import { DEFAULT_COMPATIBILITY_PROFILES, LOCAL_GATEWAY_COMPATIBILITY_PROFILES } from "./compatibility.js";
 import { THIN_CAPABILITY_ADAPTERS } from "./adapters.js";
-import { createConfiguredRaxFacade, createRaxFacade } from "./facade.js";
+import { createConfiguredRaxFacade } from "./facade.js";
+import { McpNativeRuntime } from "./mcp-native-runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
 import { CapabilityRouter } from "./router.js";
 import { SkillRuntime } from "./skill-runtime.js";
@@ -10,14 +11,16 @@ export const defaultCapabilityRouter = new CapabilityRouter(
 );
 
 export const defaultMcpRuntime = new McpRuntime();
+export const defaultMcpNativeRuntime = new McpNativeRuntime();
 export const defaultSkillRuntime = new SkillRuntime();
 
-export const rax = createRaxFacade(
+export const rax = createConfiguredRaxFacade(
   defaultCapabilityRouter,
-  undefined,
+  DEFAULT_COMPATIBILITY_PROFILES,
   defaultMcpRuntime,
   undefined,
-  defaultSkillRuntime
+  defaultSkillRuntime,
+  defaultMcpNativeRuntime
 );
 
 export const localGatewayCapabilityRouter = new CapabilityRouter(
@@ -25,6 +28,7 @@ export const localGatewayCapabilityRouter = new CapabilityRouter(
 );
 
 export const localGatewayMcpRuntime = new McpRuntime();
+export const localGatewayMcpNativeRuntime = new McpNativeRuntime();
 export const localGatewaySkillRuntime = new SkillRuntime();
 
 export const raxLocal = createConfiguredRaxFacade(
@@ -32,5 +36,6 @@ export const raxLocal = createConfiguredRaxFacade(
   LOCAL_GATEWAY_COMPATIBILITY_PROFILES,
   localGatewayMcpRuntime,
   undefined,
-  localGatewaySkillRuntime
+  localGatewaySkillRuntime,
+  localGatewayMcpNativeRuntime
 );

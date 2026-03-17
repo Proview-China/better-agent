@@ -1,4 +1,31 @@
 import type { ProviderId, SdkLayer } from "./types.js";
+import type { PreparedInvocation } from "./contracts.js";
+import type {
+  AnthropicApiSkillActivationPayload,
+  AnthropicFilesystemSkillBinding,
+  AnthropicFilesystemSkillBindingOverrides,
+  AnthropicManagedSkillBinding,
+  AnthropicManagedSkillBindingOverrides,
+  AnthropicManagedSkillReference,
+  AnthropicSdkSkillActivationPayload
+} from "../integrations/anthropic/api/tools/skills/carrier.js";
+import type {
+  DeepMindCodeDefinedSkillReference,
+  DeepMindCodeDefinedSkillReferenceOverrides,
+  DeepMindLocalSkillReference,
+  DeepMindLocalSkillReferenceOverrides,
+  DeepMindSkillToolsetPayload
+} from "../integrations/deepmind/api/tools/skills/carrier.js";
+import type {
+  OpenAIHostedShellSkillLifecycle,
+  OpenAIHostedShellSkillLifecycleOverrides,
+  OpenAIHostedShellSkillReference,
+  OpenAIInlineShellSkillDefinition,
+  OpenAIInlineShellSkillOverrides,
+  OpenAILocalShellSkillReference,
+  OpenAILocalShellSkillReferenceOverrides,
+  OpenAIShellToolPayload
+} from "../integrations/openai/api/tools/skills/carrier.js";
 
 export type SkillSourceKind = "local";
 
@@ -70,18 +97,84 @@ export interface SkillLedger {
 
 export type SkillBindingMode =
   | "openai-local-shell"
+  | "openai-inline-shell"
   | "openai-hosted-shell"
   | "anthropic-sdk-filesystem"
   | "anthropic-api-managed"
   | "google-adk-local"
   | "google-adk-code-defined";
 
-export interface SkillProviderBinding {
+type LooseRecord<T> = T | Record<string, unknown>;
+
+export interface OpenAILocalSkillProviderBinding {
   provider: ProviderId;
-  mode: SkillBindingMode;
+  mode: "openai-local-shell";
   layer?: Exclude<SdkLayer, "auto">;
-  details: Record<string, unknown>;
+  details: Record<string, unknown> & LooseRecord<OpenAILocalShellSkillReference>;
 }
+
+export interface OpenAIHostedSkillProviderBinding {
+  provider: ProviderId;
+  mode: "openai-hosted-shell";
+  layer?: Exclude<SdkLayer, "auto">;
+  details: Record<string, unknown> & LooseRecord<OpenAIHostedShellSkillLifecycle>;
+}
+
+export interface OpenAIInlineSkillProviderBinding {
+  provider: ProviderId;
+  mode: "openai-inline-shell";
+  layer?: Exclude<SdkLayer, "auto">;
+  details: Record<string, unknown> & LooseRecord<OpenAIInlineShellSkillDefinition>;
+}
+
+export interface AnthropicSdkSkillProviderBinding {
+  provider: ProviderId;
+  mode: "anthropic-sdk-filesystem";
+  layer?: Exclude<SdkLayer, "auto">;
+  details: Record<string, unknown> & LooseRecord<AnthropicFilesystemSkillBinding>;
+}
+
+export interface AnthropicApiSkillProviderBinding {
+  provider: ProviderId;
+  mode: "anthropic-api-managed";
+  layer?: Exclude<SdkLayer, "auto">;
+  details: Record<string, unknown> & LooseRecord<AnthropicManagedSkillBinding>;
+}
+
+export interface DeepMindLocalSkillProviderBinding {
+  provider: ProviderId;
+  mode: "google-adk-local";
+  layer?: Exclude<SdkLayer, "auto">;
+  details: Record<string, unknown> & LooseRecord<DeepMindLocalSkillReference>;
+}
+
+export interface DeepMindCodeDefinedSkillProviderBinding {
+  provider: ProviderId;
+  mode: "google-adk-code-defined";
+  layer?: Exclude<SdkLayer, "auto">;
+  details: Record<string, unknown> & LooseRecord<DeepMindCodeDefinedSkillReference>;
+}
+
+export type SkillProviderBinding =
+  | OpenAILocalSkillProviderBinding
+  | OpenAIInlineSkillProviderBinding
+  | OpenAIHostedSkillProviderBinding
+  | AnthropicSdkSkillProviderBinding
+  | AnthropicApiSkillProviderBinding
+  | DeepMindLocalSkillProviderBinding
+  | DeepMindCodeDefinedSkillProviderBinding;
+
+export type SkillBindingDetails =
+  SkillProviderBinding["details"];
+
+export type SkillBindingDetailsInput =
+  | OpenAILocalShellSkillReferenceOverrides
+  | OpenAIInlineShellSkillOverrides
+  | OpenAIHostedShellSkillLifecycleOverrides
+  | AnthropicFilesystemSkillBindingOverrides
+  | AnthropicManagedSkillBindingOverrides
+  | DeepMindLocalSkillReferenceOverrides
+  | DeepMindCodeDefinedSkillReferenceOverrides;
 
 export interface SkillContainer {
   descriptor: SkillDescriptor;
@@ -131,27 +224,177 @@ export interface SkillBindInput {
   provider: ProviderId;
   mode?: SkillBindingMode;
   layer?: Exclude<SdkLayer, "auto">;
-  details?: Record<string, unknown>;
+  details?: SkillBindingDetailsInput;
 }
 
-export interface SkillActivationPlan {
+export interface SkillActivationPlanBase {
   provider: ProviderId;
   mode: SkillBindingMode;
   layer?: Exclude<SdkLayer, "auto">;
-  officialCarrier:
-    | "openai-shell-environment"
-    | "anthropic-sdk-filesystem-skill"
-    | "anthropic-api-container-skills"
-    | "google-adk-skill-toolset";
-  payload: Record<string, unknown>;
   entry: SkillEntryDocument;
   resources?: SkillResourceFile[];
   helpers?: SkillHelperFile[];
 }
+
+export interface OpenAISkillActivationPlan extends SkillActivationPlanBase {
+  provider: ProviderId;
+  mode: "openai-local-shell" | "openai-inline-shell" | "openai-hosted-shell";
+  officialCarrier: "openai-shell-environment";
+  payload: Record<string, unknown> & LooseRecord<OpenAIShellToolPayload>;
+}
+
+export interface AnthropicSdkSkillActivationPlan extends SkillActivationPlanBase {
+  provider: ProviderId;
+  mode: "anthropic-sdk-filesystem";
+  officialCarrier: "anthropic-sdk-filesystem-skill";
+  payload: Record<string, unknown> & LooseRecord<AnthropicSdkSkillActivationPayload>;
+}
+
+export interface AnthropicApiSkillActivationPlan extends SkillActivationPlanBase {
+  provider: ProviderId;
+  mode: "anthropic-api-managed";
+  officialCarrier: "anthropic-api-container-skills";
+  payload: Record<string, unknown> & LooseRecord<AnthropicApiSkillActivationPayload>;
+}
+
+export interface DeepMindSkillActivationPlan extends SkillActivationPlanBase {
+  provider: ProviderId;
+  mode: "google-adk-local" | "google-adk-code-defined";
+  officialCarrier: "google-adk-skill-toolset";
+  payload: Record<string, unknown> & LooseRecord<DeepMindSkillToolsetPayload>;
+}
+
+export type SkillActivationPayload =
+  | OpenAIShellToolPayload
+  | AnthropicSdkSkillActivationPayload
+  | AnthropicApiSkillActivationPayload
+  | DeepMindSkillToolsetPayload;
+
+export type SkillActivationPlan =
+  | OpenAISkillActivationPlan
+  | AnthropicSdkSkillActivationPlan
+  | AnthropicApiSkillActivationPlan
+  | DeepMindSkillActivationPlan;
+
+export type SkillProviderBindingLike =
+  | SkillProviderBinding
+  | {
+      provider: ProviderId;
+      mode: SkillBindingMode;
+      layer?: Exclude<SdkLayer, "auto">;
+      details: SkillBindingDetailsInput;
+    };
+
+export type SkillActivationPlanLike =
+  | SkillActivationPlan
+  | {
+      provider: ProviderId;
+      mode: SkillBindingMode;
+      layer?: Exclude<SdkLayer, "auto">;
+      officialCarrier:
+        | "openai-shell-environment"
+        | "anthropic-sdk-filesystem-skill"
+        | "anthropic-api-container-skills"
+        | "google-adk-skill-toolset";
+      payload: Record<string, unknown>;
+      entry: SkillEntryDocument;
+      resources?: SkillResourceFile[];
+      helpers?: SkillHelperFile[];
+    };
 
 export interface SkillActivateInput {
   container: SkillContainer;
   provider: ProviderId;
   includeResources?: boolean;
   includeHelpers?: boolean;
+}
+
+export interface SkillUseInput extends SkillContainerCreateInput {
+  mode?: SkillBindingMode;
+  layer?: Exclude<SdkLayer, "auto">;
+  details?: SkillBindingDetailsInput;
+  includeResources?: boolean;
+  includeHelpers?: boolean;
+}
+
+export interface SkillMountInput {
+  container: SkillContainer;
+  includeResources?: boolean;
+  includeHelpers?: boolean;
+}
+
+export interface SkillUseResult {
+  container: SkillContainer;
+  activation: SkillActivationPlan;
+  invocation: PreparedInvocation<Record<string, unknown>>;
+}
+
+export interface SkillMountResult {
+  container: SkillContainer;
+  activation: SkillActivationPlan;
+  invocation: PreparedInvocation<Record<string, unknown>>;
+}
+
+export interface SkillUploadFile {
+  path: string;
+  relativePath: string;
+  role: "entry" | "resource" | "helper";
+}
+
+export interface SkillUploadBundle {
+  rootDir: string;
+  files: SkillUploadFile[];
+}
+
+export interface SkillManagedListInput {
+  order?: "asc" | "desc";
+  source?: "custom" | "anthropic";
+}
+
+export interface SkillManagedGetInput {
+  skillId: string;
+}
+
+export interface SkillManagedContentGetInput {
+  skillId: string;
+}
+
+export interface SkillManagedPublishInput extends SkillContainerCreateInput {
+  container?: SkillContainer;
+  displayTitle?: string | null;
+}
+
+export interface SkillManagedRemoveInput {
+  skillId: string;
+}
+
+export interface SkillVersionListInput {
+  skillId: string;
+  order?: "asc" | "desc";
+}
+
+export interface SkillVersionGetInput {
+  skillId: string;
+  version: string;
+}
+
+export interface SkillVersionContentGetInput {
+  skillId: string;
+  version: string;
+}
+
+export interface SkillVersionPublishInput extends SkillContainerCreateInput {
+  container?: SkillContainer;
+  skillId: string;
+  setDefault?: boolean;
+}
+
+export interface SkillVersionRemoveInput {
+  skillId: string;
+  version: string;
+}
+
+export interface SkillSetDefaultVersionInput {
+  skillId: string;
+  version: string;
 }

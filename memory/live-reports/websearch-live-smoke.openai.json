@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-03-16T05:14:32.322Z",
+  "provider": "openai",
+  "rows": [
+    {
+      "provider": "openai",
+      "step": "native_plain",
+      "ok": true,
+      "model": "gpt-5.4",
+      "summary": "OK"
+    },
+    {
+      "provider": "openai",
+      "step": "native_search",
+      "ok": true,
+      "model": "gpt-5.4",
+      "summary": "platform.openai.com/docs",
+      "details": {
+        "outputCount": 1
+      }
+    },
+    {
+      "provider": "openai",
+      "step": "rax_websearch",
+      "ok": true,
+      "model": "gpt-5.4",
+      "summary": "OpenAI’s official developer documentation is on **developers.openai.com** (with API docs also served on **platform.openai.com/docs**) according to OpenAI’s deve",
+      "details": {
+        "status": "success",
+        "sources": 18,
+        "citations": 0
+      }
+    },
+    {
+      "provider": "openai",
+      "step": "native_plain",
+      "ok": true,
+      "model": "gpt-5",
+      "summary": "OK"
+    },
+    {
+      "provider": "openai",
+      "step": "native_search",
+      "ok": true,
+      "model": "gpt-5",
+      "summary": "platform.openai.com",
+      "details": {
+        "outputCount": 2
+      }
+    },
+    {
+      "provider": "openai",
+      "step": "rax_websearch",
+      "ok": true,
+      "model": "gpt-5",
+      "summary": "The official primary documentation domain for OpenAI’s developer/API docs is:\n\n**`platform.openai.com`**\n\nFor example, OpenAI’s own Help Center points to the AP",
+      "details": {
+        "status": "success",
+        "sources": 19,
+        "citations": 1
+      }
+    }
+  ]
+}

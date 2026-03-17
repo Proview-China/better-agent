@@ -36,7 +36,15 @@ function normalizeOpenAIBaseURL(input: string): string {
 }
 
 function parseEnvFile(filePath: string): Record<string, string> {
-  const contents = readFileSync(filePath, "utf8");
+  let contents = "";
+  try {
+    contents = readFileSync(filePath, "utf8");
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return {};
+    }
+    throw error;
+  }
   const variables: Record<string, string> = {};
 
   for (const rawLine of contents.split(/\r?\n/u)) {
@@ -58,6 +66,18 @@ function parseEnvFile(filePath: string): Record<string, string> {
   return variables;
 }
 
+function mergeProcessEnv(values: Record<string, string>): Record<string, string> {
+  const merged = { ...values };
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string" && value.length > 0) {
+      merged[key] = value;
+    }
+  }
+
+  return merged;
+}
+
 function requireField(source: Record<string, string>, field: string): string {
   const value = source[field];
   if (!value) {
@@ -67,9 +87,9 @@ function requireField(source: Record<string, string>, field: string): string {
 }
 
 export function loadLiveProviderConfig(
-  envPath = resolve(process.cwd(), ".env.local")
+  envPath = process.env.PRAXIS_LIVE_ENV_FILE ?? resolve(process.cwd(), ".env.local")
 ): LiveProviderConfig {
-  const values = parseEnvFile(envPath);
+  const values = mergeProcessEnv(parseEnvFile(envPath));
 
   const anthropicAltConfigured =
     values.ANTHROPIC_ALT_API_KEY !== undefined &&

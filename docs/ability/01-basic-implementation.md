@@ -355,6 +355,21 @@
 - `web` / `fetch` 偏 `thin`
 - `ground` 偏 `thick`
 
+当前阶段收口说明：
+- 对上层，当前先收成一个自治入口：
+  - `rax.websearch.create()`
+- 对内部，仍保留 canonical 语义：
+  - `search.web`
+  - `search.fetch`
+  - `search.ground`
+- 当前最佳实践已经明确：
+  - OpenAI：`responses + web_search`
+  - Anthropic：`agent / Claude Code`
+  - DeepMind / Gemini：`models.generateContent + googleSearch`
+- 当前结论不是“任意上游和任意模型都等价可用”，而是：
+  - 要按 `provider + upstream + model + layer` 组合声明支持矩阵
+  - 对 unofficial / gateway upstream 继续通过 compatibility profile 收口
+
 ### 7.6 `code`
 
 作用：

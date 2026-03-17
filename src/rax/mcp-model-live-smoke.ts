@@ -50,119 +50,118 @@ function extractTextContent(content: unknown): string {
 
 async function runGptViaResponsesLoop(): Promise<SmokeResult> {
   const config = loadLiveProviderConfig();
+  const modelCandidates = Array.from(new Set([config.openai.model, "gpt-5.4"]));
   const client = new OpenAI({
     apiKey: config.openai.apiKey,
     baseURL: config.openai.baseURL
   });
 
-  const session = await rax.mcp.use({
-    provider: "openai",
-    model: config.openai.model,
-    input: {
-      connectionId: "gpt-mcp-model-live-smoke",
-      transport: {
-        kind: "stdio",
-        command: "npx",
-        args: PLAYWRIGHT_ARGS
+  for (const model of modelCandidates) {
+    const session = await rax.mcp.use({
+      provider: "openai",
+      model,
+      input: {
+        connectionId: `gpt-mcp-model-live-smoke-${model}`,
+        transport: {
+          kind: "stdio",
+          command: "npx",
+          args: PLAYWRIGHT_ARGS
+        }
       }
-    }
-  });
+    });
 
-  try {
-    const allTools = await session.tools();
-    const tools: FunctionTool[] = allTools.tools
-      .filter((tool) => ["browser_navigate", "browser_snapshot"].includes(tool.name))
-      .map((tool) => ({
-        type: "function" as const,
-        name: tool.name,
-        description: tool.description ?? "",
-        strict: false,
-        parameters:
-          tool.inputSchema ?? {
-            type: "object",
-            properties: {},
-            additionalProperties: false
-          }
-      }));
-
-    const transcript: ResponseInputItem[] = [];
-    const reasoning = config.openai.reasoningEffort
-      ? ({
-          effort: config.openai.reasoningEffort
-        } as const)
-      : undefined;
-
-    for (let step = 0; step < 6; step += 1) {
-      const response = await client.responses.create({
-        model: config.openai.model,
-        reasoning,
-        input:
-          transcript.length === 0
-            ? PROMPT
-            : [{ role: "user", content: PROMPT }, ...transcript],
-        tools
-      } as never);
-
-      const functionCalls = (response.output ?? []).filter(
-        (item): item is {
-          type: "function_call";
-          call_id: string;
-          name: string;
-          arguments: string;
-        } => item.type === "function_call"
-      );
-
-      if (functionCalls.length === 0) {
-        const answer = (response.output_text ?? "").trim();
-        return answer === "Example Domain"
-          ? {
-              name: "gpt:gmn:responses+mcp",
-              status: "pass",
-              details: `final answer: ${answer}`
+    try {
+      const allTools = await session.tools();
+      const tools: FunctionTool[] = allTools.tools
+        .filter((tool) => ["browser_navigate", "browser_snapshot"].includes(tool.name))
+        .map((tool) => ({
+          type: "function" as const,
+          name: tool.name,
+          description: tool.description ?? "",
+          strict: false,
+          parameters:
+            tool.inputSchema ?? {
+              type: "object",
+              properties: {},
+              additionalProperties: false
             }
-          : {
-              name: "gpt:gmn:responses+mcp",
-              status: "fail",
-              details: `unexpected final answer: ${answer || "<empty>"}`
-            };
-      }
+        }));
 
-      for (const call of functionCalls) {
-        const result = await session.call({
-          toolName: call.name,
-          arguments: call.arguments ? JSON.parse(call.arguments) : {}
-        });
+      const transcript: ResponseInputItem[] = [];
+      const reasoning = config.openai.reasoningEffort
+        ? ({
+            effort: config.openai.reasoningEffort
+          } as const)
+        : undefined;
 
-        transcript.push({
-          type: "function_call",
-          call_id: call.call_id,
-          name: call.name,
-          arguments: call.arguments ?? "{}"
-        } as ResponseInputItem);
-        transcript.push({
-          type: "function_call_output",
-          call_id: call.call_id,
-          output:
-            extractTextContent(result.content) ||
-            JSON.stringify(result.structuredContent ?? result.raw ?? {})
-        } as ResponseInputItem);
+      for (let step = 0; step < 6; step += 1) {
+        const response = await client.responses.create({
+          model,
+          reasoning,
+          input:
+            transcript.length === 0
+              ? PROMPT
+              : [{ role: "user", content: PROMPT }, ...transcript],
+          tools
+        } as never);
+
+        const functionCalls = (response.output ?? []).filter(
+          (item): item is {
+            type: "function_call";
+            call_id: string;
+            name: string;
+            arguments: string;
+          } => item.type === "function_call"
+        );
+
+        if (functionCalls.length === 0) {
+          const answer = (response.output_text ?? "").trim();
+          return answer === "Example Domain"
+            ? {
+                name: "gpt:gmn:responses+mcp",
+                status: "pass",
+                details: `model ${model} final answer: ${answer}`
+              }
+            : {
+                name: "gpt:gmn:responses+mcp",
+                status: "fail",
+                details: `model ${model} returned unexpected answer: ${answer || "<empty>"}`
+              };
+        }
+
+        for (const call of functionCalls) {
+          const result = await session.call({
+            toolName: call.name,
+            arguments: call.arguments ? JSON.parse(call.arguments) : {}
+          });
+
+          transcript.push({
+            type: "function_call",
+            call_id: call.call_id,
+            name: call.name,
+            arguments: call.arguments ?? "{}"
+          } as ResponseInputItem);
+          transcript.push({
+            type: "function_call_output",
+            call_id: call.call_id,
+            output:
+              extractTextContent(result.content) ||
+              JSON.stringify(result.structuredContent ?? result.raw ?? {})
+          } as ResponseInputItem);
+        }
       }
+    } catch {
+      // Try the next known-good model candidate.
+    } finally {
+      await session.disconnect().catch(() => undefined);
     }
-
-    return {
-      name: "gpt:gmn:responses+mcp",
-      status: "fail",
-      details: "response loop exceeded maximum steps"
-    };
-  } catch (error) {
-    return {
-      name: "gpt:gmn:responses+mcp",
-      status: "fail",
-      details: error instanceof Error ? error.message : String(error)
-    };
-  } finally {
-    await session.disconnect().catch(() => undefined);
   }
+
+  return {
+    name: "gpt:gmn:responses+mcp",
+    status: "fail",
+    details: "all configured OpenAI model candidates failed; gmn should prefer gpt-5.4"
+  };
 }
 
 async function runGeminiViaMcpTool(): Promise<SmokeResult> {

@@ -16,8 +16,12 @@
     "test": "npm run build && node --test dist/**/*.test.js",
     "smoke:thin:live": "tsx src/rax/live-smoke.ts",
     "smoke:websearch:live": "tsx src/rax/websearch-live-smoke.ts",
+    "smoke:skill:live": "tsx src/rax/skill-live-smoke.ts",
+    "smoke:skill:execution:live": "tsx src/rax/skill-execution-live-smoke.ts",
+    "report:skill:capability": "tsx src/rax/skill-capability-report.ts",
     "smoke:mcp:playwright": "tsx src/rax/mcp-playwright-smoke.ts",
     "smoke:mcp:models": "tsx src/rax/mcp-model-live-smoke.ts",
+    "smoke:mcp:native:live": "tsx src/rax/mcp-native-live-smoke.ts",
     "start": "node dist/index.js"
   },
   "devDependencies": {

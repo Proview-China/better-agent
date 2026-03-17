@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-03-16T05:09:33.545Z",
+  "provider": "anthropic",
+  "rows": [
+    {
+      "provider": "anthropic",
+      "step": "native_plain",
+      "ok": true,
+      "model": "claude-opus-4-6-thinking",
+      "summary": "{\"type\":\"thinking\",\"thinking\":\"OK\",\"signature\":\"EsYFCkYICxgCKkAraxnr7ahgx+uDvj42DPpXW3JUKH3f46/am7vW64IEC96gOGqD7lFtjymR"
+    },
+    {
+      "provider": "anthropic",
+      "step": "native_search",
+      "ok": true,
+      "model": "claude-opus-4-6-thinking",
+      "summary": "{\"type\":\"thinking\",\"thinking\":\"anthropic.com\",\"signature\":\"EukCCkgICxABGAIqQO+u0fe7JHc0zzlstiQfw++I4x3KTKpnL2N7gm3v36nU3nScOkpHb1g+nkYx2/AiOm2t5BLHYUK/joorbLrjL"
+    },
+    {
+      "provider": "anthropic",
+      "step": "rax_websearch",
+      "ok": true,
+      "model": "claude-opus-4-6-thinking",
+      "summary": "Anthropic 的官方文档域名是 **docs.anthropic.com**。",
+      "details": {
+        "status": "success",
+        "sources": 0,
+        "citations": 0
+      }
+    }
+  ]
+}

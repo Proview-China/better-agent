@@ -1,6 +1,6 @@
 # Current Context
 
-更新时间：2026-03-15
+更新时间：2026-03-16
 
 ## 当前阶段
 
@@ -29,29 +29,306 @@
   - `toWebSearchCapabilityResult()`
   - `toWebSearchFailureResult()`
 - 已补真实 `rax.websearch.create()` smoke，当前 `.env.local` 下结论更细化了：
-  - OpenAI route on `gmn.chuangzuoli.com/v1` 可正常承接原生 web search，但当前可用模型是 `gpt-5.4`
-  - 同一路由下 `gpt-5` 仍返回 `502`
-  - Anthropic route 不是完全不可用：
+  - OpenAI route on `gmn.chuangzuoli.com/v1` 可正常承接原生 web search；当前最新 smoke 里 `gpt-5.4` 与 `gpt-5` 都已成功
+  - Anthropic route on `viewpro.top` 已进一步收口：
     - `.env.local` 里的 `claude-opus-4.6-thinking` 在当前主上游会 `503`
     - 同一路由下 `claude-opus-4-6-thinking` 可跑普通 `messages.create`
-    - 但 web search 行为不稳定，常返回 `tool_use` 未闭环或异常防御性回答
-  - DeepMind route 当前对 `interactions` 返回 `404`
+    - `messages + web_search` 这条 API server-tool 路不稳定
+    - 但切到 `agent/Claude Code` 路后，`rax.websearch.create()` 已能稳定返回结果
+  - DeepMind/Gemini 也已细化：
+    - 当前 `.env.local` 里的 `gemini-3-flash` 在主上游会因 channel 不可用而 `503`
+    - 同一路由下只把模型切到 `gemini-3.1-pro-preview` 后：
+      - 普通 `generateContent` 可用
+      - `googleSearch` 也可用
+      - `rax.websearch.create()` 已成功返回结果
+    - 说明 Gemini 这条在“正确模型 + 正确 SDK 调用”下，已经具备 citation-grade grounding 的基础
+  - live smoke 配置现在支持：
+    - 进程环境覆盖 `.env.local`
+    - `PRAXIS_LIVE_ENV_FILE`
+    - 单 provider smoke 默认写入 provider 级 report，避免顺序实验互相覆盖
+  - `skill` 现在也已有第一版 execution smoke：
+    - `npm run smoke:skill:execution:live`
+    - 当前重点不再只是 `/skills` registry，而是“skill carrier 真挂到请求上以后，上游会不会承接”
+    - 当前已知 execution 事实：
+      - OpenAI inline skill 真执行在当前 route 上返回 `502`
+      - Anthropic prebuilt skill (`pptx`) 在 `claude-opus-4-6-thinking` 下虽可请求成功，但当前返回明确表明 skill tool 并未真正可用
+      - DeepMind 当前仍保持 truthful skip，尚未宣称 JS baseline 下已有统一 skill execution runtime
 - 当前重点已从前一阶段的 `search.ground` / `MCP` 收口，切换到 `skill` 薄承载层启动：
   - `skill` 现在明确回收到 infra/adapter 层，目标是贴着 OpenAI / Anthropic / Google ADK 的官方 skill carrier 做统一接入
   - 更复杂的能力组织、上下文治理与长期演化，继续放回包装机架构、Context Manager、policy、ledger 等上层部件
   - 第一批代码骨架已落地：
     - `src/rax/skill-runtime.ts`
     - `src/rax/skill-types.ts`
+    - provider-specific skill carrier builders under `src/integrations/*/api/tools/skills/`
     - `rax.skill.loadLocal()`
     - `rax.skill.define()`
     - `rax.skill.containerCreate()`
     - `rax.skill.discover()`
+    - `rax.skill.list()`
+    - `rax.skill.get()`
+    - `rax.skill.publish()`
+    - `rax.skill.remove()`
+    - `rax.skill.listVersions()`
+    - `rax.skill.getVersion()`
+    - `rax.skill.getContent()`
+    - `rax.skill.getVersionContent()`
+    - `rax.skill.publishVersion()`
+    - `rax.skill.removeVersion()`
+    - `rax.skill.setDefaultVersion()`
+    - `npm run smoke:skill:live`
+    - `npm run report:skill:capability`
     - `rax.skill.bind()`
     - `rax.skill.activate()`
+    - `rax.skill.prepare()`
+    - `rax.skill.use()`
+    - `rax.skill.mount()`
+    - `skill` 已进入统一 capability registry / 词表：
+      - `skill.define`
+      - `skill.discover`
+      - `skill.list`
+      - `skill.read`
+      - `skill.create`
+      - `skill.update`
+      - `skill.remove`
+      - `skill.bind`
+      - `skill.activate`
+      - `skill.use`
+      - `skill.load`
+  - `skill` 当前又向“更真实转译官方 SDK”推进了一步：
+    - `prepare()` 现在会输出更接近官方 SDK 的 `PreparedInvocation`
+    - `use()` 现在能从 `source` 直接走到官方 carrier activation
+    - `mount()` 现在能从已有 container 直接得到 activation + prepared invocation
+    - OpenAI / Anthropic / Google 的 skill carrier payload 已拆到各自 integration builder
+    - OpenAI hosted shell 现在更贴近官方 Responses `skill_reference` attachment 形状：
+      - `version` 改为可选
+      - 不再把本地 descriptor 版本伪装成 hosted skill version
+      - hosted lifecycle 元数据与真正 attach 到 shell 的引用已分开
+    - Anthropic API managed skill 现在更贴近官方 beta messages / beta.skills：
+      - managed skill 默认按 `custom` skill 处理
+      - `version` 改为可选
+      - `code_execution` tool 与 beta header 组合进入 binding / activation
+    - managed lifecycle prepared invocation 已开始统一：
+      - OpenAI / Anthropic 现在都可通过 `rax.skill` 公共接口准备 managed registry 调用
+      - 当前已支持：
+        - `list`
+        - `get`
+        - `publish`
+        - `remove`
+        - `listVersions`
+        - `getVersion`
+        - `publishVersion`
+      - OpenAI 额外支持：
+        - `setDefaultVersion`
+      - Google ADK 当前对 hosted registry lifecycle 明确报 unsupported
+    - managed lifecycle compatibility/profile 现在也已开始统一：
+      - `raxLocal` 会直接阻断 OpenAI / Anthropic / DeepMind gateway profile 上不该假设存在的 skill registry 动作
+      - 不再默认让 gateway route 先发到远端，再用 `404` 当能力探测
+      - compatibility profile 现在也显式带 `supportsManagedSkills`
+    - managed lifecycle query passthrough 已开始贴官方 SDK：
+      - OpenAI `providerOptions.openai` 现在可透传：
+        - `after`
+        - `limit`
+        - `order`
+      - Anthropic `providerOptions.anthropic` 现在可透传：
+        - `limit`
+        - `page`
+        - `betas`
+        - `source` 仍保留在公共 `input`
+        - `betas` 继续由 builder 自动并入官方 `skills-2025-10-02`
+      - Anthropic upload surfaces 现在也会自动并入官方 upload beta：
+        - `files-api-2025-04-14`
+        - 当前范围：
+          - `client.beta.skills.create`
+          - `client.beta.skills.versions.create`
+    - Anthropic API-managed carrier override 现在也已有更贴官方的 runtime coverage：
+      - `code_execution_type`
+      - `allowed_callers`
+      - managed skill `type`
+      - managed skill `version`
+      - carrier `betas`
+      - legacy official `code_execution_20250522`
+      - 即使用户显式传了其他 `betas`，managed carrier 仍会继续自动并入与 `code_execution_type` 对应的官方 beta
+      - `skill.use()` / `skill.mount()` 现在也已有 API-managed carrier 端到端覆盖
+      - Anthropic quickstart 风格的 prebuilt skill 路径也已有公共使用面覆盖：
+        - `type: "anthropic"`
+        - `skill_id: "pptx"`
+        - `version: "latest"`
+    - Anthropic upload-only lifecycle 现在也更贴官方：
+      - `client.beta.skills.create`
+      - `client.beta.skills.versions.create`
+      默认会自动并入：
+        - `files-api-2025-04-14`
+        - `skills-2025-10-02`
+      但不会把 `files-api` 这层自动扩大到 `list/get/remove`
+    - OpenAI hosted shell lifecycle 现在也又向官方收紧了一步：
+      - `skill_reference.version` 支持 numeric / `"latest"`
+      - attachment version 与 hosted version resource metadata 已拆开
+      - hosted shell `environment` setting 已有 runtime coverage：
+        - `file_ids`
+        - `memory_limit`
+        - `network_policy`
+    - OpenAI shell carrier 现在也已覆盖 inline official carrier：
+      - 按官方 `InlineSkill` 形状进入 `tools[].environment.skills`
+      - 当前保持为 OpenAI provider-specific carrier，不扩成新的公共动作
+      - `skill.use()` / `skill.mount()` 现在也已有端到端覆盖
+    - OpenAI managed upload prepared payload 现在也已更贴官方 SDK：
+      - `publish / publishVersion` 当前改为 `args + bundle` 分离的 call plan
+      - 不再把 `files` 伪装成自定义 bundle body
+      - 更贴近 `openai-node` 的 `Uploadable | Uploadable[]` 执行期 lowering 语义
+    - `skill` 公共类型当前也向 provider truth 收了一层：
+      - `SkillBindInput.details`
+      - `SkillUseInput.details`
+      - `SkillProviderBindingLike.details`
+      已不再只是裸 `Record<string, unknown>`，而是三家 official carrier override 的联合类型
+    - provider-specific official extension 已开始显式建模：
+      - OpenAI 现在支持：
+        - `rax.skill.getContent()`
+        - `rax.skill.getVersionContent()`
+      - Anthropic / Google 当前对这组 content download surface 仍保持 unsupported / 未承诺
+    - capability report 已开始成型：
+      - `skill live smoke` 结果现在可进一步汇总成：
+        - `memory/live-reports/skill-capability-report.json`
+      - 当前 report 会同时表达：
+        - official support
+        - local gateway compatibility
+        - live smoke evidence
+        - prepared payload summary
+      - 当前已细化到 action-level matrix：
+        - `list`
+        - `get`
+        - `publish`
+        - `remove`
+        - `listVersions`
+        - `getVersion`
+        - `publishVersion`
+        - `removeVersion`
+        - `setDefaultVersion`
+        - `getContent`
+        - `getVersionContent`
+      - 当前 action-level report 还会带：
+        - `officialDocs`
+        - `officialNotes`
+        - `sdkEntrypoints`
+        - `preparedPayload`
+        - `routeEvidence`
+        - `routeSummary`
+    - `skill live smoke` 脚手架已落地：
+      - 默认以只读方式验证 OpenAI / Anthropic 的 managed registry 调用是否真能走到官方 SDK
+      - 默认验证 Google ADK managed lifecycle 的 unsupported boundary
+      - 暂不默认执行 publish/remove 这类会修改远端状态的动作
+      - 当前最新实测：
+        - OpenAI route on current `.env.local` 对 `/v1/skills` 返回 `404`
+        - Anthropic route on current `.env.local` 对 `/v1/skills` 返回 `404`
+        - 说明当前 route 不能被视为 hosted skill registry carrier
+      - 现在也会自动写入：
+        - `memory/live-reports/skill-live-smoke.json`
+    - `discover()` 现在支持扫描父目录下的多个 skill 子目录
+    - `loadLocal()` 在父目录只包含一个 skill 子目录时可自动解析，多个时会明确报 `skill_source_ambiguous`
+  - `docs/ability/14-skill-execution-roadmap.md` 已落地，当前对 skill 路线的完成度估算约为 `94%`
+  - 路线图现在也已明确：
+    - `09-12` 是研究与草案记录
+    - `14` 是当前实际执行路线图
+  - 路线图已补适合单个子智能体执行的 Work Package 和可复制 prompt
+  - 当前本地验证基线已更新为：
+    - `npm run typecheck` 通过
+    - `npm test` 通过
+    - `144 pass / 0 fail`
+  - `src/rax/index.ts` 现在也已把 skill 的最小公共语言层与 provider-specific override 输入面导出到公共 barrel：
+    - `SkillBindingDetailsInput`
+    - `SkillBindingDetails`
+    - `SkillProviderBindingLike`
+    - `SkillActivationPayload`
+    - `SkillActivationPlanLike`
+    - OpenAI / Anthropic / DeepMind 的 `*Overrides`
 - `MCP` 的本轮 review 收口结果仍然保留：
   - lifecycle 管理口已收成 route-scoped
   - provider shell metadata / notes 已与当前 runtime 表面对齐
   - registry / public barrel 已与当前实现面对齐
+- `MCP` 的下一轮收敛已开始：
+  - provider shell 不再是一家一个唯一层，而是开始拆成更贴近官方 carrier 的 `api` / `agent` 双壳
+  - `McpRuntime.connect()` 现在允许显式 `layer` 选到对应 carrier shell，不再被单壳模型硬性拒绝
+  - 当前默认 auto route 仍保持第一阶段兼容选择：
+    - OpenAI -> `agent`
+    - Anthropic -> `api`
+    - DeepMind -> `agent`
+  - 但新的审计已经确认：后续还要继续把 surface/profile 收紧到更接近三家官方 MCP carrier 的真实边界
+  - `docs/ability/13-mcp-official-alignment-roadmap.md` 现已作为 MCP 主执行路线图，Work Package 粒度已适合单个子智能体独立接手
+  - provider-native executor 这条现在又往前推进了一段：
+    - OpenAI agent-native `compose` 已能把 Responses 输入抽成 `@openai/agents` 的 `run` invocation
+    - OpenAI agent-native `execute` 已能真实走 `stdio + Agent + Runner.run(...)`
+    - Anthropic agent-native `execute` 不再只返回 `Query` 对象，而是会消费到最终 assistant message
+    - Anthropic agent-native 现在也已补上 Claude runtime 的认证与权限桥接：
+      - 显式通过 `options.env` 注入 `ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL`
+      - 对自动化 executor 使用 Claude runtime 的 tool-approval bypass
+    - DeepMind agent-native 现在也已补上 ADK runtime execute：
+      - `compose` 会把 `generateContent` 输入收成 `@google/adk` 的 `InMemoryRunner.runEphemeral` invocation
+      - `execute` 会真实走 `MCPToolset + LlmAgent + InMemoryRunner`
+      - 当 `baseURL` 看起来不是 Google 官方域名时，会走官方 `ApigeeLlm` 代理模型桥接；官方域名则走 `Gemini`
+  - `mcp.serve` 这条现在也开始收口了：
+    - `rax.mcp.serve()` / `rax.mcp.native.serve()` 已存在
+    - Anthropic agent-side 现在会真实走官方 `createSdkMcpServer()`
+    - OpenAI 当前仍明确 unsupported
+    - DeepMind 当前保持 documented-but-unimplemented 的 truthful result
+  - `WP-03 Anthropic API MCP Connector` 已拿到第一段实际结果：
+    - Anthropic `api` shell 现在明确是 remote-first、tools-first
+    - 显式 `provider=anthropic + layer=api + stdio` 会被拒绝
+    - Anthropic `api` shell 上 `resources/prompts` 现在会报 `mcp_surface_unsupported`
+    - richer `resources/prompts` 正向测试已改到 Anthropic `agent` carrier
+  - `WP-05 Gemini API MCP Carrier` 与 `WP-01 OpenAI API MCP Carrier` 也已拿到第一段对称 contract：
+    - OpenAI / Anthropic / DeepMind 三家 `api` shell 当前都已明确为 tools-first
+    - OpenAI `api` shell 显式 `stdio` 会被拒绝
+    - OpenAI / DeepMind `api` shell 上 `resources/prompts` 现在也会报 `mcp_surface_unsupported`
+    - 三家 API carrier 的第一批 tools-first contract 已有定向测试覆盖
+  - `WP-07 MCP Compatibility Profiles` 已开始真正落地：
+    - `BaseCompatibilityProfile` 现在已可表达 MCP 的 layer-level 规则
+    - 默认 `rax` 运行面现在会挂载 `DEFAULT_COMPATIBILITY_PROFILES`
+    - 官方 profile 已能对 MCP 做最小阻断：
+      - Anthropic `api + stdio` 会被 compatibility profile 直接拦截
+      - OpenAI `api + resources` 会被 compatibility profile 直接拦截
+      - DeepMind `api + prompts` 会被 compatibility profile 直接拦截
+	  - `WP-08 Shared Runtime vs Native Lowering Split` 已拿到第一段结构性结果：
+    - `McpProviderShell` / `McpConnectionSummary` 现在已带 `officialCarrier`、`carrierKind`、`loweringMode`
+    - facade 现在已明确分出：
+      - `rax.mcp.shared.*`
+      - `rax.mcp.native.prepare(...)`
+      - 旧的 `rax.mcp.use/connect/...` 仍保留为 shared-runtime 兼容别名
+    - `mcp.native.prepare(...)` 现在会按 provider shell 的 native transport 能力，输出官方 native carrier plan，并返回 `supported true/false`
+    - OpenAI / Anthropic / DeepMind 的 agent-side native prepare payload skeleton 已落成：
+      - OpenAI -> Agents MCP server shape
+      - Anthropic -> Claude Agent/Code runtime `mcpServers` shape
+      - DeepMind -> ADK `McpToolset` shape
+    - OpenAI / Anthropic / DeepMind 的 API-side native prepare payload skeleton 也已落成：
+      - OpenAI -> Responses `tools.type=mcp` shape
+      - Anthropic -> `mcp_servers + mcp_toolset` connector shape
+      - DeepMind -> Gemini `mcpToTool` bridge shape
+	    - `native.prepare` 现在已具备 builder-ready 元数据：
+	      - `builderId`
+	      - `constraintSnapshot`
+	      - `unsupportedReasons`
+    - `rax.mcp.native.build()` 已落成：
+      - 对支持的 native plan 返回标准 `PreparedInvocation`
+      - 对不支持的 native plan 抛 `mcp_native_build_unsupported`
+    - `rax.mcp.native.compose()` 已落成：
+      - OpenAI Responses 与 Anthropic Messages 现在可把 native MCP build 结果合并回模型调用 prepared invocation
+      - DeepMind/Gemini 当前仍明确报 `mcp_native_compose_unsupported`
+	    - `rax.mcp.native.execute()` 与 `composeAndExecute()` 已落成：
+	      - 控制面已完整，并开始接入真实 provider-native executor
+	      - OpenAI agent-native `stdio` 已可真实执行
+	      - Anthropic agent-native `query()` 路已接到最终消息消费与自动化权限桥接
+	      - DeepMind agent-native `MCPToolset` 路也已接到真实 ADK runtime execute
+	    - DeepMind 官方 profile 现在也已带最小 `supportedModelHints`，native prepare 可直接读到默认模型提示
+	    - gateway / official profile 的 MCP 阻断和 native prepare 现在可以共存
+	    - 当前 MCP + runtime 定向测试为 `105 pass`
+	    - gmn 上游的 OpenAI live smoke 现在明确应优先使用 `gpt-5.4`
+	    - `smoke:mcp:native:live` 当前结果已澄清为 carrier-level reality：
+	      - OpenAI API-style Responses MCP 仍被 `gmn` 上游 `502` 阻断
+	      - OpenAI agent-native `stdio` 已在 `gpt-5.4` 上真实返回 `Example Domain`
+	      - Anthropic API connector 仍因 localhost HTTP 不是公开 HTTPS MCP server 而 blocked
+	      - Anthropic agent-native `stdio` 已在 `claude-opus-4-6-thinking` 上真实返回 `Example Domain`
+	      - DeepMind agent-native `stdio` 已在 `gemini-2.5-flash` 上真实返回 `Example Domain`
+    - 新增 `smoke:mcp:native:live` 脚本后，native live smoke 现状是：
+      - OpenAI native live smoke 当前被 `gmn` 上游 `502` 阻断
+      - Anthropic native live smoke 当前不适合用本地 `localhost` HTTP MCP 当作官方 connector 基线，因官方 connector 要求 remote/public HTTP MCP
 
 ## 当前明确约束
 
@@ -78,6 +355,9 @@
    - `bind`
    - `activate`
    - `loadLocal`
+   - `prepare`
+   - `use`
+   - `mount`
 3. 继续细化 `Skill Container` 和 `Context Manager`，但把它们视为上层架构部件，而不是 `skill` 本身：
    - bindings
    - policy

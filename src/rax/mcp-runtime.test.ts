@@ -5,9 +5,11 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import type { PreparedInvocation } from "./contracts.js";
 import { RaxRoutingError } from "./errors.js";
 import { createRaxFacade } from "./facade.js";
 import { CapabilityRouter } from "./router.js";
+import { rax } from "./runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
 
 async function setupInMemoryMcpServer() {
@@ -122,7 +124,11 @@ test("mcp.connect succeeds and returns a connection summary", async () => {
 
     assert.equal(connection.connectionId, "test-connection");
     assert.equal(connection.provider, "anthropic");
+    assert.equal(connection.carrierKind, "shared-runtime");
     assert.equal(connection.transportKind, "in-memory");
+    assert.equal(connection.shellId, "anthropic-mcp-api-shell");
+    assert.equal(connection.officialCarrier, "anthropic-api-mcp-connector");
+    assert.equal(connection.loweringMode, "shared-runtime");
     assert.equal(connection.serverVersion?.name, "test-mcp");
   } finally {
     await runtime.disconnect({
@@ -340,7 +346,7 @@ test("mcp.listResources returns normalized resource metadata", async () => {
     await runtime.connect({
       provider: "anthropic",
       model: "claude-sonnet-4-6",
-      layer: "api",
+      layer: "agent",
       input: {
         connectionId: "test-list-resources",
         transport: {
@@ -353,7 +359,7 @@ test("mcp.listResources returns normalized resource metadata", async () => {
     const result = await runtime.listResources({
       provider: "anthropic",
       model: "claude-sonnet-4-6",
-      layer: "api",
+      layer: "agent",
       input: {
         connectionId: "test-list-resources"
       }
@@ -366,8 +372,272 @@ test("mcp.listResources returns normalized resource metadata", async () => {
     await runtime.disconnect({
       provider: "anthropic",
       model: "claude-sonnet-4-6",
-      layer: "api",
+      layer: "agent",
       connectionId: "test-list-resources"
+    });
+    await server.close();
+  }
+});
+
+test("anthropic api MCP keeps tools but rejects resources and prompts surfaces", async () => {
+  const runtime = new McpRuntime();
+  const { server, clientTransport } = await setupInMemoryMcpServer();
+
+  try {
+    await runtime.connect({
+      provider: "anthropic",
+      model: "claude-opus-4-6-thinking",
+      layer: "api",
+      input: {
+        connectionId: "anthropic-api-tools-only",
+        transport: {
+          kind: "in-memory",
+          transport: clientTransport
+        }
+      }
+    });
+
+    const tools = await runtime.listTools({
+      provider: "anthropic",
+      model: "claude-opus-4-6-thinking",
+      layer: "api",
+      input: {
+        connectionId: "anthropic-api-tools-only"
+      }
+    });
+    assert.ok(tools.tools.some((tool) => tool.name === "echo"));
+
+    await assert.rejects(
+      () =>
+        runtime.listResources({
+          provider: "anthropic",
+          model: "claude-opus-4-6-thinking",
+          layer: "api",
+          input: {
+            connectionId: "anthropic-api-tools-only"
+          }
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof RaxRoutingError);
+        assert.equal(error.code, "mcp_surface_unsupported");
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      () =>
+        runtime.listPrompts({
+          provider: "anthropic",
+          model: "claude-opus-4-6-thinking",
+          layer: "api",
+          input: {
+            connectionId: "anthropic-api-tools-only"
+          }
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof RaxRoutingError);
+        assert.equal(error.code, "mcp_surface_unsupported");
+        return true;
+      }
+    );
+  } finally {
+    await runtime.disconnect({
+      provider: "anthropic",
+      model: "claude-opus-4-6-thinking",
+      layer: "api",
+      connectionId: "anthropic-api-tools-only"
+    });
+    await server.close();
+  }
+});
+
+test("anthropic api MCP rejects stdio transport because the official connector is remote-first", async () => {
+  const runtime = new McpRuntime();
+
+  await assert.rejects(
+    () =>
+      runtime.connect({
+        provider: "anthropic",
+        model: "claude-opus-4-6-thinking",
+        layer: "api",
+        input: {
+          connectionId: "anthropic-api-stdio",
+          transport: {
+            kind: "stdio",
+            command: "npx",
+            args: ["-y", "@playwright/mcp@latest", "--help"]
+          }
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "mcp_transport_unsupported");
+      return true;
+    }
+  );
+});
+
+test("openai api MCP keeps tools but rejects stdio plus richer resources and prompts surfaces", async () => {
+  const runtime = new McpRuntime();
+  const { server, clientTransport } = await setupInMemoryMcpServer();
+
+  try {
+    await runtime.connect({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "api",
+      input: {
+        connectionId: "openai-api-tools-only",
+        transport: {
+          kind: "in-memory",
+          transport: clientTransport
+        }
+      }
+    });
+
+    const tools = await runtime.listTools({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "api",
+      input: {
+        connectionId: "openai-api-tools-only"
+      }
+    });
+    assert.ok(tools.tools.some((tool) => tool.name === "echo"));
+
+    await assert.rejects(
+      () =>
+        runtime.listResources({
+          provider: "openai",
+          model: "gpt-5",
+          layer: "api",
+          input: {
+            connectionId: "openai-api-tools-only"
+          }
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof RaxRoutingError);
+        assert.equal(error.code, "mcp_surface_unsupported");
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      () =>
+        runtime.listPrompts({
+          provider: "openai",
+          model: "gpt-5",
+          layer: "api",
+          input: {
+            connectionId: "openai-api-tools-only"
+          }
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof RaxRoutingError);
+        assert.equal(error.code, "mcp_surface_unsupported");
+        return true;
+      }
+    );
+  } finally {
+    await runtime.disconnect({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "api",
+      connectionId: "openai-api-tools-only"
+    });
+    await server.close();
+  }
+
+  await assert.rejects(
+    () =>
+      runtime.connect({
+        provider: "openai",
+        model: "gpt-5",
+        layer: "api",
+        input: {
+          connectionId: "openai-api-stdio",
+          transport: {
+            kind: "stdio",
+            command: "npx",
+            args: ["-y", "@playwright/mcp@latest", "--help"]
+          }
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "mcp_transport_unsupported");
+      return true;
+    }
+  );
+});
+
+test("deepmind api MCP keeps tools but rejects resources and prompts surfaces", async () => {
+  const runtime = new McpRuntime();
+  const { server, clientTransport } = await setupInMemoryMcpServer();
+
+  try {
+    await runtime.connect({
+      provider: "deepmind",
+      model: "gemini-2.5-pro",
+      layer: "api",
+      input: {
+        connectionId: "deepmind-api-tools-only",
+        transport: {
+          kind: "in-memory",
+          transport: clientTransport
+        }
+      }
+    });
+
+    const tools = await runtime.listTools({
+      provider: "deepmind",
+      model: "gemini-2.5-pro",
+      layer: "api",
+      input: {
+        connectionId: "deepmind-api-tools-only"
+      }
+    });
+    assert.ok(tools.tools.some((tool) => tool.name === "echo"));
+
+    await assert.rejects(
+      () =>
+        runtime.listResources({
+          provider: "deepmind",
+          model: "gemini-2.5-pro",
+          layer: "api",
+          input: {
+            connectionId: "deepmind-api-tools-only"
+          }
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof RaxRoutingError);
+        assert.equal(error.code, "mcp_surface_unsupported");
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      () =>
+        runtime.listPrompts({
+          provider: "deepmind",
+          model: "gemini-2.5-pro",
+          layer: "api",
+          input: {
+            connectionId: "deepmind-api-tools-only"
+          }
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof RaxRoutingError);
+        assert.equal(error.code, "mcp_surface_unsupported");
+        return true;
+      }
+    );
+  } finally {
+    await runtime.disconnect({
+      provider: "deepmind",
+      model: "gemini-2.5-pro",
+      layer: "api",
+      connectionId: "deepmind-api-tools-only"
     });
     await server.close();
   }
@@ -379,8 +649,8 @@ test("mcp.readResource returns normalized contents", async () => {
 
   try {
     await runtime.connect({
-      provider: "openai",
-      model: "gpt-5",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       input: {
         connectionId: "test-read-resource",
@@ -392,8 +662,8 @@ test("mcp.readResource returns normalized contents", async () => {
     });
 
     const result = await runtime.readResource({
-      provider: "openai",
-      model: "gpt-5",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       input: {
         connectionId: "test-read-resource",
@@ -408,8 +678,8 @@ test("mcp.readResource returns normalized contents", async () => {
     );
   } finally {
     await runtime.disconnect({
-      provider: "openai",
-      model: "gpt-5",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       connectionId: "test-read-resource"
     });
@@ -423,8 +693,8 @@ test("mcp.listPrompts returns normalized prompt metadata", async () => {
 
   try {
     await runtime.connect({
-      provider: "deepmind",
-      model: "gemini-2.5-pro",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       input: {
         connectionId: "test-list-prompts",
@@ -436,8 +706,8 @@ test("mcp.listPrompts returns normalized prompt metadata", async () => {
     });
 
     const result = await runtime.listPrompts({
-      provider: "deepmind",
-      model: "gemini-2.5-pro",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       input: {
         connectionId: "test-list-prompts"
@@ -449,8 +719,8 @@ test("mcp.listPrompts returns normalized prompt metadata", async () => {
     assert.equal(result.prompts[0]?.arguments?.[0]?.name, "topic");
   } finally {
     await runtime.disconnect({
-      provider: "deepmind",
-      model: "gemini-2.5-pro",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       connectionId: "test-list-prompts"
     });
@@ -464,8 +734,8 @@ test("mcp.getPrompt returns normalized prompt messages", async () => {
 
   try {
     await runtime.connect({
-      provider: "openai",
-      model: "gpt-5",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       input: {
         connectionId: "test-get-prompt",
@@ -477,8 +747,8 @@ test("mcp.getPrompt returns normalized prompt messages", async () => {
     });
 
     const result = await runtime.getPrompt({
-      provider: "openai",
-      model: "gpt-5",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       input: {
         connectionId: "test-get-prompt",
@@ -493,8 +763,8 @@ test("mcp.getPrompt returns normalized prompt messages", async () => {
     assert.equal(result.messages.length, 1);
   } finally {
     await runtime.disconnect({
-      provider: "openai",
-      model: "gpt-5",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
       layer: "agent",
       connectionId: "test-get-prompt"
     });
@@ -547,33 +817,77 @@ test("mcp.connect replaces duplicate connection ids after closing the old client
   }
 });
 
-test("mcp.connect rejects an explicit layer that conflicts with the provider shell", async () => {
+test("mcp.connect accepts explicit alternate layers when the provider has a matching carrier shell", async () => {
   const runtime = new McpRuntime();
-  const { server, clientTransport } = await setupInMemoryMcpServer();
+  const openai = await setupInMemoryMcpServer();
+  const anthropic = await setupInMemoryMcpServer();
+  const deepmind = await setupInMemoryMcpServer();
 
   try {
-    await assert.rejects(
-      () =>
-        runtime.connect({
-          provider: "openai",
-          model: "gpt-5",
-          layer: "api",
-          input: {
-            connectionId: "bad-layer",
-            transport: {
-              kind: "in-memory",
-              transport: clientTransport
-            }
-          }
-        }),
-      (error: unknown) => {
-        assert.ok(error instanceof RaxRoutingError);
-        assert.equal(error.code, "mcp_layer_mismatch");
-        return true;
+    const openaiConnection = await runtime.connect({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "api",
+      input: {
+        connectionId: "openai-api-layer",
+        transport: {
+          kind: "in-memory",
+          transport: openai.clientTransport
+        }
       }
-    );
+    });
+
+    const anthropicConnection = await runtime.connect({
+      provider: "anthropic",
+      model: "claude-opus-4-6-thinking",
+      layer: "agent",
+      input: {
+        connectionId: "anthropic-agent-layer",
+        transport: {
+          kind: "in-memory",
+          transport: anthropic.clientTransport
+        }
+      }
+    });
+
+    const deepmindConnection = await runtime.connect({
+      provider: "deepmind",
+      model: "gemini-2.5-pro",
+      layer: "api",
+      input: {
+        connectionId: "deepmind-api-layer",
+        transport: {
+          kind: "in-memory",
+          transport: deepmind.clientTransport
+        }
+      }
+    });
+
+    assert.equal(openaiConnection.layer, "api");
+    assert.equal(anthropicConnection.layer, "agent");
+    assert.equal(deepmindConnection.layer, "api");
   } finally {
-    await server.close();
+    await runtime.disconnect({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "api",
+      connectionId: "openai-api-layer"
+    });
+    await runtime.disconnect({
+      provider: "anthropic",
+      model: "claude-opus-4-6-thinking",
+      layer: "agent",
+      connectionId: "anthropic-agent-layer"
+    });
+    await runtime.disconnect({
+      provider: "deepmind",
+      model: "gemini-2.5-pro",
+      layer: "api",
+      connectionId: "deepmind-api-layer"
+    });
+    await openai.server.close();
+    await anthropic.server.close();
+    await deepmind.server.close();
   }
 });
 
@@ -881,6 +1195,7 @@ test("facade mcp.use returns a session handle that can access tools resources pr
     const session = await raxFacade.mcp.use({
       provider: "anthropic",
       model: "claude-opus-4-6-thinking",
+      layer: "agent",
       compatibilityProfileId: "anthropic-messages-only-primary",
       input: {
         connectionId: "session-handle",
@@ -892,7 +1207,10 @@ test("facade mcp.use returns a session handle that can access tools resources pr
     });
 
     assert.equal(session.connection.connectionId, "session-handle");
-    assert.equal(session.connection.layer, "api");
+    assert.equal(session.connection.layer, "agent");
+    assert.equal(session.connection.carrierKind, "shared-runtime");
+    assert.equal(session.connection.officialCarrier, "anthropic-agent-runtime-mcp");
+    assert.equal(session.connection.loweringMode, "shared-runtime");
 
     const tools = await session.tools();
     assert.ok(tools.tools.some((tool) => tool.name === "echo"));
@@ -992,4 +1310,772 @@ test("facade mcp.use works across openai anthropic and deepmind routes without c
   } finally {
     await Promise.all(servers.map(async ({ server }) => server.close()));
   }
+});
+
+test("facade mcp.shared.use works as the explicit shared-runtime alias and mcp.native.prepare exposes the future split", async () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+  const { server, clientTransport } = await setupInMemoryMcpServer();
+
+  try {
+    const session = await raxFacade.mcp.shared.use({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "agent",
+      input: {
+        connectionId: "shared-alias-session",
+        transport: {
+          kind: "in-memory",
+          transport: clientTransport
+        }
+      }
+    });
+
+    assert.equal(session.connection.carrierKind, "shared-runtime");
+    assert.equal(session.connection.shellId, "openai-mcp-agent-shell");
+
+    const tools = await session.tools();
+    assert.ok(tools.tools.some((tool) => tool.name === "echo"));
+
+    const nativePlan = raxFacade.mcp.native.prepare({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "agent",
+      input: {
+        transport: {
+          kind: "stdio",
+          command: "npx",
+          args: ["-y", "@playwright/mcp@latest", "--help"]
+        }
+      }
+    });
+
+    assert.equal(nativePlan.shellId, "openai-mcp-agent-shell");
+    assert.equal(nativePlan.builderId, "openai.agent.openai-agents-mcp");
+    assert.equal(nativePlan.carrierKind, "provider-native");
+    assert.equal(nativePlan.loweringMode, "provider-native-agent");
+    assert.equal(nativePlan.supported, true);
+    assert.equal(nativePlan.supportsResources, false);
+    assert.equal(nativePlan.supportsPrompts, false);
+    assert.equal(nativePlan.sdkPackageName, "@openai/agents");
+    assert.equal(nativePlan.entrypoint, "MCPServerStdio");
+    assert.equal(
+      ((nativePlan.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
+      "agent-local-stdio"
+    );
+    assert.equal(
+      ((nativePlan.payload as { mcpServer?: { transport?: string } } | undefined)?.mcpServer?.transport),
+      "stdio"
+    );
+
+    await session.disconnect();
+  } finally {
+    await server.close();
+  }
+});
+
+test("facade mcp.native.prepare reports unsupported transports for official native carriers", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const plan = raxFacade.mcp.native.prepare({
+    provider: "openai",
+    model: "gpt-5",
+    layer: "api",
+    input: {
+      transport: {
+        kind: "in-memory",
+        transport: {} as never
+      }
+    }
+  });
+
+  assert.equal(plan.carrierKind, "provider-native");
+  assert.equal(plan.builderId, "openai.api.openai-api-mcp");
+  assert.equal(plan.loweringMode, "provider-native-api");
+  assert.equal(plan.supported, false);
+  assert.ok(Array.isArray(plan.unsupportedReasons));
+  assert.match(plan.unsupportedReasons?.[0] ?? "", /transport in-memory/u);
+  assert.deepEqual(plan.constraintSnapshot.nativeSupportedTransports, ["streamable-http"]);
+  assert.equal(plan.supportsResources, false);
+  assert.equal(plan.supportsPrompts, false);
+  assert.equal(plan.sdkPackageName, undefined);
+  assert.equal(plan.entrypoint, undefined);
+});
+
+test("facade mcp.native.prepare returns an OpenAI API Responses MCP payload for streamable-http", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const plan = raxFacade.mcp.native.prepare({
+    provider: "openai",
+    model: "gpt-5",
+    layer: "api",
+    input: {
+      connectionId: "openai-api-remote",
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp"
+      }
+    }
+  });
+
+  assert.equal(plan.supported, true);
+  assert.equal(plan.builderId, "openai.api.openai-api-mcp");
+  assert.equal(plan.sdkPackageName, "openai");
+  assert.equal(plan.entrypoint, "client.responses.create");
+  assert.equal(
+    ((plan.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
+    "responses-remote-mcp-tool"
+  );
+  assert.equal(
+    (((plan.payload as { tools?: Array<{ type?: string }> } | undefined)?.tools?.[0])?.type),
+    "mcp"
+  );
+});
+
+test("facade mcp.native.prepare returns a hosted-style payload for openai agent streamable-http", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const plan = raxFacade.mcp.native.prepare({
+    provider: "openai",
+    model: "gpt-5",
+    layer: "agent",
+    input: {
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp",
+        headers: {
+          authorization: "Bearer test"
+        }
+      }
+    }
+  });
+
+  assert.equal(plan.supported, true);
+  assert.equal(plan.builderId, "openai.agent.openai-agents-mcp");
+  assert.equal(plan.sdkPackageName, "@openai/agents");
+  assert.equal(plan.entrypoint, "hostedMcpTool");
+  assert.equal(
+    ((plan.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
+    "agent-remote-hosted"
+  );
+  assert.equal(
+    ((plan.payload as { mcpServer?: { transport?: string } } | undefined)?.mcpServer?.transport),
+    "streamable-http"
+  );
+});
+
+test("facade mcp.native.prepare returns an Anthropic API connector payload for streamable-http", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const plan = raxFacade.mcp.native.prepare({
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    layer: "api",
+    input: {
+      connectionId: "anthropic-api-remote",
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp"
+      }
+    }
+  });
+
+  assert.equal(plan.supported, true);
+  assert.equal(plan.builderId, "anthropic.api.anthropic-api-mcp-connector");
+  assert.equal(plan.sdkPackageName, "@anthropic-ai/sdk");
+  assert.equal(plan.entrypoint, "client.messages.create");
+  assert.equal(
+    ((plan.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
+    "messages-mcp-connector"
+  );
+  assert.equal(
+    (((plan.payload as { tools?: Array<{ type?: string }> } | undefined)?.tools?.[0])?.type),
+    "mcp_toolset"
+  );
+});
+
+test("facade mcp.native.prepare exposes richer Anthropic agent carrier surface", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const plan = raxFacade.mcp.native.prepare({
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    layer: "agent",
+    input: {
+      transport: {
+        kind: "stdio",
+        command: "npx",
+        args: ["-y", "@playwright/mcp@latest", "--help"]
+      }
+    }
+  });
+
+  assert.equal(plan.carrierKind, "provider-native");
+  assert.equal(plan.builderId, "anthropic.agent.anthropic-agent-runtime-mcp");
+  assert.equal(plan.loweringMode, "provider-native-agent");
+  assert.equal(plan.supported, true);
+  assert.equal(plan.supportsResources, true);
+  assert.equal(plan.supportsPrompts, true);
+  assert.equal(plan.sdkPackageName, "@anthropic-ai/claude-agent-sdk");
+  assert.equal(plan.entrypoint, "mcpServers");
+  assert.ok(
+    typeof (plan.payload as { mcpServers?: unknown } | undefined)?.mcpServers === "object"
+  );
+  assert.equal(
+    ((plan.payload as { surface?: { resources?: { mode?: string } } } | undefined)?.surface?.resources?.mode),
+    "runtime-mediated"
+  );
+  assert.equal(
+    ((plan.payload as { surface?: { prompts?: { mode?: string } } } | undefined)?.surface?.prompts?.mode),
+    "runtime-mediated"
+  );
+});
+
+test("facade mcp.native.serve returns an Anthropic SDK MCP server config", async () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const result = raxFacade.mcp.native.serve({
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    layer: "agent",
+    input: {
+      serverName: "praxis-inline-mcp",
+      serverVersion: "0.1.0",
+      tools: [
+        {
+          name: "echo",
+          description: "Echo tool",
+          inputSchema: {
+            text: z.string()
+          },
+          handler: async (args) => ({
+            content: [{ type: "text", text: String(args.text ?? "") }]
+          })
+        }
+      ]
+    }
+  });
+
+  assert.equal(result.supported, true);
+  assert.equal(result.sdk?.packageName, "@anthropic-ai/claude-agent-sdk");
+  assert.equal(result.sdk?.entrypoint, "createSdkMcpServer");
+  const payload = result.payload as {
+    serverConfig?: {
+      type?: string;
+      name?: string;
+      instance?: { close?: () => Promise<void> };
+    };
+  };
+  assert.equal(payload.serverConfig?.type, "sdk");
+  assert.equal(payload.serverConfig?.name, "praxis-inline-mcp");
+  await payload.serverConfig?.instance?.close?.();
+});
+
+test("facade mcp.native.serve reports OpenAI as unsupported in the current baseline", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const result = raxFacade.mcp.native.serve({
+    provider: "openai",
+    model: "gpt-5.4",
+    input: {
+      serverName: "openai-inline-mcp"
+    }
+  });
+
+  assert.equal(result.supported, false);
+  assert.match(result.unsupportedReasons?.[0] ?? "", /OpenAI does not expose/i);
+});
+
+test("facade mcp.serve aliases mcp.native.serve", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const direct = raxFacade.mcp.serve({
+    provider: "deepmind",
+    model: "gemini-2.5-flash",
+    input: {
+      serverName: "deepmind-inline-mcp"
+    }
+  });
+  const native = raxFacade.mcp.native.serve({
+    provider: "deepmind",
+    model: "gemini-2.5-flash",
+    input: {
+      serverName: "deepmind-inline-mcp"
+    }
+  });
+
+  assert.deepEqual(direct, native);
+});
+
+test("facade mcp.native.prepare returns an ADK toolset-style payload for deepmind agent carrier", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const plan = raxFacade.mcp.native.prepare({
+    provider: "deepmind",
+    model: "gemini-2.5-pro",
+    layer: "agent",
+    input: {
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp",
+        headers: {
+          authorization: "Bearer test"
+        }
+      }
+    }
+  });
+
+  assert.equal(plan.carrierKind, "provider-native");
+  assert.equal(plan.builderId, "deepmind.agent.google-adk-mcp-runtime");
+  assert.equal(plan.loweringMode, "provider-native-agent");
+  assert.equal(plan.supported, true);
+  assert.equal(plan.sdkPackageName, "@google/adk");
+  assert.equal(plan.entrypoint, "McpToolset");
+  assert.equal(
+    ((plan.payload as { toolset?: { kind?: string } } | undefined)?.toolset?.kind),
+    "google-adk-mcp-toolset"
+  );
+  assert.equal(
+    ((plan.payload as { toolset?: { connectionParams?: { connectionType?: string } } } | undefined)?.toolset?.connectionParams?.connectionType),
+    "streamable-http"
+  );
+});
+
+test("facade mcp.native.prepare returns a Gemini model-side MCP bridge payload for deepmind api carrier", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const plan = raxFacade.mcp.native.prepare({
+    provider: "deepmind",
+    model: "gemini-2.5-pro",
+    layer: "api",
+    input: {
+      transport: {
+        kind: "stdio",
+        command: "npx",
+        args: ["-y", "@playwright/mcp@latest", "--help"]
+      }
+    }
+  });
+
+  assert.equal(plan.supported, true);
+  assert.equal(plan.builderId, "deepmind.api.gemini-api-mcp");
+  assert.equal(plan.sdkPackageName, "@google/genai");
+  assert.equal(plan.entrypoint, "mcpToTool");
+  assert.ok(Array.isArray(plan.constraintSnapshot.supportedModelHints));
+  assert.ok(plan.constraintSnapshot.supportedModelHints?.includes("gemini-2.5-pro"));
+  assert.equal(
+    ((plan.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
+    "model-side-tool-bridge"
+  );
+  assert.equal(
+    ((plan.payload as { mcpBridge?: { transportKind?: string } } | undefined)?.mcpBridge?.transportKind),
+    "stdio"
+  );
+});
+
+test("facade mcp.connect rejects explicit provider-native strategy until native execution is implemented", async () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  await assert.rejects(
+    () =>
+      raxFacade.mcp.connect({
+        provider: "openai",
+        model: "gpt-5",
+        layer: "agent",
+        input: {
+          strategy: "provider-native",
+          transport: {
+            kind: "stdio",
+            command: "npx",
+            args: ["-y", "@playwright/mcp@latest", "--help"]
+          }
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "mcp_native_execution_unimplemented");
+      return true;
+    }
+  );
+});
+
+test("facade mcp.use rejects explicit provider-native strategy until native execution is implemented", async () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  await assert.rejects(
+    () =>
+      raxFacade.mcp.use({
+        provider: "anthropic",
+        model: "claude-opus-4-6-thinking",
+        layer: "agent",
+        input: {
+          strategy: "provider-native",
+          transport: {
+            kind: "stdio",
+            command: "npx",
+            args: ["-y", "@playwright/mcp@latest", "--help"]
+          }
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "mcp_native_execution_unimplemented");
+      return true;
+    }
+  );
+});
+
+test("facade mcp.native.build returns a PreparedInvocation for supported native plans", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const invocation = raxFacade.mcp.native.build({
+    provider: "openai",
+    model: "gpt-5",
+    layer: "api",
+    input: {
+      connectionId: "openai-native-build",
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp"
+      }
+    }
+  });
+
+  assert.equal(invocation.key, "mcp.connect");
+  assert.equal(invocation.adapterId, "mcp.native.openai.api.openai-api-mcp");
+  assert.equal(invocation.variant, "provider-native");
+  assert.equal(invocation.sdk.packageName, "openai");
+  assert.equal(invocation.sdk.entrypoint, "client.responses.create");
+  assert.equal(
+    ((invocation.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
+    "responses-remote-mcp-tool"
+  );
+});
+
+test("facade mcp.native.build returns an Anthropic API connector invocation", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const invocation = raxFacade.mcp.native.build({
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    layer: "api",
+    input: {
+      connectionId: "anthropic-native-build",
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp"
+      }
+    }
+  });
+
+  assert.equal(invocation.adapterId, "mcp.native.anthropic.api.anthropic-api-mcp-connector");
+  assert.equal(invocation.variant, "provider-native");
+  assert.equal(invocation.sdk.packageName, "@anthropic-ai/sdk");
+  assert.equal(invocation.sdk.entrypoint, "client.messages.create");
+  assert.equal(
+    (((invocation.payload as { tools?: Array<{ type?: string }> } | undefined)?.tools?.[0])?.type),
+    "mcp_toolset"
+  );
+});
+
+test("facade mcp.native.build returns an OpenAI agent hosted invocation", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const invocation = raxFacade.mcp.native.build({
+    provider: "openai",
+    model: "gpt-5",
+    layer: "agent",
+    input: {
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp"
+      }
+    }
+  });
+
+  assert.equal(invocation.adapterId, "mcp.native.openai.agent.openai-agents-mcp");
+  assert.equal(invocation.sdk.packageName, "@openai/agents");
+  assert.equal(invocation.sdk.entrypoint, "hostedMcpTool");
+  assert.equal(
+    ((invocation.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
+    "agent-remote-hosted"
+  );
+});
+
+test("facade mcp.native.build returns a DeepMind ADK runtime invocation", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  const invocation = raxFacade.mcp.native.build({
+    provider: "deepmind",
+    model: "gemini-2.5-pro",
+    layer: "agent",
+    input: {
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp"
+      }
+    }
+  });
+
+  assert.equal(invocation.adapterId, "mcp.native.deepmind.agent.google-adk-mcp-runtime");
+  assert.equal(invocation.sdk.packageName, "@google/adk");
+  assert.equal(invocation.sdk.entrypoint, "McpToolset");
+  assert.equal(
+    ((invocation.payload as { toolset?: { kind?: string } } | undefined)?.toolset?.kind),
+    "google-adk-mcp-toolset"
+  );
+});
+
+test("facade mcp.native.build rejects unsupported native plans", () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const raxFacade = createRaxFacade(router, undefined, runtime);
+
+  assert.throws(
+    () =>
+      raxFacade.mcp.native.build({
+        provider: "openai",
+        model: "gpt-5",
+        layer: "api",
+        input: {
+          transport: {
+            kind: "in-memory",
+            transport: {} as never
+          }
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "mcp_native_build_unsupported");
+      return true;
+    }
+  );
+});
+
+test("facade mcp.native.execute delegates to the injected native runtime", async () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const seen: Array<PreparedInvocation<Record<string, unknown>>> = [];
+  const raxFacade = createRaxFacade(
+    router,
+    undefined,
+    runtime,
+    undefined,
+    undefined,
+    {
+      executePreparedInvocation: async (invocation) => {
+        seen.push(invocation);
+        return { ok: true };
+      }
+    }
+  );
+
+  const invocation = raxFacade.mcp.native.build({
+    provider: "openai",
+    model: "gpt-5",
+    layer: "api",
+    input: {
+      connectionId: "openai-native-build",
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp"
+      }
+    }
+  });
+
+  const result = await raxFacade.mcp.native.execute(invocation);
+  assert.deepEqual(result, { ok: true });
+  assert.equal(seen[0]?.adapterId, invocation.adapterId);
+});
+
+test("facade mcp.native.composeAndExecute composes OpenAI invocations before delegating", async () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const seen: Array<PreparedInvocation<Record<string, unknown>>> = [];
+  const raxFacade = createRaxFacade(
+    router,
+    undefined,
+    runtime,
+    undefined,
+    undefined,
+    {
+      executePreparedInvocation: async (invocation) => {
+        seen.push(invocation);
+        return { ok: true };
+      }
+    }
+  );
+
+  const baseInvocation = rax.generate.create({
+    provider: "openai",
+    model: "gpt-5",
+    input: {
+      input: "hello from rax"
+    }
+  });
+
+  const nativeInvocation = raxFacade.mcp.native.build({
+    provider: "openai",
+    model: "gpt-5",
+    layer: "api",
+    input: {
+      connectionId: "openai-compose-exec",
+      transport: {
+        kind: "streamable-http",
+        url: "https://example.com/mcp"
+      }
+    }
+  });
+
+  const result = await raxFacade.mcp.native.composeAndExecute(
+    baseInvocation as never,
+    nativeInvocation
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(seen[0]?.provider, "openai");
+  assert.equal(
+    ((seen[0]?.payload as { params?: { tools?: Array<{ type?: string }> } } | undefined)?.params?.tools?.[0]?.type),
+    "mcp"
+  );
+});
+
+test("facade mcp.native.composeAndExecute composes Anthropic agent-native invocations before delegating", async () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const seen: Array<PreparedInvocation<Record<string, unknown>>> = [];
+  const raxFacade = createRaxFacade(
+    router,
+    undefined,
+    runtime,
+    undefined,
+    undefined,
+    {
+      executePreparedInvocation: async (invocation) => {
+        seen.push(invocation);
+        return { ok: true };
+      }
+    }
+  );
+
+  const baseInvocation = rax.generate.create({
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    input: {
+      maxTokens: 64,
+      messages: [{ role: "user", content: "hello from rax" }]
+    }
+  });
+
+  const nativeInvocation = raxFacade.mcp.native.build({
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    layer: "agent",
+    input: {
+      transport: {
+        kind: "stdio",
+        command: "npx",
+        args: ["-y", "@playwright/mcp@latest", "--help"]
+      }
+    }
+  });
+
+  const result = await raxFacade.mcp.native.composeAndExecute(
+    baseInvocation as never,
+    nativeInvocation
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(seen[0]?.sdk.packageName, "@anthropic-ai/claude-agent-sdk");
+  assert.equal(seen[0]?.sdk.entrypoint, "query");
+  assert.equal(
+    (seen[0]?.payload as { prompt?: string } | undefined)?.prompt,
+    "hello from rax"
+  );
+});
+
+test("facade mcp.native.composeAndExecute composes DeepMind agent-native invocations before delegating", async () => {
+  const runtime = new McpRuntime();
+  const router = new CapabilityRouter([]);
+  const seen: Array<PreparedInvocation<Record<string, unknown>>> = [];
+  const raxFacade = createRaxFacade(
+    router,
+    undefined,
+    runtime,
+    undefined,
+    undefined,
+    {
+      executePreparedInvocation: async (invocation) => {
+        seen.push(invocation);
+        return { ok: true };
+      }
+    }
+  );
+
+  const baseInvocation = rax.generate.create({
+    provider: "deepmind",
+    model: "gemini-2.5-flash",
+    input: {
+      contents: "hello from rax"
+    }
+  });
+
+  const nativeInvocation = raxFacade.mcp.native.build({
+    provider: "deepmind",
+    model: "gemini-2.5-flash",
+    layer: "agent",
+    input: {
+      transport: {
+        kind: "stdio",
+        command: "npx",
+        args: ["-y", "@playwright/mcp@latest", "--help"]
+      }
+    }
+  });
+
+  const result = await raxFacade.mcp.native.composeAndExecute(
+    baseInvocation as never,
+    nativeInvocation
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(seen[0]?.sdk.packageName, "@google/adk");
+  assert.equal(seen[0]?.sdk.entrypoint, "InMemoryRunner.runEphemeral");
+  assert.equal(
+    (seen[0]?.payload as { prompt?: string } | undefined)?.prompt,
+    "hello from rax"
+  );
 });

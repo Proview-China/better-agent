@@ -1,0 +1,1400 @@
+{
+  "generatedAt": "2026-03-16T05:14:55.796Z",
+  "smokeGeneratedAt": "2026-03-16T05:14:47.154Z",
+  "providers": [
+    {
+      "provider": "openai",
+      "actions": [
+        {
+          "action": "list",
+          "capabilityKey": "skill.list",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.list and client.skills.versions.list.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "route-failed",
+          "sdkEntrypoints": [
+            "client.skills.list"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "query",
+            "entrypoint": "client.skills.list",
+            "argShape": "query-object",
+            "ids": {
+              "usesSkillId": false,
+              "usesVersion": false
+            },
+            "query": {
+              "supportsAfter": true,
+              "supportsLimit": true,
+              "supportsOrder": true,
+              "supportsPage": false,
+              "supportsSource": false
+            }
+          },
+          "routeEvidence": {
+            "status": "route-failed",
+            "summary": "404 404 page not found",
+            "steps": [
+              "managed_registry"
+            ],
+            "rows": [
+              {
+                "provider": "openai",
+                "step": "managed_registry",
+                "ok": false,
+                "model": "gpt-5.4",
+                "summary": "404 404 page not found",
+                "details": {
+                  "name": "Error",
+                  "status": 404,
+                  "code": null
+                }
+              }
+            ],
+            "failure": {
+              "step": "managed_registry",
+              "summary": "404 404 page not found",
+              "details": {
+                "name": "Error",
+                "status": 404,
+                "code": null
+              }
+            }
+          },
+          "routeSummary": "404 404 page not found"
+        },
+        {
+          "action": "get",
+          "capabilityKey": "skill.read",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.retrieve and client.skills.versions.retrieve.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "route-failed",
+          "sdkEntrypoints": [
+            "client.skills.retrieve"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "id_lookup",
+            "entrypoint": "client.skills.retrieve",
+            "argShape": "single-id",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            }
+          },
+          "routeEvidence": {
+            "status": "route-failed",
+            "summary": "404 404 page not found",
+            "steps": [
+              "managed_registry"
+            ],
+            "rows": [
+              {
+                "provider": "openai",
+                "step": "managed_registry",
+                "ok": false,
+                "model": "gpt-5.4",
+                "summary": "404 404 page not found",
+                "details": {
+                  "name": "Error",
+                  "status": 404,
+                  "code": null
+                }
+              }
+            ],
+            "failure": {
+              "step": "managed_registry",
+              "summary": "404 404 page not found",
+              "details": {
+                "name": "Error",
+                "status": 404,
+                "code": null
+              }
+            }
+          },
+          "routeSummary": "404 404 page not found"
+        },
+        {
+          "action": "publish",
+          "capabilityKey": "skill.create",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.create and client.skills.versions.create.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.skills.create"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "bundle_upload",
+            "entrypoint": "client.skills.create",
+            "argShape": "bundle-create",
+            "ids": {
+              "usesSkillId": false,
+              "usesVersion": false
+            },
+            "upload": {
+              "usesBundle": true,
+              "bundleRootDir": true,
+              "bundleRoles": [],
+              "supportsDisplayTitle": false,
+              "supportsSetDefault": false,
+              "requiresUploadableLowering": true
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "remove",
+          "capabilityKey": "skill.remove",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.delete and client.skills.versions.delete.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.skills.delete"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "delete",
+            "entrypoint": "client.skills.delete",
+            "argShape": "delete-with-id",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "listVersions",
+          "capabilityKey": "skill.list",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.list and client.skills.versions.list.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "route-failed",
+          "sdkEntrypoints": [
+            "client.skills.versions.list"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "query",
+            "entrypoint": "client.skills.versions.list",
+            "argShape": "query-object",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            },
+            "query": {
+              "supportsAfter": true,
+              "supportsLimit": true,
+              "supportsOrder": true,
+              "supportsPage": false,
+              "supportsSource": false
+            }
+          },
+          "routeEvidence": {
+            "status": "route-failed",
+            "summary": "404 404 page not found",
+            "steps": [
+              "managed_registry"
+            ],
+            "rows": [
+              {
+                "provider": "openai",
+                "step": "managed_registry",
+                "ok": false,
+                "model": "gpt-5.4",
+                "summary": "404 404 page not found",
+                "details": {
+                  "name": "Error",
+                  "status": 404,
+                  "code": null
+                }
+              }
+            ],
+            "failure": {
+              "step": "managed_registry",
+              "summary": "404 404 page not found",
+              "details": {
+                "name": "Error",
+                "status": 404,
+                "code": null
+              }
+            }
+          },
+          "routeSummary": "404 404 page not found"
+        },
+        {
+          "action": "getVersion",
+          "capabilityKey": "skill.read",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.retrieve and client.skills.versions.retrieve.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "route-failed",
+          "sdkEntrypoints": [
+            "client.skills.versions.retrieve"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "version_lookup",
+            "entrypoint": "client.skills.versions.retrieve",
+            "argShape": "version-and-skill-id",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": true
+            }
+          },
+          "routeEvidence": {
+            "status": "route-failed",
+            "summary": "404 404 page not found",
+            "steps": [
+              "managed_registry"
+            ],
+            "rows": [
+              {
+                "provider": "openai",
+                "step": "managed_registry",
+                "ok": false,
+                "model": "gpt-5.4",
+                "summary": "404 404 page not found",
+                "details": {
+                  "name": "Error",
+                  "status": 404,
+                  "code": null
+                }
+              }
+            ],
+            "failure": {
+              "step": "managed_registry",
+              "summary": "404 404 page not found",
+              "details": {
+                "name": "Error",
+                "status": 404,
+                "code": null
+              }
+            }
+          },
+          "routeSummary": "404 404 page not found"
+        },
+        {
+          "action": "publishVersion",
+          "capabilityKey": "skill.create",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.create and client.skills.versions.create.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.skills.versions.create"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "bundle_upload",
+            "entrypoint": "client.skills.versions.create",
+            "argShape": "bundle-version-create",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            },
+            "upload": {
+              "usesBundle": true,
+              "bundleRootDir": true,
+              "bundleRoles": [],
+              "supportsDisplayTitle": false,
+              "supportsSetDefault": true,
+              "requiresUploadableLowering": true
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "removeVersion",
+          "capabilityKey": "skill.remove",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.delete and client.skills.versions.delete.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.skills.versions.delete"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "delete",
+            "entrypoint": "client.skills.versions.delete",
+            "argShape": "delete-version",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": true
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "setDefaultVersion",
+          "capabilityKey": "skill.update",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.skills.update for default_version pointer changes.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.skills.update"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "default_pointer_update",
+            "entrypoint": "client.skills.update",
+            "argShape": "default-version-update",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": true
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "getContent",
+          "capabilityKey": "skill.read",
+          "officialStatus": "documented",
+          "officialNotes": "OpenAI documents skill bundle download surfaces under hosted skills content resources.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.skills.content.retrieve"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "content_download",
+            "entrypoint": "client.skills.content.retrieve",
+            "argShape": "content-id",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "getVersionContent",
+          "capabilityKey": "skill.read",
+          "officialStatus": "documented",
+          "officialNotes": "OpenAI documents skill bundle download surfaces under hosted skills content resources.",
+          "officialDocs": [
+            "https://developers.openai.com/api/docs/guides/tools-skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.skills.versions.content.retrieve"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "content_download",
+            "entrypoint": "client.skills.versions.content.retrieve",
+            "argShape": "version-content",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": true
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        }
+      ],
+      "official": {
+        "supportsManagedSkills": true,
+        "profileId": "openai-default"
+      },
+      "localGateway": {
+        "supportsManagedSkills": false,
+        "profileId": "openai-chat-only-gateway",
+        "unsupportedMode": "blocked"
+      },
+      "liveSmoke": {
+        "status": "route-failed",
+        "summary": "404 404 page not found",
+        "rows": [
+          {
+            "provider": "openai",
+            "step": "managed_registry",
+            "ok": false,
+            "model": "gpt-5.4",
+            "summary": "404 404 page not found",
+            "details": {
+              "name": "Error",
+              "status": 404,
+              "code": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "provider": "anthropic",
+      "actions": [
+        {
+          "action": "list",
+          "capabilityKey": "skill.list",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.beta.skills.list and client.beta.skills.versions.list.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "route-failed",
+          "sdkEntrypoints": [
+            "client.beta.skills.list"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "query",
+            "entrypoint": "client.beta.skills.list",
+            "argShape": "query-object",
+            "ids": {
+              "usesSkillId": false,
+              "usesVersion": false
+            },
+            "query": {
+              "supportsAfter": false,
+              "supportsLimit": true,
+              "supportsOrder": false,
+              "supportsPage": true,
+              "supportsSource": true
+            },
+            "providerSpecific": {
+              "betasInjected": true,
+              "betas": [
+                "files-api-2025-04-14",
+                "skills-2025-10-02"
+              ]
+            }
+          },
+          "routeEvidence": {
+            "status": "route-failed",
+            "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+            "steps": [
+              "managed_registry"
+            ],
+            "rows": [
+              {
+                "provider": "anthropic",
+                "step": "managed_registry",
+                "ok": false,
+                "model": "claude-opus-4.6-thinking",
+                "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+                "details": {
+                  "name": "Error",
+                  "status": 404,
+                  "code": null
+                }
+              }
+            ],
+            "failure": {
+              "step": "managed_registry",
+              "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+              "details": {
+                "name": "Error",
+                "status": 404,
+                "code": null
+              }
+            }
+          },
+          "routeSummary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}"
+        },
+        {
+          "action": "get",
+          "capabilityKey": "skill.read",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.beta.skills.retrieve and client.beta.skills.versions.retrieve.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "route-failed",
+          "sdkEntrypoints": [
+            "client.beta.skills.retrieve"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "id_lookup",
+            "entrypoint": "client.beta.skills.retrieve",
+            "argShape": "single-id",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            },
+            "providerSpecific": {
+              "betasInjected": true,
+              "betas": [
+                "files-api-2025-04-14",
+                "skills-2025-10-02"
+              ]
+            }
+          },
+          "routeEvidence": {
+            "status": "route-failed",
+            "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+            "steps": [
+              "managed_registry"
+            ],
+            "rows": [
+              {
+                "provider": "anthropic",
+                "step": "managed_registry",
+                "ok": false,
+                "model": "claude-opus-4.6-thinking",
+                "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+                "details": {
+                  "name": "Error",
+                  "status": 404,
+                  "code": null
+                }
+              }
+            ],
+            "failure": {
+              "step": "managed_registry",
+              "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+              "details": {
+                "name": "Error",
+                "status": 404,
+                "code": null
+              }
+            }
+          },
+          "routeSummary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}"
+        },
+        {
+          "action": "publish",
+          "capabilityKey": "skill.create",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.beta.skills.create and client.beta.skills.versions.create; upload surfaces auto-merge official skills and files-api betas.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.beta.skills.create"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "bundle_upload",
+            "entrypoint": "client.beta.skills.create",
+            "argShape": "bundle-create",
+            "ids": {
+              "usesSkillId": false,
+              "usesVersion": false
+            },
+            "upload": {
+              "usesBundle": true,
+              "bundleRootDir": true,
+              "bundleRoles": [
+                "entry",
+                "resource",
+                "helper"
+              ],
+              "supportsDisplayTitle": true,
+              "supportsSetDefault": false,
+              "requiresUploadableLowering": true
+            },
+            "providerSpecific": {
+              "betasInjected": true,
+              "betas": [
+                "files-api-2025-04-14",
+                "skills-2025-10-02"
+              ]
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "remove",
+          "capabilityKey": "skill.remove",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.beta.skills.delete and client.beta.skills.versions.delete.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.beta.skills.delete"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "delete",
+            "entrypoint": "client.beta.skills.delete",
+            "argShape": "delete-with-id",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            },
+            "providerSpecific": {
+              "betasInjected": true,
+              "betas": [
+                "files-api-2025-04-14",
+                "skills-2025-10-02"
+              ]
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "listVersions",
+          "capabilityKey": "skill.list",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.beta.skills.list and client.beta.skills.versions.list.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "route-failed",
+          "sdkEntrypoints": [
+            "client.beta.skills.versions.list"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "query",
+            "entrypoint": "client.beta.skills.versions.list",
+            "argShape": "query-object",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            },
+            "query": {
+              "supportsAfter": false,
+              "supportsLimit": true,
+              "supportsOrder": false,
+              "supportsPage": true,
+              "supportsSource": false
+            },
+            "providerSpecific": {
+              "betasInjected": true,
+              "betas": [
+                "files-api-2025-04-14",
+                "skills-2025-10-02"
+              ]
+            }
+          },
+          "routeEvidence": {
+            "status": "route-failed",
+            "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+            "steps": [
+              "managed_registry"
+            ],
+            "rows": [
+              {
+                "provider": "anthropic",
+                "step": "managed_registry",
+                "ok": false,
+                "model": "claude-opus-4.6-thinking",
+                "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+                "details": {
+                  "name": "Error",
+                  "status": 404,
+                  "code": null
+                }
+              }
+            ],
+            "failure": {
+              "step": "managed_registry",
+              "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+              "details": {
+                "name": "Error",
+                "status": 404,
+                "code": null
+              }
+            }
+          },
+          "routeSummary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}"
+        },
+        {
+          "action": "getVersion",
+          "capabilityKey": "skill.read",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.beta.skills.retrieve and client.beta.skills.versions.retrieve.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "route-failed",
+          "sdkEntrypoints": [
+            "client.beta.skills.versions.retrieve"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "version_lookup",
+            "entrypoint": "client.beta.skills.versions.retrieve",
+            "argShape": "version-and-skill-id",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": true
+            },
+            "providerSpecific": {
+              "betasInjected": true,
+              "betas": [
+                "files-api-2025-04-14",
+                "skills-2025-10-02"
+              ]
+            }
+          },
+          "routeEvidence": {
+            "status": "route-failed",
+            "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+            "steps": [
+              "managed_registry"
+            ],
+            "rows": [
+              {
+                "provider": "anthropic",
+                "step": "managed_registry",
+                "ok": false,
+                "model": "claude-opus-4.6-thinking",
+                "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+                "details": {
+                  "name": "Error",
+                  "status": 404,
+                  "code": null
+                }
+              }
+            ],
+            "failure": {
+              "step": "managed_registry",
+              "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+              "details": {
+                "name": "Error",
+                "status": 404,
+                "code": null
+              }
+            }
+          },
+          "routeSummary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}"
+        },
+        {
+          "action": "publishVersion",
+          "capabilityKey": "skill.create",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.beta.skills.create and client.beta.skills.versions.create; upload surfaces auto-merge official skills and files-api betas.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.beta.skills.versions.create"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "bundle_upload",
+            "entrypoint": "client.beta.skills.versions.create",
+            "argShape": "bundle-version-create",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": false
+            },
+            "upload": {
+              "usesBundle": true,
+              "bundleRootDir": true,
+              "bundleRoles": [
+                "entry",
+                "resource",
+                "helper"
+              ],
+              "supportsDisplayTitle": false,
+              "supportsSetDefault": false,
+              "requiresUploadableLowering": true
+            },
+            "providerSpecific": {
+              "betasInjected": true,
+              "betas": [
+                "files-api-2025-04-14",
+                "skills-2025-10-02"
+              ]
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "removeVersion",
+          "capabilityKey": "skill.remove",
+          "officialStatus": "documented",
+          "officialNotes": "Maps to client.beta.skills.delete and client.beta.skills.versions.delete.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [
+            "client.beta.skills.versions.delete"
+          ],
+          "preparedPayload": {
+            "available": true,
+            "kind": "delete",
+            "entrypoint": "client.beta.skills.versions.delete",
+            "argShape": "delete-version",
+            "ids": {
+              "usesSkillId": true,
+              "usesVersion": true
+            },
+            "providerSpecific": {
+              "betasInjected": true,
+              "betas": [
+                "files-api-2025-04-14",
+                "skills-2025-10-02"
+              ]
+            }
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "setDefaultVersion",
+          "capabilityKey": "skill.update",
+          "officialStatus": "unsupported",
+          "officialNotes": "Anthropic beta.skills does not currently document a default-version update surface.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/quickstart",
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Anthropic beta.skills does not document a default-version pointer update surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "getContent",
+          "capabilityKey": "skill.read",
+          "officialStatus": "unsupported",
+          "officialNotes": "No equivalent official content download surface is currently documented for this provider in the present baseline.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "unsupported",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Anthropic beta.skills does not currently document a skill bundle content download surface."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "getVersionContent",
+          "capabilityKey": "skill.read",
+          "officialStatus": "unsupported",
+          "officialNotes": "No equivalent official content download surface is currently documented for this provider in the present baseline.",
+          "officialDocs": [
+            "https://platform.claude.com/docs/en/agent-sdk/skills"
+          ],
+          "localGatewayStatus": "unsupported",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Anthropic beta.skills does not currently document a skill version bundle download surface."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        }
+      ],
+      "official": {
+        "supportsManagedSkills": true,
+        "profileId": "anthropic-default"
+      },
+      "localGateway": {
+        "supportsManagedSkills": false,
+        "profileId": "anthropic-messages-only-primary",
+        "unsupportedMode": "blocked"
+      },
+      "liveSmoke": {
+        "status": "route-failed",
+        "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+        "rows": [
+          {
+            "provider": "anthropic",
+            "step": "managed_registry",
+            "ok": false,
+            "model": "claude-opus-4.6-thinking",
+            "summary": "404 {\"error\":{\"message\":\"Invalid URL (GET /v1/skills)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"\"}}",
+            "details": {
+              "name": "Error",
+              "status": 404,
+              "code": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "provider": "deepmind",
+      "actions": [
+        {
+          "action": "list",
+          "capabilityKey": "skill.list",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill registry list surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unsupported",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill registry list surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unsupported",
+            "summary": "unsupported boundary held as expected",
+            "steps": [
+              "managed_list"
+            ],
+            "rows": [
+              {
+                "provider": "deepmind",
+                "step": "managed_list",
+                "ok": true,
+                "model": "gemini-3-flash",
+                "summary": "unsupported boundary held as expected",
+                "details": {
+                  "code": "skill_managed_unsupported"
+                }
+              }
+            ]
+          },
+          "routeSummary": "unsupported boundary held as expected"
+        },
+        {
+          "action": "get",
+          "capabilityKey": "skill.read",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill registry get surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill registry get surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "publish",
+          "capabilityKey": "skill.create",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill publish surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unsupported",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill publish surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unsupported",
+            "summary": "unsupported boundary held as expected",
+            "steps": [
+              "managed_publish"
+            ],
+            "rows": [
+              {
+                "provider": "deepmind",
+                "step": "managed_publish",
+                "ok": true,
+                "model": "gemini-3-flash",
+                "summary": "unsupported boundary held as expected",
+                "details": {
+                  "code": "skill_managed_unsupported"
+                }
+              }
+            ]
+          },
+          "routeSummary": "unsupported boundary held as expected"
+        },
+        {
+          "action": "remove",
+          "capabilityKey": "skill.remove",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill delete surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill delete surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "listVersions",
+          "capabilityKey": "skill.list",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill registry list surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill version list surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "getVersion",
+          "capabilityKey": "skill.read",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill registry get surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill version get surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "publishVersion",
+          "capabilityKey": "skill.create",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill publish surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill version publish surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "removeVersion",
+          "capabilityKey": "skill.remove",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill delete surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill version delete surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "setDefaultVersion",
+          "capabilityKey": "skill.update",
+          "officialStatus": "unsupported",
+          "officialNotes": "Google ADK does not currently document a hosted skill update surface.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "blocked",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill default-version update surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "getContent",
+          "capabilityKey": "skill.read",
+          "officialStatus": "unsupported",
+          "officialNotes": "No equivalent official content download surface is currently documented for this provider in the present baseline.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "unsupported",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill content download surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        },
+        {
+          "action": "getVersionContent",
+          "capabilityKey": "skill.read",
+          "officialStatus": "unsupported",
+          "officialNotes": "No equivalent official content download surface is currently documented for this provider in the present baseline.",
+          "officialDocs": [
+            "https://google.github.io/adk-docs/skills/"
+          ],
+          "localGatewayStatus": "unsupported",
+          "liveStatus": "unknown",
+          "sdkEntrypoints": [],
+          "preparedPayload": {
+            "available": false,
+            "kind": "unsupported",
+            "argShape": "none",
+            "unsupportedReason": "Google ADK does not document a hosted skill version content download surface in the current baseline."
+          },
+          "routeEvidence": {
+            "status": "unknown",
+            "summary": "no action-specific live evidence yet",
+            "steps": [],
+            "rows": []
+          },
+          "routeSummary": "no action-specific live evidence yet"
+        }
+      ],
+      "official": {
+        "supportsManagedSkills": false,
+        "profileId": "deepmind-default"
+      },
+      "localGateway": {
+        "supportsManagedSkills": false,
+        "profileId": "deepmind-openai-compatible-gateway",
+        "unsupportedMode": "blocked"
+      },
+      "liveSmoke": {
+        "status": "unsupported",
+        "summary": "live smoke confirms unsupported boundary",
+        "rows": [
+          {
+            "provider": "deepmind",
+            "step": "managed_list",
+            "ok": true,
+            "model": "gemini-3-flash",
+            "summary": "unsupported boundary held as expected",
+            "details": {
+              "code": "skill_managed_unsupported"
+            }
+          },
+          {
+            "provider": "deepmind",
+            "step": "managed_publish",
+            "ok": true,
+            "model": "gemini-3-flash",
+            "summary": "unsupported boundary held as expected",
+            "details": {
+              "code": "skill_managed_unsupported"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

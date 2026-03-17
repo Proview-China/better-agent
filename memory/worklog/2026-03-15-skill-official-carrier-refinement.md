@@ -12,13 +12,228 @@
 - 继续完善：
   - `src/rax/skill-runtime.ts`
   - `src/rax/skill-types.ts`
+  - provider-specific skill carrier builders in:
+    - `src/integrations/openai/api/tools/skills/carrier.ts`
+    - `src/integrations/anthropic/api/tools/skills/carrier.ts`
+    - `src/integrations/deepmind/api/tools/skills/carrier.ts`
 - 当前可用方法：
   - `rax.skill.loadLocal()`
   - `rax.skill.define()`
   - `rax.skill.containerCreate()`
   - `rax.skill.discover()`
+  - `rax.skill.list()`
+  - `rax.skill.get()`
+  - `rax.skill.getContent()`
+  - `rax.skill.publish()`
+  - `rax.skill.remove()`
+  - `rax.skill.listVersions()`
+  - `rax.skill.getVersion()`
+  - `rax.skill.getVersionContent()`
+  - `rax.skill.publishVersion()`
+  - `rax.skill.removeVersion()`
+  - `rax.skill.setDefaultVersion()`
   - `rax.skill.bind()`
   - `rax.skill.activate()`
+  - `rax.skill.prepare()`
+  - `rax.skill.use()`
+  - `rax.skill.mount()`
+- `skill` 也已进入统一 capability 语义：
+  - `skill.define`
+  - `skill.discover`
+  - `skill.list`
+  - `skill.read`
+  - `skill.create`
+  - `skill.update`
+  - `skill.remove`
+  - `skill.bind`
+  - `skill.activate`
+  - `skill.use`
+  - `skill.load`
+- `skill` 的 provider carrier 细节已从 `skill-runtime` 下沉到 integration builders：
+  - OpenAI
+  - Anthropic
+  - DeepMind
+- `skill.prepare()` 现在会产出更接近官方 SDK 的 `PreparedInvocation`
+- `skill.use()` 现在可直接从 `source` 走到统一公共语言下的官方 carrier activation
+- `skill.mount()` 现在可直接从已有 container 走到 activation + prepared invocation
+- OpenAI hosted shell 现在更贴近官方 Responses skill attachment 形状：
+  - attached tool payload 改为 `skill_reference`
+  - `version` 改为可选，不再伪造本地 descriptor 版本
+  - binding 内保留 hosted skill / version lifecycle 元数据，但真正 attach 到 shell 的是官方 `skill_reference`
+  - hosted shell attachment version 现在与 hosted version resource metadata 分开表达：
+    - `skill_reference.version` 可保留 numeric / `"latest"`
+    - 只有显式提供 `version_id` 或 `version_record` 时，才保留 hosted `skill.version` metadata
+  - hosted shell summary 现在更贴官方：
+    - `default_version`
+    - `latest_version`
+    统一按 numeric summary pointer 处理
+  - hosted shell environment setting 现在已有 runtime coverage：
+    - `file_ids`
+    - `memory_limit`
+    - `network_policy`
+- Anthropic API managed skill 现在更贴近官方 beta messages / beta.skills 语义：
+  - managed container skill 默认改为 `type: "custom"`
+  - skill `version` 改为可选，不再默认塞本地 descriptor 版本
+  - code execution tool 与 beta header 组合进入 managed binding
+- managed lifecycle prepared invocation 已进入代码：
+  - OpenAI:
+    - `client.skills.list`
+    - `client.skills.retrieve`
+    - `client.skills.create`
+    - `client.skills.delete`
+    - `client.skills.versions.list`
+    - `client.skills.versions.retrieve`
+    - `client.skills.versions.create`
+    - `client.skills.versions.delete`
+    - `client.skills.update`
+  - Anthropic:
+    - `client.beta.skills.list`
+    - `client.beta.skills.retrieve`
+    - `client.beta.skills.create`
+    - `client.beta.skills.delete`
+    - `client.beta.skills.versions.list`
+    - `client.beta.skills.versions.retrieve`
+    - `client.beta.skills.versions.create`
+    - `client.beta.skills.versions.delete`
+  - Google ADK:
+    - 当前 hosted registry lifecycle 明确不承诺，统一走 unsupported
+- `skill live smoke` 脚手架已进入代码：
+  - 文件：
+    - `src/rax/skill-live-smoke.ts`
+  - 脚本：
+    - `npm run smoke:skill:live`
+  - 当前策略：
+    - OpenAI / Anthropic 只读验证 `list/get/listVersions/getVersion`
+    - Google ADK 验证 managed lifecycle unsupported boundary
+    - 默认不执行 publish/remove 这类会修改远端状态的动作
+  - live smoke 配置现在也更适合上游适配实验：
+    - 支持用进程环境临时覆盖 `.env.local`
+    - 支持 `PRAXIS_LIVE_ENV_FILE`
+    - 单 provider 默认写入 provider 级 report，避免顺序实验时互相覆盖
+  - 当前最新适配实验又把边界收紧了一层：
+    - Anthropic 只把模型改成 `claude-opus-4-6-thinking` 后，`websearch` 预检即可成功
+    - DeepMind 只把模型改成 `gemini-3.1-pro-preview` 后，`websearch` 预检即可成功
+    - 但 Anthropic managed skill registry 读链在当前 route 上仍然返回 `404`
+  - `skill` execution smoke 也已进入代码：
+    - 文件：
+      - `src/rax/skill-execution-live-smoke.ts`
+    - 脚本：
+      - `npm run smoke:skill:execution:live`
+    - 当前策略：
+      - OpenAI 测 inline skill 真执行
+      - Anthropic 测 prebuilt skill (`pptx`) 真执行
+      - DeepMind 暂保持 truthful skip
+    - 当前 execution 读链实测：
+      - OpenAI inline skill execution 在当前 route 上返回 `502`
+      - Anthropic prebuilt skill execution 在 `claude-opus-4-6-thinking` 下尚未真正被识别成可用 skill
+- compatibility/profile truthfulness 已跟进到 managed lifecycle：
+  - `raxLocal` 现在会直接阻断 gateway profile 下的：
+    - `skill.list`
+    - `skill.read`
+    - `skill.create`
+    - `skill.update`
+    - `skill.remove`
+  - provider compatibility 现在也显式建模 `supportsManagedSkills`
+  - 避免 chat-only / messages-only / openai-compatible gateway 先撞远端 `/skills` 再用 `404` 反推能力边界
+- managed lifecycle query passthrough 已更贴官方 SDK：
+  - OpenAI:
+    - `providerOptions.openai.after`
+    - `providerOptions.openai.limit`
+    - `input.order`
+  - Anthropic:
+    - `providerOptions.anthropic.limit`
+    - `providerOptions.anthropic.page`
+    - `providerOptions.anthropic.betas`
+    - `input.source`
+    - `betas` 继续统一由 builder 自动补入 `skills-2025-10-02`
+    - upload surfaces 现在也会自动并入：
+      - `files-api-2025-04-14`
+      - 当前范围：
+        - `client.beta.skills.create`
+        - `client.beta.skills.versions.create`
+- Anthropic API-managed carrier override 现在已有更贴官方的 runtime coverage：
+  - `code_execution_type`
+  - `allowed_callers`
+  - managed skill `type`
+  - managed skill `version`
+  - carrier `betas`
+  - legacy official `code_execution_20250522`
+  - 即使用户显式传了其他 `betas`，managed carrier 仍会继续自动并入与 `code_execution_type` 对应的官方 beta
+- OpenAI shell carrier 现在也已覆盖 inline official carrier：
+  - 按官方 `InlineSkill` 形状进入 `tools[].environment.skills`
+  - 当前保持为 OpenAI provider-specific carrier，不扩成新的公共动作
+  - `skill.use()` / `skill.mount()` 现在也已有端到端覆盖
+- OpenAI managed upload prepared payload 现在也已更贴官方 SDK：
+  - `publish / publishVersion` 当前改为 `args + bundle` 分离的 call plan
+  - 不再把 `files` 伪装成自定义 bundle body
+  - 更贴近 `openai-node` 的 `Uploadable | Uploadable[]` 执行期 lowering 语义
+- `skill` 公共类型现在也已把 provider-specific truth 往上收了一层：
+  - `SkillBindInput.details`
+  - `SkillUseInput.details`
+  - `SkillProviderBindingLike.details`
+  当前不再只是裸 `Record<string, unknown>`，而是 official carrier override 联合类型
+- `src/rax/index.ts` 现在也已把最小 skill 公共语言层与 provider-specific official override 输入面导出到公共 barrel：
+  - `SkillBindingDetailsInput`
+  - `SkillBindingDetails`
+  - `SkillProviderBindingLike`
+  - `SkillActivationPayload`
+  - `SkillActivationPlanLike`
+  - OpenAI / Anthropic / DeepMind 的 `*Overrides`
+- provider-specific official extension 已进入代码：
+  - OpenAI:
+    - `client.skills.content.retrieve`
+    - `client.skills.versions.content.retrieve`
+  - 当前作为 provider-specific content download surface 处理，不伪装成三家公共 hosted lifecycle
+- 当前 live smoke 读链实测结果：
+  - OpenAI current `.env.local` route 对 `/v1/skills` 返回 `404`
+  - Anthropic current `.env.local` route 对 `/v1/skills` 返回 `404`
+  - Google ADK managed lifecycle unsupported boundary 正常成立
+  - `skill live smoke` 结果现会自动写入：
+    - `memory/live-reports/skill-live-smoke.json`
+- `skill capability report` 已进入代码：
+  - 文件：
+    - `src/rax/skill-capability-report.ts`
+    - `src/rax/skill-capability-report.test.ts`
+  - 脚本：
+    - `npm run report:skill:capability`
+  - 默认输出：
+    - `memory/live-reports/skill-capability-report.json`
+  - 当前表达三层：
+    - official support
+    - local gateway compatibility
+    - live smoke evidence
+    - prepared payload summary
+  - 当前已细化到 action-level matrix
+    - `list`
+    - `get`
+    - `publish`
+    - `remove`
+    - `listVersions`
+    - `getVersion`
+    - `publishVersion`
+    - `removeVersion`
+    - `setDefaultVersion`
+    - `getContent`
+    - `getVersionContent`
+  - 当前 action-level report 新增 machine-readable 控制面字段：
+    - `preparedPayload`
+    - `routeEvidence`
+    - `routeSummary`
+  - `preparedPayload` 当前会真实从 `rax.skill.*` 的 prepared invocation 中抽取最小 payload 轮廓：
+    - query capability
+    - id/version lookup
+    - bundle upload shape
+    - content download
+    - unsupported boundary
+  - `routeEvidence` 当前会按 action 归档 live smoke rows：
+    - `status`
+    - `summary`
+    - `steps`
+    - `rows`
+    - `failure`
+- 本地 source 发现已增强：
+  - `discover()` 支持扫描 parent directory 下多个 child skill packages
+  - `loadLocal()` 可自动解析单 skill 父目录，并对多 skill 父目录抛显式歧义错误
 
 ## 当前更贴官方的 carrier 计划
 
@@ -36,4 +251,4 @@
 - `npm run typecheck` 通过
 - `npm test` 通过
 - 当前结果：
-  - `50 pass / 0 fail`
+  - `144 pass / 0 fail`

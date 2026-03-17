@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-03-16T05:41:03.000Z",
+  "provider": "anthropic",
+  "rows": [
+    {
+      "provider": "anthropic",
+      "step": "prebuilt_skill_execution",
+      "ok": false,
+      "model": "claude-opus-4-6-thinking",
+      "summary": "I don't have access to any attached files or a PPTX skill tool. I can see the tools available to me are code execution and system functions, but neither include",
+      "details": {
+        "contentBlocks": 2,
+        "toolBlocks": 1,
+        "adapterId": "anthropic.api.generation.messages.create"
+      }
+    }
+  ]
+}

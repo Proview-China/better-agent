@@ -88,3 +88,11 @@
 ## 模型选择
 
 ## 基座作用与意义
+
+
+针对消息队列的设计,自然可以想到群聊方法和@agent和文件的方法.
+
+## Current Execution Roadmaps
+
+- MCP 官方对齐与分阶段执行路线图：
+  - [13-mcp-official-alignment-roadmap.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/13-mcp-official-alignment-roadmap.md)

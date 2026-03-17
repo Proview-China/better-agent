@@ -1,6 +1,42 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  type AnthropicApiSkillActivationPayload,
+  type AnthropicFilesystemSkillBinding,
+  type AnthropicFilesystemSkillBindingOverrides,
+  type AnthropicManagedSkillBinding,
+  type AnthropicManagedSkillBindingOverrides,
+  buildAnthropicApiSkillActivationPayload,
+  buildAnthropicFilesystemSkillBinding,
+  buildAnthropicManagedSkillBinding,
+  buildAnthropicSdkSkillActivationPayload,
+  type AnthropicSdkSkillActivationPayload
+} from "../integrations/anthropic/api/tools/skills/carrier.js";
+import {
+  type DeepMindCodeDefinedSkillReference,
+  type DeepMindCodeDefinedSkillReferenceOverrides,
+  type DeepMindLocalSkillReference,
+  type DeepMindLocalSkillReferenceOverrides,
+  type DeepMindSkillToolsetPayload,
+  buildDeepMindCodeDefinedSkillReference,
+  buildDeepMindCodeDefinedSkillToolsetPayload,
+  buildDeepMindLocalSkillReference,
+  buildDeepMindLocalSkillToolsetPayload
+} from "../integrations/deepmind/api/tools/skills/carrier.js";
+import {
+  type OpenAIHostedShellSkillLifecycle,
+  type OpenAIHostedShellSkillLifecycleOverrides,
+  type OpenAIInlineShellSkillDefinition,
+  type OpenAIInlineShellSkillOverrides,
+  type OpenAILocalShellSkillReference,
+  type OpenAILocalShellSkillReferenceOverrides,
+  type OpenAIShellToolPayload,
+  buildOpenAIHostedShellSkillReference,
+  buildOpenAIInlineShellSkillDefinition,
+  buildOpenAILocalShellSkillReference,
+  buildOpenAIShellToolPayload
+} from "../integrations/openai/api/tools/skills/carrier.js";
 import { RaxRoutingError } from "./errors.js";
 import type {
   SkillActivateInput,
@@ -226,6 +262,47 @@ async function collectFiles(rootDir: string, currentDir = rootDir): Promise<stri
   return files;
 }
 
+async function hasSkillEntry(rootDir: string): Promise<boolean> {
+  try {
+    const entryStat = await stat(path.join(rootDir, "SKILL.md"));
+    return entryStat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function discoverSkillRootDirs(source: string): Promise<string[]> {
+  const sourceStat = await stat(source);
+  if (sourceStat.isFile()) {
+    return [path.dirname(source)];
+  }
+
+  if (await hasSkillEntry(source)) {
+    return [source];
+  }
+
+  const discovered = new Set<string>();
+
+  async function walk(currentDir: string): Promise<void> {
+    if (await hasSkillEntry(currentDir)) {
+      discovered.add(currentDir);
+      return;
+    }
+
+    const entries = await readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      await walk(path.join(currentDir, entry.name));
+    }
+  }
+
+  await walk(source);
+
+  return [...discovered].sort();
+}
+
 function classifyResourceKind(relativePath: string): SkillResourceKind {
   const [head] = relativePath.split(path.sep);
   switch (head) {
@@ -320,82 +397,99 @@ function cloneContainer(container: SkillContainer): SkillContainer {
 function createBinding(input: SkillBindInput): SkillProviderBinding {
   const mode = input.mode ?? DEFAULT_BINDING_MODE[input.provider];
   const details = { ...(input.details ?? {}) };
-  const version = input.container.descriptor.version ?? "latest";
 
   switch (mode) {
     case "openai-local-shell":
+      {
+        const binding = buildOpenAILocalShellSkillReference(
+          input.container,
+          details as OpenAILocalShellSkillReferenceOverrides
+        );
       return {
         provider: input.provider,
         mode,
         layer: input.layer ?? "agent",
-        details: {
-          name: input.container.descriptor.name,
-          description: input.container.descriptor.description,
-          path: input.container.source.rootDir,
-          ...details
-        }
+        details: binding as unknown as Record<string, unknown>
       };
+      }
+    case "openai-inline-shell":
+      {
+        const binding = buildOpenAIInlineShellSkillDefinition(
+          input.container,
+          details as OpenAIInlineShellSkillOverrides
+        );
+      return {
+        provider: input.provider,
+        mode,
+        layer: input.layer ?? "agent",
+        details: binding as unknown as Record<string, unknown>
+      };
+      }
     case "openai-hosted-shell":
+      {
+        const binding = buildOpenAIHostedShellSkillReference(
+          input.container,
+          details as OpenAIHostedShellSkillLifecycleOverrides
+        );
       return {
         provider: input.provider,
         mode,
         layer: input.layer ?? "agent",
-        details: {
-          type: "skill_reference",
-          skill_id: input.container.descriptor.id,
-          version,
-          ...details
-        }
+        details: binding as unknown as Record<string, unknown>
       };
+      }
     case "anthropic-sdk-filesystem":
+      {
+        const binding = buildAnthropicFilesystemSkillBinding(
+          input.container,
+          details as AnthropicFilesystemSkillBindingOverrides
+        );
       return {
         provider: input.provider,
         mode,
         layer: input.layer ?? "agent",
-        details: {
-          skillDirectory: input.container.source.rootDir,
-          allowedTools: ["Skill"],
-          settingSources: ["project"],
-          cwd: input.container.source.rootDir,
-          ...details
-        }
+        details: binding as unknown as Record<string, unknown>
       };
+      }
     case "anthropic-api-managed":
-      return {
+      {
+        const binding = buildAnthropicManagedSkillBinding(
+          input.container,
+          details as AnthropicManagedSkillBindingOverrides
+        );
+        return {
         provider: input.provider,
         mode,
         layer: input.layer ?? "api",
-        details: {
-          type: "anthropic",
-          skill_id: input.container.descriptor.id,
-          version,
-          ...details
-        }
+        details: binding as unknown as Record<string, unknown>
       };
+      }
     case "google-adk-local":
+      {
+        const binding = buildDeepMindLocalSkillReference(
+          input.container,
+          details as DeepMindLocalSkillReferenceOverrides
+        );
       return {
         provider: input.provider,
         mode,
         layer: input.layer ?? "agent",
-        details: {
-          loader: "load_skill_from_dir",
-          path: input.container.source.rootDir,
-          ...details
-        }
+        details: binding as unknown as Record<string, unknown>
       };
+      }
     case "google-adk-code-defined":
+      {
+        const binding = buildDeepMindCodeDefinedSkillReference(
+          input.container,
+          details as DeepMindCodeDefinedSkillReferenceOverrides
+        );
       return {
         provider: input.provider,
         mode,
         layer: input.layer ?? "agent",
-        details: {
-          name: input.container.descriptor.name,
-          description: input.container.descriptor.description,
-          tags: input.container.descriptor.tags,
-          instructions: input.container.entry.content,
-          ...details
-        }
+        details: binding as unknown as Record<string, unknown>
       };
+      }
   }
 }
 
@@ -405,133 +499,141 @@ function toActivationPlan(input: SkillActivateInput, binding: SkillProviderBindi
 
   switch (binding.mode) {
     case "openai-local-shell":
-      return {
+      {
+        const details = binding.details as unknown as OpenAILocalShellSkillReference;
+        const payload = buildOpenAIShellToolPayload({
+          type: "local",
+          skills: [details]
+        });
+        return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "openai-shell-environment",
-        payload: {
-          tools: [
-            {
-              type: "shell",
-              environment: {
-                type: "local",
-                skills: [binding.details]
-              }
-            }
-          ]
-        },
+        payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
         helpers
       };
+      }
+    case "openai-inline-shell":
+      {
+        const details = binding.details as unknown as OpenAIInlineShellSkillDefinition;
+        const payload = buildOpenAIShellToolPayload({
+          type: "container_auto",
+          skills: [details]
+        });
+        return {
+        provider: input.provider,
+        mode: binding.mode,
+        layer: binding.layer,
+        officialCarrier: "openai-shell-environment",
+        payload: payload as unknown as Record<string, unknown>,
+        entry: { ...input.container.entry },
+        resources,
+        helpers
+      };
+      }
     case "openai-hosted-shell":
-      return {
+      {
+        const lifecycle = binding.details as unknown as OpenAIHostedShellSkillLifecycle;
+        const payload = buildOpenAIShellToolPayload({
+          type: "container_auto",
+          skills: [lifecycle.attachment],
+          ...(lifecycle.environment ?? {})
+        });
+        return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "openai-shell-environment",
-        payload: {
-          tools: [
-            {
-              type: "shell",
-              environment: {
-                type: "container_auto",
-                skills: [binding.details]
-              }
-            }
-          ]
-        },
+        payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
         helpers
       };
+      }
     case "anthropic-sdk-filesystem":
+      {
+        const details = binding.details as unknown as AnthropicFilesystemSkillBinding;
+        const payload = buildAnthropicSdkSkillActivationPayload(details);
       return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "anthropic-sdk-filesystem-skill",
-        payload: {
-          options: {
-            cwd: binding.details.cwd,
-            settingSources: binding.details.settingSources,
-            allowedTools: binding.details.allowedTools
-          }
-        },
+        payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
         helpers
       };
+      }
     case "anthropic-api-managed":
-      return {
+      {
+        const details = binding.details as unknown as AnthropicManagedSkillBinding;
+        const payload = buildAnthropicApiSkillActivationPayload(details);
+        return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "anthropic-api-container-skills",
-        payload: {
-          betas: ["code-execution-2025-08-25", "skills-2025-10-02"],
-          container: {
-            skills: [binding.details]
-          },
-          tools: [
-            {
-              type: "code_execution_20250825",
-              name: "code_execution"
-            }
-          ]
-        },
+        payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
         helpers
       };
+      }
     case "google-adk-local":
+      {
+        const details = binding.details as unknown as DeepMindLocalSkillReference;
+        const payload = buildDeepMindLocalSkillToolsetPayload([details]);
       return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "google-adk-skill-toolset",
-        payload: {
-          imports: {
-            skillLoader: "google.adk.skills.load_skill_from_dir",
-            toolsetFactory: "google.adk.tools.skill_toolset.SkillToolset"
-          },
-          toolset: {
-            skills: [binding.details]
-          }
-        },
+        payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
         helpers
       };
+      }
     case "google-adk-code-defined":
+      {
+        const details = binding.details as unknown as DeepMindCodeDefinedSkillReference;
+        const payload = buildDeepMindCodeDefinedSkillToolsetPayload([details]);
       return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "google-adk-skill-toolset",
-        payload: {
-          imports: {
-            skillModel: "google.adk.skills.Skill",
-            toolsetFactory: "google.adk.tools.skill_toolset.SkillToolset"
-          },
-          toolset: {
-            skills: [binding.details]
-          }
-        },
+        payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
         helpers
       };
+      }
   }
 }
 
 export class SkillRuntime {
   async loadLocal(input: SkillLoadLocalInput): Promise<SkillLocalPackage> {
+    const skillRoots = await discoverSkillRootDirs(input.source);
+    if (skillRoots.length === 0) {
+      throw new RaxRoutingError(
+        "skill_source_not_found",
+        `No skill package was found under ${input.source}.`
+      );
+    }
+    if (skillRoots.length > 1) {
+      throw new RaxRoutingError(
+        "skill_source_ambiguous",
+        `Multiple skill packages were found under ${input.source}; point loadLocal() at one concrete skill directory instead.`
+      );
+    }
+
     const sourceStat = await stat(input.source);
-    const rootDir = sourceStat.isDirectory()
-      ? input.source
-      : path.dirname(input.source);
+    const rootDir = skillRoots[0]!;
     const entryPath = sourceStat.isDirectory()
       ? path.join(rootDir, "SKILL.md")
       : input.source;
@@ -632,20 +734,29 @@ export class SkillRuntime {
 
   async discover(input: SkillDiscoverInput): Promise<SkillDescriptor[]> {
     const descriptors: SkillDescriptor[] = [];
+    const seenRoots = new Set<string>();
 
     for (const source of input.sources) {
-      const skillPackage = await this.loadLocal({ source });
-      descriptors.push({
-        ...skillPackage.descriptor,
-        tags: [...skillPackage.descriptor.tags],
-        triggers: [...skillPackage.descriptor.triggers],
-        frontmatter: skillPackage.descriptor.frontmatter
-          ? { ...skillPackage.descriptor.frontmatter }
-          : undefined
-      });
+      const skillRoots = await discoverSkillRootDirs(source);
+      for (const rootDir of skillRoots) {
+        if (seenRoots.has(rootDir)) {
+          continue;
+        }
+
+        seenRoots.add(rootDir);
+        const skillPackage = await this.loadLocal({ source: rootDir });
+        descriptors.push({
+          ...skillPackage.descriptor,
+          tags: [...skillPackage.descriptor.tags],
+          triggers: [...skillPackage.descriptor.triggers],
+          frontmatter: skillPackage.descriptor.frontmatter
+            ? { ...skillPackage.descriptor.frontmatter }
+            : undefined
+        });
+      }
     }
 
-    return descriptors;
+    return descriptors.sort((left, right) => left.name.localeCompare(right.name, "en"));
   }
 
   bind(input: SkillBindInput): SkillContainer {

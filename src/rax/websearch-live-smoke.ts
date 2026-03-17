@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
@@ -23,6 +26,20 @@ function parseProviderArg(argv: string[]): ProviderTarget {
     return value;
   }
   throw new Error(`Unsupported provider target: ${value}`);
+}
+
+function parseReportPathArg(argv: string[], provider: ProviderTarget): string {
+  const entry = argv.find((item) => item.startsWith("--report="));
+  if (entry) {
+    return entry.slice("--report=".length);
+  }
+
+  const fileName =
+    provider === "all"
+      ? "websearch-live-smoke.json"
+      : `websearch-live-smoke.${provider}.json`;
+
+  return resolve(process.cwd(), "memory/live-reports", fileName);
 }
 
 function formatError(error: unknown): { summary: string; details: Record<string, unknown> } {
@@ -348,8 +365,26 @@ function printRows(rows: SmokeRow[]): void {
   }
 }
 
+async function writeReport(reportPath: string, provider: ProviderTarget, rows: SmokeRow[]): Promise<void> {
+  await mkdir(dirname(reportPath), { recursive: true });
+  await writeFile(
+    reportPath,
+    JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        provider,
+        rows
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+}
+
 async function main(): Promise<void> {
   const provider = parseProviderArg(process.argv.slice(2));
+  const reportPath = parseReportPathArg(process.argv.slice(2), provider);
   const rows: SmokeRow[] = [];
 
   if (provider === "all" || provider === "openai") {
@@ -363,6 +398,8 @@ async function main(): Promise<void> {
   }
 
   printRows(rows);
+  await writeReport(reportPath, provider, rows);
+  console.error(`websearch live smoke report written to ${reportPath}`);
 
   if (rows.some((row) => !row.ok)) {
     process.exitCode = 1;
