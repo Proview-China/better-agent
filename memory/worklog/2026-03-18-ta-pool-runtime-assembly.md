@@ -1,0 +1,24 @@
+# 2026-03-18 T/A Pool Runtime Assembly
+
+- 当前已把第一个 `T/A Pool` 接进 `raw_agent_core` 预留接口。
+- 当前 `src/agent_core/runtime.ts` 已新增并打通：
+  - `dispatchCapabilityIntentViaTaPool(...)`
+- 当前 runtime 内部可串联的控制面链路：
+  - safety interceptor
+  - baseline fast path
+  - reviewer runtime
+  - provisioner runtime
+  - execution bridge
+  - pooled dispatch
+- 当前已验证成立的 runtime assembly 路径：
+  - review -> dispatch
+  - review -> provisioning
+  - safety -> interrupt
+- 当前仍未完成的部分：
+  - capability intent 默认主路径切换
+  - reviewer / provisioner / safety 的更完整端到端编排
+  - 与更高层项目状态、记忆池、包装机的真实接入
+- 当前验证结果：
+  - `npm run typecheck` 通过
+  - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+  - 当前 `agent_core` 定向测试：`115 pass / 0 fail`

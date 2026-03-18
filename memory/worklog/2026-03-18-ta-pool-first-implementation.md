@@ -1,0 +1,45 @@
+# 2026-03-18 T/A Pool First Implementation
+
+- 当前 `T/A Pool` 已从总纲与任务包进入第一波真实代码落地。
+- 当前新增目录：
+  - `src/agent_core/ta-pool-types/**`
+  - `src/agent_core/ta-pool-model/**`
+  - `src/agent_core/ta-pool-review/**`
+  - `src/agent_core/ta-pool-provision/**`
+  - `src/agent_core/ta-pool-safety/**`
+  - `src/agent_core/ta-pool-context/**`
+  - `src/agent_core/ta-pool-runtime/**`
+- 当前已实现的第一波模块：
+  - `ta-pool-types`
+    - 四层权限、三种模式、六种审核结果、access/grant/provision 契约
+  - `ta-pool-model`
+    - baseline profile
+    - mode policy matrix
+  - `ta-pool-review`
+    - review decision engine
+    - review routing
+    - reviewer runtime shell
+  - `ta-pool-provision`
+    - provision registry
+    - provisioner runtime shell
+  - `ta-pool-safety`
+    - safety interceptor
+  - `ta-pool-context`
+    - context aperture placeholder
+  - `ta-pool-runtime`
+    - execution bridge
+    - control-plane gateway
+- 当前 runtime 已开始接入：
+  - `src/agent_core/runtime.ts`
+  - `AgentCoreRuntime` 现在已支持：
+    - `resolveTaCapabilityAccess(...)`
+    - `dispatchTaCapabilityGrant(...)`
+    - 在配置 `taProfile` 时装配 `TaControlPlaneGateway`
+- 当前验证结果：
+  - `npm run typecheck` 通过
+  - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+  - 当前 `agent_core` 定向测试：`112 pass / 0 fail`
+- 当前阶段结论：
+  - `T/A Pool` 第一波控制面不是纸面设计，而是已进入可运行骨架
+  - baseline fast path、review-required surface、provision shell、safety shell 都已有最小测试覆盖
+  - 但完整端到端主流程仍未最终收口，下一阶段重点仍是 runtime assembly 与更完整的 integration

@@ -323,6 +323,8 @@
       - `docs/ability/17-agent-capability-interface-and-pool-outline.md`
     - 当前阶段性状态总结文档：
       - `docs/ability/18-agent-capability-interface-implementation-status.md`
+    - 当前上下文压缩交接 prompt：
+      - `docs/ability/19-agent-capability-interface-handoff-prompt.md`
     - 当前也已补可直接分发给并行 Codex 的任务包：
       - `docs/ability/agent-capability-interface-task-pack/README.md`
       - `00-phase0-interface-protocol-freeze.md`
@@ -533,3 +535,110 @@
 4. 如果后续要让 `skill` 使用 MCP，优先复用 `mcp.use()` 作为统一会话入口，而不是重做三套 provider-specific MCP 逻辑。
 5. 保持 `memory/` 作为并行协作下的项目长期记忆层。
 6. 先把 `agent_core` 的 raw runtime kernel 细化完，再进入 topology / io / ooa / autonomy 这些治理层细化。
+7. 当前新阶段已经进入 `T/A Pool` 概念固化：
+   - 当前新总纲文档：
+     - `docs/ability/20-ta-pool-control-plane-outline.md`
+   - 当前新任务包：
+     - `docs/ability/ta-pool-task-pack/README.md`
+     - `00-phase0-protocol-freeze.md`
+     - `01-baseline-profile-and-tier-model.md`
+     - `02-access-request-and-review-decision.md`
+     - `03-control-plane-gateway.md`
+     - `04-mode-policy-matrix.md`
+     - `05-execution-plane-bridge.md`
+     - `06-provision-request-and-artifact-bundle.md`
+     - `07-provision-registry-and-lifecycle.md`
+     - `08-reviewer-runtime-shell.md`
+     - `09-provisioner-runtime-shell.md`
+     - `10-context-aperture-placeholder.md`
+     - `11-safety-intercept-and-human-escalation.md`
+     - `12-runtime-assembly-and-integration.md`
+     - `13-end-to-end-smoke-and-test-pack.md`
+   - 当前对 `T/A Pool` 的阶段性判断：
+     - 它不是对现有 `CapabilityPool` 的替换
+     - 它是包在现有 execution plane 上层的一层 control plane
+   - 当前已经定死的五个平面：
+     - `kernel plane`
+     - `execution plane`
+     - `review plane`
+     - `provision plane`
+     - `context plane`
+   - 当前已经定死的四层权限：
+     - `B0 baseline`
+     - `B1 requestable`
+     - `B2 sensitive`
+     - `B3 critical`
+   - 当前已经定死的三种运行模式：
+     - `strict`
+     - `balanced`
+     - `yolo`
+   - 当前已经定死的六种审核结果：
+     - `approved`
+     - `partially_approved`
+     - `denied`
+     - `deferred`
+     - `escalated_to_human`
+     - `redirected_to_provisioning`
+   - 当前已经明确的关键边界：
+     - 默认放权必须存在，否则主 agent 会退化成只能对话的壳
+     - reviewer / provisioner 属于控制面，不直接污染 raw kernel
+     - 项目状态、记忆池、包装机未来一定会接 reviewer，但当前阶段先留 `context aperture` 坑位，不提前耦合
+8. 当前 `T/A Pool` 第一波代码已经开始真实落地到 `src/agent_core/**`：
+   - 当前已落地目录：
+     - `src/agent_core/ta-pool-types/**`
+     - `src/agent_core/ta-pool-model/**`
+     - `src/agent_core/ta-pool-review/**`
+     - `src/agent_core/ta-pool-provision/**`
+     - `src/agent_core/ta-pool-safety/**`
+     - `src/agent_core/ta-pool-context/**`
+     - `src/agent_core/ta-pool-runtime/**`
+   - 当前已落地的第一波能力：
+     - baseline profile / tier model
+     - mode policy matrix
+     - review decision engine
+     - review routing helpers
+     - reviewer runtime shell
+     - provision request / artifact bundle registry
+     - provisioner runtime shell
+     - safety interceptor
+     - execution bridge
+     - control-plane gateway
+   - 当前 runtime 装配状态：
+     - `AgentCoreRuntime` 已开始接入 `TaControlPlaneGateway`
+     - 已可：
+       - resolve baseline T/A grant
+       - dispatch granted capability through pooled path
+       - surface `review_required` when capability is not baseline
+   - 当前验证基线：
+     - `npm run typecheck` 通过
+     - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+     - 当前 `agent_core` 定向测试：`112 pass / 0 fail`
+   - 当前阶段判断：
+     - `T/A Pool` 第一波控制面骨架已经成立
+     - 但还没有完成完整 runtime assembly
+     - 也还没有把 reviewer / provisioner / safety 完全串进端到端主流程
+9. 当前 `T/A Pool` 的基础 runtime assembly 已经打通：
+   - `AgentCoreRuntime` 现在不只支持手动：
+     - `resolveTaCapabilityAccess(...)`
+     - `dispatchTaCapabilityGrant(...)`
+   - 还新增并打通了：
+     - `dispatchCapabilityIntentViaTaPool(...)`
+   - 当前这条链已能在 runtime 内部完成：
+     - safety
+     - baseline fast path
+     - reviewer runtime
+     - provisioner runtime
+     - execution bridge
+     - pooled capability dispatch
+   - 当前已验证成立的三条装配路径：
+     - review -> dispatch
+     - review -> provisioning
+     - safety -> interrupt
+   - 当前验证基线已经更新为：
+     - `npm run typecheck` 通过
+     - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+     - 当前 `agent_core` 定向测试：`115 pass / 0 fail`
+   - 当前最准确的阶段判断：
+     - `T/A Pool` 已经不是孤立模块集合
+     - 第一个 pool 已经接进 `raw_agent_core` 预留接口
+     - 但还没有把它改成所有 capability intent 的默认主路径

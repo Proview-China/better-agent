@@ -1,0 +1,57 @@
+# 2026-03-18 T/A Pool Control-Plane Outline
+
+- 当前已完成 `T/A Pool` 第一版总纲文档：
+  - `docs/ability/20-ta-pool-control-plane-outline.md`
+- 当前已完成 `T/A Pool` 并行任务包：
+  - `docs/ability/ta-pool-task-pack/README.md`
+  - `00-phase0-protocol-freeze.md`
+  - `01-baseline-profile-and-tier-model.md`
+  - `02-access-request-and-review-decision.md`
+  - `03-control-plane-gateway.md`
+  - `04-mode-policy-matrix.md`
+  - `05-execution-plane-bridge.md`
+  - `06-provision-request-and-artifact-bundle.md`
+  - `07-provision-registry-and-lifecycle.md`
+  - `08-reviewer-runtime-shell.md`
+  - `09-provisioner-runtime-shell.md`
+  - `10-context-aperture-placeholder.md`
+  - `11-safety-intercept-and-human-escalation.md`
+  - `12-runtime-assembly-and-integration.md`
+  - `13-end-to-end-smoke-and-test-pack.md`
+- 当前阶段性结论：
+  - `T/A Pool` 不是对现有 `CapabilityPool` 的替换
+  - `CapabilityPool` 继续作为 execution plane
+  - `T/A Pool` 新增的是 review / provisioning / safety / baseline profile / context aperture 这一层 control plane
+- 当前已经定死的概念：
+  - 五个平面：
+    - `kernel plane`
+    - `execution plane`
+    - `review plane`
+    - `provision plane`
+    - `context plane`
+  - 四层权限：
+    - `B0 baseline`
+    - `B1 requestable`
+    - `B2 sensitive`
+    - `B3 critical`
+  - 三种模式：
+    - `strict`
+    - `balanced`
+    - `yolo`
+  - 六种审核结果：
+    - `approved`
+    - `partially_approved`
+    - `denied`
+    - `deferred`
+    - `escalated_to_human`
+    - `redirected_to_provisioning`
+- 当前明确的工程原则：
+  - 默认放权必须存在
+  - “改代码”不是单一权限，后续要分宽度
+  - reviewer 不等于执行器
+  - provisioner 产物必须资产化：
+    - `tool artifact`
+    - `binding artifact`
+    - `verification artifact`
+    - `usage artifact`
+  - 项目状态感知不是不做，而是当前先留 `context aperture` 坑位，后续由 agent 治理 system / 记忆池 / 包装机接入

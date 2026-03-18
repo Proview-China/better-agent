@@ -18,6 +18,15 @@ import type { JournalReadResult } from "./journal/journal-types.js";
 import { CapabilityPortBroker, type CapabilityDispatchReceipt, type CapabilityPortDefinition } from "./port/index.js";
 import { AgentRunCoordinator } from "./run/index.js";
 import { SessionManager } from "./session/index.js";
+import {
+  createExecutionRequest,
+  createInvocationPlanFromGrant,
+  TaControlPlaneGateway,
+} from "./ta-pool-runtime/index.js";
+import { createReviewerRuntime, ReviewerRuntime } from "./ta-pool-review/index.js";
+import { createProvisionerRuntime, ProvisionerRuntime } from "./ta-pool-provision/index.js";
+import { evaluateSafetyInterception, type TaSafetyInterceptorConfig } from "./ta-pool-safety/index.js";
+import { toProvisionRequestFromReviewDecision, type ReviewDecisionEngineInventory } from "./ta-pool-review/index.js";
 import type {
   CapabilityCallIntent,
   ModelInferenceIntent,
@@ -34,6 +43,17 @@ import type {
   CapabilityManifest,
   CapabilityResultEnvelope,
 } from "./capability-types/index.js";
+import type {
+  AccessRequestScope,
+  AccessRequest,
+  AgentCapabilityProfile,
+  CapabilityGrant,
+  ProvisionArtifactBundle,
+  ProvisionRequest,
+  ReviewDecision,
+  TaCapabilityTier,
+  TaPoolMode,
+} from "./ta-pool-types/index.js";
 import type { CreateSessionInput } from "./session/index.js";
 import type { CreateRunInput, RunTransitionOutcome } from "./run/index.js";
 
@@ -43,6 +63,11 @@ export interface AgentCoreRuntimeOptions {
   portBroker?: CapabilityPortBroker;
   capabilityPool?: DefaultCapabilityPool;
   capabilityGateway?: KernelCapabilityGatewayLike;
+  taControlPlaneGateway?: TaControlPlaneGateway;
+  taProfile?: AgentCapabilityProfile;
+  reviewerRuntime?: ReviewerRuntime;
+  provisionerRuntime?: ProvisionerRuntime;
+  taSafetyConfig?: TaSafetyInterceptorConfig;
   runCoordinator?: AgentRunCoordinator;
   sessionManager?: SessionManager;
   modelInferenceExecutor?: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
@@ -85,14 +110,80 @@ export interface DispatchCapabilityPlanResult {
   handle: CapabilityExecutionHandle;
 }
 
+export interface DispatchCapabilityIntentViaTaPoolOptions {
+  agentId: string;
+  reason?: string;
+  requestedTier?: TaCapabilityTier;
+  mode?: TaPoolMode;
+  requestedScope?: AccessRequestScope;
+  requestedDurationMs?: number;
+  taskContext?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export type TaCapabilityAssemblyStatus =
+  | "dispatched"
+  | "review_required"
+  | "denied"
+  | "deferred"
+  | "escalated_to_human"
+  | "redirected_to_provisioning"
+  | "provisioned"
+  | "provisioning_failed"
+  | "blocked"
+  | "interrupted";
+
+export interface DispatchCapabilityIntentViaTaPoolResult {
+  status: TaCapabilityAssemblyStatus;
+  grant?: CapabilityGrant;
+  accessRequest?: AccessRequest;
+  reviewDecision?: ReviewDecision;
+  provisionRequest?: ProvisionRequest;
+  provisionBundle?: ProvisionArtifactBundle;
+  dispatch?: DispatchCapabilityPlanResult;
+  safety?: ReturnType<typeof evaluateSafetyInterception>;
+}
+
+export interface ResolveTaCapabilityAccessInput {
+  sessionId: string;
+  runId: string;
+  agentId: string;
+  capabilityKey: string;
+  reason: string;
+  requestedTier?: TaCapabilityTier;
+  mode?: TaPoolMode;
+  taskContext?: Record<string, unknown>;
+  requestedScope?: AccessRequestScope;
+  requestedDurationMs?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DispatchTaCapabilityGrantInput {
+  grant: CapabilityGrant;
+  sessionId: string;
+  runId: string;
+  intentId: string;
+  requestId?: string;
+  capabilityKey?: string;
+  operation?: string;
+  input: Record<string, unknown>;
+  priority: CapabilityInvocationPlan["priority"];
+  timeoutMs?: number;
+  metadata?: Record<string, unknown>;
+}
+
 export class AgentCoreRuntime {
   readonly journal: AppendOnlyEventJournal;
   readonly checkpointStore: CheckpointStore;
   readonly portBroker: CapabilityPortBroker;
   readonly capabilityPool: DefaultCapabilityPool;
   readonly capabilityGateway: KernelCapabilityGatewayLike;
+  readonly taControlPlaneGateway?: TaControlPlaneGateway;
+  readonly reviewerRuntime?: ReviewerRuntime;
+  readonly provisionerRuntime?: ProvisionerRuntime;
   readonly runCoordinator: AgentRunCoordinator;
   readonly sessionManager: SessionManager;
+  readonly #taSafetyConfig?: TaSafetyInterceptorConfig;
   readonly #modelInferenceExecutor: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
   readonly #capabilityExecutionContext = new Map<string, DispatchCapabilityPlanInput>();
   readonly #capabilityPreparedContext = new Map<string, DispatchCapabilityPlanInput>();
@@ -107,6 +198,13 @@ export class AgentCoreRuntime {
     this.capabilityGateway = options.capabilityGateway ?? createKernelCapabilityGateway({
       pool: this.capabilityPool,
     });
+    this.taControlPlaneGateway = options.taControlPlaneGateway
+      ?? (options.taProfile ? new TaControlPlaneGateway({ profile: options.taProfile }) : undefined);
+    this.reviewerRuntime = options.reviewerRuntime
+      ?? (this.taControlPlaneGateway ? createReviewerRuntime() : undefined);
+    this.provisionerRuntime = options.provisionerRuntime
+      ?? (this.taControlPlaneGateway ? createProvisionerRuntime() : undefined);
+    this.#taSafetyConfig = options.taSafetyConfig;
     this.runCoordinator = options.runCoordinator ?? new AgentRunCoordinator({
       journal: this.journal,
       checkpointStore: this.checkpointStore,
@@ -174,6 +272,190 @@ export class AgentCoreRuntime {
       correlationId: intent.correlationId,
       resultSource: "capability",
     });
+  }
+
+  resolveTaCapabilityAccess(input: ResolveTaCapabilityAccessInput) {
+    if (!this.taControlPlaneGateway) {
+      throw new Error("T/A control-plane gateway is not configured on this runtime.");
+    }
+
+    return this.taControlPlaneGateway.resolveCapabilityAccess(input);
+  }
+
+  async dispatchTaCapabilityGrant(input: DispatchTaCapabilityGrantInput): Promise<DispatchCapabilityPlanResult> {
+    const requestId = input.requestId ?? `${input.intentId}:ta-exec`;
+    const request = createExecutionRequest({
+      requestId,
+      sessionId: input.sessionId,
+      runId: input.runId,
+      intentId: input.intentId,
+      capabilityKey: input.capabilityKey ?? input.grant.capabilityKey,
+      operation: input.operation ?? input.capabilityKey ?? input.grant.capabilityKey,
+      input: input.input,
+      timeoutMs: input.timeoutMs,
+      priority: input.priority,
+      metadata: input.metadata,
+    });
+
+    return this.dispatchCapabilityPlan({
+      plan: createInvocationPlanFromGrant({
+        grant: input.grant,
+        request,
+      }),
+      sessionId: input.sessionId,
+      runId: input.runId,
+      requestId,
+      correlationId: input.intentId,
+      resultSource: "capability",
+    });
+  }
+
+  async dispatchCapabilityIntentViaTaPool(
+    intent: CapabilityCallIntent,
+    options: DispatchCapabilityIntentViaTaPoolOptions,
+  ): Promise<DispatchCapabilityIntentViaTaPoolResult> {
+    if (!this.taControlPlaneGateway) {
+      throw new Error("T/A control-plane gateway is not configured on this runtime.");
+    }
+    if (!this.reviewerRuntime) {
+      throw new Error("Reviewer runtime is not configured on this runtime.");
+    }
+    if (!this.provisionerRuntime) {
+      throw new Error("Provisioner runtime is not configured on this runtime.");
+    }
+
+    const requestedTier = options.requestedTier ?? "B1";
+    const mode = options.mode ?? this.taControlPlaneGateway.profile.defaultMode;
+    const reason = options.reason ?? `Capability ${intent.request.capabilityKey} requested by runtime.`;
+    const safety = evaluateSafetyInterception({
+      mode,
+      requestedTier,
+      capabilityKey: intent.request.capabilityKey,
+      reason,
+      config: this.#taSafetyConfig,
+    });
+
+    if (safety.outcome === "block") {
+      return {
+        status: "blocked",
+        safety,
+      };
+    }
+    if (safety.outcome === "interrupt") {
+      return {
+        status: "interrupted",
+        safety,
+      };
+    }
+    if (safety.outcome === "escalate_to_human") {
+      return {
+        status: "escalated_to_human",
+        safety,
+      };
+    }
+
+    const effectiveTier = safety.outcome === "downgrade" && safety.downgradedTier
+      ? safety.downgradedTier
+      : requestedTier;
+
+    const resolved = this.resolveTaCapabilityAccess({
+      sessionId: intent.sessionId,
+      runId: intent.runId,
+      agentId: options.agentId,
+      capabilityKey: intent.request.capabilityKey,
+      reason,
+      requestedTier: effectiveTier,
+      mode,
+      taskContext: options.taskContext,
+      requestedScope: options.requestedScope,
+      requestedDurationMs: options.requestedDurationMs,
+      metadata: {
+        correlationId: intent.correlationId,
+        ...(intent.metadata ?? {}),
+        ...(intent.request.metadata ?? {}),
+        ...(options.metadata ?? {}),
+      },
+    });
+
+    if (resolved.status === "baseline_granted") {
+      const dispatch = await this.dispatchTaCapabilityGrant({
+        grant: resolved.grant,
+        sessionId: intent.sessionId,
+        runId: intent.runId,
+        intentId: intent.intentId,
+        requestId: intent.request.requestId,
+        capabilityKey: intent.request.capabilityKey,
+        input: intent.request.input,
+        priority: intent.request.priority,
+        timeoutMs: intent.request.timeoutMs,
+        metadata: intent.request.metadata,
+      });
+      return {
+        status: "dispatched",
+        grant: resolved.grant,
+        dispatch,
+        safety: safety.outcome === "allow" ? undefined : safety,
+      };
+    }
+
+    const accessRequest = resolved.request;
+    const reviewDecision = await this.reviewerRuntime.submit({
+      request: accessRequest,
+      profile: this.taControlPlaneGateway.profile,
+      inventory: this.#buildTaReviewInventory(),
+    });
+    const consumed = this.taControlPlaneGateway.consumeReviewDecision(reviewDecision);
+
+    if (consumed.grant) {
+      const dispatch = await this.dispatchTaCapabilityGrant({
+        grant: consumed.grant,
+        sessionId: intent.sessionId,
+        runId: intent.runId,
+        intentId: intent.intentId,
+        requestId: intent.request.requestId,
+        capabilityKey: intent.request.capabilityKey,
+        input: intent.request.input,
+        priority: intent.request.priority,
+        timeoutMs: intent.request.timeoutMs,
+        metadata: intent.request.metadata,
+      });
+      return {
+        status: "dispatched",
+        accessRequest,
+        reviewDecision,
+        grant: consumed.grant,
+        dispatch,
+        safety: safety.outcome === "allow" ? undefined : safety,
+      };
+    }
+
+    if (reviewDecision.decision === "redirected_to_provisioning") {
+      const provisionRequest = toProvisionRequestFromReviewDecision({
+        request: accessRequest,
+        decision: reviewDecision,
+        provisionId: `${reviewDecision.decisionId}:provision`,
+        createdAt: new Date().toISOString(),
+      });
+      const provisionBundle = await this.provisionerRuntime.submit(provisionRequest);
+      return {
+        status: provisionBundle.status === "ready" ? "provisioned" : "provisioning_failed",
+        accessRequest,
+        reviewDecision,
+        provisionRequest,
+        provisionBundle,
+        safety: safety.outcome === "allow" ? undefined : safety,
+      };
+    }
+
+    return {
+      status: reviewDecision.decision as Exclude<
+        DispatchCapabilityIntentViaTaPoolResult["status"],
+        "dispatched" | "provisioned" | "provisioning_failed" | "blocked" | "interrupted"
+      >,
+      accessRequest,
+      reviewDecision,
+      safety: safety.outcome === "allow" ? undefined : safety,
+    };
   }
 
   async dispatchCapabilityIntent(intent: CapabilityCallIntent): Promise<DispatchCapabilityIntentResult> {
@@ -362,6 +644,26 @@ export class AgentCoreRuntime {
     if (preparedId) {
       this.#capabilityPreparedContext.delete(preparedId);
     }
+  }
+
+  #buildTaReviewInventory(): ReviewDecisionEngineInventory {
+    const availableCapabilityKeys = [...new Set(
+      this.capabilityPool.listCapabilities().map((manifest) => manifest.capabilityKey),
+    )];
+    const pendingProvisionKeys = this.provisionerRuntime
+      ? this.provisionerRuntime.registry
+        .list()
+        .filter((entry) => {
+          const status = entry.bundle?.status;
+          return status === undefined || status === "pending" || status === "building" || status === "verifying";
+        })
+        .map((entry) => entry.request.requestedCapabilityKey)
+      : [];
+
+    return {
+      availableCapabilityKeys,
+      pendingProvisionKeys,
+    };
   }
 
   #syncSessionFromRun(run: RunTransitionOutcome["run"]): void {

@@ -33,3 +33,5 @@
   - 结论已明确收口为：
     - `Capability Interface v1` 已成立
     - 但完整迁移尚未结束
+- 当前上下文压缩交接文档：
+  - `docs/ability/19-agent-capability-interface-handoff-prompt.md`

@@ -98,5 +98,17 @@
   - [13-mcp-official-alignment-roadmap.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/13-mcp-official-alignment-roadmap.md)
 - Agent Core raw runtime kernel 总纲：
   - [16-agent-core-runtime-kernel-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/16-agent-core-runtime-kernel-outline.md)
+- Agent Core 能力接口与执行池总纲：
+  - [17-agent-capability-interface-and-pool-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/17-agent-capability-interface-and-pool-outline.md)
+- Agent Core 能力接口并行编码任务包：
+  - [agent-capability-interface-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/agent-capability-interface-task-pack/README.md)
+- T/A Pool 控制平面总纲：
+  - [20-ta-pool-control-plane-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/20-ta-pool-control-plane-outline.md)
+- T/A Pool 阶段实现状态：
+  - [21-ta-pool-implementation-status.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/21-ta-pool-implementation-status.md)
+- T/A Pool 上下文压缩交接：
+  - [22-ta-pool-handoff-prompt.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/22-ta-pool-handoff-prompt.md)
+- T/A Pool 并行编码任务包：
+  - [ta-pool-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/ta-pool-task-pack/README.md)
 - Agent Core 并行编码任务包：
   - [agent-core-runtime-kernel-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/agent-core-runtime-kernel-task-pack/README.md)
