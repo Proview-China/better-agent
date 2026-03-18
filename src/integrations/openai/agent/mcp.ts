@@ -13,7 +13,7 @@ export const OPENAI_MCP_PROVIDER_SHELL: McpProviderShell = {
   loweringMode: "shared-runtime",
   isDefault: true,
   supportedTransports: ["stdio", "streamable-http", "in-memory"],
-  nativeSupportedTransports: ["stdio", "streamable-http"],
+  nativeSupportedTransports: ["stdio"],
   nativeSupportsResources: false,
   nativeSupportsPrompts: false,
   nativeSupportsServe: false,
@@ -24,7 +24,8 @@ export const OPENAI_MCP_PROVIDER_SHELL: McpProviderShell = {
     "OpenAI agent MCP is modeled as the OpenAI Agents/runtime carrier in rax.",
     "This shell is the default OpenAI MCP route when upper layers ask for runtime-side orchestration.",
     "It remains tool-first; resources and prompts are not claimed here as first-class OpenAI agent carrier surface.",
-    "Shared MCP runtime still handles the actual client connection lifecycle."
+    "Shared MCP runtime still handles the actual client connection lifecycle.",
+    "Remote hosted MCP shapes stay out of the current native execute matrix until rax wires a truthful hosted execution path."
   ]
 };
 

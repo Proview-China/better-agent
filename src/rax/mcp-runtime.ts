@@ -71,6 +71,23 @@ function classifyMcpError(error: unknown, fallbackCode: string): RaxRoutingError
     return new RaxRoutingError("mcp_auth_error", message);
   }
 
+  if (
+    lowered.includes("enoent") ||
+    lowered.includes("spawn") ||
+    lowered.includes("not recognized as an internal or external command") ||
+    lowered.includes("operable program or batch file") ||
+    lowered.includes("no such file or directory")
+  ) {
+    return new RaxRoutingError(fallbackCode, message);
+  }
+
+  if (
+    fallbackCode === "mcp_connection_failed" &&
+    lowered.includes("connection closed")
+  ) {
+    return new RaxRoutingError(fallbackCode, message);
+  }
+
   if (lowered.includes("transport") || lowered.includes("connection")) {
     return new RaxRoutingError("mcp_transport_error", message);
   }
@@ -162,11 +179,6 @@ export class McpRuntime {
 
     const connectionId = params.input.connectionId ?? randomUUID();
     const existing = this.#connections.get(connectionId);
-    if (existing) {
-      await existing.client.close();
-      this.#connections.delete(connectionId);
-    }
-
     const client = new Client(this.#clientInfo, {
       capabilities: this.#clientCapabilities ?? {}
     });
@@ -194,6 +206,17 @@ export class McpRuntime {
       transportKind: params.input.transport.kind,
       metadata: params.input.metadata
     };
+
+    if (existing) {
+      try {
+        await existing.client.close();
+      } catch (error) {
+        await client.close().catch(() => undefined);
+        throw classifyMcpError(error, "mcp_connection_replacement_failed");
+      }
+
+      this.#connections.delete(connectionId);
+    }
 
     this.#connections.set(connectionId, record);
 

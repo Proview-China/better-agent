@@ -1437,7 +1437,7 @@ test("facade mcp.native.prepare returns an OpenAI API Responses MCP payload for 
   );
 });
 
-test("facade mcp.native.prepare returns a hosted-style payload for openai agent streamable-http", () => {
+test("facade mcp.native.prepare reports openai agent streamable-http as unsupported in the current execute baseline", () => {
   const runtime = new McpRuntime();
   const router = new CapabilityRouter([]);
   const raxFacade = createRaxFacade(router, undefined, runtime);
@@ -1457,18 +1457,12 @@ test("facade mcp.native.prepare returns a hosted-style payload for openai agent 
     }
   });
 
-  assert.equal(plan.supported, true);
+  assert.equal(plan.supported, false);
   assert.equal(plan.builderId, "openai.agent.openai-agents-mcp");
-  assert.equal(plan.sdkPackageName, "@openai/agents");
-  assert.equal(plan.entrypoint, "hostedMcpTool");
-  assert.equal(
-    ((plan.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
-    "agent-remote-hosted"
-  );
-  assert.equal(
-    ((plan.payload as { mcpServer?: { transport?: string } } | undefined)?.mcpServer?.transport),
-    "streamable-http"
-  );
+  assert.match(plan.unsupportedReasons?.[0] ?? "", /streamable-http/u);
+  assert.equal(plan.sdkPackageName, undefined);
+  assert.equal(plan.entrypoint, undefined);
+  assert.equal(plan.payload, undefined);
 });
 
 test("facade mcp.native.prepare returns an Anthropic API connector payload for streamable-http", () => {
@@ -1807,30 +1801,93 @@ test("facade mcp.native.build returns an Anthropic API connector invocation", ()
   );
 });
 
-test("facade mcp.native.build returns an OpenAI agent hosted invocation", () => {
+test("facade mcp.native.build rejects openai agent streamable-http until native hosted execute lands", () => {
   const runtime = new McpRuntime();
   const router = new CapabilityRouter([]);
   const raxFacade = createRaxFacade(router, undefined, runtime);
 
-  const invocation = raxFacade.mcp.native.build({
-    provider: "openai",
-    model: "gpt-5",
-    layer: "agent",
-    input: {
-      transport: {
-        kind: "streamable-http",
-        url: "https://example.com/mcp"
-      }
+  assert.throws(
+    () =>
+      raxFacade.mcp.native.build({
+        provider: "openai",
+        model: "gpt-5",
+        layer: "agent",
+        input: {
+          transport: {
+            kind: "streamable-http",
+            url: "https://example.com/mcp"
+          }
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "mcp_native_build_unsupported");
+      assert.match(error.message, /streamable-http/u);
+      return true;
     }
-  });
-
-  assert.equal(invocation.adapterId, "mcp.native.openai.agent.openai-agents-mcp");
-  assert.equal(invocation.sdk.packageName, "@openai/agents");
-  assert.equal(invocation.sdk.entrypoint, "hostedMcpTool");
-  assert.equal(
-    ((invocation.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
-    "agent-remote-hosted"
   );
+});
+
+test("mcp.connect keeps the old connection when duplicate-id replacement fails", async () => {
+  const runtime = new McpRuntime();
+  const { server, clientTransport } = await setupInMemoryMcpServer();
+
+  try {
+    await runtime.connect({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "agent",
+      input: {
+        connectionId: "duplicate-id",
+        transport: {
+          kind: "in-memory",
+          transport: clientTransport
+        }
+      }
+    });
+
+    await assert.rejects(
+      () =>
+        runtime.connect({
+          provider: "openai",
+          model: "gpt-5",
+          layer: "agent",
+          input: {
+            connectionId: "duplicate-id",
+            transport: {
+              kind: "stdio",
+              command: "definitely-not-a-real-command"
+            }
+          }
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof RaxRoutingError);
+        assert.equal(error.code, "mcp_connection_failed");
+        return true;
+      }
+    );
+
+    assert.deepEqual(runtime.listConnectionIds(), ["duplicate-id"]);
+
+    const tools = await runtime.listTools({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "agent",
+      input: {
+        connectionId: "duplicate-id"
+      }
+    });
+
+    assert.equal(tools.tools[0]?.name, "echo");
+  } finally {
+    await runtime.disconnect({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "agent",
+      connectionId: "duplicate-id"
+    });
+    await server.close();
+  }
 });
 
 test("facade mcp.native.build returns a DeepMind ADK runtime invocation", () => {
