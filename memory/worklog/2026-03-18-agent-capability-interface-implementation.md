@@ -1,0 +1,35 @@
+# 2026-03-18 Agent Capability Interface Implementation
+
+- 当前已从“接口总纲 + 任务包”进入第一批代码落地。
+- 当前已落地的新目录：
+  - `src/agent_core/capability-types/**`
+  - `src/agent_core/capability-model/**`
+  - `src/agent_core/capability-invocation/**`
+  - `src/agent_core/capability-result/**`
+  - `src/agent_core/capability-gateway/**`
+  - `src/agent_core/capability-pool/**`
+- 当前也已落地第一批 adapter：
+  - `src/agent_core/integrations/model-inference-adapter.ts`
+  - `src/agent_core/integrations/rax-websearch-adapter.ts`
+  - `src/agent_core/integrations/rax-mcp-adapter.ts`
+  - `src/agent_core/integrations/rax-skill-adapter.ts`
+- 当前已验证基线：
+  - `npm run typecheck` 通过
+  - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+  - `65 pass / 0 fail`
+  - `npm test` 通过
+  - 仓库级 `156 pass / 0 fail`
+- 当前结构判断：
+  - `capability pool`、`kernel gateway`、`result bridge`、`manifest/binding`、`invocation/lease` 已有可运行骨架
+  - `model inference` 已有统一 adapter
+  - `AgentCoreRuntime` 已开始接入新的 `capabilityPool + capabilityGateway` 路径
+  - 已新增：
+    - `registerCapabilityAdapter(...)`
+    - `dispatchCapabilityPlan(...)`
+    - `dispatchCapabilityIntentViaGateway(...)`
+  - 当前新 runtime 路径已有测试覆盖，但旧 `CapabilityPortBroker` 主路径仍保留，尚未完全切换
+- 当前阶段总结文档：
+  - `docs/ability/18-agent-capability-interface-implementation-status.md`
+  - 结论已明确收口为：
+    - `Capability Interface v1` 已成立
+    - 但完整迁移尚未结束

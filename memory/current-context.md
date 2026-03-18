@@ -1,12 +1,13 @@
 # Current Context
 
-更新时间：2026-03-16
+更新时间：2026-03-18
 
 ## 当前阶段
 
 - 仓库处于 `reboot/blank-slate` 重启阶段。
 - 目标是从空白起点重新建立可持续演进的架构，而不是继续修补旧实现。
 - `rax` 的第一版 control-plane 骨架已经落下；`MCP` 第一阶段和 review 收口已完成。
+- `agent_core` 的第一阶段 raw runtime kernel 里程碑也已完成，并已进入“可运行闭环”状态。
 - 当前最新进展：
   - `MCP` 的 registry surface 已与 runtime 实现面对齐
   - `src/rax/index.ts` 的 MCP 公共类型导出已补齐 resources/prompts 相关项
@@ -269,7 +270,136 @@
   - 当前本地验证基线已更新为：
     - `npm run typecheck` 通过
     - `npm test` 通过
-    - `144 pass / 0 fail`
+    - `155 pass / 0 fail`
+  - `agent_core` 现已从设计稿进入可运行代码，`src/agent_core/**` 已落地：
+    - `types`
+    - `goal`
+    - `journal`
+    - `state`
+    - `transition`
+    - `port`
+    - `checkpoint`
+    - `run`
+    - `session`
+    - `runtime`
+    - `integrations/model-inference`
+    - `integrations/rax-port`
+  - 最小 raw agent 闭环已真实跑通，当前已验证成立的路径是：
+    - 创建 `session`
+    - 创建 `run`
+    - 将用户输入编译成 `goal`
+    - 生成 `model_inference intent`
+    - 通过 `gmn` 上游实际调用 `gpt-5.4`
+    - 收到模型结果
+    - 将 `run` 推进到 `completed`
+  - 这意味着 5 个核心对象已不再只是纸面抽象，而是进入可运行闭环：
+    - `AgentSession`
+    - `AgentRun`
+    - `AgentState`
+    - `CapabilityPort`
+    - `CheckpointStore`
+  - 同时 3 条运行语义也已被当前最小内核验证成立：
+    - `GoalFrame`
+    - `StepTransition`
+    - `EventJournal`
+  - 当前最小闭环的真实集成状态：
+    - 已通过 `src/agent_core/integrations/model-inference.ts` 接到 `gmn` 上游
+    - 当前最小直问直答路径使用 `gpt-5.4`
+    - 已存在第一条 `agent_core -> rax` capability bridge：`search.ground`
+  - 当前更细的验证基线：
+    - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+    - `42 pass / 0 fail`
+    - 仓库级 `npm test` 通过
+    - `155 pass / 0 fail`
+  - 当前远端与提交状态：
+    - 里程碑提交已进入 `origin/reboot/blank-slate`
+    - 当前提交为 `42ce88f`
+    - 提交说明为 `Implement raw agent_core kernel and minimal answer loop`
+  - 下一阶段已开始进入“能力接口优先”模式：
+    - 当前先不急着扩更多 capability 接线
+    - 当前先冻结 `agent_core -> capability pool` 的统一接口规范
+    - 当前已明确先做 `Capability Interface`，再做 `Capability Pool`
+    - 当前新总纲文档：
+      - `docs/ability/17-agent-capability-interface-and-pool-outline.md`
+    - 当前阶段性状态总结文档：
+      - `docs/ability/18-agent-capability-interface-implementation-status.md`
+    - 当前也已补可直接分发给并行 Codex 的任务包：
+      - `docs/ability/agent-capability-interface-task-pack/README.md`
+      - `00-phase0-interface-protocol-freeze.md`
+      - `01-kernel-capability-gateway.md`
+      - `02-capability-manifest-and-binding.md`
+      - `03-capability-invocation-and-lease.md`
+      - `04-capability-pool-registry-and-lifecycle.md`
+      - `05-capability-dispatch-scheduler.md`
+      - `06-result-envelope-and-event-bridge.md`
+      - `07-model-inference-adapter.md`
+      - `08-rax-websearch-adapter.md`
+      - `09-rax-mcp-adapter-skeleton.md`
+      - `10-rax-skill-adapter-skeleton.md`
+      - `11-hot-swap-drain-and-health.md`
+      - `12-runtime-assembly-and-integration.md`
+    - 当前已明确的接口分层：
+      - `kernel-facing`
+      - `pool-facing`
+      - `provider-facing`
+    - 当前已明确的设计原则：
+      - 公共语言在上，provider lowering 在下
+      - 冷路径丰富，热路径极薄
+      - 热插拔走 generation / drain，不污染 kernel 主 loop
+      - `agent_core` 热路径只应看到：
+        - `capability key`
+        - `invocation plan`
+        - `execution handle`
+        - `result envelope`
+        - `backpressure signal`
+    - 当前已明确的工程顺序：
+      - 先冻结接口协议与对象名
+      - 再实现 pool registry / lease / dispatch / result
+      - 再把 `model inference`、`websearch`、`mcp`、`skill` 逐条桥接进统一能力面
+      - 当前推荐的多智能体开工方法：
+        - `Wave 0`：`1` 个协议冻结负责人
+        - `Wave 1`：`4` 个并行 Codex 处理 gateway / manifest-binding / invocation-lease / result-bridge
+        - `Wave 2`：`3` 个并行 Codex 处理 registry-lifecycle / dispatch-scheduler / hot-swap-health
+        - `Wave 3`：`4` 个并行 Codex 处理 model-inference / websearch / mcp / skill adapters
+        - `Wave 4`：`1` 个集成负责人做 runtime assembly 与联调
+    - 当前第一波实现已经开始真正落地到代码：
+      - `src/agent_core/capability-types/**`
+      - `src/agent_core/capability-gateway/**`
+      - `src/agent_core/capability-model/**`
+      - `src/agent_core/capability-invocation/**`
+      - `src/agent_core/capability-result/**`
+      - `src/agent_core/capability-pool/**`
+      - `src/agent_core/integrations/model-inference-adapter.ts`
+      - `src/agent_core/integrations/rax-websearch-adapter.ts`
+      - `src/agent_core/integrations/rax-mcp-adapter.ts`
+      - `src/agent_core/integrations/rax-skill-adapter.ts`
+    - 当前代码级已成立的接口骨架：
+      - `CapabilityAdapter`
+      - `CapabilityPool`
+      - `KernelCapabilityGateway`
+      - `CapabilityManifest / Binding / Lease / InvocationPlan / PreparedCall / ExecutionHandle / ResultEnvelope`
+    - 当前第一版 pool 已具备：
+      - registry / lifecycle
+      - queue / backpressure / idempotency result cache
+      - draining / health 基础
+      - direct / queued dispatch
+    - 当前验证基线已进一步更新：
+      - `npm run typecheck` 通过
+      - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+      - `65 pass / 0 fail`
+      - `npm test` 通过
+      - `156 pass / 0 fail`
+    - 当前尚未完成的点：
+      - 新 `capability pool / gateway` 已开始接入 `AgentCoreRuntime`
+      - 当前 `AgentCoreRuntime` 已拥有：
+        - `capabilityPool`
+        - `capabilityGateway`
+        - `registerCapabilityAdapter(...)`
+        - `dispatchCapabilityPlan(...)`
+        - `dispatchCapabilityIntentViaGateway(...)`
+      - 当前 result bridge 已能把 pool 返回结果写回 journal 并推进 run
+      - 但旧 `CapabilityPortBroker` 主路径仍保留，尚未完全切换到新总装路径
+      - `model inference` 已有统一 adapter，但 `runUntilTerminal()` 仍主要走旧的 runtime 特判闭环
   - `src/rax/index.ts` 现在也已把 skill 的最小公共语言层与 provider-specific override 输入面导出到公共 barrel：
     - `SkillBindingDetailsInput`
     - `SkillBindingDetails`

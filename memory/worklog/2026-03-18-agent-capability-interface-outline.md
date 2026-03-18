@@ -1,0 +1,84 @@
+# 2026-03-18 Agent Capability Interface Outline
+
+- 当前主线已从“最小 raw kernel 闭环”切到“统一能力接口优先”。
+- 先不直接扩更多 capability 接线，先冻结 `agent_core -> capability pool` 的统一接口规范。
+- 当前新总纲文档：
+  - `docs/ability/17-agent-capability-interface-and-pool-outline.md`
+- 当前定下的主边界：
+  - `agent_core` 只通过 `KernelCapabilityGateway` 调能力
+  - `KernelCapabilityGateway` 下接 `CapabilityPool`
+  - `CapabilityPool` 通过 `CapabilityAdapter` 去接 `rax` / provider runtime / 未来新增能力
+- 当前定下的接口分层：
+  - `kernel-facing`
+  - `pool-facing`
+  - `provider-facing`
+- 当前定下的性能方向：
+  - 冷路径丰富，热路径极薄
+  - `agent_core` 热路径只接触：
+    - `capability key`
+    - `invocation plan`
+    - `execution handle`
+    - `result envelope`
+    - `backpressure signal`
+  - 热插拔走 `generation + draining`，不做原地替换 handler
+- 当前定下的对象骨架：
+  - `CapabilityManifest`
+  - `CapabilityBinding`
+  - `CapabilityLease`
+  - `CapabilityInvocationPlan`
+  - `PreparedCapabilityCall`
+  - `CapabilityExecutionHandle`
+  - `CapabilityResultEnvelope`
+  - `CapabilityBackpressureSignal`
+- 当前明确的一条重要事实：
+  - `src/rax/registry.ts` 的 capability catalog 不等于 `src/rax/facade.ts` 当前已接线的 public surface
+  - 后续拆任务时必须始终区分“词表能力”和“真实可接线入口”
+- 当前已补完整并行任务包：
+  - `docs/ability/agent-capability-interface-task-pack/README.md`
+  - `00-phase0-interface-protocol-freeze.md`
+  - `01-kernel-capability-gateway.md`
+  - `02-capability-manifest-and-binding.md`
+  - `03-capability-invocation-and-lease.md`
+  - `04-capability-pool-registry-and-lifecycle.md`
+  - `05-capability-dispatch-scheduler.md`
+  - `06-result-envelope-and-event-bridge.md`
+  - `07-model-inference-adapter.md`
+  - `08-rax-websearch-adapter.md`
+  - `09-rax-mcp-adapter-skeleton.md`
+  - `10-rax-skill-adapter-skeleton.md`
+  - `11-hot-swap-drain-and-health.md`
+  - `12-runtime-assembly-and-integration.md`
+- 当前推荐的开工方式不是全量同时开，而是分 `Wave 0 -> Wave 4` 串并行推进，单波最大并发建议 `4`
+- 当前第一波代码骨架已实际落地：
+  - `src/agent_core/capability-types/**`
+  - `src/agent_core/capability-gateway/**`
+  - `src/agent_core/capability-model/**`
+  - `src/agent_core/capability-invocation/**`
+  - `src/agent_core/capability-result/**`
+  - `src/agent_core/capability-pool/**`
+  - `src/agent_core/integrations/{rax-websearch-adapter,rax-mcp-adapter,rax-skill-adapter}.ts`
+- 当前验证状态：
+  - `npm run typecheck` 通过
+  - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+  - `62 pass / 0 fail`
+  - `npm test` 通过
+  - `155 pass / 0 fail`
+- 当前第一轮代码已开始落地到：
+  - `src/agent_core/capability-types/**`
+  - `src/agent_core/capability-gateway/**`
+  - `src/agent_core/capability-model/**`
+  - `src/agent_core/capability-invocation/**`
+  - `src/agent_core/capability-result/**`
+  - `src/agent_core/capability-pool/**`
+  - `src/agent_core/integrations/rax-websearch-adapter.ts`
+  - `src/agent_core/integrations/rax-mcp-adapter.ts`
+  - `src/agent_core/integrations/rax-skill-adapter.ts`
+- 当前验证基线：
+  - `npm run typecheck` 通过
+  - `npx tsx --test src/agent_core/**/*.test.ts` 通过
+  - `62 pass / 0 fail`
+  - `npm test` 通过
+  - 仓库级 `155 pass / 0 fail`
+- 当前尚未完成的关键装配点：
+  - 新 `capability pool / gateway` 还未正式接管 `AgentCoreRuntime`
+  - `model inference` 还未完全从 runtime 特判回收到统一 adapter 主路径

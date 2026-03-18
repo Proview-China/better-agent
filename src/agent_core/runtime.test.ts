@@ -5,7 +5,7 @@ import { createGoalSource } from "./goal/goal-source.js";
 import type { ModelInferenceExecutionResult } from "./integrations/model-inference.js";
 import { createRaxSearchGroundCapabilityDefinition } from "./integrations/rax-port.js";
 import { createAgentCoreRuntime } from "./runtime.js";
-import type { CapabilityCallIntent } from "./types/index.js";
+import type { CapabilityAdapter, CapabilityCallIntent } from "./index.js";
 import {
   DEFAULT_COMPATIBILITY_PROFILES,
   McpNativeRuntime,
@@ -81,6 +81,95 @@ test("AgentCoreRuntime wires session, run, and internal journal flow together", 
   assert.deepEqual(
     runtime.readRunEvents(outcome.run.runId).map((entry) => entry.event.type),
     ["run.created", "state.delta_applied", "intent.queued"],
+  );
+});
+
+test("AgentCoreRuntime can dispatch a capability intent through the new gateway and pool path", async () => {
+  const runtime = createAgentCoreRuntime();
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-4",
+      sessionId: session.sessionId,
+      userInput: "Use a pooled capability when needed.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+
+  const adapter: CapabilityAdapter = {
+    id: "adapter.search.ground.pool",
+    runtimeKind: "tool",
+    supports(plan) {
+      return plan.capabilityKey === "search.ground";
+    },
+    async prepare(plan, lease) {
+      return {
+        preparedId: `${plan.planId}:prepared`,
+        leaseId: lease.leaseId,
+        capabilityKey: plan.capabilityKey,
+        bindingId: lease.bindingId,
+        generation: lease.generation,
+        executionMode: "direct",
+      };
+    },
+    async execute(prepared) {
+      return {
+        executionId: `${prepared.preparedId}:execution`,
+        resultId: `${prepared.preparedId}:result`,
+        status: "success",
+        output: {
+          answer: "gateway-path-ok",
+        },
+        completedAt: new Date("2026-03-18T00:00:03.000Z").toISOString(),
+        metadata: {
+          resultSource: "capability",
+        },
+      };
+    },
+  };
+
+  runtime.registerCapabilityAdapter({
+    capabilityId: "cap-search-ground-pool",
+    capabilityKey: "search.ground",
+    kind: "tool",
+    version: "1.0.0",
+    generation: 1,
+    description: "Pooled grounded search capability.",
+  }, adapter);
+
+  const intent: CapabilityCallIntent = {
+    intentId: "intent-search-gateway-1",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    kind: "capability_call",
+    createdAt: new Date("2026-03-18T00:00:03.000Z").toISOString(),
+    priority: "high",
+    request: {
+      requestId: "request-search-gateway-1",
+      intentId: "intent-search-gateway-1",
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      capabilityKey: "search.ground",
+      input: {
+        query: "Praxis capability pool",
+      },
+      priority: "high",
+    },
+  };
+
+  const dispatched = await runtime.dispatchCapabilityIntentViaGateway(intent);
+  assert.equal(dispatched.prepared.capabilityKey, "search.ground");
+  assert.equal(dispatched.handle.state, "running");
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.ok(
+    runtime.readRunEvents(created.run.runId).some((entry) => {
+      return entry.event.type === "capability.result_received";
+    }),
   );
 });
 

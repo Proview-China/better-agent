@@ -4,6 +4,14 @@ import { CheckpointStore } from "./checkpoint/index.js";
 import { compileGoal } from "./goal/goal-compiler.js";
 import { normalizeGoal } from "./goal/goal-normalizer.js";
 import { createGoalSource } from "./goal/goal-source.js";
+import type { KernelCapabilityGatewayLike } from "./capability-gateway/index.js";
+import { createKernelCapabilityGateway } from "./capability-gateway/index.js";
+import { createInvocationPlanFromCapabilityIntent } from "./capability-invocation/index.js";
+import { DefaultCapabilityPool } from "./capability-pool/index.js";
+import {
+  createCapabilityResultReceivedEvent,
+  findCapabilityResultEventByResultId,
+} from "./capability-result/index.js";
 import { executeModelInference, type ModelInferenceExecutionResult } from "./integrations/model-inference.js";
 import { AppendOnlyEventJournal } from "./journal/index.js";
 import type { JournalReadResult } from "./journal/journal-types.js";
@@ -19,6 +27,13 @@ import type {
   KernelEvent,
   SessionHeader,
 } from "./types/index.js";
+import type {
+  CapabilityAdapter,
+  CapabilityExecutionHandle,
+  CapabilityInvocationPlan,
+  CapabilityManifest,
+  CapabilityResultEnvelope,
+} from "./capability-types/index.js";
 import type { CreateSessionInput } from "./session/index.js";
 import type { CreateRunInput, RunTransitionOutcome } from "./run/index.js";
 
@@ -26,6 +41,8 @@ export interface AgentCoreRuntimeOptions {
   journal?: AppendOnlyEventJournal;
   checkpointStore?: CheckpointStore;
   portBroker?: CapabilityPortBroker;
+  capabilityPool?: DefaultCapabilityPool;
+  capabilityGateway?: KernelCapabilityGatewayLike;
   runCoordinator?: AgentRunCoordinator;
   sessionManager?: SessionManager;
   modelInferenceExecutor?: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
@@ -52,13 +69,33 @@ export interface DispatchModelInferenceIntentResult {
   runOutcome: RunTransitionOutcome;
 }
 
+export interface DispatchCapabilityPlanInput {
+  plan: CapabilityInvocationPlan;
+  sessionId: string;
+  runId: string;
+  requestId?: string;
+  correlationId?: string;
+  resultSource?: "capability" | "model";
+  final?: boolean;
+}
+
+export interface DispatchCapabilityPlanResult {
+  lease: Awaited<ReturnType<KernelCapabilityGatewayLike["acquire"]>>;
+  prepared: Awaited<ReturnType<KernelCapabilityGatewayLike["prepare"]>>;
+  handle: CapabilityExecutionHandle;
+}
+
 export class AgentCoreRuntime {
   readonly journal: AppendOnlyEventJournal;
   readonly checkpointStore: CheckpointStore;
   readonly portBroker: CapabilityPortBroker;
+  readonly capabilityPool: DefaultCapabilityPool;
+  readonly capabilityGateway: KernelCapabilityGatewayLike;
   readonly runCoordinator: AgentRunCoordinator;
   readonly sessionManager: SessionManager;
   readonly #modelInferenceExecutor: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
+  readonly #capabilityExecutionContext = new Map<string, DispatchCapabilityPlanInput>();
+  readonly #capabilityPreparedContext = new Map<string, DispatchCapabilityPlanInput>();
 
   constructor(options: AgentCoreRuntimeOptions = {}) {
     this.journal = options.journal ?? new AppendOnlyEventJournal();
@@ -66,12 +103,19 @@ export class AgentCoreRuntime {
     this.portBroker = options.portBroker ?? new CapabilityPortBroker({
       journal: this.journal,
     });
+    this.capabilityPool = options.capabilityPool ?? new DefaultCapabilityPool();
+    this.capabilityGateway = options.capabilityGateway ?? createKernelCapabilityGateway({
+      pool: this.capabilityPool,
+    });
     this.runCoordinator = options.runCoordinator ?? new AgentRunCoordinator({
       journal: this.journal,
       checkpointStore: this.checkpointStore,
     });
     this.sessionManager = options.sessionManager ?? new SessionManager();
     this.#modelInferenceExecutor = options.modelInferenceExecutor ?? executeModelInference;
+    this.capabilityGateway.onResult((result) => {
+      void this.#handleCapabilityResultEnvelope(result);
+    });
   }
 
   createSession(input: CreateSessionInput = {}): SessionHeader {
@@ -102,6 +146,34 @@ export class AgentCoreRuntime {
 
   registerCapabilityPort(definition: CapabilityPortDefinition): void {
     this.portBroker.registerCapabilityPort(definition);
+  }
+
+  registerCapabilityAdapter(manifest: CapabilityManifest, adapter: CapabilityAdapter) {
+    return this.capabilityPool.register(manifest, adapter);
+  }
+
+  async dispatchCapabilityPlan(input: DispatchCapabilityPlanInput): Promise<DispatchCapabilityPlanResult> {
+    const lease = await this.capabilityGateway.acquire(input.plan);
+    const prepared = await this.capabilityGateway.prepare(lease, input.plan);
+    this.#capabilityPreparedContext.set(prepared.preparedId, input);
+    const handle = await this.capabilityGateway.dispatch(prepared);
+    this.#capabilityExecutionContext.set(handle.executionId, input);
+    return {
+      lease,
+      prepared,
+      handle,
+    };
+  }
+
+  async dispatchCapabilityIntentViaGateway(intent: CapabilityCallIntent): Promise<DispatchCapabilityPlanResult> {
+    return this.dispatchCapabilityPlan({
+      plan: createInvocationPlanFromCapabilityIntent(intent),
+      sessionId: intent.sessionId,
+      runId: intent.runId,
+      requestId: intent.request.requestId,
+      correlationId: intent.correlationId,
+      resultSource: "capability",
+    });
   }
 
   async dispatchCapabilityIntent(intent: CapabilityCallIntent): Promise<DispatchCapabilityIntentResult> {
@@ -241,6 +313,55 @@ export class AgentCoreRuntime {
 
   readRunEvents(runId: string): JournalReadResult[] {
     return this.journal.readRunEvents(runId);
+  }
+
+  async #handleCapabilityResultEnvelope(result: CapabilityResultEnvelope): Promise<void> {
+    const preparedId = typeof result.metadata?.preparedId === "string"
+      ? result.metadata.preparedId
+      : undefined;
+    const context = this.#capabilityExecutionContext.get(result.executionId)
+      ?? (preparedId ? this.#capabilityPreparedContext.get(preparedId) : undefined);
+    if (!context) {
+      return;
+    }
+
+    const existing = findCapabilityResultEventByResultId({
+      events: this.readRunEvents(context.runId).map((entry) => entry.event),
+      resultId: result.resultId,
+    });
+    if (existing) {
+      return;
+    }
+
+    const event = createCapabilityResultReceivedEvent({
+      result,
+      sessionId: context.sessionId,
+      runId: context.runId,
+      requestId: context.requestId ?? context.plan.planId,
+      correlationId: context.correlationId,
+      metadata: {
+        resultSource: context.resultSource ?? "capability",
+        final: context.final === true,
+        ...(result.metadata ?? {}),
+      },
+    });
+
+    this.journal.appendEvent(event);
+    let runOutcome = await this.runCoordinator.tickRun({
+      runId: context.runId,
+      incomingEvent: event,
+    });
+    if ((context.resultSource ?? "capability") === "model" && context.final === true && runOutcome.run.status === "completed") {
+      runOutcome = await this.runCoordinator.completeRun({
+        runId: context.runId,
+        resultId: result.resultId,
+      });
+    }
+    this.#syncSessionFromRun(runOutcome.run);
+    this.#capabilityExecutionContext.delete(result.executionId);
+    if (preparedId) {
+      this.#capabilityPreparedContext.delete(preparedId);
+    }
   }
 
   #syncSessionFromRun(run: RunTransitionOutcome["run"]): void {
