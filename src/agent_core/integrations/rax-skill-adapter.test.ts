@@ -118,6 +118,39 @@ test("rax skill adapter supports skill.use plan with normalized route context", 
   assert.equal(adapter.supports(plan), true);
 });
 
+test("rax skill adapter supports skill.use plans that attach a remote skill reference", () => {
+  const adapter = createRaxSkillCapabilityAdapter({
+    skill: {} as never,
+  });
+
+  const plan = {
+    planId: "plan_ref_001",
+    intentId: "intent_ref_001",
+    sessionId: "session_ref_001",
+    runId: "run_ref_001",
+    capabilityKey: "skill.use",
+    operation: "skill.use",
+    input: {
+      route: {
+        provider: "anthropic",
+        model: "claude-opus-4-6-thinking",
+        layer: "api",
+      },
+      reference: {
+        id: "pptx",
+        version: "latest",
+      },
+      mode: "anthropic-api-managed",
+      details: {
+        type: "anthropic",
+      },
+    },
+    priority: "high" as const,
+  };
+
+  assert.equal(adapter.supports(plan), true);
+});
+
 test("rax skill adapter prepare builds a direct prepared call for skill.use", async () => {
   const adapter = createRaxSkillCapabilityAdapter({
     skill: {} as never,
@@ -214,4 +247,73 @@ test("rax skill adapter execute maps skill.use and returns sanitized output", as
   assert.equal(output.activation.officialCarrier, "openai-shell-environment");
   assert.equal(output.preparedInvocation.key, "skill.use");
   assert.equal("adapterId" in output.preparedInvocation, false);
+});
+
+test("rax skill adapter execute accepts reference-first skill.use input", async () => {
+  const container = createContainer();
+  const facade = {
+    skill: {
+      async use(): Promise<SkillUseResult> {
+        return {
+          container: {
+            ...container,
+            source: {
+              kind: "virtual",
+              rootDir: "virtual://skill/pptx",
+              entryPath: "virtual://skill/pptx/SKILL.md",
+            },
+            descriptor: {
+              ...container.descriptor,
+              id: "pptx",
+              name: "PowerPoint Skill",
+            },
+          },
+          activation: createActivation("anthropic"),
+          invocation: createInvocation("anthropic"),
+        };
+      },
+      mount(): SkillMountResult {
+        throw new Error("mount should not be called in this test");
+      },
+      prepare(): PreparedInvocation<Record<string, unknown>> {
+        throw new Error("prepare should not be called in this test");
+      },
+    },
+  };
+
+  const adapter = createRaxSkillCapabilityAdapter(facade);
+  const plan = {
+    planId: "plan_ref_001",
+    intentId: "intent_ref_001",
+    sessionId: "session_ref_001",
+    runId: "run_ref_001",
+    capabilityKey: "skill.use",
+    operation: "skill.use",
+    input: {
+      provider: "anthropic",
+      model: "claude-opus-4-6-thinking",
+      layer: "api",
+      reference: {
+        id: "pptx",
+        version: "latest",
+      },
+      mode: "anthropic-api-managed",
+      details: {
+        type: "anthropic",
+      },
+    },
+    priority: "normal" as const,
+  };
+  const lease = {
+    leaseId: "lease_ref_001",
+    capabilityId: "skill.use",
+    bindingId: "binding_ref_001",
+    generation: 1,
+    grantedAt: "2026-03-18T00:00:00.000Z",
+    priority: "normal" as const,
+  };
+
+  const prepared = await adapter.prepare(plan, lease);
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "success");
 });
