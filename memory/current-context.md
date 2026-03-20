@@ -1,11 +1,60 @@
 # Current Context
 
-更新时间：2026-03-18
+更新时间：2026-03-20
 
 ## 当前阶段
 
 - 仓库处于 `reboot/blank-slate` 重启阶段。
 - 目标是从空白起点重新建立可持续演进的架构，而不是继续修补旧实现。
+- 当前工作分支已切到 `cmp/mp`，开始冻结 `CMP(context management pool)` 的总纲与四份指导性分册。
+- `CMP` 当前被定义为主动上下文治理池：以项目级 `git repo` 为历史主干、以 `CMP DB` 为投影层、以 `MQ` 为邻接同步总线，并通过 `ICMA / iterator / checker / dbagent / dispatcher` 五个 agent 管理上下文截获、git 化、checked snapshot、DB projection 与高信噪比分发。
+- `CMP` 的实施任务也已被拆成四组并行任务包，位于 `docs/ability/cmp-implementation-task-pack/**`：
+  - Part 1: core interface + canonical object model
+  - Part 2: git lineage + sync governance
+  - Part 3: DB projection + neighborhood broadcast
+  - Part 4: five-agent runtime + active/passive flow + runtime delivery
+- 当前推荐的执行拓扑是：
+  - 主线程 `1`
+  - 二层 lead `4`
+  - 三层 specialist `8-12`
+  - 总建议 agent 数控制在 `13-17`，明显低于用户允许上限 `64`
+- 当前默认模型建议也已冻结进任务包：
+  - 默认写协议/写代码：`gpt-5.4-high`
+  - 轻量 fixtures / doc / test scaffolding：`gpt-5.4-medium`
+  - 高耦合协议争议 / recovery / complex state machine：`gpt-5.4-xhigh`
+- `CMP` 第一波代码骨架也已真实落地到 `src/agent_core/**`：
+  - `cmp-types/**`
+    - 已补 `CMP` 核心 interface、`AgentLineage`、`ContextEvent`、`ContextDelta`、`SnapshotCandidate`、`CheckedSnapshot`、`PromotedProjection`、`ContextPackage`、`DispatchReceipt`、`SyncEvent`、`EscalationAlert`
+  - `cmp-git/**`
+    - 已补项目级 repo / branch family、lineage registry、`cmp/*` commit 与 delta sync、candidate helper
+  - `cmp-db/**`
+    - 已补共享表模型、agent 热表模型、projection state machine、checked snapshot -> projection materializer
+  - `cmp-mq/**`
+    - 已补 topic topology、neighborhood audience、`ICMA` publish envelope、非越级广播守卫
+  - `cmp-runtime/**`
+    - 已补 ingress contract、active-line skeleton、projection/package materialization skeleton、dispatcher delivery skeleton
+- `AgentCoreRuntime` 当前已新增第一版 `CMP` 接口与内存态收口：
+  - `ingestRuntimeContext(...)`
+  - `commitContextDelta(...)`
+  - `resolveCheckedSnapshot(...)`
+  - `materializeContextPackage(...)`
+  - `dispatchContextPackage(...)`
+  - `requestHistoricalContext(...)`
+  - 以及若干 `get/list/readCmp*` 调试读取面
+- 当前第一波验证基线：
+  - `npm run typecheck` 通过
+  - `npx tsx --test src/agent_core/cmp-types/cmp-types.test.ts src/agent_core/cmp-git/*.test.ts src/agent_core/cmp-db/*.test.ts src/agent_core/cmp-mq/*.test.ts src/agent_core/cmp-runtime/*.test.ts src/agent_core/runtime.test.ts` 通过
+  - 当前命中：`51 pass / 0 fail`
+  - `npm run build` 通过
+- `CMP` 的关键治理纪律已先冻结：
+  - 一个项目一个 `repo`
+  - 一个项目一个 `CMP DB`
+  - branch family 采用 `work/<agent>`, `cmp/<agent>`, `mp/<agent>`, `tap/<agent>`
+  - 广播发起点是各 agent 的 `ICMA`
+  - 广播内容粒度由对应 `core_agent` 决定
+  - 广播方向仅允许父节点、平级节点、子代节点
+  - 跨父级横向扩散必须由父节点中转
+  - git / DB / MQ 默认都遵守逐级 promotion，不允许常规越级同步 raw state
 - `rax` 的第一版 control-plane 骨架已经落下；`MCP` 第一阶段和 review 收口已完成。
 - `agent_core` 的第一阶段 raw runtime kernel 里程碑也已完成，并已进入“可运行闭环”状态。
 - 当前最新进展：

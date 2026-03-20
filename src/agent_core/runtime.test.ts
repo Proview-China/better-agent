@@ -6,6 +6,10 @@ import type { ModelInferenceExecutionResult } from "./integrations/model-inferen
 import { createRaxSearchGroundCapabilityDefinition } from "./integrations/rax-port.js";
 import { createAgentCoreRuntime } from "./runtime.js";
 import type { CapabilityAdapter, CapabilityCallIntent } from "./index.js";
+import {
+  createAgentLineage,
+  createCmpBranchFamily,
+} from "./index.js";
 import { createAgentCapabilityProfile, createProvisionRequest } from "./ta-pool-types/index.js";
 import { createReviewerRuntime } from "./ta-pool-review/index.js";
 import { TA_ENFORCEMENT_METADATA_KEY } from "./ta-pool-runtime/enforcement-guard.js";
@@ -1396,4 +1400,129 @@ test("AgentCoreRuntime runUntilTerminal stops cleanly when TAP returns a non-dis
     result.finalEvents.map((entry) => entry.event.type),
     ["run.created", "state.delta_applied", "intent.queued"],
   );
+});
+
+test("AgentCoreRuntime can run the first CMP active path through ingest, delta, snapshot, package, and dispatch", () => {
+  const runtime = createAgentCoreRuntime();
+  const lineage = createAgentLineage({
+    agentId: "main",
+    depth: 0,
+    projectId: "cmp-project",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/main",
+      cmpBranch: "cmp/main",
+      mpBranch: "mp/main",
+      tapBranch: "tap/main",
+    }),
+    childAgentIds: ["child-1"],
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "main",
+    sessionId: "session-cmp-1",
+    runId: "run-cmp-1",
+    lineage,
+    taskSummary: "ingest active cmp context",
+    materials: [
+      {
+        kind: "user_input",
+        ref: "payload:user-1",
+      },
+    ],
+  });
+  assert.equal(ingested.status, "accepted");
+  assert.equal(ingested.acceptedEventIds.length, 1);
+
+  const committed = runtime.commitContextDelta({
+    agentId: "main",
+    sessionId: "session-cmp-1",
+    runId: "run-cmp-1",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Record the first active CMP delta.",
+    syncIntent: "local_record",
+  });
+  assert.equal(committed.status, "accepted");
+  assert.ok(committed.snapshotCandidateId);
+
+  const resolved = runtime.resolveCheckedSnapshot({
+    agentId: "main",
+    projectId: "cmp-project",
+  });
+  assert.equal(resolved.status, "resolved");
+  assert.equal(resolved.found, true);
+  assert.ok(resolved.snapshot);
+
+  const materialized = runtime.materializeContextPackage({
+    agentId: "main",
+    snapshotId: resolved.snapshot!.snapshotId,
+    targetAgentId: "child-1",
+    packageKind: "child_seed",
+  });
+  assert.equal(materialized.status, "materialized");
+  assert.equal(materialized.contextPackage.packageKind, "child_seed");
+
+  const dispatched = runtime.dispatchContextPackage({
+    agentId: "main",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "main",
+    targetAgentId: "child-1",
+    targetKind: "child",
+  });
+  assert.equal(dispatched.status, "dispatched");
+  assert.equal(dispatched.receipt.status, "delivered");
+
+  assert.equal(runtime.readCmpEvents("main").length, 1);
+  assert.equal(runtime.listCmpDeltas().length, 1);
+  assert.equal(runtime.listCmpSyncEvents("main").length >= 2, true);
+  assert.ok(runtime.getCmpDispatchReceipt(dispatched.receipt.dispatchId));
+});
+
+test("AgentCoreRuntime can serve the first CMP passive historical reply", () => {
+  const runtime = createAgentCoreRuntime();
+  const lineage = createAgentLineage({
+    agentId: "main",
+    depth: 0,
+    projectId: "cmp-project-passive",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/main",
+      cmpBranch: "cmp/main",
+      mpBranch: "mp/main",
+      tapBranch: "tap/main",
+    }),
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "main",
+    sessionId: "session-cmp-2",
+    runId: "run-cmp-2",
+    lineage,
+    taskSummary: "prepare passive history",
+    materials: [
+      {
+        kind: "assistant_output",
+        ref: "payload:assistant-1",
+      },
+    ],
+  });
+  runtime.commitContextDelta({
+    agentId: "main",
+    sessionId: "session-cmp-2",
+    runId: "run-cmp-2",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Prepare checked snapshot for passive query.",
+    syncIntent: "submit_to_parent",
+  });
+
+  const historical = runtime.requestHistoricalContext({
+    requesterAgentId: "main",
+    projectId: "cmp-project-passive",
+    reason: "Need the latest checked historical package.",
+    query: {},
+  });
+
+  assert.equal(historical.status, "materialized");
+  assert.equal(historical.found, true);
+  assert.ok(historical.snapshot);
+  assert.ok(historical.contextPackage);
+  assert.equal(historical.contextPackage?.packageKind, "historical_reply");
 });

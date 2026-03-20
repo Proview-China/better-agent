@@ -25,6 +25,33 @@ import { AgentRunCoordinator } from "./run/index.js";
 import { SessionManager } from "./session/index.js";
 import { projectStateFromEvents } from "./state/index.js";
 import {
+  createCmpGitBranchFamily,
+  createCmpGitProjectRepo,
+  syncCmpGitCommitDelta,
+  type CmpGitProjectRepo,
+  type CmpGitSyncIntent,
+} from "./cmp-git/index.js";
+import { createCmpProjectionRecordFromCheckedSnapshot } from "./cmp-db/index.js";
+import {
+  assertNoSkippingNeighborhoodBroadcast,
+  createCmpIcmaPublishEnvelope,
+  type CmpAgentNeighborhood,
+} from "./cmp-mq/index.js";
+import {
+  advanceCmpActiveLineRecord,
+  createCmpActiveLineRecord,
+  createCmpContextPackageRecord,
+  createCmpDispatchInstruction,
+  createCmpDispatchReceipt,
+  createCmpIngressRecord,
+  createCmpProjectionRecord,
+  createPassiveHistoricalPackage,
+  markCmpDispatchDelivered,
+  type CmpActiveLineRecord,
+  type CmpIngressRecord,
+  type CmpProjectionRecord as CmpRuntimeProjectionRecord,
+} from "./cmp-runtime/index.js";
+import {
   activateProvisionAsset,
   applyTaHumanGateEvent,
   createActivationFactoryResolver,
@@ -90,6 +117,45 @@ import {
   createProvisionRequest,
   createReviewDecision,
 } from "./ta-pool-types/index.js";
+import {
+  createAgentLineage,
+  createCheckedSnapshot,
+  createCommitContextDeltaInput,
+  createContextDelta,
+  createContextEvent,
+  createContextPackage,
+  createDispatchContextPackageInput,
+  createDispatchReceipt,
+  createIngestRuntimeContextInput,
+  createIngestRuntimeContextResult,
+  createMaterializeContextPackageInput,
+  createPromotedProjection,
+  createRequestHistoricalContextInput,
+  createResolveCheckedSnapshotInput,
+  createSnapshotCandidate,
+  createSyncEvent,
+  type AgentLineage,
+  type CheckedSnapshot,
+  type CommitContextDeltaInput,
+  type CommitContextDeltaResult,
+  type ContextDelta,
+  type ContextEvent,
+  type ContextPackage,
+  type DispatchContextPackageInput,
+  type DispatchContextPackageResult,
+  type DispatchReceipt,
+  type IngestRuntimeContextInput,
+  type IngestRuntimeContextResult,
+  type MaterializeContextPackageInput,
+  type MaterializeContextPackageResult,
+  type PromotedProjection,
+  type RequestHistoricalContextInput,
+  type RequestHistoricalContextResult,
+  type ResolveCheckedSnapshotInput,
+  type ResolveCheckedSnapshotResult,
+  type SnapshotCandidate,
+  type SyncEvent,
+} from "./cmp-types/index.js";
 import type { CreateSessionInput } from "./session/index.js";
 import type { CreateRunInput, RunTransitionOutcome } from "./run/index.js";
 
@@ -315,6 +381,20 @@ export class AgentCoreRuntime {
   readonly #taPendingReplays = new Map<string, TaPendingReplay>();
   readonly #taActivationAttempts = new Map<string, TaActivationAttemptRecord>();
   readonly #taActivationFactoryResolver = createActivationFactoryResolver();
+  readonly #cmpProjectRepos = new Map<string, CmpGitProjectRepo>();
+  readonly #cmpLineages = new Map<string, AgentLineage>();
+  readonly #cmpIngressRecords = new Map<string, CmpIngressRecord>();
+  readonly #cmpEvents = new Map<string, ContextEvent>();
+  readonly #cmpEventsByAgent = new Map<string, string[]>();
+  readonly #cmpDeltas = new Map<string, ContextDelta>();
+  readonly #cmpActiveLines = new Map<string, CmpActiveLineRecord>();
+  readonly #cmpSnapshotCandidates = new Map<string, SnapshotCandidate>();
+  readonly #cmpCheckedSnapshots = new Map<string, CheckedSnapshot>();
+  readonly #cmpPromotedProjections = new Map<string, PromotedProjection>();
+  readonly #cmpRuntimeProjections = new Map<string, CmpRuntimeProjectionRecord>();
+  readonly #cmpPackages = new Map<string, ContextPackage>();
+  readonly #cmpDispatchReceipts = new Map<string, DispatchReceipt>();
+  readonly #cmpSyncEvents = new Map<string, SyncEvent>();
 
   constructor(options: AgentCoreRuntimeOptions = {}) {
     this.journal = options.journal ?? new AppendOnlyEventJournal();
@@ -704,6 +784,441 @@ export class AgentCoreRuntime {
           asset: currentAsset,
         })
         : undefined,
+    };
+  }
+
+  getCmpLineage(agentId: string): AgentLineage | undefined {
+    return this.#cmpLineages.get(agentId);
+  }
+
+  listCmpLineages(): readonly AgentLineage[] {
+    return [...this.#cmpLineages.values()];
+  }
+
+  readCmpEvents(agentId?: string): readonly ContextEvent[] {
+    if (!agentId) {
+      return [...this.#cmpEvents.values()];
+    }
+    return (this.#cmpEventsByAgent.get(agentId) ?? [])
+      .map((eventId) => this.#cmpEvents.get(eventId))
+      .filter((event): event is ContextEvent => event !== undefined);
+  }
+
+  getCmpDelta(deltaId: string): ContextDelta | undefined {
+    return this.#cmpDeltas.get(deltaId);
+  }
+
+  listCmpDeltas(): readonly ContextDelta[] {
+    return [...this.#cmpDeltas.values()];
+  }
+
+  getCmpSnapshotCandidate(candidateId: string): SnapshotCandidate | undefined {
+    return this.#cmpSnapshotCandidates.get(candidateId);
+  }
+
+  getCmpCheckedSnapshot(snapshotId: string): CheckedSnapshot | undefined {
+    return this.#cmpCheckedSnapshots.get(snapshotId);
+  }
+
+  getCmpPromotedProjection(projectionId: string): PromotedProjection | undefined {
+    return this.#cmpPromotedProjections.get(projectionId);
+  }
+
+  getCmpContextPackage(packageId: string): ContextPackage | undefined {
+    return this.#cmpPackages.get(packageId);
+  }
+
+  getCmpDispatchReceipt(dispatchId: string): DispatchReceipt | undefined {
+    return this.#cmpDispatchReceipts.get(dispatchId);
+  }
+
+  listCmpSyncEvents(agentId?: string): readonly SyncEvent[] {
+    const events = [...this.#cmpSyncEvents.values()];
+    return agentId ? events.filter((event) => event.agentId === agentId) : events;
+  }
+
+  ingestRuntimeContext(input: IngestRuntimeContextInput): IngestRuntimeContextResult {
+    const normalized = createIngestRuntimeContextInput(input);
+    const lineage = createAgentLineage(normalized.lineage);
+    this.#cmpLineages.set(lineage.agentId, lineage);
+    this.#ensureCmpProjectRepo(lineage);
+
+    const createdAt = new Date().toISOString();
+    const ingress = createCmpIngressRecord({
+      ingressId: randomUUID(),
+      lineage: this.#toCmpRuntimeLineage(lineage),
+      sessionId: normalized.sessionId,
+      runId: normalized.runId ?? `${normalized.sessionId}:cmp`,
+      payloadRef: {
+        ref: normalized.materials[0]?.ref ?? `cmp-lineage:${lineage.agentId}`,
+        kind: normalized.materials[0]?.kind ?? "state_marker",
+        metadata: normalized.materials[0]?.metadata,
+      },
+      granularityLabel: normalized.taskSummary,
+      createdAt,
+      source: "core_agent",
+      metadata: normalized.metadata,
+    });
+    this.#cmpIngressRecords.set(ingress.ingressId, ingress);
+
+    const acceptedEvents: ContextEvent[] = normalized.materials.map((material) => {
+      const event = createContextEvent({
+        eventId: randomUUID(),
+        agentId: lineage.agentId,
+        sessionId: normalized.sessionId,
+        runId: normalized.runId,
+        kind: this.#toCmpEventKind(material.kind),
+        payloadRef: material.ref,
+        createdAt,
+        source: "core_agent",
+        metadata: {
+          ingressId: ingress.ingressId,
+          materialKind: material.kind,
+          ...(material.metadata ?? {}),
+        },
+      });
+      this.#storeCmpEvent(event);
+      return event;
+    });
+
+    this.#recordCmpNeighborhoodSyncs({
+      ingress,
+      lineage,
+      payloadRef: normalized.materials[0]?.ref ?? `cmp-ingress:${ingress.ingressId}`,
+      granularityLabel: normalized.taskSummary,
+    });
+
+    return createIngestRuntimeContextResult({
+      status: "accepted",
+      acceptedEventIds: acceptedEvents.map((event) => event.eventId),
+      nextAction: normalized.requiresActiveSync === false ? "noop" : "commit_context_delta",
+      metadata: {
+        ingressId: ingress.ingressId,
+      },
+    });
+  }
+
+  commitContextDelta(input: CommitContextDeltaInput): CommitContextDeltaResult {
+    const normalized = createCommitContextDeltaInput(input);
+    const lineage = this.#requireCmpLineage(normalized.agentId);
+    const createdAt = new Date().toISOString();
+    const delta = createContextDelta({
+      deltaId: randomUUID(),
+      agentId: normalized.agentId,
+      baseRef: normalized.baseRef,
+      eventRefs: normalized.eventIds,
+      changeSummary: normalized.changeSummary,
+      createdAt,
+      syncIntent: normalized.syncIntent,
+      metadata: normalized.metadata,
+    });
+    this.#cmpDeltas.set(delta.deltaId, delta);
+
+    const gitSync = syncCmpGitCommitDelta({
+      projectId: lineage.projectId,
+      commitSha: this.#createCmpPseudoCommitRef(delta.deltaId),
+      branchRef: createCmpGitBranchFamily(lineage.agentId).cmp,
+      delta: {
+        deltaId: delta.deltaId,
+        agentId: delta.agentId,
+        sessionId: normalized.sessionId,
+        runId: normalized.runId,
+        createdAt: delta.createdAt,
+        metadata: delta.metadata,
+      },
+    });
+
+    const candidate = createSnapshotCandidate({
+      candidateId: gitSync.candidate.candidateId,
+      agentId: delta.agentId,
+      branchRef: gitSync.candidate.branchRef.fullRef,
+      commitRef: gitSync.candidate.commitSha,
+      deltaRefs: [delta.deltaId],
+      createdAt: gitSync.candidate.createdAt,
+      status: "pending_check",
+      metadata: {
+        projectId: lineage.projectId,
+        bindingId: gitSync.binding.bindingId,
+        source: "cmp-runtime-default-checker",
+      },
+    });
+    this.#cmpSnapshotCandidates.set(candidate.candidateId, candidate);
+
+    const activeLine = createCmpActiveLineRecord({
+      lineId: randomUUID(),
+      agentId: delta.agentId,
+      deltaRef: delta.deltaId,
+      stage: "captured",
+      updatedAt: delta.createdAt,
+    });
+    const written = advanceCmpActiveLineRecord({
+      record: activeLine,
+      nextStage: "written_to_git",
+      updatedAt: candidate.createdAt,
+      gitUpdateRef: {
+        branchRef: candidate.branchRef,
+        commitRef: candidate.commitRef,
+      },
+    });
+    const candidateReady = advanceCmpActiveLineRecord({
+      record: written,
+      nextStage: "candidate_ready",
+      updatedAt: candidate.createdAt,
+      gitUpdateRef: written.gitUpdateRef,
+      snapshotCandidateRef: candidate.candidateId,
+    });
+
+    const checked = createCheckedSnapshot({
+      snapshotId: `${candidate.candidateId}:checked`,
+      agentId: delta.agentId,
+      lineageRef: this.#createCmpLineageRef(lineage),
+      branchRef: candidate.branchRef,
+      commitRef: candidate.commitRef,
+      checkedAt: candidate.createdAt,
+      qualityLabel: "usable",
+      promotable: delta.syncIntent !== "local_record",
+      metadata: {
+        projectId: lineage.projectId,
+        candidateId: candidate.candidateId,
+        source: "cmp-runtime-default-checker",
+      },
+    });
+    this.#cmpCheckedSnapshots.set(checked.snapshotId, checked);
+
+    const checkedReady = advanceCmpActiveLineRecord({
+      record: candidateReady,
+      nextStage: "checked_ready",
+      updatedAt: checked.checkedAt,
+      gitUpdateRef: candidateReady.gitUpdateRef,
+      snapshotCandidateRef: candidate.candidateId,
+      checkedSnapshotRef: checked.snapshotId,
+    });
+    this.#cmpActiveLines.set(checkedReady.lineId, checkedReady);
+
+    this.#recordCmpSyncEvent(createSyncEvent({
+      syncEventId: randomUUID(),
+      agentId: delta.agentId,
+      channel: "git",
+      direction: this.#mapCmpSyncIntentToDirection(gitSync.binding.syncIntent),
+      objectRef: candidate.candidateId,
+      createdAt: candidate.createdAt,
+      metadata: {
+        branchRef: candidate.branchRef,
+        commitRef: candidate.commitRef,
+      },
+    }));
+
+    return {
+      status: "accepted",
+      delta,
+      snapshotCandidateId: candidate.candidateId,
+      metadata: {
+        checkedSnapshotId: checked.snapshotId,
+      },
+    };
+  }
+
+  resolveCheckedSnapshot(input: ResolveCheckedSnapshotInput): ResolveCheckedSnapshotResult {
+    const normalized = createResolveCheckedSnapshotInput(input);
+    const snapshot = [...this.#cmpCheckedSnapshots.values()]
+      .filter((candidate) => {
+        const projectId = candidate.metadata?.projectId;
+        if (projectId !== normalized.projectId) {
+          return false;
+        }
+        if (candidate.agentId !== normalized.agentId) {
+          return false;
+        }
+        if (normalized.lineageRef && candidate.lineageRef !== normalized.lineageRef) {
+          return false;
+        }
+        if (normalized.branchRef && candidate.branchRef !== normalized.branchRef) {
+          return false;
+        }
+        return true;
+      })
+      .sort((left, right) => right.checkedAt.localeCompare(left.checkedAt))[0];
+
+    if (!snapshot) {
+      return {
+        status: "not_found",
+        found: false,
+      };
+    }
+
+    return {
+      status: "resolved",
+      found: true,
+      snapshot,
+    };
+  }
+
+  materializeContextPackage(input: MaterializeContextPackageInput): MaterializeContextPackageResult {
+    const normalized = createMaterializeContextPackageInput(input);
+    const snapshot = this.#cmpCheckedSnapshots.get(normalized.snapshotId);
+    if (!snapshot) {
+      throw new Error(`CMP checked snapshot ${normalized.snapshotId} was not found.`);
+    }
+
+    const projection = normalized.projectionId
+      ? this.#requireCmpProjection(normalized.projectionId)
+      : this.#findOrCreateCmpProjection({
+        snapshot,
+        targetAgentId: normalized.targetAgentId,
+      });
+
+    const runtimeProjection = createCmpProjectionRecord({
+      projectionId: projection.projectionId,
+      checkedSnapshotRef: snapshot.snapshotId,
+      agentId: snapshot.agentId,
+      visibility: this.#mapProjectionStatusToRuntimeVisibility(projection.promotionStatus),
+      updatedAt: projection.updatedAt,
+      metadata: projection.metadata,
+    });
+    this.#cmpRuntimeProjections.set(runtimeProjection.projectionId, runtimeProjection);
+
+    const runtimePackage = createCmpContextPackageRecord({
+      packageId: randomUUID(),
+      projectionId: runtimeProjection.projectionId,
+      sourceAgentId: snapshot.agentId,
+      targetAgentId: normalized.targetAgentId,
+      packageKind: normalized.packageKind,
+      packageRef: `cmp-package:${snapshot.snapshotId}:${normalized.targetAgentId}:${normalized.packageKind}`,
+      fidelityLabel: normalized.fidelityLabel ?? "checked_high_fidelity",
+      createdAt: new Date().toISOString(),
+      metadata: normalized.metadata,
+    });
+
+    const contextPackage = createContextPackage({
+      packageId: runtimePackage.packageId,
+      sourceProjectionId: runtimePackage.projectionId,
+      targetAgentId: runtimePackage.targetAgentId,
+      packageKind: normalized.packageKind,
+      packageRef: runtimePackage.packageRef,
+      fidelityLabel: normalized.fidelityLabel ?? "checked_high_fidelity",
+      createdAt: runtimePackage.createdAt,
+      metadata: {
+        snapshotId: snapshot.snapshotId,
+        ...(runtimePackage.metadata ?? {}),
+      },
+    });
+    this.#cmpPackages.set(contextPackage.packageId, contextPackage);
+
+    this.#recordCmpSyncEvent(createSyncEvent({
+      syncEventId: randomUUID(),
+      agentId: normalized.agentId,
+      channel: "db",
+      direction: "local",
+      objectRef: contextPackage.packageId,
+      createdAt: contextPackage.createdAt,
+      metadata: {
+        projectionId: projection.projectionId,
+      },
+    }));
+
+    return {
+      status: "materialized",
+      contextPackage,
+    };
+  }
+
+  dispatchContextPackage(input: DispatchContextPackageInput): DispatchContextPackageResult {
+    const normalized = createDispatchContextPackageInput(input);
+    const contextPackage = this.#cmpPackages.get(normalized.packageId);
+    if (!contextPackage) {
+      throw new Error(`CMP context package ${normalized.packageId} was not found.`);
+    }
+
+    const createdAt = new Date().toISOString();
+    const receipt = normalized.targetKind === "core_agent"
+      ? createDispatchReceipt({
+        dispatchId: randomUUID(),
+        packageId: contextPackage.packageId,
+        sourceAgentId: normalized.sourceAgentId,
+        targetAgentId: normalized.targetAgentId,
+        status: "delivered",
+        deliveredAt: createdAt,
+        metadata: normalized.metadata,
+      })
+      : this.#createNeighborDispatchReceipt({
+        contextPackage,
+        input: normalized,
+        createdAt,
+      });
+    this.#cmpDispatchReceipts.set(receipt.dispatchId, receipt);
+
+    this.#recordCmpSyncEvent(createSyncEvent({
+      syncEventId: randomUUID(),
+      agentId: normalized.sourceAgentId,
+      channel: normalized.targetKind === "core_agent" ? "db" : "mq",
+      direction: this.#mapDispatchTargetKindToDirection(normalized.targetKind),
+      objectRef: receipt.dispatchId,
+      createdAt,
+      metadata: {
+        packageId: contextPackage.packageId,
+        targetAgentId: normalized.targetAgentId,
+      },
+    }));
+
+    return {
+      status: "dispatched",
+      receipt,
+    };
+  }
+
+  requestHistoricalContext(input: RequestHistoricalContextInput): RequestHistoricalContextResult {
+    const normalized = createRequestHistoricalContextInput(input);
+    const snapshot = this.#selectCmpHistoricalSnapshot(normalized);
+    if (!snapshot) {
+      return {
+        status: "not_found",
+        found: false,
+      };
+    }
+
+    const projection = this.#findOrCreateCmpProjection({
+      snapshot,
+      targetAgentId: normalized.requesterAgentId,
+    });
+    const runtimeProjection = createCmpProjectionRecord({
+      projectionId: projection.projectionId,
+      checkedSnapshotRef: snapshot.snapshotId,
+      agentId: snapshot.agentId,
+      visibility: this.#mapProjectionStatusToRuntimeVisibility(projection.promotionStatus),
+      updatedAt: projection.updatedAt,
+      metadata: projection.metadata,
+    });
+    this.#cmpRuntimeProjections.set(runtimeProjection.projectionId, runtimeProjection);
+
+    const passivePackage = createPassiveHistoricalPackage({
+      packageId: randomUUID(),
+      projection: runtimeProjection,
+      requesterAgentId: normalized.requesterAgentId,
+      packageKind: normalized.query.packageKindHint ?? "historical_reply",
+      packageRef: `cmp-history:${snapshot.snapshotId}:${normalized.requesterAgentId}`,
+      fidelityLabel: "checked_high_fidelity",
+      createdAt: new Date().toISOString(),
+      metadata: {
+        reason: normalized.reason,
+      },
+    });
+    const contextPackage = createContextPackage({
+      packageId: passivePackage.packageId,
+      sourceProjectionId: passivePackage.projectionId,
+      targetAgentId: passivePackage.targetAgentId,
+      packageKind: "historical_reply",
+      packageRef: passivePackage.packageRef,
+      fidelityLabel: "checked_high_fidelity",
+      createdAt: passivePackage.createdAt,
+      metadata: passivePackage.metadata,
+    });
+    this.#cmpPackages.set(contextPackage.packageId, contextPackage);
+
+    return {
+      status: "materialized",
+      found: true,
+      snapshot,
+      contextPackage,
     };
   }
 
@@ -1890,6 +2405,383 @@ export class AgentCoreRuntime {
       bundle: params.provisionBundle,
       asset: this.provisionerRuntime?.assetIndex.getCurrent(params.provisionBundle.provisionId),
     });
+  }
+
+  #ensureCmpProjectRepo(lineage: AgentLineage): CmpGitProjectRepo {
+    const existing = this.#cmpProjectRepos.get(lineage.projectId);
+    if (existing) {
+      return existing;
+    }
+
+    const repo = createCmpGitProjectRepo({
+      projectId: lineage.projectId,
+      repoName: lineage.projectId,
+      defaultAgentId: lineage.agentId,
+    });
+    this.#cmpProjectRepos.set(lineage.projectId, repo);
+    return repo;
+  }
+
+  #storeCmpEvent(event: ContextEvent): void {
+    this.#cmpEvents.set(event.eventId, event);
+    const bucket = this.#cmpEventsByAgent.get(event.agentId) ?? [];
+    bucket.push(event.eventId);
+    this.#cmpEventsByAgent.set(event.agentId, bucket);
+  }
+
+  #recordCmpSyncEvent(event: SyncEvent): void {
+    this.#cmpSyncEvents.set(event.syncEventId, event);
+  }
+
+  #requireCmpLineage(agentId: string): AgentLineage {
+    const lineage = this.#cmpLineages.get(agentId);
+    if (!lineage) {
+      throw new Error(`CMP lineage for agent ${agentId} was not found.`);
+    }
+    return lineage;
+  }
+
+  #requireCmpProjection(projectionId: string): PromotedProjection {
+    const projection = this.#cmpPromotedProjections.get(projectionId);
+    if (!projection) {
+      throw new Error(`CMP promoted projection ${projectionId} was not found.`);
+    }
+    return projection;
+  }
+
+  #createCmpPseudoCommitRef(deltaId: string): string {
+    return `cmp-${deltaId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20) || "commit"}`;
+  }
+
+  #createCmpLineageRef(lineage: AgentLineage): string {
+    return `${lineage.projectId}:${lineage.agentId}`;
+  }
+
+  #toCmpEventKind(kind: IngestRuntimeContextInput["materials"][number]["kind"]): ContextEvent["kind"] {
+    switch (kind) {
+      case "context_package":
+        return "context_package_received";
+      case "user_input":
+      case "system_prompt":
+      case "assistant_output":
+      case "tool_result":
+      case "state_marker":
+        return kind;
+    }
+  }
+
+  #toCmpRuntimeLineage(lineage: AgentLineage) {
+    const peers = [...this.#cmpLineages.values()]
+      .filter((candidate) => {
+        return candidate.agentId !== lineage.agentId && candidate.parentAgentId === lineage.parentAgentId;
+      })
+      .map((candidate) => candidate.agentId);
+
+    return {
+      projectId: lineage.projectId,
+      agentId: lineage.agentId,
+      parentAgentId: lineage.parentAgentId,
+      depth: lineage.depth,
+      childAgentIds: lineage.childAgentIds ?? [],
+      peerAgentIds: peers,
+      metadata: lineage.metadata,
+    };
+  }
+
+  #createCmpNeighborhood(lineage: AgentLineage): CmpAgentNeighborhood {
+    return {
+      agentId: lineage.agentId,
+      parentAgentId: lineage.parentAgentId,
+      peerAgentIds: [...this.#cmpLineages.values()]
+        .filter((candidate) => {
+          return candidate.agentId !== lineage.agentId && candidate.parentAgentId === lineage.parentAgentId;
+        })
+        .map((candidate) => candidate.agentId),
+      childAgentIds: lineage.childAgentIds ?? [],
+    };
+  }
+
+  #collectCmpAncestorIds(agentId: string): string[] {
+    const ancestors: string[] = [];
+    let current = this.#cmpLineages.get(agentId);
+    while (current?.parentAgentId) {
+      ancestors.push(current.parentAgentId);
+      current = this.#cmpLineages.get(current.parentAgentId);
+    }
+    return ancestors;
+  }
+
+  #findCmpParentPeerIds(lineage: AgentLineage): string[] {
+    if (!lineage.parentAgentId) {
+      return [];
+    }
+    const parent = this.#cmpLineages.get(lineage.parentAgentId);
+    if (!parent?.parentAgentId) {
+      return [];
+    }
+    return [...this.#cmpLineages.values()]
+      .filter((candidate) => {
+        return candidate.agentId !== parent.agentId && candidate.parentAgentId === parent.parentAgentId;
+      })
+      .map((candidate) => candidate.agentId);
+  }
+
+  #recordCmpNeighborhoodSyncs(params: {
+    ingress: CmpIngressRecord;
+    lineage: AgentLineage;
+    payloadRef: string;
+    granularityLabel: string;
+  }): void {
+    const neighborhood = this.#createCmpNeighborhood(params.lineage);
+    const createdAt = params.ingress.createdAt;
+    for (const direction of ["parent", "peer", "child"] as const) {
+      const hasTargets = direction === "parent"
+        ? !!neighborhood.parentAgentId
+        : direction === "peer"
+          ? neighborhood.peerAgentIds.length > 0
+          : neighborhood.childAgentIds.length > 0;
+      if (!hasTargets) {
+        continue;
+      }
+      const mqEnvelope = createCmpIcmaPublishEnvelope({
+        envelopeId: `${params.ingress.ingressId}:${direction}`,
+        projectId: params.lineage.projectId,
+        sourceAgentId: params.lineage.agentId,
+        neighborhood,
+        direction,
+        granularityLabel: params.granularityLabel,
+        payloadRef: params.payloadRef,
+        createdAt,
+      });
+      assertNoSkippingNeighborhoodBroadcast({
+        envelope: mqEnvelope,
+        knownAncestorIds: this.#collectCmpAncestorIds(params.lineage.agentId),
+        parentPeerIds: this.#findCmpParentPeerIds(params.lineage),
+      });
+      for (const targetAgentId of mqEnvelope.targetAgentIds) {
+        this.#recordCmpSyncEvent(createSyncEvent({
+          syncEventId: randomUUID(),
+          agentId: params.lineage.agentId,
+          channel: "mq",
+          direction: direction === "parent"
+            ? "to_parent"
+            : direction === "peer"
+              ? "to_peer"
+              : "to_children",
+          objectRef: `${mqEnvelope.envelopeId}:${targetAgentId}`,
+          createdAt,
+          metadata: {
+            targetAgentId,
+            granularityLabel: params.granularityLabel,
+          },
+        }));
+      }
+    }
+  }
+
+  #mapCmpSyncIntentToDirection(intent: CmpGitSyncIntent): SyncEvent["direction"] {
+    switch (intent) {
+      case "local_record":
+        return "local";
+      case "submit_to_parent":
+        return "to_parent";
+      case "peer_exchange":
+        return "to_peer";
+      case "seed_children":
+        return "to_children";
+    }
+  }
+
+  #resolveCmpProjectionVisibility(params: {
+    sourceAgentId: string;
+    targetAgentId: string;
+  }): PromotedProjection["visibilityLevel"] {
+    if (params.sourceAgentId === params.targetAgentId) {
+      return "local";
+    }
+    const source = this.#cmpLineages.get(params.sourceAgentId);
+    const target = this.#cmpLineages.get(params.targetAgentId);
+    if (!source || !target) {
+      return "lineage";
+    }
+    if (source.parentAgentId === target.agentId) {
+      return "parent";
+    }
+    if (target.parentAgentId === source.agentId) {
+      return "children";
+    }
+    if (source.parentAgentId && source.parentAgentId === target.parentAgentId) {
+      return "peer";
+    }
+    return "lineage";
+  }
+
+  #mapVisibilityToPromotionStatus(
+    visibilityLevel: PromotedProjection["visibilityLevel"],
+  ): PromotedProjection["promotionStatus"] {
+    switch (visibilityLevel) {
+      case "local":
+        return "local_only";
+      case "parent":
+        return "submitted_to_parent";
+      case "children":
+        return "dispatched_downward";
+      case "peer":
+      case "lineage":
+        return "promoted_by_parent";
+    }
+  }
+
+  #mapProjectionStatusToRuntimeVisibility(
+    status: PromotedProjection["promotionStatus"],
+  ): CmpRuntimeProjectionRecord["visibility"] {
+    switch (status) {
+      case "local_only":
+        return "local_only";
+      case "submitted_to_parent":
+        return "submitted_to_parent";
+      case "accepted_by_parent":
+        return "accepted_by_parent";
+      case "promoted_by_parent":
+        return "promoted_by_parent";
+      case "dispatched_downward":
+        return "dispatched_downward";
+      case "archived":
+        return "archived";
+    }
+  }
+
+  #createCmpProjectionFromSnapshot(params: {
+    snapshot: CheckedSnapshot;
+    targetAgentId: string;
+  }): PromotedProjection {
+    const dbProjection = createCmpProjectionRecordFromCheckedSnapshot({
+      projectionId: randomUUID(),
+      snapshot: {
+        snapshotId: params.snapshot.snapshotId,
+        agentId: params.snapshot.agentId,
+        branchRef: params.snapshot.branchRef,
+        commitRef: params.snapshot.commitRef,
+        checkedAt: params.snapshot.checkedAt,
+        qualityLabel: params.snapshot.qualityLabel,
+        metadata: params.snapshot.metadata,
+      },
+      updatedAt: params.snapshot.checkedAt,
+    });
+    const visibilityLevel = this.#resolveCmpProjectionVisibility({
+      sourceAgentId: params.snapshot.agentId,
+      targetAgentId: params.targetAgentId,
+    });
+    const projection = createPromotedProjection({
+      projectionId: dbProjection.projectionId,
+      snapshotId: dbProjection.snapshotId,
+      agentId: dbProjection.agentId,
+      visibilityLevel,
+      promotionStatus: this.#mapVisibilityToPromotionStatus(visibilityLevel),
+      projectionRefs: [dbProjection.branchRef, dbProjection.commitRef],
+      updatedAt: dbProjection.updatedAt,
+      metadata: {
+        targetAgentId: params.targetAgentId,
+        ...(dbProjection.metadata ?? {}),
+      },
+    });
+    this.#cmpPromotedProjections.set(projection.projectionId, projection);
+    return projection;
+  }
+
+  #findOrCreateCmpProjection(params: {
+    snapshot: CheckedSnapshot;
+    targetAgentId: string;
+  }): PromotedProjection {
+    const existing = [...this.#cmpPromotedProjections.values()].find((projection) => {
+      return projection.snapshotId === params.snapshot.snapshotId
+        && projection.metadata?.targetAgentId === params.targetAgentId;
+    });
+    if (existing) {
+      return existing;
+    }
+    return this.#createCmpProjectionFromSnapshot(params);
+  }
+
+  #createNeighborDispatchReceipt(params: {
+    contextPackage: ContextPackage;
+    input: DispatchContextPackageInput;
+    createdAt: string;
+  }): DispatchReceipt {
+    const instruction = createCmpDispatchInstruction({
+      dispatchId: randomUUID(),
+      packageId: params.contextPackage.packageId,
+      sourceAgentId: params.input.sourceAgentId,
+      targetAgentId: params.input.targetAgentId,
+      direction: params.input.targetKind,
+      createdAt: params.createdAt,
+      metadata: params.input.metadata,
+    });
+    const prepared = createCmpDispatchReceipt({
+      dispatchId: instruction.dispatchId,
+      packageId: instruction.packageId,
+      sourceAgentId: instruction.sourceAgentId,
+      targetAgentId: instruction.targetAgentId,
+      direction: instruction.direction,
+      status: "prepared",
+      createdAt: instruction.createdAt,
+      metadata: instruction.metadata,
+    });
+    const delivered = markCmpDispatchDelivered({
+      receipt: prepared,
+      deliveredAt: params.createdAt,
+    });
+    return createDispatchReceipt({
+      dispatchId: delivered.dispatchId,
+      packageId: delivered.packageId,
+      sourceAgentId: delivered.sourceAgentId,
+      targetAgentId: delivered.targetAgentId,
+      status: "delivered",
+      deliveredAt: delivered.deliveredAt,
+      metadata: delivered.metadata,
+    });
+  }
+
+  #mapDispatchTargetKindToDirection(
+    targetKind: DispatchContextPackageInput["targetKind"],
+  ): SyncEvent["direction"] {
+    switch (targetKind) {
+      case "core_agent":
+        return "local";
+      case "parent":
+        return "to_parent";
+      case "peer":
+        return "to_peer";
+      case "child":
+        return "to_children";
+    }
+  }
+
+  #selectCmpHistoricalSnapshot(
+    input: RequestHistoricalContextInput,
+  ): CheckedSnapshot | undefined {
+    if (input.query.snapshotId) {
+      const snapshot = this.#cmpCheckedSnapshots.get(input.query.snapshotId);
+      if (snapshot && snapshot.metadata?.projectId === input.projectId) {
+        return snapshot;
+      }
+      return undefined;
+    }
+
+    return [...this.#cmpCheckedSnapshots.values()]
+      .filter((snapshot) => {
+        if (snapshot.metadata?.projectId !== input.projectId) {
+          return false;
+        }
+        if (input.query.lineageRef && snapshot.lineageRef !== input.query.lineageRef) {
+          return false;
+        }
+        if (input.query.branchRef && snapshot.branchRef !== input.query.branchRef) {
+          return false;
+        }
+        return true;
+      })
+      .sort((left, right) => right.checkedAt.localeCompare(left.checkedAt))[0];
   }
 
   #syncSessionFromRun(run: RunTransitionOutcome["run"]): void {

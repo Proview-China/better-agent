@@ -122,6 +122,18 @@
   - [28-tap-runtime-wave0-implementation-status.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/28-tap-runtime-wave0-implementation-status.md)
 - TAP runtime 补全并行编码任务包：
   - [tap-runtime-completion-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-runtime-completion-task-pack/README.md)
+- CMP 总纲：
+  - [29-cmp-context-management-pool-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/29-cmp-context-management-pool-outline.md)
+- CMP Part 1: core interface 与 canonical object model：
+  - [30-cmp-core-interface-and-canonical-object-model.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/30-cmp-core-interface-and-canonical-object-model.md)
+- CMP Part 2: git lineage repo 与同步治理：
+  - [31-cmp-git-lineage-repo-and-sync-governance.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/31-cmp-git-lineage-repo-and-sync-governance.md)
+- CMP Part 3: DB projection 与邻接广播契约：
+  - [32-cmp-db-projection-and-neighborhood-broadcast-contract.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/32-cmp-db-projection-and-neighborhood-broadcast-contract.md)
+- CMP Part 4: 五 agent 运行拓扑与主动/被动模式：
+  - [33-cmp-five-agent-runtime-and-active-passive-flow.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/33-cmp-five-agent-runtime-and-active-passive-flow.md)
+- CMP 并行编码任务包：
+  - [cmp-implementation-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-implementation-task-pack/README.md)
 - T/A Pool 并行编码任务包：
   - [ta-pool-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/ta-pool-task-pack/README.md)
 - TAP 第二阶段可用化任务包：
