@@ -3,6 +3,7 @@ export {
   createCapabilityInvocationPlan,
   createCapabilityInvocationPlanFromIntent,
   createCapabilityInvocationPlanFromRequest,
+  deriveCapabilityOperation,
 } from "./capability-plan.js";
 export { createCapabilityLease } from "./capability-lease.js";
 export {

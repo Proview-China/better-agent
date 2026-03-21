@@ -7,6 +7,7 @@ import OpenAI from "openai";
 
 import { loadLiveProviderConfig } from "./live-config.js";
 import { rax } from "./runtime.js";
+import type { SearchCapabilityKey } from "./websearch-types.js";
 
 type ProviderTarget = "openai" | "anthropic" | "deepmind" | "all";
 
@@ -58,6 +59,47 @@ function formatError(error: unknown): { summary: string; details: Record<string,
   return {
     summary: String(error),
     details: {}
+  };
+}
+
+async function runRaxSearchCompatibilityStep(
+  provider: Exclude<ProviderTarget, "all">,
+  model: string,
+  query: string,
+  capabilityKey: SearchCapabilityKey
+): Promise<SmokeRow> {
+  const result = await rax.websearch.create({
+    provider,
+    model,
+    input: {
+      capabilityKey,
+      query,
+      goal:
+        capabilityKey === "search.web"
+          ? "Return one short search summary with sources."
+          : "Return one short grounded answer.",
+      maxSources: 2,
+      maxOutputTokens: 128,
+      citations: "preferred"
+    }
+  });
+
+  return {
+    provider,
+    step: capabilityKey === "search.web" ? "rax_search_web_compat" : "rax_search_ground_compat",
+    ok: result.status === "success",
+    model,
+    summary:
+      result.output?.answer?.slice(0, 160) ??
+      (result.error && typeof result.error === "object" && "message" in result.error
+        ? String((result.error as Record<string, unknown>).message)
+        : result.status),
+    details: {
+      status: result.status,
+      capabilityKey: result.output?.capabilityKey ?? capabilityKey,
+      sources: result.output?.sources.length ?? 0,
+      citations: result.output?.citations.length ?? 0
+    }
   };
 }
 
@@ -126,34 +168,18 @@ async function smokeOpenAI(): Promise<SmokeRow[]> {
       continue;
     }
 
-    const result = await rax.websearch.create({
-      provider: "openai",
+    rows.push(await runRaxSearchCompatibilityStep(
+      "openai",
       model,
-      input: {
-        query: "What is the official documentation domain for OpenAI?",
-        goal: "Return one short grounded answer.",
-        maxSources: 2,
-        maxOutputTokens: 128,
-        citations: "preferred"
-      }
-    });
-
-    rows.push({
-      provider: "openai",
-      step: "rax_websearch",
-      ok: result.status === "success",
+      "What is the official documentation domain for OpenAI?",
+      "search.web"
+    ));
+    rows.push(await runRaxSearchCompatibilityStep(
+      "openai",
       model,
-      summary:
-        result.output?.answer?.slice(0, 160) ??
-        (result.error && typeof result.error === "object" && "message" in result.error
-          ? String((result.error as Record<string, unknown>).message)
-          : result.status),
-      details: {
-        status: result.status,
-        sources: result.output?.sources.length ?? 0,
-        citations: result.output?.citations.length ?? 0
-      }
-    });
+      "What is the official documentation domain for OpenAI?",
+      "search.ground"
+    ));
   }
 
   return rows;
@@ -231,34 +257,18 @@ async function smokeAnthropic(): Promise<SmokeRow[]> {
     return rows;
   }
 
-  const result = await rax.websearch.create({
-    provider: "anthropic",
+  rows.push(await runRaxSearchCompatibilityStep(
+    "anthropic",
     model,
-    input: {
-      query: "What is the official documentation domain for Anthropic?",
-      goal: "Return one short grounded answer.",
-      maxSources: 2,
-      maxOutputTokens: 128,
-      citations: "preferred"
-    }
-  });
-
-  rows.push({
-    provider: "anthropic",
-    step: "rax_websearch",
-    ok: result.status === "success",
+    "What is the official documentation domain for Anthropic?",
+    "search.web"
+  ));
+  rows.push(await runRaxSearchCompatibilityStep(
+    "anthropic",
     model,
-    summary:
-      result.output?.answer?.slice(0, 160) ??
-      (result.error && typeof result.error === "object" && "message" in result.error
-        ? String((result.error as Record<string, unknown>).message)
-        : result.status),
-    details: {
-      status: result.status,
-      sources: result.output?.sources.length ?? 0,
-      citations: result.output?.citations.length ?? 0
-    }
-  });
+    "What is the official documentation domain for Anthropic?",
+    "search.ground"
+  ));
 
   return rows;
 }
@@ -327,34 +337,18 @@ async function smokeDeepMind(): Promise<SmokeRow[]> {
     return rows;
   }
 
-  const result = await rax.websearch.create({
-    provider: "deepmind",
+  rows.push(await runRaxSearchCompatibilityStep(
+    "deepmind",
     model,
-    input: {
-      query: "What is the official documentation domain for Google Gemini?",
-      goal: "Return one short grounded answer.",
-      maxSources: 2,
-      maxOutputTokens: 128,
-      citations: "preferred"
-    }
-  });
-
-  rows.push({
-    provider: "deepmind",
-    step: "rax_websearch",
-    ok: result.status === "success",
+    "What is the official documentation domain for Google Gemini?",
+    "search.web"
+  ));
+  rows.push(await runRaxSearchCompatibilityStep(
+    "deepmind",
     model,
-    summary:
-      result.output?.answer?.slice(0, 160) ??
-      (result.error && typeof result.error === "object" && "message" in result.error
-        ? String((result.error as Record<string, unknown>).message)
-        : result.status),
-    details: {
-      status: result.status,
-      sources: result.output?.sources.length ?? 0,
-      citations: result.output?.citations.length ?? 0
-    }
-  });
+    "What is the official documentation domain for Google Gemini?",
+    "search.ground"
+  ));
 
   return rows;
 }

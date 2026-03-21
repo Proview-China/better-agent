@@ -6,9 +6,10 @@ import type {
   DecisionToken,
 } from "../ta-pool-types/index.js";
 import {
-  TA_ENFORCEMENT_METADATA_KEY,
-  createTaExecutionEnforcement,
-} from "./enforcement-guard.js";
+  createExecutionGovernanceMetadata,
+  createExecutionRequest,
+  createInvocationPlanFromGrant as createInvocationPlanFromExecutionRequest,
+} from "./execution-plane-bridge.js";
 
 export interface TaExecutionBridgeInput {
   grant: CapabilityGrant;
@@ -38,6 +39,14 @@ export interface TaExecutionBridgeRequest {
 export type GrantExecutionRequest = TaExecutionBridgeRequest;
 
 export function createTaExecutionBridgeRequest(input: TaExecutionBridgeInput): TaExecutionBridgeRequest {
+  const derivedOperation = input.grant.capabilityKey.split(".").slice(1).join(".");
+  const operation = input.operation ?? (derivedOperation || input.grant.capabilityKey);
+  const executionGovernance = createExecutionGovernanceMetadata({
+    capabilityKey: input.grant.capabilityKey,
+    operation,
+    input: input.input ?? {},
+  });
+
   return {
     requestId: input.planId,
     grantId: input.grant.grantId,
@@ -49,6 +58,7 @@ export function createTaExecutionBridgeRequest(input: TaExecutionBridgeInput): T
     metadata: {
       mode: input.grant.mode,
       grantedTier: input.grant.grantedTier,
+      executionGovernance,
       ...(input.metadata ?? {}),
       ...(input.grant.metadata ?? {}),
     },
@@ -57,44 +67,40 @@ export function createTaExecutionBridgeRequest(input: TaExecutionBridgeInput): T
 
 export function lowerGrantToCapabilityPlan(input: TaExecutionBridgeInput): CapabilityInvocationPlan {
   const capabilityKey = input.grant.capabilityKey || input.request.requestedCapabilityKey;
-  const derivedOperation = capabilityKey.split(".").slice(1).join(".");
-  const taEnforcement = createTaExecutionEnforcement({
-    executionRequestId: input.planId,
-    capabilityKey,
-    grant: input.grant,
-    decisionToken: input.decisionToken,
-  });
-  return {
-    planId: input.planId,
-    intentId: input.intentId,
+  const operation = input.operation ?? (capabilityKey.split(".").slice(1).join(".") || capabilityKey);
+  const request = createExecutionRequest({
+    requestId: input.planId,
     sessionId: input.request.sessionId,
     runId: input.request.runId,
+    intentId: input.intentId,
     capabilityKey,
-    operation: input.operation ?? (derivedOperation || capabilityKey),
+    operation,
+    input: input.input ?? {},
+    timeoutMs: input.timeoutMs,
+    priority: input.priority ?? "normal",
+    metadata: {
+      ...(input.metadata ?? {}),
+    },
+  });
+  const basePlan = createInvocationPlanFromExecutionRequest({
+    grant: input.grant,
+    request,
+    decisionToken: input.decisionToken,
+  });
+
+  return {
+    ...basePlan,
+    traceContext: input.traceContext,
     input: {
-      ...(input.input ?? {}),
+      ...(basePlan.input as Record<string, unknown>),
       taGrant: {
         grantId: input.grant.grantId,
         grantedTier: input.grant.grantedTier,
         mode: input.grant.mode,
+        executionGovernance: request.metadata?.executionGovernance,
       },
     },
-    timeoutMs: input.timeoutMs,
     idempotencyKey: `${input.grant.grantId}:${input.intentId}`,
-    priority: input.priority ?? "normal",
-    traceContext: input.traceContext,
-    metadata: {
-      ...(input.metadata ?? {}),
-      bridge: "ta-pool",
-      requestId: input.planId,
-      accessRequestId: input.grant.requestId,
-      grantId: input.grant.grantId,
-      grantTier: input.grant.grantedTier,
-      grantMode: input.grant.mode,
-      grantedScope: input.grant.grantedScope,
-      constraints: input.grant.constraints,
-      [TA_ENFORCEMENT_METADATA_KEY]: taEnforcement,
-    },
   };
 }
 

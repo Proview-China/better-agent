@@ -10,7 +10,7 @@ import type {
   SdkLayer
 } from "./types.js";
 
-function buildCapabilityKey(
+export function buildCapabilityKey(
   capability: CapabilityNamespace,
   action: CapabilityAction
 ): CapabilityKey {
@@ -118,6 +118,8 @@ export function createCapabilityRequest<TInput>(
   action: CapabilityAction,
   options: FacadeCallOptions<TInput>
 ): CapabilityRequest<TInput> {
+  const key = buildCapabilityKey(capability, action);
+
   return {
     provider: options.provider,
     model: options.model,
@@ -126,6 +128,8 @@ export function createCapabilityRequest<TInput>(
     compatibilityProfileId: options.compatibilityProfileId,
     capability,
     action,
+    capabilityKey: key,
+    operation: action,
     input: options.input,
     session: options.session,
     tools: options.tools,

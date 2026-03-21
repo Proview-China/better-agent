@@ -26,6 +26,101 @@ export interface GrantToInvocationPlanInput {
   decisionToken?: DecisionToken;
 }
 
+export interface TaExecutionGovernanceMetadata {
+  family: "shell" | "code" | "generic";
+  operation: string;
+  subject?: string;
+  pathCandidates?: string[];
+}
+
+function normalizeString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : undefined;
+}
+
+function normalizePath(value: string): string {
+  return value.trim().replace(/\\/g, "/");
+}
+
+function normalizePathArray(values: unknown): string[] | undefined {
+  if (!Array.isArray(values)) {
+    return undefined;
+  }
+
+  const normalized = [...new Set(
+    values
+      .map((value) => normalizeString(value))
+      .filter((value): value is string => !!value)
+      .map(normalizePath),
+  )];
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function resolveExecutionFamily(capabilityKey: string): TaExecutionGovernanceMetadata["family"] {
+  if (capabilityKey.startsWith("shell.")) {
+    return "shell";
+  }
+  if (capabilityKey.startsWith("code.")) {
+    return "code";
+  }
+  return "generic";
+}
+
+function resolveExecutionPathCandidates(input: Record<string, unknown>): string[] | undefined {
+  const candidates = [
+    normalizeString(input.path),
+    normalizeString(input.targetPath),
+    normalizeString(input.filePath),
+    normalizeString(input.cwd),
+    normalizeString(input.workdir),
+    normalizeString(input.workingDirectory),
+    normalizeString(input.rootDir),
+    normalizeString(input.repoRoot),
+  ]
+    .filter((value): value is string => !!value)
+    .map(normalizePath);
+
+  const arrayCandidates = [
+    ...(normalizePathArray(input.paths) ?? []),
+    ...(normalizePathArray(input.targetPaths) ?? []),
+    ...(normalizePathArray(input.filePaths) ?? []),
+  ];
+
+  const normalized = [...new Set([...candidates, ...arrayCandidates])];
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function resolveExecutionSubject(
+  input: Record<string, unknown>,
+  pathCandidates?: readonly string[],
+): string | undefined {
+  const directSubject = [
+    normalizeString(input.command),
+    normalizeString(input.script),
+    normalizeString(input.action),
+    normalizeString(input.task),
+    normalizeString(input.prompt),
+    normalizeString(input.url),
+  ].find((value): value is string => !!value);
+
+  return directSubject ?? pathCandidates?.[0];
+}
+
+export function createExecutionGovernanceMetadata(params: {
+  capabilityKey: string;
+  operation: string;
+  input: Record<string, unknown>;
+}): TaExecutionGovernanceMetadata {
+  const pathCandidates = resolveExecutionPathCandidates(params.input);
+  return {
+    family: resolveExecutionFamily(params.capabilityKey),
+    operation: params.operation,
+    subject: resolveExecutionSubject(params.input, pathCandidates),
+    pathCandidates,
+  };
+}
+
 function assertGrantCanLowerRequest(input: GrantToInvocationPlanInput): void {
   if (input.request.capabilityKey !== input.grant.capabilityKey) {
     throw new Error(
@@ -39,9 +134,20 @@ function deriveOperation(capabilityKey: string): string {
 }
 
 export function createExecutionRequest(input: TaPoolExecutionRequest): TaPoolExecutionRequest {
+  const operation = input.operation.trim() || deriveOperation(input.capabilityKey);
+  const executionGovernance = createExecutionGovernanceMetadata({
+    capabilityKey: input.capabilityKey,
+    operation,
+    input: input.input,
+  });
+
   return {
     ...input,
-    operation: input.operation.trim() || deriveOperation(input.capabilityKey),
+    operation,
+    metadata: {
+      ...(input.metadata ?? {}),
+      executionGovernance,
+    },
   };
 }
 
@@ -99,6 +205,7 @@ export function createInvocationPlanFromGrant(
       constraints: input.grant.constraints,
       requestId: request.requestId,
       accessRequestId: input.grant.requestId,
+      executionGovernance: request.metadata?.executionGovernance,
       [TA_ENFORCEMENT_METADATA_KEY]: taEnforcement,
     },
   };

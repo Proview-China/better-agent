@@ -34,6 +34,10 @@ const DEFAULT_CLOCK: CapabilityInvocationClock = {
   now: () => new Date(),
 };
 
+export function deriveCapabilityOperation(capabilityKey: string): string {
+  return capabilityKey.split(".").slice(1).join(".") || capabilityKey;
+}
+
 function stableStringify(value: unknown): string {
   if (value === null || value === undefined) {
     return JSON.stringify(value);
@@ -61,7 +65,7 @@ export function buildCapabilityInvocationFingerprint(
 ): string {
   return stableStringify({
     capabilityKey: input.capabilityKey,
-    operation: input.operation ?? input.capabilityKey,
+    operation: input.operation ?? deriveCapabilityOperation(input.capabilityKey),
     input: input.input,
     timeoutMs: input.timeoutMs ?? null,
     priority: input.priority,
@@ -81,7 +85,7 @@ export function createCapabilityInvocationPlan(
     sessionId: input.sessionId,
     runId: input.runId,
     capabilityKey: input.capabilityKey,
-    operation: input.operation ?? input.capabilityKey,
+    operation: input.operation ?? deriveCapabilityOperation(input.capabilityKey),
     input: input.input,
     timeoutMs: input.timeoutMs,
     idempotencyKey: input.idempotencyKey,
@@ -143,4 +147,3 @@ export function createCapabilityInvocationPlanFromIntent(
     options,
   );
 }
-

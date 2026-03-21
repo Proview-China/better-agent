@@ -1,4 +1,9 @@
 import type { PoolRuntimeSnapshots } from "../ta-pool-runtime/index.js";
+import type {
+  TaActivationAttemptRecord,
+  TaPendingReplay,
+  TaResumeEnvelope,
+} from "../ta-pool-runtime/index.js";
 import type { RunRecord } from "../types/kernel-run.js";
 import type { AgentState } from "../types/kernel-state.js";
 import type { SessionHeader } from "../types/kernel-session.js";
@@ -55,6 +60,24 @@ export function getPoolRuntimeSnapshotsFromRecoveryResult(
   return recovery.poolRuntimeSnapshots
     ? structuredClone(recovery.poolRuntimeSnapshots)
     : undefined;
+}
+
+export function readTapPendingReplays(
+  recovery: Pick<CheckpointRecoveryResult, "poolRuntimeSnapshots">,
+): TaPendingReplay[] | undefined {
+  return readTapPoolRuntimeSnapshots(recovery)?.pendingReplays;
+}
+
+export function readTapActivationAttempts(
+  recovery: Pick<CheckpointRecoveryResult, "poolRuntimeSnapshots">,
+): TaActivationAttemptRecord[] | undefined {
+  return readTapPoolRuntimeSnapshots(recovery)?.activationAttempts;
+}
+
+export function readTapResumeEnvelopes(
+  recovery: Pick<CheckpointRecoveryResult, "poolRuntimeSnapshots">,
+): TaResumeEnvelope[] | undefined {
+  return readTapPoolRuntimeSnapshots(recovery)?.resumeEnvelopes;
 }
 
 export const getTapPoolRuntimeSnapshotFromRecoveryResult = readTapPoolRuntimeSnapshots;

@@ -14,13 +14,22 @@ test("execution plane bridge normalizes execution requests", () => {
     sessionId: "session-1",
     runId: "run-1",
     intentId: "intent-1",
-    capabilityKey: "search.web",
+    capabilityKey: "shell.exec",
     operation: "",
-    input: { query: "Praxis" },
+    input: {
+      command: "npm test",
+      cwd: "workspace\\apps\\tap",
+    },
     priority: "high",
   });
 
-  assert.equal(request.operation, "web");
+  assert.equal(request.operation, "exec");
+  assert.deepEqual(request.metadata?.executionGovernance, {
+    family: "shell",
+    operation: "exec",
+    subject: "npm test",
+    pathCandidates: ["workspace/apps/tap"],
+  });
 });
 
 test("execution plane bridge lowers grants into invocation plans", () => {
@@ -57,6 +66,7 @@ test("execution plane bridge lowers grants into invocation plans", () => {
       operation: "playwright",
       input: {
         action: "screenshot",
+        path: "workspace/previews/home.png",
       },
       priority: "normal",
     },
@@ -70,8 +80,15 @@ test("execution plane bridge lowers grants into invocation plans", () => {
     (plan.metadata?.[TA_ENFORCEMENT_METADATA_KEY] as { decisionToken?: { decisionId?: string } })?.decisionToken?.decisionId,
     "decision-1",
   );
+  assert.deepEqual(plan.metadata?.executionGovernance, {
+    family: "generic",
+    operation: "playwright",
+    subject: "screenshot",
+    pathCandidates: ["workspace/previews/home.png"],
+  });
   assert.deepEqual(plan.input, {
     action: "screenshot",
+    path: "workspace/previews/home.png",
   });
 });
 

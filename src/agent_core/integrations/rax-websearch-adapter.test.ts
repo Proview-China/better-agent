@@ -17,6 +17,7 @@ test("rax websearch adapter supports search.ground and prepares direct calls", a
           capability: "search",
           action: "ground",
           output: {
+            capabilityKey: "search.ground",
             answer: "Praxis is a rebooted runtime.",
             citations: [],
             sources: [],
@@ -69,7 +70,7 @@ test("rax websearch adapter supports search.ground and prepares direct calls", a
   const prepared = await adapter.prepare(plan, lease);
   assert.equal(prepared.bindingId, "binding_001");
   assert.equal(prepared.executionMode, "direct");
-  assert.ok(prepared.preparedPayloadRef?.startsWith("rax-websearch:"));
+  assert.ok(prepared.preparedPayloadRef?.startsWith("rax-search:"));
 
   const envelope = await adapter.execute(prepared);
   assert.equal(envelope.status, "success");
@@ -77,7 +78,9 @@ test("rax websearch adapter supports search.ground and prepares direct calls", a
     (envelope.output as { answer: string }).answer,
     "Praxis is a rebooted runtime.",
   );
+  assert.equal((envelope.output as { capabilityKey: string }).capabilityKey, "search.ground");
   assert.equal(envelope.metadata?.provider, "openai");
+  assert.equal(envelope.metadata?.capabilityKey, "search.ground");
 });
 
 test("rax websearch adapter returns failed envelope when prepared input is missing", async () => {
@@ -92,7 +95,7 @@ test("rax websearch adapter returns failed envelope when prepared input is missi
   });
 
   assert.equal(envelope.status, "failed");
-  assert.equal(envelope.error?.code, "rax_websearch_prepared_input_missing");
+  assert.equal(envelope.error?.code, "rax_search_prepared_input_missing");
 });
 
 test("rax websearch adapter maps blocked status into unified envelope", async () => {
@@ -154,6 +157,82 @@ test("rax websearch adapter maps blocked status into unified envelope", async ()
   const envelope = await adapter.execute(prepared);
 
   assert.equal(envelope.status, "blocked");
-  assert.equal(envelope.error?.code, "rax_search_ground_failed");
+  assert.equal(envelope.error?.code, "rax_search_failed");
   assert.equal(envelope.metadata?.provider, "anthropic");
+  assert.equal(envelope.metadata?.capabilityKey, "search.ground");
+});
+
+test("rax websearch adapter preserves search.web as the final public capability key", async () => {
+  const facade = {
+    websearch: {
+      async create() {
+        return {
+          status: "success",
+          provider: "openai",
+          model: "gpt-5.4",
+          layer: "api",
+          capability: "search",
+          action: "ground",
+          output: {
+            capabilityKey: "search.ground",
+            answer: "OpenAI docs are on platform.openai.com/docs.",
+            citations: [],
+            sources: [],
+          },
+          evidence: [{ capabilityKey: "search.ground", source: "compat" }],
+        };
+      },
+    },
+  } as RaxWebsearchAdapterOptions["facade"];
+
+  const adapter = createRaxWebsearchAdapter({
+    facade,
+  });
+
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent_003",
+      sessionId: "session_003",
+      runId: "run_003",
+      capabilityKey: "search.web",
+      input: {
+        provider: "openai",
+        model: "gpt-5.4",
+        query: "OpenAI docs",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan_003",
+    },
+  );
+
+  const lease = createCapabilityLease(
+    {
+      capabilityId: "cap_search_web",
+      bindingId: "binding_003",
+      generation: 3,
+      plan,
+    },
+    {
+      idFactory: () => "lease_003",
+      clock: {
+        now: () => new Date("2026-03-18T00:00:00.000Z"),
+      },
+    },
+  );
+
+  assert.equal(adapter.supports(plan), true);
+
+  const prepared = await adapter.prepare(plan, lease);
+  const envelope = await adapter.execute(prepared);
+
+  assert.equal(envelope.status, "success");
+  assert.equal((envelope.output as { capabilityKey: string }).capabilityKey, "search.web");
+  assert.equal(
+    (envelope.evidence as Array<{ capabilityKey: string }>)[0]?.capabilityKey,
+    "search.web",
+  );
+  assert.equal(envelope.metadata?.capabilityKey, "search.web");
+  assert.equal(envelope.metadata?.action, "web");
 });

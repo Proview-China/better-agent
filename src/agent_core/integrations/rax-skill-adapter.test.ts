@@ -214,4 +214,12 @@ test("rax skill adapter execute maps skill.use and returns sanitized output", as
   assert.equal(output.activation.officialCarrier, "openai-shell-environment");
   assert.equal(output.preparedInvocation.key, "skill.use");
   assert.equal("adapterId" in output.preparedInvocation, false);
+  const capabilityPackage = envelope.metadata?.capabilityPackage as {
+    capabilityKey?: string;
+    skillRef?: string;
+    carrier?: { officialCarrier?: string };
+  } | undefined;
+  assert.equal(capabilityPackage?.capabilityKey, "skill.use");
+  assert.equal(capabilityPackage?.skillRef, "skill_browser");
+  assert.equal(capabilityPackage?.carrier?.officialCarrier, "openai-shell-environment");
 });

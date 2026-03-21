@@ -18,9 +18,23 @@ import {
   toWebSearchFailureResult
 } from "./websearch-result.js";
 import type { CapabilityResult, ProviderId } from "./types.js";
-import type { WebSearchOutput } from "./websearch-types.js";
+import type {
+  SearchCapabilityKey,
+  WebSearchOutput
+} from "./websearch-types.js";
+import { isSearchCapabilityKey } from "./websearch-types.js";
 
 const execFileAsync = promisify(execFile);
+
+function resolveInvocationSearchCapabilityKey(
+  invocation: PreparedInvocation
+): SearchCapabilityKey {
+  if (isSearchCapabilityKey(invocation.variant)) {
+    return invocation.variant;
+  }
+
+  return invocation.key === "search.web" ? "search.web" : "search.ground";
+}
 
 function extractFirstJsonArray(source: string): string {
   const start = source.indexOf("[{");
@@ -76,6 +90,7 @@ export interface WebSearchRuntimeLike {
     provider: ProviderId;
     model: string;
     compatibilityProfileId?: string;
+    capabilityKey?: SearchCapabilityKey;
     error: unknown;
   }): CapabilityResult<WebSearchOutput>;
 }
@@ -85,6 +100,8 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
     invocation: PreparedInvocation,
     compatibilityProfileId?: string
   ): Promise<CapabilityResult<WebSearchOutput>> {
+    const capabilityKey = resolveInvocationSearchCapabilityKey(invocation);
+
     try {
       const raw = await this.#executeRaw(invocation);
       return toWebSearchCapabilityResult(
@@ -92,16 +109,18 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
         invocation.model,
         invocation.layer,
         raw,
-        compatibilityProfileId
+        compatibilityProfileId,
+        capabilityKey
       );
     } catch (error) {
       return toWebSearchFailureResult(
         invocation.provider,
         invocation.model,
         invocation.layer,
-        error instanceof Error ? error.message : "Unknown websearch execution failure.",
+        error instanceof Error ? error.message : "Unknown search execution failure.",
         error,
-        compatibilityProfileId
+        compatibilityProfileId,
+        capabilityKey
       );
     }
   }
@@ -110,15 +129,23 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
     provider: ProviderId;
     model: string;
     compatibilityProfileId?: string;
+    capabilityKey?: SearchCapabilityKey;
     error: unknown;
   }): CapabilityResult<WebSearchOutput> {
-    const { provider, model, compatibilityProfileId, error } = params;
+    const {
+      provider,
+      model,
+      compatibilityProfileId,
+      capabilityKey = "search.ground",
+      error
+    } = params;
     const layer = "api";
 
     if (
       error instanceof CompatibilityBlockedError ||
       error instanceof UnsupportedCapabilityError
     ) {
+      const action = capabilityKey === "search.web" ? "web" : "ground";
       return {
         status: "blocked",
         provider,
@@ -126,11 +153,17 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
         layer,
         compatibilityProfileId,
         capability: "search",
-        action: "ground",
+        action,
+        capabilityKey,
+        operation: action,
         error: {
           code: error.code,
           message: error.message,
           raw: error
+        },
+        metadata: {
+          capabilityKey,
+          compatibilityLayer: "websearch"
         }
       };
     }
@@ -142,7 +175,8 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
         layer,
         error.message,
         error,
-        compatibilityProfileId
+        compatibilityProfileId,
+        capabilityKey
       );
     }
 
@@ -150,9 +184,10 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
       provider,
       model,
       layer,
-      error instanceof Error ? error.message : "Unknown websearch routing failure.",
+      error instanceof Error ? error.message : "Unknown search routing failure.",
       error,
-      compatibilityProfileId
+      compatibilityProfileId,
+      capabilityKey
     );
   }
 
@@ -187,7 +222,7 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
       case "batches":
         return client.batches.create(payload.params as never);
       default:
-        throw new Error(`Unsupported OpenAI surface for websearch runtime: ${payload.surface}`);
+        throw new Error(`Unsupported OpenAI surface for search runtime: ${payload.surface}`);
     }
   }
 
@@ -208,7 +243,7 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
       case "anthropic.api.generation.messages.stream":
         return client.messages.create(invocation.payload as never);
       default:
-        throw new Error(`Unsupported Anthropic adapter for websearch runtime: ${invocation.adapterId}`);
+        throw new Error(`Unsupported Anthropic adapter for search runtime: ${invocation.adapterId}`);
     }
   }
 
@@ -275,7 +310,7 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
       case "ai.batches.create":
         return client.batches.create(payload.params as never);
       default:
-        throw new Error(`Unsupported DeepMind method for websearch runtime: ${payload.method}`);
+        throw new Error(`Unsupported DeepMind method for search runtime: ${payload.method}`);
     }
   }
 }

@@ -13,9 +13,16 @@ import type {
   WebSearchCreateInput,
   WebSearchOutput,
 } from "../../rax/index.js";
+import type { SearchCapabilityKey } from "../../rax/websearch-types.js";
+import {
+  isSearchCapabilityKey,
+  resolveSearchCapabilityKey,
+  searchCapabilityAction
+} from "../../rax/websearch-types.js";
 import { rax } from "../../rax/index.js";
 
 export interface RaxWebsearchInvocationInput extends WebSearchCreateInput {
+  capabilityKey: SearchCapabilityKey;
   provider: ProviderId;
   model: string;
   layer?: SdkLayer;
@@ -26,7 +33,7 @@ export interface RaxWebsearchInvocationInput extends WebSearchCreateInput {
 
 export interface RaxWebsearchAdapterOptions {
   facade?: WebsearchFacade;
-  capabilityKey?: string;
+  capabilityKey?: SearchCapabilityKey;
 }
 
 interface WebsearchFacade {
@@ -89,23 +96,27 @@ function mapSearchStatus(status: string): "success" | "partial" | "failed" | "bl
 
 function parseWebsearchInput(plan: CapabilityInvocationPlan): RaxWebsearchInvocationInput {
   const input = plan.input;
+  const capabilityKey = isSearchCapabilityKey(plan.capabilityKey)
+    ? plan.capabilityKey
+    : resolveSearchCapabilityKey(asString(input.capabilityKey));
   const provider = asString(input.provider) as ProviderId | undefined;
   const model = asString(input.model);
   const query = asString(input.query);
 
   if (!provider) {
-    throw new Error("search.ground invocation is missing provider.");
+    throw new Error(`${capabilityKey} invocation is missing provider.`);
   }
 
   if (!model) {
-    throw new Error("search.ground invocation is missing model.");
+    throw new Error(`${capabilityKey} invocation is missing model.`);
   }
 
   if (!query) {
-    throw new Error("search.ground invocation is missing query.");
+    throw new Error(`${capabilityKey} invocation is missing query.`);
   }
 
   return {
+    capabilityKey,
     provider,
     model,
     query,
@@ -144,9 +155,10 @@ function parseWebsearchInput(plan: CapabilityInvocationPlan): RaxWebsearchInvoca
 
 export class RaxWebsearchAdapter implements CapabilityAdapter {
   readonly id: string;
-  readonly runtimeKind = "rax-websearch";
+  readonly runtimeKind = "rax-search";
   readonly #facade: WebsearchFacade;
-  readonly #capabilityKey: string;
+  readonly #capabilityKey: SearchCapabilityKey;
+  readonly #supportedCapabilityKeys: ReadonlySet<SearchCapabilityKey>;
   readonly #preparedInputs = new Map<string, RaxWebsearchInvocationInput>();
 
   constructor(options: RaxWebsearchAdapterOptions = {}) {
@@ -155,12 +167,16 @@ export class RaxWebsearchAdapter implements CapabilityAdapter {
         create: rax.websearch.create.bind(rax.websearch),
       },
     };
-    this.#capabilityKey = options.capabilityKey ?? "search.ground";
-    this.id = `adapter:${this.#capabilityKey}`;
+    this.#capabilityKey = resolveSearchCapabilityKey(options.capabilityKey);
+    this.#supportedCapabilityKeys = options.capabilityKey
+      ? new Set([this.#capabilityKey])
+      : new Set<SearchCapabilityKey>(["search.web", "search.ground"]);
+    this.id = options.capabilityKey ? `adapter:${this.#capabilityKey}` : "adapter:search";
   }
 
   supports(plan: CapabilityInvocationPlan): boolean {
-    return plan.capabilityKey === this.#capabilityKey;
+    return isSearchCapabilityKey(plan.capabilityKey)
+      && this.#supportedCapabilityKeys.has(plan.capabilityKey);
   }
 
   async prepare(plan: CapabilityInvocationPlan, lease: CapabilityLease): Promise<PreparedCapabilityCall> {
@@ -188,9 +204,10 @@ export class RaxWebsearchAdapter implements CapabilityAdapter {
       lease,
       capabilityKey: plan.capabilityKey,
       executionMode: "direct",
-      preparedPayloadRef: `rax-websearch:${fingerprint}`,
+      preparedPayloadRef: `rax-search:${fingerprint}`,
       cacheKey: lease.preparedCacheKey ?? fingerprint,
       metadata: {
+        capabilityKey: parsedInput.capabilityKey,
         provider: parsedInput.provider,
         model: parsedInput.model,
       },
@@ -207,12 +224,13 @@ export class RaxWebsearchAdapter implements CapabilityAdapter {
         executionId: prepared.preparedId,
         status: "failed",
         error: {
-          code: "rax_websearch_prepared_input_missing",
-          message: `Prepared websearch input for ${prepared.preparedId} was not found.`,
+          code: "rax_search_prepared_input_missing",
+          message: `Prepared search input for ${prepared.preparedId} was not found.`,
         },
         metadata: {
           capabilityKey: prepared.capabilityKey,
           runtimeKind: this.runtimeKind,
+          compatibilityLayer: "rax.websearch",
         },
       });
     }
@@ -225,6 +243,7 @@ export class RaxWebsearchAdapter implements CapabilityAdapter {
       compatibilityProfileId: input.compatibilityProfileId,
       providerOptions: input.providerOptions,
       input: {
+        capabilityKey: input.capabilityKey,
         query: input.query,
         goal: input.goal,
         urls: input.urls,
@@ -240,25 +259,47 @@ export class RaxWebsearchAdapter implements CapabilityAdapter {
     });
 
     const status = mapSearchStatus(capabilityResult.status);
+    const action = searchCapabilityAction(input.capabilityKey);
+    const output = capabilityResult.output
+      ? {
+          ...capabilityResult.output,
+          capabilityKey: input.capabilityKey,
+        }
+      : undefined;
+    const evidence = Array.isArray(capabilityResult.evidence)
+      ? capabilityResult.evidence.map((entry) => {
+          const normalizedEntry = asObject(entry);
+
+          return normalizedEntry
+            ? {
+                ...normalizedEntry,
+                capabilityKey: input.capabilityKey,
+              }
+            : entry;
+        })
+      : capabilityResult.evidence;
+
     return createCapabilityResultEnvelope({
       executionId: prepared.preparedId,
       status,
-      output: capabilityResult.output as WebSearchOutput | undefined,
-      evidence: capabilityResult.evidence,
+      output: output as WebSearchOutput | undefined,
+      evidence,
       error:
         status === "failed" || status === "blocked" || status === "timeout"
           ? {
-              code: "rax_search_ground_failed",
-              message: "Rax search.ground did not complete successfully.",
+              code: "rax_search_failed",
+              message: `Rax ${input.capabilityKey} did not complete successfully.`,
               details: asObject(capabilityResult.error) ?? { raw: capabilityResult.error },
             }
           : undefined,
       metadata: {
-        capabilityKey: this.#capabilityKey,
+        capabilityKey: input.capabilityKey,
+        action,
         runtimeKind: this.runtimeKind,
         provider: capabilityResult.provider,
         model: capabilityResult.model,
         layer: capabilityResult.layer,
+        compatibilityLayer: "rax.websearch",
       },
     });
   }

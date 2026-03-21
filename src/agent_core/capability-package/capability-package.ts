@@ -113,7 +113,8 @@ export interface CapabilityPackageVerification {
 export interface CapabilityPackageUsageExample {
   exampleId: string;
   capabilityKey: string;
-  operation: string;
+  action: string;
+  operation?: string;
   input: Record<string, unknown>;
   notes?: string;
   metadata?: Record<string, unknown>;
@@ -220,7 +221,8 @@ export interface CreateCapabilityPackageVerificationInput {
 export interface CreateCapabilityPackageUsageExampleInput {
   exampleId: string;
   capabilityKey: string;
-  operation: string;
+  action?: string;
+  operation?: string;
   input?: Record<string, unknown>;
   notes?: string;
   metadata?: Record<string, unknown>;
@@ -623,16 +625,24 @@ export function validateCapabilityPackageVerification(
 export function createCapabilityPackageUsageExample(
   input: CreateCapabilityPackageUsageExampleInput | CapabilityPackageUsageExample,
 ): CapabilityPackageUsageExample {
+  const actionSource = input.action ?? input.operation;
+  if (!actionSource) {
+    throw new Error("usage.exampleInvocations.action requires a non-empty value.");
+  }
+  const normalizedAction = normalizeString(
+    actionSource,
+    "usage.exampleInvocations.action",
+  );
   const example: CapabilityPackageUsageExample = {
     exampleId: normalizeString(input.exampleId, "usage.exampleInvocations.exampleId"),
     capabilityKey: normalizeString(
       input.capabilityKey,
       "usage.exampleInvocations.capabilityKey",
     ),
-    operation: normalizeString(
-      input.operation,
-      "usage.exampleInvocations.operation",
-    ),
+    action: normalizedAction,
+    operation: input.operation
+      ? normalizeString(input.operation, "usage.exampleInvocations.operation")
+      : normalizedAction,
     input: input.input ?? {},
     notes: input.notes?.trim() || undefined,
     metadata: input.metadata,
@@ -647,7 +657,10 @@ export function validateCapabilityPackageUsageExample(
 ): void {
   normalizeString(example.exampleId, "usage.exampleInvocations.exampleId");
   normalizeString(example.capabilityKey, "usage.exampleInvocations.capabilityKey");
-  normalizeString(example.operation, "usage.exampleInvocations.operation");
+  normalizeString(example.action, "usage.exampleInvocations.action");
+  if (example.operation !== undefined) {
+    normalizeString(example.operation, "usage.exampleInvocations.operation");
+  }
 }
 
 export function createCapabilityPackageUsage(
@@ -956,7 +969,7 @@ export function createCapabilityPackageFixture(
         {
           exampleId: "example.open-browser",
           capabilityKey,
-          operation: "open_browser",
+          action: "open_browser",
           input: {
             url: "https://example.com",
           },

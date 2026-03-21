@@ -18,6 +18,10 @@ import type {
   SkillUseResult,
 } from "../../rax/index.js";
 import type { PreparedInvocation } from "../../rax/contracts.js";
+import {
+  createRaxSkillCapabilityPackage,
+  summarizeCapabilityPackage,
+} from "../capability-package/index.js";
 
 export const RAX_SKILL_ADAPTER_CAPABILITY_KEYS = [
   "skill.use",
@@ -250,6 +254,24 @@ function toSuccessEnvelope(params: {
   };
 }
 
+function createSkillCapabilityPackageMetadata(params: {
+  capabilityKey: RaxSkillAdapterCapabilityKey;
+  route: RaxSkillRouteContext;
+  container: SkillContainer;
+  invocation: PreparedInvocation<Record<string, unknown>>;
+  activation?: SkillActivationPlan;
+}) {
+  return summarizeCapabilityPackage(
+    createRaxSkillCapabilityPackage({
+      capabilityKey: params.capabilityKey,
+      route: params.route,
+      container: params.container,
+      invocation: params.invocation,
+      activation: params.activation,
+    }),
+  );
+}
+
 export class RaxSkillCapabilityAdapter implements CapabilityAdapter {
   readonly id = "rax.skill.adapter";
   readonly runtimeKind = "rax-skill";
@@ -355,6 +377,13 @@ export class RaxSkillCapabilityAdapter implements CapabilityAdapter {
         prepared,
         output: summarizeSkillUseResult(result),
         metadata: {
+          capabilityPackage: createSkillCapabilityPackageMetadata({
+            capabilityKey: "skill.use",
+            route: state.route,
+            container: result.container,
+            invocation: result.invocation,
+            activation: result.activation,
+          }),
           progressiveLoading: {
             includeResources: (state.input as SkillUseInput).includeResources ?? false,
             includeHelpers: (state.input as SkillUseInput).includeHelpers ?? false,
@@ -372,16 +401,26 @@ export class RaxSkillCapabilityAdapter implements CapabilityAdapter {
         executionId,
         prepared,
         output: summarizeSkillMountResult(result),
+        metadata: {
+          capabilityPackage: createSkillCapabilityPackageMetadata({
+            capabilityKey: "skill.mount",
+            route: state.route,
+            container: result.container,
+            invocation: result.invocation,
+            activation: result.activation,
+          }),
+        },
       });
     }
 
+    const prepareInput = state.input as {
+      container: SkillContainer;
+      includeResources?: boolean;
+      includeHelpers?: boolean;
+    };
     const result = this.#facade.skill.prepare({
       ...routeOptions,
-      input: state.input as {
-        container: SkillContainer;
-        includeResources?: boolean;
-        includeHelpers?: boolean;
-      },
+      input: prepareInput,
     });
 
     return toSuccessEnvelope({
@@ -389,13 +428,19 @@ export class RaxSkillCapabilityAdapter implements CapabilityAdapter {
       prepared,
       output: {
         action: "skill.prepare",
-        container: summarizeContainer((state.input as { container: SkillContainer }).container),
+        container: summarizeContainer(prepareInput.container),
         preparedInvocation: summarizePreparedInvocation(result),
       },
       metadata: {
+        capabilityPackage: createSkillCapabilityPackageMetadata({
+          capabilityKey: "skill.prepare",
+          route: state.route,
+          container: prepareInput.container,
+          invocation: result,
+        }),
         progressiveLoading: {
-          includeResources: (state.input as { includeResources?: boolean }).includeResources ?? false,
-          includeHelpers: (state.input as { includeHelpers?: boolean }).includeHelpers ?? false,
+          includeResources: prepareInput.includeResources ?? false,
+          includeHelpers: prepareInput.includeHelpers ?? false,
         },
       },
     });

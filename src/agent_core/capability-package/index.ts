@@ -24,6 +24,12 @@ export type {
   CreateCapabilityPackageUsageInput,
   CreateCapabilityPackageVerificationInput,
 } from "./capability-package.js";
+export type {
+  CapabilityPackageSummary,
+  CreateRaxComputerCapabilityPackageInput,
+  CreateRaxMcpCapabilityPackageInput,
+  CreateRaxSkillCapabilityPackageInput,
+} from "./rax-capability-package.js";
 export {
   CAPABILITY_PACKAGE_TEMPLATE_VERSION,
   createCapabilityPackage,
@@ -50,3 +56,9 @@ export {
   validateCapabilityPackageUsageExample,
   validateCapabilityPackageVerification,
 } from "./capability-package.js";
+export {
+  createRaxComputerCapabilityPackage,
+  createRaxMcpCapabilityPackage,
+  createRaxSkillCapabilityPackage,
+  summarizeCapabilityPackage,
+} from "./rax-capability-package.js";

@@ -1,3 +1,11 @@
+export const SEARCH_CAPABILITY_KEYS = [
+  "search.web",
+  "search.ground"
+] as const;
+
+export type SearchCapabilityKey = (typeof SEARCH_CAPABILITY_KEYS)[number];
+export type SearchCapabilityAction = "web" | "ground";
+
 export type WebSearchCitationMode = "required" | "preferred" | "off";
 
 export type WebSearchFreshness = "any" | "day" | "week" | "month" | "year";
@@ -10,6 +18,7 @@ export interface WebSearchUserLocation {
 }
 
 export interface WebSearchCreateInput {
+  capabilityKey?: SearchCapabilityKey;
   query: string;
   goal?: string;
   urls?: string[];
@@ -36,21 +45,56 @@ export interface WebSearchSource {
   title?: string;
   snippet?: string;
   kind?: "search_result" | "fetched_page" | "citation";
+  providerReference?: string;
+  raw?: unknown;
+}
+
+export interface WebSearchEvidence {
+  capabilityKey: SearchCapabilityKey;
+  url: string;
+  title?: string;
+  snippet?: string;
+  kind: "search_result" | "fetched_page" | "citation";
+  providerReference?: string;
   raw?: unknown;
 }
 
 export interface WebSearchOutput {
+  capabilityKey?: SearchCapabilityKey;
   answer: string;
   citations: WebSearchCitation[];
   sources: WebSearchSource[];
   raw?: unknown;
 }
 
+export function isSearchCapabilityKey(value: unknown): value is SearchCapabilityKey {
+  return value === "search.web" || value === "search.ground";
+}
+
+export function resolveSearchCapabilityKey(
+  value?: Pick<WebSearchCreateInput, "capabilityKey">["capabilityKey"] | string
+): SearchCapabilityKey {
+  return value === "search.web" ? "search.web" : "search.ground";
+}
+
+export function searchCapabilityAction(
+  capabilityKey: SearchCapabilityKey
+): SearchCapabilityAction {
+  return capabilityKey === "search.web" ? "web" : "ground";
+}
+
 export function buildWebSearchTaskPrompt(input: WebSearchCreateInput): string {
-  const lines = [
-    "Run a grounded web research task.",
-    `Primary query: ${input.query}`
-  ];
+  const capabilityKey = resolveSearchCapabilityKey(input.capabilityKey);
+  const lines =
+    capabilityKey === "search.web"
+      ? [
+          "Search the web for relevant sources and summarize the most useful findings.",
+          `Primary query: ${input.query}`
+        ]
+      : [
+          "Run a grounded web research task and answer using cited external sources.",
+          `Primary query: ${input.query}`
+        ];
 
   if (input.goal) {
     lines.push(`Goal: ${input.goal}`);
@@ -87,6 +131,12 @@ export function buildWebSearchTaskPrompt(input: WebSearchCreateInput): string {
     default:
       lines.push("Citations are required in the final answer.");
       break;
+  }
+
+  if (capabilityKey === "search.web") {
+    lines.push("Prefer a concise search summary plus the most relevant sources.");
+  } else {
+    lines.push("Return a concise grounded answer and keep claims tied to cited sources.");
   }
 
   return lines.join("\n");

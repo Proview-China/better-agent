@@ -22,17 +22,20 @@ export interface CapabilityResultError {
   details?: Record<string, unknown>;
 }
 
-export interface CapabilityResultEnvelope {
-  executionId: string;
-  resultId: string;
+export interface CapabilityResultCore {
   status: CapabilityResultStatus;
   output?: unknown;
   artifacts?: CapabilityResultArtifact[];
   evidence?: unknown[];
   error?: CapabilityResultError;
   usage?: Record<string, unknown>;
-  completedAt: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface CapabilityResultEnvelope extends CapabilityResultCore {
+  executionId: string;
+  resultId: string;
+  completedAt: string;
 }
 
 export const CAPABILITY_BACKPRESSURE_SOURCES = [
@@ -59,4 +62,3 @@ export interface CapabilityBackpressureSignal {
   emittedAt: string;
   metadata?: Record<string, unknown>;
 }
-

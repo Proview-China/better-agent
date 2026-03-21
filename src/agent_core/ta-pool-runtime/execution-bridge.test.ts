@@ -36,11 +36,21 @@ test("execution bridge exposes a lightweight request envelope for downstream run
     },
     planId: "plan-1",
     intentId: "intent-1",
+    input: {
+      command: "npm test",
+      cwd: "workspace\\packages\\tap",
+    },
   });
 
   assert.equal(request.capabilityKey, "mcp.playwright");
   assert.equal(request.grantId, grant.grantId);
   assert.deepEqual(request.scope, { target: "frontend-preview" });
+  assert.deepEqual(request.metadata?.executionGovernance, {
+    family: "generic",
+    operation: "playwright",
+    subject: "npm test",
+    pathCandidates: ["workspace/packages/tap"],
+  });
 });
 
 test("execution bridge can lower a grant into a capability invocation plan", () => {
@@ -85,5 +95,21 @@ test("execution bridge can lower a grant into a capability invocation plan", () 
     (plan.metadata?.[TA_ENFORCEMENT_METADATA_KEY] as { decisionToken?: { compiledGrantId?: string } })?.decisionToken?.compiledGrantId,
     "grant-2",
   );
-  assert.equal(typeof plan.input.taGrant, "object");
+  assert.deepEqual(plan.metadata?.executionGovernance, {
+    family: "generic",
+    operation: "web",
+    subject: undefined,
+    pathCandidates: undefined,
+  });
+  assert.deepEqual(plan.input.taGrant, {
+    grantId: "grant-2",
+    grantedTier: "B1",
+    mode: "balanced",
+    executionGovernance: {
+      family: "generic",
+      operation: "web",
+      subject: undefined,
+      pathCandidates: undefined,
+    },
+  });
 });

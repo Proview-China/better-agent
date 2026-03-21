@@ -6,6 +6,9 @@ import {
   createCapabilityPackageActivationSpecRef,
   createCapabilityPackageFixture,
   createCapabilityPackageFromProvisionBundle,
+  createRaxComputerCapabilityPackage,
+  createRaxMcpCapabilityPackage,
+  createRaxSkillCapabilityPackage,
 } from "./index.js";
 import { createPoolActivationSpec, createProvisionArtifactBundle } from "../ta-pool-types/index.js";
 
@@ -177,5 +180,147 @@ test("capability package validation rejects replay policy drift between builder 
         replayPolicy: "auto_after_verify",
       }),
     /replayPolicy must match builder\.replayCapability/,
+  );
+});
+
+test("rax mcp capability package locks shared entry keys and keeps legacy aliases as compatibility metadata", () => {
+  const capabilityPackage = createRaxMcpCapabilityPackage({
+    capabilityKey: "mcp.shared.call",
+    originalCapabilityKey: "mcp.call",
+    route: {
+      provider: "openai",
+      model: "gpt-5.4",
+      layer: "agent",
+    },
+    input: {
+      connectionId: "conn-1",
+      toolName: "browser.search",
+    },
+  });
+
+  assert.equal(capabilityPackage.manifest.capabilityKey, "mcp.shared.call");
+  assert.equal(capabilityPackage.adapter.runtimeKind, "rax-mcp");
+  assert.deepEqual(capabilityPackage.metadata?.compatibilityAliases, ["mcp.call"]);
+  assert.equal(
+    capabilityPackage.lifecycle.deprecateStrategy,
+    "Keep legacy top-level mcp.* aliases compatibility-only and stop assigning them as the primary dispatch surface.",
+  );
+});
+
+test("rax computer capability package keeps computer.* public while pointing at existing MCP carrier entries", () => {
+  const capabilityPackage = createRaxComputerCapabilityPackage({
+    capabilityKey: "computer.use",
+    route: {
+      provider: "openai",
+      model: "gpt-5.4",
+      layer: "agent",
+    },
+    input: {
+      connectionId: "conn-computer",
+      toolName: "browser_navigate",
+      arguments: {
+        url: "https://example.com",
+      },
+    },
+  });
+
+  assert.equal(capabilityPackage.manifest.capabilityKey, "computer.use");
+  assert.equal(capabilityPackage.manifest.capabilityKind, "runtime");
+  assert.deepEqual(capabilityPackage.manifest.dependencies, ["mcp.shared.call"]);
+  assert.equal(capabilityPackage.adapter.runtimeKind, "rax-mcp");
+  assert.equal(capabilityPackage.metadata?.publicEntryFamily, "computer");
+  assert.equal(capabilityPackage.metadata?.backingCapability, "mcp.shared.call");
+  assert.deepEqual(capabilityPackage.metadata?.carrierEntryFamilies, ["mcp.shared", "mcp.native"]);
+  assert.equal(
+    ((capabilityPackage.metadata?.governance as { bridge?: string } | undefined)?.bridge),
+    "ta.execution.bridge",
+  );
+});
+
+test("rax skill capability package maps skill runtime activation to carrier-aware lifecycle metadata", () => {
+  const capabilityPackage = createRaxSkillCapabilityPackage({
+    capabilityKey: "skill.use",
+    route: {
+      provider: "anthropic",
+      model: "claude-opus-4-6-thinking",
+      layer: "agent",
+    },
+    container: {
+      descriptor: {
+        id: "browser-skill",
+        name: "Browser Skill",
+        description: "Drive a browser workflow.",
+        version: "1.0.0",
+        tags: ["browser"],
+        triggers: ["browser"],
+        source: {
+          kind: "local",
+          rootDir: "/skills/browser",
+          entryPath: "/skills/browser/SKILL.md",
+        },
+      },
+      source: {
+        kind: "local",
+        rootDir: "/skills/browser",
+        entryPath: "/skills/browser/SKILL.md",
+      },
+      entry: {
+        path: "/skills/browser/SKILL.md",
+        content: "# Browser Skill",
+      },
+      resources: [],
+      helpers: [],
+      bindings: {},
+      policy: {
+        invocationMode: "auto",
+        requiresApproval: false,
+        riskLevel: "medium",
+        sourceTrust: "local",
+      },
+      loading: {
+        metadata: "always",
+        entry: "on-activate",
+        resources: "on-demand",
+        helpers: "on-demand",
+      },
+      ledger: {
+        discoverCount: 1,
+        activationCount: 2,
+      },
+    },
+    activation: {
+      provider: "anthropic",
+      mode: "anthropic-sdk-filesystem",
+      layer: "agent",
+      officialCarrier: "anthropic-sdk-filesystem-skill",
+      payload: {},
+      entry: {
+        path: "/skills/browser/SKILL.md",
+        content: "# Browser Skill",
+      },
+      resources: [],
+      helpers: [],
+    },
+    invocation: {
+      key: "skill.activate",
+      provider: "anthropic",
+      model: "claude-opus-4-6-thinking",
+      layer: "agent",
+      adapterId: "skill.anthropic.anthropic-sdk-filesystem",
+      sdk: {
+        packageName: "@anthropic-ai/sdk",
+        entrypoint: "client.messages.create",
+      },
+      payload: {},
+    },
+  });
+
+  assert.equal(capabilityPackage.manifest.capabilityKey, "skill.use");
+  assert.equal(capabilityPackage.usage.skillRef, "browser-skill");
+  const carrier = capabilityPackage.metadata?.carrier as { officialCarrier?: string } | undefined;
+  assert.equal(carrier?.officialCarrier, "anthropic-sdk-filesystem-skill");
+  assert.match(
+    capabilityPackage.lifecycle.installStrategy,
+    /anthropic-sdk-filesystem-skill/u,
   );
 });

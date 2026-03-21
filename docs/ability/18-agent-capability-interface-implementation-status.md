@@ -250,6 +250,23 @@
 
 这些都还不在这轮“接口完成度”的范围里。
 
+## Gate 1 冻结面交付（公共壳第一版）
+
+- 统一命名已确认：`CapabilityKey = namespace.action` 是唯一稳定标识，`capability + action` 是结构化拆分形态，`operation` 仅作为历史别名使用。
+- Support Matrix 字段口径已锁定：`plane`/`pool`/`weight`/`defaultLayer` + `providerSupport.{status, preferredLayer, notes}`。
+- Request/Result 最小公共形状已锁定：`provider/model/layer/capabilityKey/input` 为 request 核心字段；`status/output/artifacts/evidence/error/usage/metadata` 为 result 核心字段。
+- Gateway/dispatch 最小入口已锁定：`acquire` → `prepare` → `dispatch` + `cancel` + `onResult/onBackpressure`。
+- 代码锚点已补齐到共享层：`src/rax/types.ts` 暴露 `CapabilitySupportMatrix` / `CapabilityRequestCore` / `CapabilityResultCore`，`src/rax/router.ts` 暴露 `buildCapabilityKey`，`src/agent_core/capability-invocation` 用统一 `deriveCapabilityOperation` 收口 `operation` 默认语义。
+
+## 双轨命名 / 冲突入口 / 未冻结 surface
+
+- `search.*`（registry）与 `websearch.*`（facade/runtime）并存，命名未统一，需后续提案。
+- `mcp.*`（registry）与 `mcp.shared.*`/`mcp.native.*`（facade）并存，入口分层仍未统一。
+- `CapabilityInvocationPlan.operation` 与 `CapabilityRequest.action` 并存，已加别名对齐但仍处于双轨期。
+- `CapabilityResultEnvelope`（success/partial/failed/blocked/timeout/cancelled）与 `CapabilityResult`（queued/running/...）状态集合未完全收口。
+- `CapabilityKind`（model/tool/resource/runtime）与 `CapabilityPlane`（inference/tool/resource/runtime）命名尚未统一。
+- `CapabilityRequestCore` 已冻结，但 `CapabilityRequest` 作为 provider-facing 扩展载体仍保留 `variant/session/tools/policy/providerOptions` 等非冻结扩展字段。
+
 ## 所以到底能不能说“接口已经完全做完了”
 
 当前不建议这样说。

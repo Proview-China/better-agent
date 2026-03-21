@@ -6,6 +6,7 @@ import type {
 import type { CapabilityRequest } from "../../../../../rax/index.js";
 import {
   buildWebSearchTaskPrompt,
+  resolveSearchCapabilityKey,
   type WebSearchUserLocation
 } from "../../../../../rax/websearch-types.js";
 import type {
@@ -62,23 +63,38 @@ export const openAIResponsesSearchGroundDescriptor: OpenAIApiAdapterDescriptor<
     "Lower a unified grounded web search request into OpenAI Responses API with the native web_search tool.",
   prepare(request: CapabilityRequest<OpenAIWebSearchCreateInput>) {
     const input = request.input;
+    const capabilityKey = resolveSearchCapabilityKey(input.capabilityKey);
     const params = omitUndefined({
       model: request.model ?? input.model,
-      input: buildWebSearchTaskPrompt(input),
+      input: buildWebSearchTaskPrompt({
+        ...input,
+        capabilityKey
+      }),
       include: ["web_search_call.action.sources"],
-      metadata: input.metadata,
+      metadata: omitUndefined({
+        ...(input.metadata ?? {}),
+        praxis_search_capability_key: capabilityKey
+      }),
       tools: [buildOpenAIWebSearchTool(input)],
       stream: false as const
     }) as ResponseCreateParamsNonStreaming;
 
-    return prepareOpenAIInvocation(openAIResponsesSearchGroundDescriptor, request, {
+    const invocation = prepareOpenAIInvocation(openAIResponsesSearchGroundDescriptor, request, {
       surface: "responses",
       sdkMethodPath: "client.responses.create",
       params,
       notes: [
         "Grounded web search uses the native Responses web_search tool and requests source annotations.",
+        capabilityKey === "search.web"
+          ? "The search.web surface currently lowers through the same Responses web_search carrier as a compatibility bridge."
+          : "The search.ground surface uses the native grounding-capable web_search carrier directly.",
         "Known URLs are folded into the task prompt because OpenAI does not expose a separate first-class fetch tool on this path."
       ]
     });
+
+    return {
+      ...invocation,
+      variant: capabilityKey
+    };
   }
 };

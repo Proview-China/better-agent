@@ -249,3 +249,37 @@ provisioner 最终至少交回下面四类 artifact：
 - 必须带 `usage`
 
 不满足这三项，不算可接入 `TAP` 的正式 capability package。
+
+## Gate 4 / issue-14 addendum
+
+computer/browser/desktop 这一条线在 Gate 4 的最小收口口径如下：
+
+- 正式 public surface 是 `computer.use` / `computer.observe` / `computer.act`
+- `browser_*` / `desktop_*` 仍然是底层 MCP tool 名，不升级成新的 public capability key
+- 当前最小可用 dispatch seam 复用 `rax.mcp.adapter`，并优先落到 `mcp.shared.call`
+- `mcp.native.execute` 保留为 provider-native carrier / compose 路径，用来承接官方 MCP native 载体，不替代 `computer.*` public surface
+
+这意味着 capability package 里要明确区分三层：
+
+1. public capability line
+   - `computer.*`
+   - 给 reviewer / provisioner / activation / runtime 看的正式能力键
+2. backing entry family
+   - `mcp.shared.*`
+   - 当前 issue-14 最小闭环里真正复用的 shared MCP dispatch 接缝
+3. carrier layer
+   - `mcp.native.*`
+   - provider-native MCP prepare/build/compose/execute 载体层
+
+issue-14 在 capability package 中必须表达清楚的关系：
+
+- `activation_spec_ref` 仍然指向现有 TAP activation driver，不新发明 activation 体系
+- execution governance 仍然来自现有 `ta.execution.bridge` 与 `taGrant.executionGovernance`
+- computer line 只是建立在现有治理能力之上的能力线，不重新定义 approval / session / lifecycle
+
+因此，computer line 的 capability package 至少要能回答：
+
+- public capability key 是什么
+- 当前 backing capability 是 `mcp.shared.call` 还是别的已存在接缝
+- 哪些 carrier entry family 只是载体，例如 `mcp.native.*`
+- 现有验证证据来自哪些 adapter/runtime/smoke 文件

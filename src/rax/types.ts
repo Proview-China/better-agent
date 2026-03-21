@@ -98,6 +98,7 @@ export const CAPABILITY_ACTIONS = [
   "end"
 ] as const;
 export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];
+export type CapabilityOperation = CapabilityAction;
 
 export type CapabilityKey = `${CapabilityNamespace}.${CapabilityAction}`;
 
@@ -119,6 +120,19 @@ export interface CapabilityDefinition {
   providerSupport: Record<ProviderId, ProviderCapabilitySupport>;
 }
 
+export type CapabilitySupportMatrix = Pick<
+  CapabilityDefinition,
+  "plane" | "pool" | "weight" | "defaultLayer" | "providerSupport"
+>;
+
+export interface CapabilityRequestCore<TInput = unknown> {
+  provider: ProviderId;
+  model: string;
+  layer: SdkLayer;
+  capabilityKey: CapabilityKey;
+  input: TInput;
+}
+
 export interface CapabilityRequest<TInput = unknown> {
   provider: ProviderId;
   model: string;
@@ -127,6 +141,8 @@ export interface CapabilityRequest<TInput = unknown> {
   compatibilityProfileId?: string;
   capability: CapabilityNamespace;
   action: CapabilityAction;
+  capabilityKey?: CapabilityKey;
+  operation?: CapabilityOperation;
   input: TInput;
   session?: unknown;
   tools?: unknown[];
@@ -135,8 +151,25 @@ export interface CapabilityRequest<TInput = unknown> {
   providerOptions?: Partial<Record<ProviderId, Record<string, unknown>>>;
 }
 
-export interface CapabilityResult<TOutput = unknown> {
-  status: "queued" | "running" | "success" | "partial" | "failed" | "blocked" | "timeout";
+export interface CapabilityResultCore<TOutput = unknown> {
+  status:
+    | "queued"
+    | "running"
+    | "success"
+    | "partial"
+    | "failed"
+    | "blocked"
+    | "timeout"
+    | "cancelled";
+  output?: TOutput;
+  artifacts?: unknown[];
+  usage?: unknown;
+  evidence?: unknown[];
+  error?: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CapabilityResult<TOutput = unknown> extends CapabilityResultCore<TOutput> {
   provider: ProviderId;
   model: string;
   layer: Exclude<SdkLayer, "auto">;
@@ -144,10 +177,7 @@ export interface CapabilityResult<TOutput = unknown> {
   compatibilityProfileId?: string;
   capability: CapabilityNamespace;
   action: CapabilityAction;
-  output?: TOutput;
-  artifacts?: unknown[];
-  usage?: unknown;
-  evidence?: unknown[];
-  error?: unknown;
+  capabilityKey?: CapabilityKey;
+  operation?: CapabilityOperation;
   handoff?: unknown;
 }

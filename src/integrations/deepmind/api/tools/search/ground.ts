@@ -1,6 +1,10 @@
 import type { CapabilityAdapterDescriptor } from "../../../../../rax/contracts.js";
 import type { CapabilityRequest } from "../../../../../rax/types.js";
-import { buildWebSearchTaskPrompt, type WebSearchCreateInput } from "../../../../../rax/websearch-types.js";
+import {
+  buildWebSearchTaskPrompt,
+  resolveSearchCapabilityKey,
+  type WebSearchCreateInput
+} from "../../../../../rax/websearch-types.js";
 import {
   buildGeminiPreparedInvocation,
   type GeminiPreparedPayload
@@ -24,19 +28,23 @@ export const deepMindSearchGroundDescriptor: CapabilityAdapterDescriptor<
     request: CapabilityRequest<DeepMindWebSearchCreateInput>
   ) {
     const input = request.input;
+    const capabilityKey = resolveSearchCapabilityKey(input.capabilityKey);
     const tools: Array<Record<string, unknown>> = [{ googleSearch: {} }];
 
     if (input.urls?.length) {
       tools.push({ urlContext: {} });
     }
 
-    return buildGeminiPreparedInvocation(
+    const invocation = buildGeminiPreparedInvocation(
       deepMindSearchGroundDescriptor,
       request,
       "ai.models.generateContent",
       {
         model: request.model,
-        contents: buildWebSearchTaskPrompt(input),
+        contents: buildWebSearchTaskPrompt({
+          ...input,
+          capabilityKey
+        }),
         config: {
           tools,
           maxOutputTokens: input.maxOutputTokens
@@ -49,5 +57,10 @@ export const deepMindSearchGroundDescriptor: CapabilityAdapterDescriptor<
           : "No explicit urlContext tool was added because the task does not provide target URLs."
       ]
     );
+
+    return {
+      ...invocation,
+      variant: capabilityKey
+    };
   }
 };

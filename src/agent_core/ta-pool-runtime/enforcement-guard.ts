@@ -38,6 +38,128 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function normalizeStringArray(values?: readonly string[]): string[] | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+
+  const normalized = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function toPatternRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\*/g, ".*")}$`);
+}
+
+function matchesPattern(value: string, pattern: string): boolean {
+  return toPatternRegex(pattern).test(value);
+}
+
+function normalizePath(value: string): string {
+  return value.trim().replace(/\\/g, "/");
+}
+
+function normalizePathArray(values: unknown): string[] | undefined {
+  if (!Array.isArray(values)) {
+    return undefined;
+  }
+
+  const normalized = [...new Set(
+    values
+      .filter((value): value is string => typeof value === "string" && !!value.trim())
+      .map(normalizePath),
+  )];
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function readExecutionGovernanceMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const executionGovernance = metadata.executionGovernance;
+  return isRecord(executionGovernance) ? executionGovernance : undefined;
+}
+
+function resolveScopeSubjects(
+  input: unknown,
+  metadata?: Record<string, unknown>,
+): string[] {
+  const subjects = new Set<string>();
+  const executionGovernance = readExecutionGovernanceMetadata(metadata);
+  const governanceSubject = executionGovernance?.subject;
+  if (typeof governanceSubject === "string" && governanceSubject.trim()) {
+    subjects.add(governanceSubject.trim());
+  }
+
+  if (!isRecord(input)) {
+    return [...subjects];
+  }
+
+  const directFields = [
+    input.command,
+    input.script,
+    input.action,
+    input.task,
+    input.prompt,
+    input.path,
+    input.targetPath,
+    input.filePath,
+  ];
+  for (const value of directFields) {
+    if (typeof value === "string" && value.trim()) {
+      subjects.add(value.trim());
+    }
+  }
+
+  return [...subjects];
+}
+
+function resolveScopePaths(
+  input: unknown,
+  metadata?: Record<string, unknown>,
+): string[] {
+  const paths = new Set<string>();
+  const executionGovernance = readExecutionGovernanceMetadata(metadata);
+  const governancePaths = normalizePathArray(executionGovernance?.pathCandidates);
+  for (const path of governancePaths ?? []) {
+    paths.add(path);
+  }
+
+  if (!isRecord(input)) {
+    return [...paths];
+  }
+
+  const directFields = [
+    input.path,
+    input.targetPath,
+    input.filePath,
+    input.cwd,
+    input.workdir,
+    input.workingDirectory,
+    input.rootDir,
+    input.repoRoot,
+  ];
+  for (const value of directFields) {
+    if (typeof value === "string" && value.trim()) {
+      paths.add(normalizePath(value));
+    }
+  }
+
+  for (const value of [
+    ...(normalizePathArray(input.paths) ?? []),
+    ...(normalizePathArray(input.targetPaths) ?? []),
+    ...(normalizePathArray(input.filePaths) ?? []),
+  ]) {
+    paths.add(value);
+  }
+
+  return [...paths];
+}
+
 function readTaExecutionEnforcement(
   metadata: Record<string, unknown> | undefined,
 ): TaExecutionEnforcement | undefined {
@@ -115,6 +237,78 @@ function assertDecisionTokenValid(
   }
 }
 
+function assertOperationAllowed(
+  enforcement: TaExecutionEnforcement,
+  operation: string,
+): void {
+  const allowedOperations = normalizeStringArray(enforcement.scope?.allowedOperations);
+  if (!allowedOperations) {
+    return;
+  }
+
+  const permittedAliases = new Set([
+    operation,
+    enforcement.capabilityKey,
+    enforcement.capabilityKey.split(".").slice(1).join(".") || enforcement.capabilityKey,
+    enforcement.capabilityKey.split(".").at(-1) ?? enforcement.capabilityKey,
+  ]);
+  if (!allowedOperations.some((value) => permittedAliases.has(value))) {
+    throw new Error(
+      `T/A enforcement operation ${operation} is not allowed by scope.`,
+    );
+  }
+}
+
+function assertScopeNotDenied(
+  enforcement: TaExecutionEnforcement,
+  input: unknown,
+  metadata?: Record<string, unknown>,
+): void {
+  const denyPatterns = normalizeStringArray(enforcement.scope?.denyPatterns);
+  if (!denyPatterns) {
+    return;
+  }
+
+  const subjects = resolveScopeSubjects(input, metadata);
+  if (subjects.length === 0) {
+    return;
+  }
+
+  for (const subject of subjects) {
+    const matched = denyPatterns.find((pattern) => matchesPattern(subject, pattern));
+    if (!matched) {
+      continue;
+    }
+
+    throw new Error(
+      `T/A enforcement scope denied ${subject} by pattern ${matched}.`,
+    );
+  }
+}
+
+function assertScopePathAllowed(
+  enforcement: TaExecutionEnforcement,
+  input: unknown,
+  metadata?: Record<string, unknown>,
+): void {
+  const pathPatterns = normalizeStringArray(enforcement.scope?.pathPatterns);
+  if (!pathPatterns) {
+    return;
+  }
+
+  const paths = resolveScopePaths(input, metadata);
+  if (paths.length === 0) {
+    return;
+  }
+
+  const outsideScope = paths.find((path) => !pathPatterns.some((pattern) => matchesPattern(path, pattern)));
+  if (outsideScope) {
+    throw new Error(
+      `T/A enforcement path ${outsideScope} is outside the granted scope.`,
+    );
+  }
+}
+
 function assertBaseEnforcementValid(
   enforcement: TaExecutionEnforcement,
   clock: () => Date,
@@ -171,6 +365,9 @@ export function validateTaPlanEnforcement(
       `T/A enforcement capability ${enforcement.capabilityKey} does not match invocation plan ${plan.capabilityKey}.`,
     );
   }
+  assertOperationAllowed(enforcement, plan.operation);
+  assertScopePathAllowed(enforcement, plan.input, plan.metadata);
+  assertScopeNotDenied(enforcement, plan.input, plan.metadata);
 
   return enforcement;
 }

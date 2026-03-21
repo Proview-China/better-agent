@@ -29,6 +29,7 @@ export type {
   CapabilityBackpressureSignal,
   CapabilityBackpressureSource,
   CapabilityResultArtifact,
+  CapabilityResultCore,
   CapabilityResultEnvelope,
   CapabilityResultError,
   CapabilityResultStatus,

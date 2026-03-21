@@ -12,12 +12,13 @@ import {
 import {
   createCapabilityInvocationPlanFromIntent,
   createCapabilityInvocationPlanFromRequest,
+  deriveCapabilityOperation,
 } from "./capability-plan.js";
 
 export function createInvocationPlanFromCapabilityIntent(intent: CapabilityCallIntent): CapabilityInvocationPlan {
   return createCapabilityInvocationPlanFromIntent(intent, {
     idFactory: () => intent.intentId,
-    operation: intent.request.capabilityKey.split(".").slice(1).join(".") || intent.request.capabilityKey,
+    operation: deriveCapabilityOperation(intent.request.capabilityKey),
   });
 }
 
@@ -28,7 +29,7 @@ export function createInvocationPlanFromRequest(params: {
 }): CapabilityInvocationPlan {
   return createCapabilityInvocationPlanFromRequest(params.request, {
     idFactory: () => params.request.intentId,
-    operation: params.request.capabilityKey.split(".").slice(1).join(".") || params.request.capabilityKey,
+    operation: deriveCapabilityOperation(params.request.capabilityKey),
     metadata: params.metadata,
   });
 }

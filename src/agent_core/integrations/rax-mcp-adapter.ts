@@ -13,14 +13,40 @@ import type {
 } from "../../rax/mcp-types.js";
 import type { RaxFacade } from "../../rax/facade.js";
 import { rax } from "../../rax/index.js";
+import {
+  createRaxComputerCapabilityPackage,
+  createRaxMcpCapabilityPackage,
+  summarizeCapabilityPackage,
+} from "../capability-package/index.js";
 import { createPreparedCapabilityCall } from "../capability-invocation/index.js";
 import { createCapabilityResultEnvelope } from "../capability-result/index.js";
 
-type SupportedMcpAction =
-  | "mcp.call"
-  | "mcp.listTools"
-  | "mcp.readResource"
-  | "mcp.native.execute";
+const MCP_SHARED_ACTIONS = [
+  "mcp.shared.call",
+  "mcp.shared.listTools",
+  "mcp.shared.readResource",
+] as const;
+const MCP_LEGACY_SHARED_ACTIONS = [
+  "mcp.call",
+  "mcp.listTools",
+  "mcp.readResource",
+] as const;
+const MCP_NATIVE_ACTIONS = [
+  "mcp.native.execute",
+] as const;
+const COMPUTER_ACTIONS = [
+  "computer.use",
+  "computer.observe",
+  "computer.act",
+] as const;
+
+type McpSharedAction = (typeof MCP_SHARED_ACTIONS)[number];
+type McpLegacySharedAction = (typeof MCP_LEGACY_SHARED_ACTIONS)[number];
+type McpNativeAction = (typeof MCP_NATIVE_ACTIONS)[number];
+type ComputerAction = (typeof COMPUTER_ACTIONS)[number];
+type SupportedMcpAction = McpSharedAction | McpNativeAction;
+type SupportedPublicCapabilityKey = SupportedMcpAction | ComputerAction;
+type SupportedMcpKey = SupportedMcpAction | McpLegacySharedAction | ComputerAction;
 
 interface McpRouteSelection {
   provider: ProviderId;
@@ -31,20 +57,30 @@ interface McpRouteSelection {
 }
 
 interface McpActionPayloadMap {
+  "mcp.shared.call": McpCallInput;
+  "mcp.shared.listTools": McpListToolsInput;
+  "mcp.shared.readResource": McpReadResourceInput;
   "mcp.call": McpCallInput;
   "mcp.listTools": McpListToolsInput;
   "mcp.readResource": McpReadResourceInput;
   "mcp.native.execute": McpConnectInput;
+  "computer.use": McpCallInput;
+  "computer.observe": McpCallInput;
+  "computer.act": McpCallInput;
 }
 
 type SupportedMcpPreparedPayload = {
   action: SupportedMcpAction;
+  requestedCapabilityKey: string;
+  publicCapabilityKey: SupportedPublicCapabilityKey;
+  compatibilityAlias?: McpLegacySharedAction;
   route: McpRouteSelection;
   input: McpCallInput | McpListToolsInput | McpReadResourceInput | McpConnectInput;
+  nativePlan?: ReturnType<RaxFacade["mcp"]["native"]["prepare"]>;
   invocation?: Awaited<ReturnType<RaxFacade["mcp"]["native"]["build"]>>;
 };
 
-export interface RaxMcpAdapterPlanInput<TAction extends SupportedMcpAction = SupportedMcpAction> {
+export interface RaxMcpAdapterPlanInput<TAction extends SupportedMcpKey = SupportedMcpKey> {
   route: McpRouteSelection;
   input: McpActionPayloadMap[TAction];
 }
@@ -53,13 +89,70 @@ export interface CreateRaxMcpCapabilityAdapterOptions {
   facade?: Pick<RaxFacade, "mcp">;
 }
 
-function isSupportedAction(action: string): action is SupportedMcpAction {
-  return (
-    action === "mcp.call" ||
-    action === "mcp.listTools" ||
-    action === "mcp.readResource" ||
-    action === "mcp.native.execute"
-  );
+interface ResolvedMcpAction {
+  dispatchAction: SupportedMcpAction;
+  publicCapabilityKey: SupportedPublicCapabilityKey;
+  compatibilityAlias?: McpLegacySharedAction;
+}
+
+function isComputerCapabilityKey(
+  capabilityKey: SupportedPublicCapabilityKey,
+): capabilityKey is ComputerAction {
+  return COMPUTER_ACTIONS.includes(capabilityKey as ComputerAction);
+}
+
+function toComputerDispatchCapabilityKey(
+  action: SupportedMcpAction,
+): "mcp.shared.call" | "mcp.native.execute" {
+  return action === "mcp.native.execute" ? "mcp.native.execute" : "mcp.shared.call";
+}
+
+function resolveAction(action: string): ResolvedMcpAction | undefined {
+  if (MCP_SHARED_ACTIONS.includes(action as McpSharedAction)) {
+    return {
+      dispatchAction: action as McpSharedAction,
+      publicCapabilityKey: action as McpSharedAction,
+    };
+  }
+  if (MCP_NATIVE_ACTIONS.includes(action as McpNativeAction)) {
+    return {
+      dispatchAction: action as McpNativeAction,
+      publicCapabilityKey: action as McpNativeAction,
+    };
+  }
+  switch (action) {
+    case "mcp.call":
+      return {
+        dispatchAction: "mcp.shared.call",
+        publicCapabilityKey: "mcp.shared.call",
+        compatibilityAlias: "mcp.call",
+      };
+    case "mcp.listTools":
+      return {
+        dispatchAction: "mcp.shared.listTools",
+        publicCapabilityKey: "mcp.shared.listTools",
+        compatibilityAlias: "mcp.listTools",
+      };
+    case "mcp.readResource":
+      return {
+        dispatchAction: "mcp.shared.readResource",
+        publicCapabilityKey: "mcp.shared.readResource",
+        compatibilityAlias: "mcp.readResource",
+      };
+    case "computer.use":
+    case "computer.observe":
+    case "computer.act":
+      return {
+        dispatchAction: "mcp.shared.call",
+        publicCapabilityKey: action,
+      };
+    default:
+      return undefined;
+  }
+}
+
+function isSupportedAction(action: string): action is SupportedMcpKey {
+  return resolveAction(action) !== undefined;
 }
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
@@ -149,30 +242,46 @@ function parseNativeExecuteInput(input: Record<string, unknown>): McpConnectInpu
   return payload as unknown as McpConnectInput;
 }
 
-function parsePreparedPayload(action: SupportedMcpAction, input: Record<string, unknown>): SupportedMcpPreparedPayload {
+function parsePreparedPayload(actionKey: string, input: Record<string, unknown>): SupportedMcpPreparedPayload {
+  const resolvedAction = resolveAction(actionKey);
+  if (!resolvedAction) {
+    throw new Error(`Unsupported MCP capability action: ${actionKey}.`);
+  }
   const route = parseRouteSelection(input);
-  switch (action) {
-    case "mcp.call":
+  switch (resolvedAction.dispatchAction) {
+    case "mcp.shared.call":
       return {
-        action,
+        action: resolvedAction.dispatchAction,
+        requestedCapabilityKey: actionKey,
+        publicCapabilityKey: resolvedAction.publicCapabilityKey,
+        compatibilityAlias: resolvedAction.compatibilityAlias,
         route,
         input: parseCallInput(input),
       };
-    case "mcp.listTools":
+    case "mcp.shared.listTools":
       return {
-        action,
+        action: resolvedAction.dispatchAction,
+        requestedCapabilityKey: actionKey,
+        publicCapabilityKey: resolvedAction.publicCapabilityKey,
+        compatibilityAlias: resolvedAction.compatibilityAlias,
         route,
         input: parseListToolsInput(input),
       };
-    case "mcp.readResource":
+    case "mcp.shared.readResource":
       return {
-        action,
+        action: resolvedAction.dispatchAction,
+        requestedCapabilityKey: actionKey,
+        publicCapabilityKey: resolvedAction.publicCapabilityKey,
+        compatibilityAlias: resolvedAction.compatibilityAlias,
         route,
         input: parseReadResourceInput(input),
       };
     case "mcp.native.execute":
       return {
-        action,
+        action: resolvedAction.dispatchAction,
+        requestedCapabilityKey: actionKey,
+        publicCapabilityKey: resolvedAction.publicCapabilityKey,
+        compatibilityAlias: resolvedAction.compatibilityAlias,
         route,
         input: parseNativeExecuteInput(input),
       };
@@ -196,13 +305,41 @@ function createFailureEnvelope(params: {
   });
 }
 
-function createExecutionMetadata(action: SupportedMcpAction, route: McpRouteSelection, extra?: Record<string, unknown>): Record<string, unknown> {
+function createExecutionMetadata(
+  payload: SupportedMcpPreparedPayload,
+  route: McpRouteSelection,
+  extra?: Record<string, unknown>,
+): Record<string, unknown> {
+  const alias = payload.compatibilityAlias
+    ? { capabilityAlias: payload.compatibilityAlias }
+    : undefined;
+  const capabilityPackage = isComputerCapabilityKey(payload.publicCapabilityKey)
+    ? summarizeCapabilityPackage(
+        createRaxComputerCapabilityPackage({
+          capabilityKey: payload.publicCapabilityKey,
+          route,
+          input: payload.input as McpCallInput,
+          dispatchCapabilityKey: toComputerDispatchCapabilityKey(payload.action),
+        }),
+      )
+    : summarizeCapabilityPackage(
+        createRaxMcpCapabilityPackage({
+          capabilityKey: payload.action,
+          route,
+          input: payload.input as McpCallInput | McpListToolsInput | McpReadResourceInput | McpConnectInput,
+          originalCapabilityKey: payload.compatibilityAlias,
+          nativePlan: payload.nativePlan,
+        }),
+      );
   return {
-    capability: action,
+    capability: payload.publicCapabilityKey,
+    dispatchCapability: payload.action,
     provider: route.provider,
     model: route.model,
     layer: route.layer,
+    capabilityPackage,
     ...extra,
+    ...alias,
   };
 }
 
@@ -225,11 +362,18 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
       throw new Error(`Unsupported MCP capability action: ${plan.capabilityKey}.`);
     }
 
-    const action = plan.capabilityKey as SupportedMcpAction;
-    const parsed = parsePreparedPayload(action, plan.input);
+    const parsed = parsePreparedPayload(plan.capabilityKey, plan.input);
 
     let preparedPayload: SupportedMcpPreparedPayload;
     if (parsed.action === "mcp.native.execute") {
+      const nativePlan = this.#facade.mcp.native.prepare({
+        provider: parsed.route.provider,
+        model: parsed.route.model,
+        layer: parsed.route.layer,
+        variant: parsed.route.variant,
+        compatibilityProfileId: parsed.route.compatibilityProfileId,
+        input: parsed.input as McpConnectInput,
+      });
       const invocation = this.#facade.mcp.native.build({
         provider: parsed.route.provider,
         model: parsed.route.model,
@@ -238,7 +382,7 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
         compatibilityProfileId: parsed.route.compatibilityProfileId,
         input: parsed.input as McpConnectInput,
       });
-      preparedPayload = { ...parsed, invocation };
+      preparedPayload = { ...parsed, nativePlan, invocation };
     } else {
       preparedPayload = parsed;
     }
@@ -266,17 +410,35 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
 
     try {
       switch (payload.action) {
-        case "mcp.call":
-          return this.#executeCall(prepared.preparedId, payload.route, payload.input as McpCallInput);
-        case "mcp.listTools":
-          return this.#executeListTools(prepared.preparedId, payload.route, payload.input as McpListToolsInput);
-        case "mcp.readResource":
-          return this.#executeReadResource(prepared.preparedId, payload.route, payload.input as McpReadResourceInput);
+        case "mcp.shared.call":
+          return this.#executeCall(
+            prepared.preparedId,
+            payload.route,
+            payload.input as McpCallInput,
+            payload.requestedCapabilityKey,
+          );
+        case "mcp.shared.listTools":
+          return this.#executeListTools(
+            prepared.preparedId,
+            payload.route,
+            payload.input as McpListToolsInput,
+            payload.requestedCapabilityKey,
+          );
+        case "mcp.shared.readResource":
+          return this.#executeReadResource(
+            prepared.preparedId,
+            payload.route,
+            payload.input as McpReadResourceInput,
+            payload.requestedCapabilityKey,
+          );
         case "mcp.native.execute":
           return this.#executeNative(
             prepared.preparedId,
             payload.route,
+            payload.input as McpConnectInput,
             payload.invocation as Awaited<ReturnType<RaxFacade["mcp"]["native"]["build"]>>,
+            payload.nativePlan,
+            payload.requestedCapabilityKey,
           );
       }
     } catch (error) {
@@ -284,7 +446,7 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
         executionId: prepared.preparedId,
         code: "rax_mcp_execute_failed",
         error,
-        metadata: createExecutionMetadata(payload.action, payload.route),
+        metadata: createExecutionMetadata(payload, payload.route),
       });
     }
   }
@@ -293,8 +455,22 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
     executionId: string,
     route: McpRouteSelection,
     input: McpCallInput,
+    originalAction?: string,
   ): Promise<CapabilityResultEnvelope> {
-    const result = await this.#facade.mcp.call({
+    const payload: SupportedMcpPreparedPayload = {
+      action: "mcp.shared.call",
+      requestedCapabilityKey: originalAction ?? "mcp.shared.call",
+      publicCapabilityKey: originalAction === "computer.use" ||
+          originalAction === "computer.observe" ||
+          originalAction === "computer.act"
+        ? originalAction
+        : "mcp.shared.call",
+      compatibilityAlias:
+        originalAction === "mcp.call" ? "mcp.call" : undefined,
+      route,
+      input,
+    };
+    const result = await this.#facade.mcp.shared.call({
       provider: route.provider,
       model: route.model,
       layer: route.layer,
@@ -304,28 +480,38 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
     });
 
     return createCapabilityResultEnvelope({
-        executionId,
-        status: this.#resultStatusFromCallResult(result),
-        output: result,
-        metadata: createExecutionMetadata("mcp.call", route, {
-          connectionId: input.connectionId,
-          toolName: input.toolName,
-        }),
-        error: result.isError
-          ? {
-              code: "rax_mcp_call_error",
-              message: result.errorMessage ?? "MCP call returned isError=true.",
-            }
-          : undefined,
-      });
+      executionId,
+      status: this.#resultStatusFromCallResult(result),
+      output: result,
+      metadata: createExecutionMetadata(payload, route, {
+        connectionId: input.connectionId,
+        toolName: input.toolName,
+      }),
+      error: result.isError
+        ? {
+            code: "rax_mcp_call_error",
+            message: result.errorMessage ?? "MCP call returned isError=true.",
+          }
+        : undefined,
+    });
   }
 
   async #executeListTools(
     executionId: string,
     route: McpRouteSelection,
     input: McpListToolsInput,
+    originalAction?: string,
   ): Promise<CapabilityResultEnvelope> {
-    const result = await this.#facade.mcp.listTools({
+    const payload: SupportedMcpPreparedPayload = {
+      action: "mcp.shared.listTools",
+      requestedCapabilityKey: originalAction ?? "mcp.shared.listTools",
+      publicCapabilityKey: "mcp.shared.listTools",
+      compatibilityAlias:
+        originalAction === "mcp.listTools" ? "mcp.listTools" : undefined,
+      route,
+      input,
+    };
+    const result = await this.#facade.mcp.shared.listTools({
       provider: route.provider,
       model: route.model,
       layer: route.layer,
@@ -338,7 +524,7 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
       executionId,
       status: "success",
       output: result,
-      metadata: createExecutionMetadata("mcp.listTools", route, {
+      metadata: createExecutionMetadata(payload, route, {
         connectionId: input.connectionId,
         toolCount: result.tools.length,
       }),
@@ -349,8 +535,18 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
     executionId: string,
     route: McpRouteSelection,
     input: McpReadResourceInput,
+    originalAction?: string,
   ): Promise<CapabilityResultEnvelope> {
-    const result = await this.#facade.mcp.readResource({
+    const payload: SupportedMcpPreparedPayload = {
+      action: "mcp.shared.readResource",
+      requestedCapabilityKey: originalAction ?? "mcp.shared.readResource",
+      publicCapabilityKey: "mcp.shared.readResource",
+      compatibilityAlias:
+        originalAction === "mcp.readResource" ? "mcp.readResource" : undefined,
+      route,
+      input,
+    };
+    const result = await this.#facade.mcp.shared.readResource({
       provider: route.provider,
       model: route.model,
       layer: route.layer,
@@ -363,7 +559,7 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
       executionId,
       status: "success",
       output: result,
-      metadata: createExecutionMetadata("mcp.readResource", route, {
+      metadata: createExecutionMetadata(payload, route, {
         connectionId: input.connectionId,
         uri: input.uri,
       }),
@@ -373,14 +569,26 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
   async #executeNative(
     executionId: string,
     route: McpRouteSelection,
+    input: McpConnectInput,
     invocation: Awaited<ReturnType<RaxFacade["mcp"]["native"]["build"]>>,
+    nativePlan: ReturnType<RaxFacade["mcp"]["native"]["prepare"]> | undefined,
+    originalAction?: string,
   ): Promise<CapabilityResultEnvelope> {
+    const payload: SupportedMcpPreparedPayload = {
+      action: "mcp.native.execute",
+      requestedCapabilityKey: originalAction ?? "mcp.native.execute",
+      publicCapabilityKey: "mcp.native.execute",
+      route,
+      input,
+      nativePlan,
+      invocation,
+    };
     const result = await this.#facade.mcp.native.execute(invocation);
     return createCapabilityResultEnvelope({
       executionId,
       status: "success",
       output: result,
-      metadata: createExecutionMetadata("mcp.native.execute", route, {
+      metadata: createExecutionMetadata(payload, route, {
         invocationKey: invocation.key,
         adapterId: invocation.adapterId,
       }),

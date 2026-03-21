@@ -5,7 +5,9 @@ import type {
 } from "../../../../../rax/contracts.js";
 import type { CapabilityRequest } from "../../../../../rax/types.js";
 import {
+  buildWebSearchTaskPrompt,
   citationsEnabled,
+  resolveSearchCapabilityKey,
   type WebSearchCreateInput
 } from "../../../../../rax/websearch-types.js";
 
@@ -18,13 +20,14 @@ export interface AnthropicWebSearchCreateInput extends WebSearchCreateInput {
 const ANTHROPIC_SEARCH_SDK = {
   packageName: "@anthropic-ai/sdk",
   entrypoint: "client.messages.create",
-  notes: "Grounded web search uses Anthropic Messages API server tools."
+  notes:
+    "Anthropic search routes use Messages API server tools; search.web remains a compatibility surface lowered through the same carrier."
 } as const;
 
 function buildAnthropicSearchPrompt(
   input: AnthropicWebSearchCreateInput
 ): string {
-  return input.query.trim();
+  return buildWebSearchTaskPrompt(input);
 }
 
 function buildWebSearchTool(
@@ -72,6 +75,7 @@ export const anthropicSearchGroundDescriptor = {
     "Lower a grounded web search request into Anthropic Messages API using web_search and optional web_fetch server tools.",
   prepare(request) {
     const input = request.input;
+    const capabilityKey = resolveSearchCapabilityKey(input.capabilityKey);
     const tools: Anthropic.ToolUnion[] = [buildWebSearchTool(input)];
 
     if (input.urls?.length) {
@@ -83,6 +87,7 @@ export const anthropicSearchGroundDescriptor = {
       provider: "anthropic",
       model: request.model,
       layer: "api",
+      variant: capabilityKey,
       adapterId: "anthropic.api.tools.search.ground",
       sdk: ANTHROPIC_SEARCH_SDK,
       payload: {
@@ -94,7 +99,10 @@ export const anthropicSearchGroundDescriptor = {
         messages: [
           {
             role: "user",
-            content: buildAnthropicSearchPrompt(input)
+            content: buildAnthropicSearchPrompt({
+              ...input,
+              capabilityKey
+            })
           }
         ],
         tools

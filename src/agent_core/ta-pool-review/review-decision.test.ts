@@ -181,3 +181,66 @@ test("review helpers reject forged inline grants that do not belong to the acces
     assertReviewDecisionCompatibleWithRequest({ request, decision });
   }, /does not belong to access request|targets shell\.exec/i);
 });
+
+test("review helpers preserve shell/code governance scope metadata through grant compilation", () => {
+  const request = createAccessRequest({
+    requestId: "req-review-5",
+    sessionId: "session-5",
+    runId: "run-5",
+    agentId: "agent-main",
+    requestedCapabilityKey: "shell.exec",
+    requestedTier: "B1",
+    reason: "Run a bounded shell command in the workspace.",
+    requestedScope: {
+      pathPatterns: ["workspace/**"],
+      allowedOperations: ["exec"],
+      metadata: {
+        executionGovernance: {
+          family: "shell",
+          subject: "npm test",
+        },
+      },
+    },
+    mode: "balanced",
+    createdAt: "2026-03-21T00:00:00.000Z",
+  });
+
+  const decision = createReviewDecision({
+    decisionId: "decision-review-6",
+    requestId: request.requestId,
+    vote: "allow_with_constraints",
+    mode: request.mode,
+    reason: "Allow the shell command within the requested workspace scope.",
+    grantCompilerDirective: {
+      grantedTier: "B1",
+      grantedScope: {
+        pathPatterns: ["workspace/**"],
+        allowedOperations: ["exec"],
+        metadata: {
+          governanceSource: "review-test",
+        },
+      },
+      denyPatterns: ["workspace/secrets/**"],
+    },
+    createdAt: "2026-03-21T00:00:01.000Z",
+  });
+
+  const compiled = compileGrantFromReviewDecision({
+    compiledGrantId: "grant-review-5",
+    request,
+    reviewDecision: decision,
+    issuedAt: "2026-03-21T00:00:02.000Z",
+    compilerVersion: "tap-grant-compiler/test",
+    integrityMarker: "integrity-review-5",
+  });
+
+  assert.deepEqual(compiled.grant.grantedScope?.pathPatterns, ["workspace/**"]);
+  assert.deepEqual(compiled.grant.grantedScope?.denyPatterns, ["workspace/secrets/**"]);
+  assert.deepEqual(compiled.grant.grantedScope?.metadata, {
+    executionGovernance: {
+      family: "shell",
+      subject: "npm test",
+    },
+    governanceSource: "review-test",
+  });
+});

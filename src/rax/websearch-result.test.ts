@@ -42,6 +42,7 @@ test("normalizeWebSearchOutput extracts answer citations and sources from OpenAI
     ]
   });
 
+  assert.equal(output.capabilityKey, "search.ground");
   assert.equal(output.answer, "Alpha answer");
   assert.equal(output.citations.length, 1);
   assert.equal(output.sources.length, 1);
@@ -75,6 +76,7 @@ test("normalizeWebSearchOutput extracts answer citations and sources from Anthro
     ]
   });
 
+  assert.equal(output.capabilityKey, "search.ground");
   assert.equal(output.answer, "Beta answer");
   assert.equal(output.citations[0]?.url, "https://example.com/b");
   assert.equal(output.sources[0]?.title, "Example B");
@@ -104,6 +106,7 @@ test("normalizeWebSearchOutput extracts answer and sources from Anthropic agent-
     }
   ]);
 
+  assert.equal(output.capabilityKey, "search.ground");
   assert.equal(
     output.answer,
     "The official TypeScript documentation domain is `typescriptlang.org`."
@@ -141,6 +144,7 @@ test("normalizeWebSearchOutput extracts answer citations and sources from Gemini
     ]
   });
 
+  assert.equal(output.capabilityKey, "search.ground");
   assert.equal(output.answer, "Gamma answer");
   assert.equal(output.citations[0]?.url, "https://example.com/c");
   assert.equal(output.sources.length, 1);
@@ -158,6 +162,7 @@ test("normalizeWebSearchOutput keeps Gemini generateContent success without meta
     ]
   });
 
+  assert.equal(output.capabilityKey, "search.ground");
   assert.equal(output.answer, "May 22, 2024: $949.50");
   assert.deepEqual(output.citations, []);
   assert.deepEqual(output.sources, []);
@@ -169,9 +174,12 @@ test("toWebSearchCapabilityResult wraps normalized output into a capability resu
   });
 
   assert.equal(result.status, "success");
+  assert.equal(result.capabilityKey, "search.ground");
   assert.equal(result.capability, "search");
   assert.equal(result.action, "ground");
+  assert.equal(result.operation, "ground");
   assert.equal(result.output?.answer, "Grounded answer");
+  assert.equal(result.output?.capabilityKey, "search.ground");
 });
 
 test("toWebSearchCapabilityResult marks Anthropic tool_use-only search as partial", () => {
@@ -191,6 +199,7 @@ test("toWebSearchCapabilityResult marks Anthropic tool_use-only search as partia
 
   assert.equal(result.status, "partial");
   assert.deepEqual(result.output, {
+    capabilityKey: "search.ground",
     answer: "",
     citations: [],
     sources: [],
@@ -209,9 +218,9 @@ test("toWebSearchCapabilityResult marks Anthropic tool_use-only search as partia
     }
   });
   assert.deepEqual(result.error, {
-    code: "websearch_incomplete",
+    code: "search_incomplete",
     message:
-      "Anthropic web search returned tool_use without a finalized answer; this upstream did not complete the search loop in a single response.",
+      "Anthropic search.ground returned tool_use without a finalized answer; this upstream did not complete the search loop in a single response.",
     raw: {
       stop_reason: "tool_use",
       content: [
@@ -238,9 +247,45 @@ test("toWebSearchFailureResult preserves error context", () => {
   );
 
   assert.equal(result.status, "failed");
+  assert.equal(result.capabilityKey, "search.ground");
   assert.deepEqual(result.error, {
-    code: "websearch_failed",
+    code: "search_failed",
     message: "Search failed",
     raw: { cause: "rate_limit" }
   });
+  assert.equal(result.metadata?.capabilityKey, "search.ground");
+});
+
+test("search.web capability result keeps the final public surface even through the compatibility layer", () => {
+  const result = toWebSearchCapabilityResult(
+    "openai",
+    "gpt-5.4",
+    "api",
+    {
+      output_text: "OpenAI documentation is available at platform.openai.com/docs.",
+      output: [
+        {
+          type: "web_search_call",
+          action: {
+            sources: [
+              {
+                url: "https://platform.openai.com/docs",
+                title: "OpenAI Docs",
+                snippet: "API docs"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    undefined,
+    "search.web"
+  );
+
+  assert.equal(result.capabilityKey, "search.web");
+  assert.equal(result.action, "web");
+  assert.equal(result.operation, "web");
+  assert.equal(result.output?.capabilityKey, "search.web");
+  assert.equal((result.evidence as Array<{ capabilityKey: string }>)[0]?.capabilityKey, "search.web");
+  assert.equal(result.metadata?.compatibilityLayer, "websearch");
 });

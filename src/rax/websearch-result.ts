@@ -1,8 +1,14 @@
 import type { CapabilityResult, ProviderId, SdkLayer } from "./types.js";
 import type {
+  SearchCapabilityKey,
+  WebSearchEvidence,
   WebSearchCitation,
   WebSearchOutput,
   WebSearchSource
+} from "./websearch-types.js";
+import {
+  resolveSearchCapabilityKey,
+  searchCapabilityAction
 } from "./websearch-types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,7 +54,26 @@ function pushUniqueCitation(target: WebSearchCitation[], citation: WebSearchCita
   target.push(citation);
 }
 
-function normalizeOpenAIWebSearch(raw: unknown): WebSearchOutput {
+function createSearchOutput(
+  capabilityKey: SearchCapabilityKey,
+  answerParts: string[],
+  citations: WebSearchCitation[],
+  sources: WebSearchSource[],
+  raw: unknown
+): WebSearchOutput {
+  return {
+    capabilityKey,
+    answer: answerParts.join("\n").trim(),
+    citations,
+    sources,
+    raw
+  };
+}
+
+function normalizeOpenAIWebSearch(
+  raw: unknown,
+  capabilityKey: SearchCapabilityKey
+): WebSearchOutput {
   const root = isRecord(raw) ? raw : {};
   const answerParts: string[] = [];
   const citations: WebSearchCitation[] = [];
@@ -114,6 +139,7 @@ function normalizeOpenAIWebSearch(raw: unknown): WebSearchOutput {
           url,
           title: asString(source.title),
           snippet: asString(source.snippet),
+          providerReference: asString(source.type),
           kind: "search_result",
           raw: source
         });
@@ -121,12 +147,7 @@ function normalizeOpenAIWebSearch(raw: unknown): WebSearchOutput {
     }
   }
 
-  return {
-    answer: answerParts.join("\n").trim(),
-    citations,
-    sources,
-    raw
-  };
+  return createSearchOutput(capabilityKey, answerParts, citations, sources, raw);
 }
 
 function extractAnthropicCitation(
@@ -155,7 +176,10 @@ function extractAnthropicCitation(
   };
 }
 
-function normalizeAnthropicWebSearch(raw: unknown): WebSearchOutput {
+function normalizeAnthropicWebSearch(
+  raw: unknown,
+  capabilityKey: SearchCapabilityKey
+): WebSearchOutput {
   if (Array.isArray(raw)) {
     const answerParts: string[] = [];
     const citations: WebSearchCitation[] = [];
@@ -187,12 +211,14 @@ function normalizeAnthropicWebSearch(raw: unknown): WebSearchOutput {
             pushUniqueSource(sources, {
               url,
               title: asString(item.title),
+              providerReference: asString(item.type),
               kind: "search_result",
               raw: item
             });
             pushUniqueCitation(citations, {
               url,
               title: asString(item.title),
+              providerReference: asString(item.type),
               raw: item
             });
           }
@@ -200,12 +226,7 @@ function normalizeAnthropicWebSearch(raw: unknown): WebSearchOutput {
       }
     }
 
-    return {
-      answer: answerParts.join("\n").trim(),
-      citations,
-      sources,
-      raw
-    };
+    return createSearchOutput(capabilityKey, answerParts, citations, sources, raw);
   }
 
   const root = isRecord(raw) ? raw : {};
@@ -235,6 +256,7 @@ function normalizeAnthropicWebSearch(raw: unknown): WebSearchOutput {
           url: citation.url,
           title: citation.title,
           snippet: citation.snippet,
+          providerReference: citation.providerReference,
           kind: "citation",
           raw: citationLike
         });
@@ -255,6 +277,7 @@ function normalizeAnthropicWebSearch(raw: unknown): WebSearchOutput {
           url,
           title: asString(result.title),
           snippet: asString(result.snippet),
+          providerReference: blockType,
           kind: blockType.includes("fetch") ? "fetched_page" : "search_result",
           raw: result
         });
@@ -262,15 +285,13 @@ function normalizeAnthropicWebSearch(raw: unknown): WebSearchOutput {
     }
   }
 
-  return {
-    answer: answerParts.join("\n").trim(),
-    citations,
-    sources,
-    raw
-  };
+  return createSearchOutput(capabilityKey, answerParts, citations, sources, raw);
 }
 
-function normalizeDeepMindWebSearch(raw: unknown): WebSearchOutput {
+function normalizeDeepMindWebSearch(
+  raw: unknown,
+  capabilityKey: SearchCapabilityKey
+): WebSearchOutput {
   const root = isRecord(raw) ? raw : {};
   const answerParts: string[] = [];
   const citations: WebSearchCitation[] = [];
@@ -308,6 +329,7 @@ function normalizeDeepMindWebSearch(raw: unknown): WebSearchOutput {
     pushUniqueSource(sources, {
       url,
       title: citation.title,
+      providerReference: citation.providerReference,
       kind: "search_result",
       raw: chunk
     });
@@ -328,23 +350,70 @@ function normalizeDeepMindWebSearch(raw: unknown): WebSearchOutput {
       url,
       title: asString(item.title),
       snippet: asString(item.text),
+      providerReference: "url_context",
       kind: "fetched_page",
       raw: item
     });
   }
 
-  return {
-    answer: answerParts.join("\n").trim(),
-    citations,
-    sources,
-    raw
-  };
+  return createSearchOutput(capabilityKey, answerParts, citations, sources, raw);
+}
+
+function pushUniqueEvidence(target: WebSearchEvidence[], entry: WebSearchEvidence): void {
+  if (
+    target.some(
+      (existing) =>
+        existing.capabilityKey === entry.capabilityKey &&
+        existing.kind === entry.kind &&
+        existing.url === entry.url &&
+        existing.title === entry.title &&
+        existing.providerReference === entry.providerReference
+    )
+  ) {
+    return;
+  }
+
+  target.push(entry);
+}
+
+export function normalizeWebSearchEvidence(
+  output: WebSearchOutput
+): WebSearchEvidence[] {
+  const evidence: WebSearchEvidence[] = [];
+  const capabilityKey = resolveSearchCapabilityKey(output.capabilityKey);
+
+  for (const citation of output.citations) {
+    pushUniqueEvidence(evidence, {
+      capabilityKey,
+      url: citation.url,
+      title: citation.title,
+      snippet: citation.snippet,
+      providerReference: citation.providerReference,
+      kind: "citation",
+      raw: citation.raw
+    });
+  }
+
+  for (const source of output.sources) {
+    pushUniqueEvidence(evidence, {
+      capabilityKey,
+      url: source.url,
+      title: source.title,
+      snippet: source.snippet,
+      providerReference: source.providerReference,
+      kind: source.kind ?? "search_result",
+      raw: source.raw
+    });
+  }
+
+  return evidence;
 }
 
 function inferWebSearchStatus(
   provider: ProviderId,
   raw: unknown,
-  output: WebSearchOutput
+  output: WebSearchOutput,
+  capabilityKey: SearchCapabilityKey
 ): {
   status: CapabilityResult<WebSearchOutput>["status"];
   error?: CapabilityResult<WebSearchOutput>["error"];
@@ -355,9 +424,9 @@ function inferWebSearchStatus(
       return {
         status: "partial",
         error: {
-          code: "websearch_incomplete",
+          code: "search_incomplete",
           message:
-            "Anthropic web search returned tool_use without a finalized answer; this upstream did not complete the search loop in a single response.",
+            `Anthropic ${capabilityKey} returned tool_use without a finalized answer; this upstream did not complete the search loop in a single response.`,
           raw
         }
       };
@@ -369,15 +438,18 @@ function inferWebSearchStatus(
 
 export function normalizeWebSearchOutput(
   provider: ProviderId,
-  raw: unknown
+  raw: unknown,
+  capabilityKey: SearchCapabilityKey = "search.ground"
 ): WebSearchOutput {
+  const resolvedCapabilityKey = resolveSearchCapabilityKey(capabilityKey);
+
   switch (provider) {
     case "openai":
-      return normalizeOpenAIWebSearch(raw);
+      return normalizeOpenAIWebSearch(raw, resolvedCapabilityKey);
     case "anthropic":
-      return normalizeAnthropicWebSearch(raw);
+      return normalizeAnthropicWebSearch(raw, resolvedCapabilityKey);
     case "deepmind":
-      return normalizeDeepMindWebSearch(raw);
+      return normalizeDeepMindWebSearch(raw, resolvedCapabilityKey);
   }
 }
 
@@ -386,10 +458,13 @@ export function toWebSearchCapabilityResult(
   model: string,
   layer: Exclude<SdkLayer, "auto">,
   raw: unknown,
-  profileId?: string
+  profileId?: string,
+  capabilityKey: SearchCapabilityKey = "search.ground"
 ): CapabilityResult<WebSearchOutput> {
-  const output = normalizeWebSearchOutput(provider, raw);
-  const inferred = inferWebSearchStatus(provider, raw, output);
+  const resolvedCapabilityKey = resolveSearchCapabilityKey(capabilityKey);
+  const action = searchCapabilityAction(resolvedCapabilityKey);
+  const output = normalizeWebSearchOutput(provider, raw, resolvedCapabilityKey);
+  const inferred = inferWebSearchStatus(provider, raw, output, resolvedCapabilityKey);
   return {
     status: inferred.status,
     provider,
@@ -397,10 +472,16 @@ export function toWebSearchCapabilityResult(
     layer,
     compatibilityProfileId: profileId,
     capability: "search",
-    action: "ground",
+    action,
+    capabilityKey: resolvedCapabilityKey,
+    operation: action,
     output,
-    evidence: output.sources,
-    error: inferred.error
+    evidence: normalizeWebSearchEvidence(output),
+    error: inferred.error,
+    metadata: {
+      capabilityKey: resolvedCapabilityKey,
+      compatibilityLayer: "websearch"
+    }
   };
 }
 
@@ -410,8 +491,12 @@ export function toWebSearchFailureResult(
   layer: Exclude<SdkLayer, "auto">,
   message: string,
   raw?: unknown,
-  profileId?: string
+  profileId?: string,
+  capabilityKey: SearchCapabilityKey = "search.ground"
 ): CapabilityResult<WebSearchOutput> {
+  const resolvedCapabilityKey = resolveSearchCapabilityKey(capabilityKey);
+  const action = searchCapabilityAction(resolvedCapabilityKey);
+
   return {
     status: "failed",
     provider,
@@ -419,11 +504,17 @@ export function toWebSearchFailureResult(
     layer,
     compatibilityProfileId: profileId,
     capability: "search",
-    action: "ground",
+    action,
+    capabilityKey: resolvedCapabilityKey,
+    operation: action,
     error: {
-      code: "websearch_failed",
+      code: "search_failed",
       message,
       raw
+    },
+    metadata: {
+      capabilityKey: resolvedCapabilityKey,
+      compatibilityLayer: "websearch"
     }
   };
 }

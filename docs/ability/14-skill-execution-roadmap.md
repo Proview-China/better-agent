@@ -1,54 +1,44 @@
-# Skill Execution Roadmap
+﻿# Skill Execution Roadmap
 
-状态：执行路线图。
+## Gate 3 / issue-11 Note
 
-更新时间：2026-03-16
+The TAP work in this wave only touches the shell/code governance seam around skill execution. It does not rewrite provider carriers.
 
-## 这份文档与前序文档的关系
+- This wave adds TAP lowering metadata for shell/code requests:
+  - family
+  - operation
+  - subject
+  - pathCandidates
+- This wave adds grant enforcement and checkpoint handoff read helpers only.
+- OpenAI / Anthropic / DeepMind carrier lifecycle work stays with their own work packages.
+鐘舵€侊細鎵ц璺嚎鍥俱€?
+鏇存柊鏃堕棿锛?026-03-16
 
-- `docs/ability/09-12` 保留为 skill 路线的研究与草案记录：
-  - `09` 负责跨 SDK 概念研究
-  - `10` 负责向上接口与约束研究
-  - `11` 负责公共动作与第三方路由研究
-  - `12` 负责早期 v0 动作草案
-- 当前实际执行、排期、完成度与子智能体分工，以本文件为准。
-- 如果前序文档与当前代码现状冲突，以当前代码和本路线图为准。
+## 杩欎唤鏂囨。涓庡墠搴忔枃妗ｇ殑鍏崇郴
 
-## 这份文档的目标
+- `docs/ability/09-12` 淇濈暀涓?skill 璺嚎鐨勭爺绌朵笌鑽夋璁板綍锛?  - `09` 璐熻矗璺?SDK 姒傚康鐮旂┒
+  - `10` 璐熻矗鍚戜笂鎺ュ彛涓庣害鏉熺爺绌?  - `11` 璐熻矗鍏叡鍔ㄤ綔涓庣涓夋柟璺敱鐮旂┒
+  - `12` 璐熻矗鏃╂湡 v0 鍔ㄤ綔鑽夋
+- 褰撳墠瀹為檯鎵ц銆佹帓鏈熴€佸畬鎴愬害涓庡瓙鏅鸿兘浣撳垎宸ワ紝浠ユ湰鏂囦欢涓哄噯銆?- 濡傛灉鍓嶅簭鏂囨。涓庡綋鍓嶄唬鐮佺幇鐘跺啿绐侊紝浠ュ綋鍓嶄唬鐮佸拰鏈矾绾垮浘涓哄噯銆?
+## 杩欎唤鏂囨。鐨勭洰鏍?
+杩欎唤鏂囨。涓嶆槸鍐嶈В閲婁粈涔堟槸 `skill`锛岃€屾槸鐩存帴鍥炵瓟鎵ц灞傞潰鐨勫洓涓棶棰橈細
 
-这份文档不是再解释什么是 `skill`，而是直接回答执行层面的四个问题：
+1. 鎴戜滑宸茬粡瀹屾垚浜嗕粈涔堛€?2. `skill` 璺嚎鐜板湪澶ф瀹屾垚浜嗗灏戙€?3. 瑕佸仛鍒扳€滃敖鍙兘瀹屾暣瀹圭撼涓夊瀹樻柟 skill 鑳藉姏锛屽苟鎶?SDK 鑳藉姏鍚冮€忊€濓紝杩樺樊鍝簺闃舵銆?4. 鍚庣画濡備綍鎸夐€傚悎鍗曚釜瀛愭櫤鑳戒綋鐨勭矑搴︾户缁帹杩涖€?
+## 褰撳墠缁撹
 
-1. 我们已经完成了什么。
-2. `skill` 路线现在大概完成了多少。
-3. 要做到“尽可能完整容纳三家官方 skill 能力，并把 SDK 能力吃透”，还差哪些阶段。
-4. 后续如何按适合单个子智能体的粒度继续推进。
+- 褰撳墠 `skill` 璺嚎宸茬粡瀹屾垚浜嗏€滅粺涓€鍏叡璇█ + 鏈湴 bundle + 瀹樻柟 carrier 杞瘧鈥濈殑绗竴闃舵銆?- 褰撳墠鏇村悎鐞嗙殑瀹屾垚搴︿及绠楁槸锛?*绾?94%**銆?- 杩欎釜鐧惧垎姣旂殑鍚箟涓嶆槸鈥滀唬鐮侀噺鍐欎簡 38%鈥濓紝鑰屾槸锛?  - 鍩虹鐮旂┒宸插畬鎴?  - 绗竴鎵瑰叕鍏卞姩浣滃凡钀藉湴
+  - 涓夊瀹樻柟 carrier 宸插紑濮嬬湡瀹炶浆璇?  - 浣嗙鈥滃畬鏁村绾充笁瀹?skill 鍏ㄩ噺鑳藉姏鈥濊繕宸?managed/hosted銆佺敓鍛藉懆鏈熴€佹洿澶氬畼鏂瑰弬鏁般€丆ontext/Packaging 闆嗘垚鍜岀湡瀹?live verification
 
-## 当前结论
-
-- 当前 `skill` 路线已经完成了“统一公共语言 + 本地 bundle + 官方 carrier 转译”的第一阶段。
-- 当前更合理的完成度估算是：**约 94%**。
-- 这个百分比的含义不是“代码量写了 38%”，而是：
-  - 基础研究已完成
-  - 第一批公共动作已落地
-  - 三家官方 carrier 已开始真实转译
-  - 但离“完整容纳三家 skill 全量能力”还差 managed/hosted、生命周期、更多官方参数、Context/Packaging 集成和真实 live verification
-
-## 当前已完成内容
-
-### 1. 方向与边界已经定清
-
-- `skill` 回收到 infra/adapter 层。
-- `skill` 负责贴着三家官方 skill carrier 做统一接入。
-- 更复杂的能力组织继续放回：
-  - packaging engine
+## 褰撳墠宸插畬鎴愬唴瀹?
+### 1. 鏂瑰悜涓庤竟鐣屽凡缁忓畾娓?
+- `skill` 鍥炴敹鍒?infra/adapter 灞傘€?- `skill` 璐熻矗璐寸潃涓夊瀹樻柟 skill carrier 鍋氱粺涓€鎺ュ叆銆?- 鏇村鏉傜殑鑳藉姏缁勭粐缁х画鏀惧洖锛?  - packaging engine
   - context manager
   - policy
   - ledger
 
-### 2. 统一公共语言已经起好
+### 2. 缁熶竴鍏叡璇█宸茬粡璧峰ソ
 
-当前 `rax.skill` 已有：
-
+褰撳墠 `rax.skill` 宸叉湁锛?
 - `loadLocal`
 - `define`
 - `containerCreate`
@@ -68,9 +58,9 @@
 - `use`
 - `mount`
 
-### 3. `skill` 已进入统一 capability 语义
+### 3. `skill` 宸茶繘鍏ョ粺涓€ capability 璇箟
 
-当前 registry / 词表已包含：
+褰撳墠 registry / 璇嶈〃宸插寘鍚細
 
 - `skill.define`
 - `skill.discover`
@@ -84,112 +74,88 @@
 - `skill.use`
 - `skill.load`
 
-### 4. 三家官方 carrier 已开始真实转译
-
-- OpenAI：
-  - `shell`
+### 4. 涓夊瀹樻柟 carrier 宸插紑濮嬬湡瀹炶浆璇?
+- OpenAI锛?  - `shell`
   - `environment.skills`
-- Anthropic：
-  - API `container.skills`
+- Anthropic锛?  - API `container.skills`
   - SDK filesystem `Skill`
-- Google ADK：
-  - `SkillToolset`
+- Google ADK锛?  - `SkillToolset`
 
-### 5. 本地 source 发现已经可用
+### 5. 鏈湴 source 鍙戠幇宸茬粡鍙敤
 
-- 可以直接读取单个本地 skill 目录
-- 可以扫描父目录下多个 child skill packages
-- 单 skill 父目录可自动解析
-- 多 skill 父目录会明确报 `skill_source_ambiguous`
+- 鍙互鐩存帴璇诲彇鍗曚釜鏈湴 skill 鐩綍
+- 鍙互鎵弿鐖剁洰褰曚笅澶氫釜 child skill packages
+- 鍗?skill 鐖剁洰褰曞彲鑷姩瑙ｆ瀽
+- 澶?skill 鐖剁洰褰曚細鏄庣‘鎶?`skill_source_ambiguous`
 
-### 6. 当前验证基线
+### 6. 褰撳墠楠岃瘉鍩虹嚎
 
-- `npm run typecheck` 通过
-- `npm test` 通过
-- `npm run smoke:skill:live` 已落脚手架，默认走只读验证链：
-  - OpenAI / Anthropic：优先 list/get/listVersions/getVersion
-  - Google ADK：验证 managed lifecycle 的 unsupported boundary
-- 当前 live smoke 新观察：
-  - 用户当前 `.env.local` 指向的 OpenAI / Anthropic 上游对 `/skills` / `beta.skills` read-only 路由均返回 `404`
-  - 这说明当前 route 不能被当成 hosted skill registry 使用，即使官方 SDK 文档支持该生命周期
-- compatibility/profile 新收口：
-  - `raxLocal` 现在会直接阻断 gateway profile 下的 managed skill registry 动作
-  - 不再依赖远端 `404` 作为主要能力判定方式
-- query passthrough 新收口：
-  - OpenAI `list/listVersions` 现在可通过 `providerOptions.openai` 透传：
-    - `after`
+- `npm run typecheck` 閫氳繃
+- `npm test` 閫氳繃
+- `npm run smoke:skill:live` 宸茶惤鑴氭墜鏋讹紝榛樿璧板彧璇婚獙璇侀摼锛?  - OpenAI / Anthropic锛氫紭鍏?list/get/listVersions/getVersion
+  - Google ADK锛氶獙璇?managed lifecycle 鐨?unsupported boundary
+- 褰撳墠 live smoke 鏂拌瀵燂細
+  - 鐢ㄦ埛褰撳墠 `.env.local` 鎸囧悜鐨?OpenAI / Anthropic 涓婃父瀵?`/skills` / `beta.skills` read-only 璺敱鍧囪繑鍥?`404`
+  - 杩欒鏄庡綋鍓?route 涓嶈兘琚綋鎴?hosted skill registry 浣跨敤锛屽嵆浣垮畼鏂?SDK 鏂囨。鏀寔璇ョ敓鍛藉懆鏈?- compatibility/profile 鏂版敹鍙ｏ細
+  - `raxLocal` 鐜板湪浼氱洿鎺ラ樆鏂?gateway profile 涓嬬殑 managed skill registry 鍔ㄤ綔
+  - 涓嶅啀渚濊禆杩滅 `404` 浣滀负涓昏鑳藉姏鍒ゅ畾鏂瑰紡
+- query passthrough 鏂版敹鍙ｏ細
+  - OpenAI `list/listVersions` 鐜板湪鍙€氳繃 `providerOptions.openai` 閫忎紶锛?    - `after`
     - `limit`
     - `order`
-  - Anthropic `list/listVersions` 现在可通过 `providerOptions.anthropic` 透传：
-    - `limit`
+  - Anthropic `list/listVersions` 鐜板湪鍙€氳繃 `providerOptions.anthropic` 閫忎紶锛?    - `limit`
     - `page`
     - `betas`
-    - `source` 仍保留在公共 `input`
-  - Anthropic `get/publish/remove/getVersion/publishVersion/removeVersion` 现在也可通过 `providerOptions.anthropic` 透传：
-    - `betas`
-    - builder 仍会自动并入 `skills-2025-10-02`
-  - Anthropic upload surfaces 现在也会自动并入官方 upload beta：
-    - `files-api-2025-04-14`
-    - 当前范围：
-      - `client.beta.skills.create`
+    - `source` 浠嶄繚鐣欏湪鍏叡 `input`
+  - Anthropic `get/publish/remove/getVersion/publishVersion/removeVersion` 鐜板湪涔熷彲閫氳繃 `providerOptions.anthropic` 閫忎紶锛?    - `betas`
+    - builder 浠嶄細鑷姩骞跺叆 `skills-2025-10-02`
+  - Anthropic upload surfaces 鐜板湪涔熶細鑷姩骞跺叆瀹樻柟 upload beta锛?    - `files-api-2025-04-14`
+    - 褰撳墠鑼冨洿锛?      - `client.beta.skills.create`
       - `client.beta.skills.versions.create`
-- provider-specific official extension 新收口：
-  - OpenAI `skill content retrieve` 已进入代码：
+- provider-specific official extension 鏂版敹鍙ｏ細
+  - OpenAI `skill content retrieve` 宸茶繘鍏ヤ唬鐮侊細
     - `client.skills.content.retrieve`
     - `client.skills.versions.content.retrieve`
-  - OpenAI shell carrier 现在也已覆盖第三种官方 skill shape：
-    - inline skill bundle
-    - 当前按官方 `InlineSkill` 形状进入 `tools[].environment.skills`
-    - 当前仍保持 provider-specific carrier，不扩成新的公共动作
-    - `rax.skill.use()/mount()` 现在也已有 inline shell end-to-end coverage
-  - OpenAI managed upload prepared payload 现在也更贴官方 SDK：
-    - `publish / publishVersion` 不再把 `files` 伪装成自定义 bundle body
-    - 当前改为 `args + bundle` 分离的 call plan
-    - 更贴近 `openai-node` 的 `Uploadable | Uploadable[]` 执行期 lowering 语义
-  - OpenAI hosted shell lifecycle 现在也更贴官方：
-    - `skill_reference.version` 支持 numeric / `"latest"`
-    - attachment version 与 hosted version resource metadata 已拆开，不再因为 attachment version 自动伪造 `skill.version`
-    - hosted `environment` override 现在只承载 hosted shell settings：
-      - `file_ids`
+  - OpenAI shell carrier 鐜板湪涔熷凡瑕嗙洊绗笁绉嶅畼鏂?skill shape锛?    - inline skill bundle
+    - 褰撳墠鎸夊畼鏂?`InlineSkill` 褰㈢姸杩涘叆 `tools[].environment.skills`
+    - 褰撳墠浠嶄繚鎸?provider-specific carrier锛屼笉鎵╂垚鏂扮殑鍏叡鍔ㄤ綔
+    - `rax.skill.use()/mount()` 鐜板湪涔熷凡鏈?inline shell end-to-end coverage
+  - OpenAI managed upload prepared payload 鐜板湪涔熸洿璐村畼鏂?SDK锛?    - `publish / publishVersion` 涓嶅啀鎶?`files` 浼鎴愯嚜瀹氫箟 bundle body
+    - 褰撳墠鏀逛负 `args + bundle` 鍒嗙鐨?call plan
+    - 鏇磋创杩?`openai-node` 鐨?`Uploadable | Uploadable[]` 鎵ц鏈?lowering 璇箟
+  - OpenAI hosted shell lifecycle 鐜板湪涔熸洿璐村畼鏂癸細
+    - `skill_reference.version` 鏀寔 numeric / `"latest"`
+    - attachment version 涓?hosted version resource metadata 宸叉媶寮€锛屼笉鍐嶅洜涓?attachment version 鑷姩浼€?`skill.version`
+    - hosted `environment` override 鐜板湪鍙壙杞?hosted shell settings锛?      - `file_ids`
       - `memory_limit`
       - `network_policy`
-  - Anthropic API managed lifecycle 现在也可通过 `providerOptions.anthropic` 透传：
-    - `betas`
-    - 即使用户显式传了 `betas`，managed carrier 仍会继续自动并入与 `code_execution_type` 对应的官方 beta
-    - `rax.skill.use()/mount()` 现在也已有 API-managed carrier 端到端覆盖
-    - Anthropic quickstart 风格的 prebuilt skill 路径现在也已有公共使用面覆盖：
-      - `type: "anthropic"`
+  - Anthropic API managed lifecycle 鐜板湪涔熷彲閫氳繃 `providerOptions.anthropic` 閫忎紶锛?    - `betas`
+    - 鍗充娇鐢ㄦ埛鏄惧紡浼犱簡 `betas`锛宮anaged carrier 浠嶄細缁х画鑷姩骞跺叆涓?`code_execution_type` 瀵瑰簲鐨勫畼鏂?beta
+    - `rax.skill.use()/mount()` 鐜板湪涔熷凡鏈?API-managed carrier 绔埌绔鐩?    - Anthropic quickstart 椋庢牸鐨?prebuilt skill 璺緞鐜板湪涔熷凡鏈夊叕鍏变娇鐢ㄩ潰瑕嗙洊锛?      - `type: "anthropic"`
       - `skill_id: "pptx"`
       - `version: "latest"`
-  - Anthropic upload-only lifecycle 现在也更贴官方：
+  - Anthropic upload-only lifecycle 鐜板湪涔熸洿璐村畼鏂癸細
     - `client.beta.skills.create`
     - `client.beta.skills.versions.create`
-    会自动并入：
+    浼氳嚜鍔ㄥ苟鍏ワ細
     - `files-api-2025-04-14`
     - `skills-2025-10-02`
-    且不把这层自动扩大到 `list/get/remove`
-  - Anthropic API-managed carrier override 现在已有显式 runtime coverage：
-    - `code_execution_type`
+    涓斾笉鎶婅繖灞傝嚜鍔ㄦ墿澶у埌 `list/get/remove`
+  - Anthropic API-managed carrier override 鐜板湪宸叉湁鏄惧紡 runtime coverage锛?    - `code_execution_type`
     - `allowed_callers`
     - managed skill `type`
     - managed skill `version`
     - carrier `betas`
     - legacy official `code_execution_20250522`
-- `skill live smoke` 现在会自动写入 JSON report：
-  - 默认路径：
-    - `memory/live-reports/skill-live-smoke.json`
-- `skill capability report` 已进入代码并可生成：
-  - 脚本：
-    - `npm run report:skill:capability`
-  - 默认输出：
-    - `memory/live-reports/skill-capability-report.json`
-  - 当前能统一表达三层：
-    - official support
+- `skill live smoke` 鐜板湪浼氳嚜鍔ㄥ啓鍏?JSON report锛?  - 榛樿璺緞锛?    - `memory/live-reports/skill-live-smoke.json`
+- `skill capability report` 宸茶繘鍏ヤ唬鐮佸苟鍙敓鎴愶細
+  - 鑴氭湰锛?    - `npm run report:skill:capability`
+  - 榛樿杈撳嚭锛?    - `memory/live-reports/skill-capability-report.json`
+  - 褰撳墠鑳界粺涓€琛ㄨ揪涓夊眰锛?    - official support
     - local gateway compatibility
     - live smoke evidence
     - prepared payload summary
-  - 当前已细化到 action-level matrix：
-    - `list`
+  - 褰撳墠宸茬粏鍖栧埌 action-level matrix锛?    - `list`
     - `get`
     - `publish`
     - `remove`
@@ -200,64 +166,50 @@
     - `setDefaultVersion`
     - `getContent`
     - `getVersionContent`
-  - 当前 action-level report 还会带 machine-readable 字段：
-    - `preparedPayload`
+  - 褰撳墠 action-level report 杩樹細甯?machine-readable 瀛楁锛?    - `preparedPayload`
     - `routeEvidence`
     - `routeSummary`
-- 当前测试结果：
-  - `144 pass / 0 fail`
+- 褰撳墠娴嬭瘯缁撴灉锛?  - `144 pass / 0 fail`
 
-## 完成度估算
+## 瀹屾垚搴︿及绠?
+### 褰撳墠浼扮畻锛氱害 94%
 
-### 当前估算：约 94%
+#### 宸插畬鎴愰儴鍒?
+- 鐮旂┒涓庤竟鐣屾緞娓咃細90%
+- 鍏叡璇█鍔ㄤ綔瀹氫箟锛?0%
+- 鏈湴 bundle / local source 瑁呰浇锛?0%
+- provider carrier 鍒濈増杞瘧锛?5%
+- managed lifecycle prepared invocation锛?5%
+- live verification scaffold锛?5%
+- compatibility/profile truthfulness锛?5%
+- provider-specific extension modeling锛?0%
+- capability report generation锛?8%
+- action-level capability report锛?2%
+- public type truthfulness锛?5%
+- facade 浣跨敤闈細85%
 
-#### 已完成部分
+#### 鏈畬鎴愰儴鍒?
+- 鏇磋创瀹樻柟 SDK 鐨勬彁浜ゅ弬鏁颁笌 builder 瀹屾暣搴?- managed / hosted skill 鐢熷懡鍛ㄦ湡
+- 涓夊鏇村畬鏁寸殑 discovery/list/create/update/version 鏀寔
+- skill 涓?MCP / packaging engine / context manager 鐨勫彲鎺ч泦鎴?- live verification 涓庣湡瀹?provider smoke
+- 绗笁鏂?skill hub / registry 鐨勭粺涓€鍏ュ彛
 
-- 研究与边界澄清：90%
-- 公共语言动作定义：80%
-- 本地 bundle / local source 装载：70%
-- provider carrier 初版转译：45%
-- managed lifecycle prepared invocation：75%
-- live verification scaffold：35%
-- compatibility/profile truthfulness：65%
-- provider-specific extension modeling：80%
-- capability report generation：68%
-- action-level capability report：82%
-- public type truthfulness：75%
-- facade 使用面：85%
+## 浠€涔堝彨鈥滆繖鏉＄嚎瀹屾垚鈥?
+濡傛灉鎴戜滑璇粹€渟kill 璺嚎鍩烘湰瀹屾垚鈥濓紝鑷冲皯瑕佹弧瓒充笅闈㈣繖鍑犳潯锛?
+### A. 涓夊瀹樻柟 carrier 閮芥湁绋冲畾鐨勫叕鍏辫瑷€鏄犲皠
 
-#### 未完成部分
-
-- 更贴官方 SDK 的提交参数与 builder 完整度
-- managed / hosted skill 生命周期
-- 三家更完整的 discovery/list/create/update/version 支持
-- skill 与 MCP / packaging engine / context manager 的可控集成
-- live verification 与真实 provider smoke
-- 第三方 skill hub / registry 的统一入口
-
-## 什么叫“这条线完成”
-
-如果我们说“skill 路线基本完成”，至少要满足下面这几条：
-
-### A. 三家官方 carrier 都有稳定的公共语言映射
-
-- OpenAI：
-  - local shell skills
+- OpenAI锛?  - local shell skills
   - hosted shell skills
   - skill references / versions
-- Anthropic：
-  - SDK filesystem skills
+- Anthropic锛?  - SDK filesystem skills
   - API managed skills
   - discovery/list path
-- Google ADK：
-  - local directory skills
+- Google ADK锛?  - local directory skills
   - code-defined skills
   - SkillToolset integration
 
-### B. `rax.skill` 使用面完整
-
-至少包括：
-
+### B. `rax.skill` 浣跨敤闈㈠畬鏁?
+鑷冲皯鍖呮嫭锛?
 - `loadLocal`
 - `discover`
 - `define`
@@ -267,11 +219,10 @@
 - `use`
 - `mount`
 
-并且每个动作都能明确映射到官方 carrier 或 SDK-ready 调用参数。
+骞朵笖姣忎釜鍔ㄤ綔閮借兘鏄庣‘鏄犲皠鍒板畼鏂?carrier 鎴?SDK-ready 璋冪敤鍙傛暟銆?
+### C. 鐢熷懡鍛ㄦ湡瓒冲瀹屾暣
 
-### C. 生命周期足够完整
-
-根据 provider 能力，至少补齐：
+鏍规嵁 provider 鑳藉姏锛岃嚦灏戣ˉ榻愶細
 
 - list / discover
 - create / publish
@@ -279,329 +230,267 @@
 - mount / activate
 - teardown / cleanup
 
-注意：
+娉ㄦ剰锛?
+- 涓嶆槸鎵€鏈?provider 閮藉繀椤绘敮鎸?hosted registry
+- 浣?`rax.skill` 瑕佽兘鎶娾€滃摢浜涙湁銆佸摢浜涙病鏈夆€濊鐪熻瘽
 
-- 不是所有 provider 都必须支持 hosted registry
-- 但 `rax.skill` 要能把“哪些有、哪些没有”说真话
+### D. 鐪熷疄楠岃瘉鍏呭垎
 
-### D. 真实验证充分
-
-至少要有：
-
-- 本地 contract tests
+鑷冲皯瑕佹湁锛?
+- 鏈湴 contract tests
 - provider-specific unit tests
-- 至少一组 live verification
+- 鑷冲皯涓€缁?live verification
 
-### E. 与包装机架构的边界稳定
+### E. 涓庡寘瑁呮満鏋舵瀯鐨勮竟鐣岀ǔ瀹?
+- `skill` 淇濇寔瀹樻柟 carrier adapter 韬唤
+- 鍖呰鏈虹户缁壙鎺ユ洿澶嶆潅鐨勭粍缁囪兘鍔?- 涓嶅啀鍙嶅鎶婂鏉傚害濉炲洖 `skill`
 
-- `skill` 保持官方 carrier adapter 身份
-- 包装机继续承接更复杂的组织能力
-- 不再反复把复杂度塞回 `skill`
-
-## 执行阶段划分
+## 鎵ц闃舵鍒掑垎
 
 ### Phase 1: Thin Carrier Stabilization
 
-目标：
+鐩爣锛?
+- 鎶婂綋鍓?`skill` 鐨?carrier 杞瘧灞傚仛绋?- 缁х画璐磋繎瀹樻柟 SDK
 
-- 把当前 `skill` 的 carrier 转译层做稳
-- 继续贴近官方 SDK
+褰撳墠鐘舵€侊細
 
-当前状态：
+- **杩涜涓?*
 
-- **进行中**
-
-完成条件：
-
-- `prepare / use / mount` 三层接口稳定
-- 三家 provider payload 形状与官方文档高度对齐
-- 本地与 contract tests 稳定
+瀹屾垚鏉′欢锛?
+- `prepare / use / mount` 涓夊眰鎺ュ彛绋冲畾
+- 涓夊 provider payload 褰㈢姸涓庡畼鏂规枃妗ｉ珮搴﹀榻?- 鏈湴涓?contract tests 绋冲畾
 
 ### Phase 2: Lifecycle Expansion
 
-目标：
+鐩爣锛?
+- 鎵?`discover/list/create/version/attach` 杩欑被 lifecycle 鑳藉姏
 
-- 扩 `discover/list/create/version/attach` 这类 lifecycle 能力
+褰撳墠鐘舵€侊細
 
-当前状态：
+- **杩涜涓?*
 
-- **进行中**
-
-当前重点：
-
+褰撳墠閲嶇偣锛?
 - `WP-SKILL-02 Anthropic Managed Skills API`
 - `WP-SKILL-01 OpenAI Hosted Lifecycle`
 - `WP-SKILL-03 Google ADK SkillToolset Parity`
 
-完成条件：
-
-- 至少 OpenAI / Anthropic 的 managed or hosted 路线进入代码
-- Google ADK 的无 hosted 能力边界被清楚表达
-
-当前 truthfulness 建议：
-
+瀹屾垚鏉′欢锛?
+- 鑷冲皯 OpenAI / Anthropic 鐨?managed or hosted 璺嚎杩涘叆浠ｇ爜
+- Google ADK 鐨勬棤 hosted 鑳藉姏杈圭晫琚竻妤氳〃杈?
+褰撳墠 truthfulness 寤鸿锛?
 - `discover`
-  - 保留给本地/metadata discovery
+  - 淇濈暀缁欐湰鍦?metadata discovery
 - `list / create / read / remove`
-  - 保留给 managed or hosted lifecycle 公共语言
-- 版本辅助动作沿用同一组公共方向：
+  - 淇濈暀缁?managed or hosted lifecycle 鍏叡璇█
+- 鐗堟湰杈呭姪鍔ㄤ綔娌跨敤鍚屼竴缁勫叕鍏辨柟鍚戯細
   - `listVersions` -> `skill.list`
   - `getVersion` -> `skill.read`
   - `publishVersion` -> `skill.create`
   - `removeVersion` -> `skill.remove`
   - `setDefaultVersion` -> `skill.update`
-- 不要把 `discover` 和 `list` 混成一件事
-- 当前 Google ADK 在这组 managed lifecycle 上应先明确视为 `unsupported`
+- 涓嶈鎶?`discover` 鍜?`list` 娣锋垚涓€浠朵簨
+- 褰撳墠 Google ADK 鍦ㄨ繖缁?managed lifecycle 涓婂簲鍏堟槑纭涓?`unsupported`
 
 ### Phase 3: Provider Parity And Truthfulness
 
-目标：
+鐩爣锛?
+- 鎶婁笁瀹舵敮鎸侀潰銆佺己鍙ｃ€乫allback 閮借鍑?
+褰撳墠鐘舵€侊細
 
-- 把三家支持面、缺口、fallback 都说准
+- **杩涜涓?*
 
-当前状态：
-
-- **进行中**
-
-完成条件：
-
-- registry / docs / tests / runtime 四处表述一致
-- unsupported / inferred / documented 说真话
-
+瀹屾垚鏉′欢锛?
+- registry / docs / tests / runtime 鍥涘琛ㄨ堪涓€鑷?- unsupported / inferred / documented 璇寸湡璇?
 ### Phase 4: Packaging Engine Integration
 
-目标：
+鐩爣锛?
+- 鎶?`skill` 杩欏眰鍜?packaging engine / context manager 骞崇ǔ鎺ヨ捣鏉?
+褰撳墠鐘舵€侊細
 
-- 把 `skill` 这层和 packaging engine / context manager 平稳接起来
+- **鏈紑濮?*
 
-当前状态：
-
-- **未开始**
-
-完成条件：
-
-- skill 不再需要承载多余复杂度
-- 上层包装机可以安全消费 `Skill Container`
+瀹屾垚鏉′欢锛?
+- skill 涓嶅啀闇€瑕佹壙杞藉浣欏鏉傚害
+- 涓婂眰鍖呰鏈哄彲浠ュ畨鍏ㄦ秷璐?`Skill Container`
 
 ### Phase 5: Registry And External Skill Sources
 
-目标：
+鐩爣锛?
+- 鎺ョ涓夋柟 skill hub / registry
 
-- 接第三方 skill hub / registry
+褰撳墠鐘舵€侊細
 
-当前状态：
+- **鏈紑濮?*
 
-- **未开始**
-
-完成条件：
-
-- 至少支持：
-  - local source
+瀹屾垚鏉′欢锛?
+- 鑷冲皯鏀寔锛?  - local source
   - repo source
   - registry-like source
-- source normalization / policy / trust 可用
+- source normalization / policy / trust 鍙敤
 
-## 适合单个子智能体的 Work Packages
+## 閫傚悎鍗曚釜瀛愭櫤鑳戒綋鐨?Work Packages
 
-下面这些 WP 的粒度，刻意收在一个子智能体能稳定接手的范围。
-
+涓嬮潰杩欎簺 WP 鐨勭矑搴︼紝鍒绘剰鏀跺湪涓€涓瓙鏅鸿兘浣撹兘绋冲畾鎺ユ墜鐨勮寖鍥淬€?
 ### WP-SKILL-01 OpenAI Hosted Lifecycle
 
-目标：
-
-- 补 OpenAI hosted shell skill 的 lifecycle：
-  - reference
+鐩爣锛?
+- 琛?OpenAI hosted shell skill 鐨?lifecycle锛?  - reference
   - version
   - attach
 
-主要文件：
-
+涓昏鏂囦欢锛?
 - `src/integrations/openai/api/tools/skills/*`
 - `src/rax/skill-runtime.ts`
 - `src/rax/runtime.test.ts`
 
-验收：
-
-- `skill.prepare()` / `skill.use()` 对 hosted shell 更贴官方
-- 对 version/reference 形状有明确测试
-
+楠屾敹锛?
+- `skill.prepare()` / `skill.use()` 瀵?hosted shell 鏇磋创瀹樻柟
+- 瀵?version/reference 褰㈢姸鏈夋槑纭祴璇?
 ### WP-SKILL-02 Anthropic Managed Skills API
 
-目标：
+鐩爣锛?
+- 鎶?Anthropic API managed skills 鐨勮緭鍏?绾︽潫缁х画璐磋繎瀹樻柟
 
-- 把 Anthropic API managed skills 的输入/约束继续贴近官方
-
-主要文件：
-
+涓昏鏂囦欢锛?
 - `src/integrations/anthropic/api/tools/skills/*`
 - `src/rax/skill-runtime.ts`
 - `src/rax/runtime.test.ts`
 
-验收：
+楠屾敹锛?
+- `container.skills + code_execution` 璺嚎鏇磋创瀹樻柟
+- SDK route 涓?API route 鍒嗙鏇存槑纭?
+褰撳墠宸插畬鎴愰儴鍒嗭細
 
-- `container.skills + code_execution` 路线更贴官方
-- SDK route 与 API route 分离更明确
-
-当前已完成部分：
-
-- managed lifecycle `betas` 已从 facade 透传到 lifecycle builder
-- API-managed carrier override 已有 runtime coverage：
-  - `code_execution_type`
+- managed lifecycle `betas` 宸蹭粠 facade 閫忎紶鍒?lifecycle builder
+- API-managed carrier override 宸叉湁 runtime coverage锛?  - `code_execution_type`
   - `allowed_callers`
   - managed skill `type/version`
-  - `use()/mount()` 现在也已有 API-managed carrier 端到端覆盖
-  - Anthropic quickstart 风格的 prebuilt skill 路径也已有公共使用面覆盖：
-    - `type: "anthropic"`
+  - `use()/mount()` 鐜板湪涔熷凡鏈?API-managed carrier 绔埌绔鐩?  - Anthropic quickstart 椋庢牸鐨?prebuilt skill 璺緞涔熷凡鏈夊叕鍏变娇鐢ㄩ潰瑕嗙洊锛?    - `type: "anthropic"`
     - `skill_id: "pptx"`
     - `version: "latest"`
 
 ### WP-SKILL-01 OpenAI Hosted Lifecycle
 
-当前已完成部分：
+褰撳墠宸插畬鎴愰儴鍒嗭細
 
-- hosted shell attachment version 现在已和 hosted version resource metadata 拆开
-- hosted shell attachment 现在覆盖更贴官方的 version 形状：
-  - numeric version
+- hosted shell attachment version 鐜板湪宸插拰 hosted version resource metadata 鎷嗗紑
+- hosted shell attachment 鐜板湪瑕嗙洊鏇磋创瀹樻柟鐨?version 褰㈢姸锛?  - numeric version
   - `"latest"`
-- hosted shell environment settings 现在已有 runtime coverage：
-  - `file_ids`
+- hosted shell environment settings 鐜板湪宸叉湁 runtime coverage锛?  - `file_ids`
   - `memory_limit`
   - `network_policy`
-- inline shell skill carrier 已进入代码：
-  - 按官方 `InlineSkill` 形状进入 `tools[].environment.skills`
-  - 当前只作为 OpenAI provider-specific official carrier 建模
-  - `use()/mount()` 现在也已有端到端覆盖
-- managed upload prepared payload 现在也已改成更贴 `openai-node` SDK 的 call plan：
-  - `args`
+- inline shell skill carrier 宸茶繘鍏ヤ唬鐮侊細
+  - 鎸夊畼鏂?`InlineSkill` 褰㈢姸杩涘叆 `tools[].environment.skills`
+  - 褰撳墠鍙綔涓?OpenAI provider-specific official carrier 寤烘ā
+  - `use()/mount()` 鐜板湪涔熷凡鏈夌鍒扮瑕嗙洊
+- managed upload prepared payload 鐜板湪涔熷凡鏀规垚鏇磋创 `openai-node` SDK 鐨?call plan锛?  - `args`
   - `bundle`
-  分离表达
+  鍒嗙琛ㄨ揪
 
 ### WP-SKILL-03 Google ADK SkillToolset Parity
 
-目标：
+鐩爣锛?
+- 缁х画鏀剁揣 Google ADK local/code-defined 涓ょ skill carrier
 
-- 继续收紧 Google ADK local/code-defined 两种 skill carrier
-
-主要文件：
-
+涓昏鏂囦欢锛?
 - `src/integrations/deepmind/api/tools/skills/*`
 - `src/rax/skill-runtime.ts`
 - `src/rax/runtime.test.ts`
 
-验收：
-
-- local path 和 code-defined path 均有更细测试
-- payload 更接近 ADK 真实对象形状
+楠屾敹锛?
+- local path 鍜?code-defined path 鍧囨湁鏇寸粏娴嬭瘯
+- payload 鏇存帴杩?ADK 鐪熷疄瀵硅薄褰㈢姸
 
 ### WP-SKILL-04 Source Adapters
 
-目标：
+鐩爣锛?
+- 鎵?skill source 鍙戠幇涓庤鑼冨寲
 
-- 扩 skill source 发现与规范化
-
-主要文件：
-
+涓昏鏂囦欢锛?
 - `src/rax/skill-runtime.ts`
 - `src/rax/skill-runtime.test.ts`
 
-验收：
-
-- parent directory / child skills / bundle 入口更稳
-- source 错误更可解释
+楠屾敹锛?
+- parent directory / child skills / bundle 鍏ュ彛鏇寸ǔ
+- source 閿欒鏇村彲瑙ｉ噴
 
 ### WP-SKILL-05 Public API Ergonomics
 
-目标：
-
-- 收紧 `prepare / use / mount` 使用面
-
-主要文件：
-
+鐩爣锛?
+- 鏀剁揣 `prepare / use / mount` 浣跨敤闈?
+涓昏鏂囦欢锛?
 - `src/rax/facade.ts`
 - `src/rax/runtime.test.ts`
 - `src/rax/index.ts`
 
-验收：
-
-- 程序员的上层调用更短
-- 但不隐藏 provider truth
+楠屾敹锛?
+- 绋嬪簭鍛樼殑涓婂眰璋冪敤鏇寸煭
+- 浣嗕笉闅愯棌 provider truth
 
 ### WP-SKILL-06 Registry And Type Truthfulness
 
-目标：
-
-- 让 registry / types / docs 跟当前 skill surface 完整一致
-
-主要文件：
-
+鐩爣锛?
+- 璁?registry / types / docs 璺熷綋鍓?skill surface 瀹屾暣涓€鑷?
+涓昏鏂囦欢锛?
 - `src/rax/types.ts`
 - `src/rax/registry.ts`
 - `src/rax/registry.test.ts`
 - `docs/ability/*.md`
 
-验收：
+楠屾敹锛?
+- 璇嶈〃銆乺egistry銆佹枃妗ｃ€佷唬鐮佸榻?
+褰撳墠宸插畬鎴愰儴鍒嗭細
 
-- 词表、registry、文档、代码对齐
-
-当前已完成部分：
-
-- registry note 已同步收紧：
-  - OpenAI `skill.bind/activate` 明确提到 hosted shell `skill_reference` / hosted shell settings
-  - Anthropic `skill.create` 明确提到 upload surface auto-merged official `files-api` beta
-- `src/rax/index.ts` 现在已导出最小 skill 公共语言层类型：
+- registry note 宸插悓姝ユ敹绱э細
+  - OpenAI `skill.bind/activate` 鏄庣‘鎻愬埌 hosted shell `skill_reference` / hosted shell settings
+  - Anthropic `skill.create` 鏄庣‘鎻愬埌 upload surface auto-merged official `files-api` beta
+- `src/rax/index.ts` 鐜板湪宸插鍑烘渶灏?skill 鍏叡璇█灞傜被鍨嬶細
   - `SkillBindingDetailsInput`
   - `SkillBindingDetails`
   - `SkillProviderBindingLike`
   - `SkillActivationPayload`
   - `SkillActivationPlanLike`
-- `src/rax/index.ts` 现在也已导出 provider-specific official override 输入面：
+- `src/rax/index.ts` 鐜板湪涔熷凡瀵煎嚭 provider-specific official override 杈撳叆闈細
   - OpenAI hosted/local/inline shell override types
   - Anthropic managed/filesystem override types
   - DeepMind local/code-defined override types
 
-## 可直接复用的子智能体 Prompt 模板
+## 鍙洿鎺ュ鐢ㄧ殑瀛愭櫤鑳戒綋 Prompt 妯℃澘
 
-下面这些 prompt 是为“上下文压缩后继续开工”准备的。
-
+涓嬮潰杩欎簺 prompt 鏄负鈥滀笂涓嬫枃鍘嬬缉鍚庣户缁紑宸モ€濆噯澶囩殑銆?
 ### Prompt A: OpenAI Hosted Lifecycle
 
 ```text
-你负责 WP-SKILL-01，只改 OpenAI hosted skill 相关文件。目标：让 rax.skill 的 OpenAI hosted shell 路线更贴官方 lifecycle（reference/version/attach），并补测试。不要改 Anthropic/Google 文件，不要回滚别人改动。完成后说明改了哪些文件、哪些 payload 更贴官方、验证结果如何。
-```
+浣犺礋璐?WP-SKILL-01锛屽彧鏀?OpenAI hosted skill 鐩稿叧鏂囦欢銆傜洰鏍囷細璁?rax.skill 鐨?OpenAI hosted shell 璺嚎鏇磋创瀹樻柟 lifecycle锛坮eference/version/attach锛夛紝骞惰ˉ娴嬭瘯銆備笉瑕佹敼 Anthropic/Google 鏂囦欢锛屼笉瑕佸洖婊氬埆浜烘敼鍔ㄣ€傚畬鎴愬悗璇存槑鏀逛簡鍝簺鏂囦欢銆佸摢浜?payload 鏇磋创瀹樻柟銆侀獙璇佺粨鏋滃浣曘€?```
 
 ### Prompt B: Anthropic Managed Skills API
 
 ```text
-你负责 WP-SKILL-02，只改 Anthropic API/SDK skill carrier 相关文件。目标：把 managed skills API 和 SDK filesystem 路线继续收紧到更贴官方，并补对应测试。不要动 OpenAI/Google 文件，不要回滚别人改动。完成后说明改了哪些文件、哪些 payload 更贴官方、验证结果如何。
-```
+浣犺礋璐?WP-SKILL-02锛屽彧鏀?Anthropic API/SDK skill carrier 鐩稿叧鏂囦欢銆傜洰鏍囷細鎶?managed skills API 鍜?SDK filesystem 璺嚎缁х画鏀剁揣鍒版洿璐村畼鏂癸紝骞惰ˉ瀵瑰簲娴嬭瘯銆備笉瑕佸姩 OpenAI/Google 鏂囦欢锛屼笉瑕佸洖婊氬埆浜烘敼鍔ㄣ€傚畬鎴愬悗璇存槑鏀逛簡鍝簺鏂囦欢銆佸摢浜?payload 鏇磋创瀹樻柟銆侀獙璇佺粨鏋滃浣曘€?```
 
 ### Prompt C: Google ADK SkillToolset
 
 ```text
-你负责 WP-SKILL-03，只改 Google ADK skill carrier 相关文件。目标：继续收紧 local/code-defined 两条 SkillToolset 路线，并补更贴官方 ADK 的测试。不要动 OpenAI/Anthropic 文件，不要回滚别人改动。完成后说明改了哪些文件、payload 变化和验证结果。
-```
+浣犺礋璐?WP-SKILL-03锛屽彧鏀?Google ADK skill carrier 鐩稿叧鏂囦欢銆傜洰鏍囷細缁х画鏀剁揣 local/code-defined 涓ゆ潯 SkillToolset 璺嚎锛屽苟琛ユ洿璐村畼鏂?ADK 鐨勬祴璇曘€備笉瑕佸姩 OpenAI/Anthropic 鏂囦欢锛屼笉瑕佸洖婊氬埆浜烘敼鍔ㄣ€傚畬鎴愬悗璇存槑鏀逛簡鍝簺鏂囦欢銆乸ayload 鍙樺寲鍜岄獙璇佺粨鏋溿€?```
 
 ### Prompt D: Source Adapters
 
 ```text
-你负责 WP-SKILL-04，只改 skill-runtime 和 skill-runtime.test。目标：继续增强本地/多源/目录式 skill source 发现与规范化，但不要扩到 provider carrier。不要动 facade/runtime/index/integrations，不要回滚别人改动。完成后说明改了哪些文件和验证结果。
-```
+浣犺礋璐?WP-SKILL-04锛屽彧鏀?skill-runtime 鍜?skill-runtime.test銆傜洰鏍囷細缁х画澧炲己鏈湴/澶氭簮/鐩綍寮?skill source 鍙戠幇涓庤鑼冨寲锛屼絾涓嶈鎵╁埌 provider carrier銆備笉瑕佸姩 facade/runtime/index/integrations锛屼笉瑕佸洖婊氬埆浜烘敼鍔ㄣ€傚畬鎴愬悗璇存槑鏀逛簡鍝簺鏂囦欢鍜岄獙璇佺粨鏋溿€?```
 
 ### Prompt E: Public API Ergonomics
 
 ```text
-你负责 WP-SKILL-05，只改 facade/runtime/index/runtime.test。目标：继续收紧 prepare/use/mount 这些上层接口，让它们更像完整 SDK 使用面，但仍保持 skill 是官方 carrier adapter，不把包装机复杂度塞回来。不要动 skill-runtime/integrations，不要回滚别人改动。完成后说明改了哪些文件和验证结果。
-```
+浣犺礋璐?WP-SKILL-05锛屽彧鏀?facade/runtime/index/runtime.test銆傜洰鏍囷細缁х画鏀剁揣 prepare/use/mount 杩欎簺涓婂眰鎺ュ彛锛岃瀹冧滑鏇村儚瀹屾暣 SDK 浣跨敤闈紝浣嗕粛淇濇寔 skill 鏄畼鏂?carrier adapter锛屼笉鎶婂寘瑁呮満澶嶆潅搴﹀鍥炴潵銆備笉瑕佸姩 skill-runtime/integrations锛屼笉瑕佸洖婊氬埆浜烘敼鍔ㄣ€傚畬鎴愬悗璇存槑鏀逛簡鍝簺鏂囦欢鍜岄獙璇佺粨鏋溿€?```
 
 ### Prompt F: Registry And Docs Truthfulness
 
 ```text
-你负责 WP-SKILL-06，只改 types/registry/registry.test/docs。目标：让 skill 当前公共语言、registry、docs 表述对齐，明确哪些已完成、哪些未完成、哪些只是 provider-specific extension。不要动 runtime/integrations，不要回滚别人改动。完成后说明改了哪些文件和验证结果。
-```
+浣犺礋璐?WP-SKILL-06锛屽彧鏀?types/registry/registry.test/docs銆傜洰鏍囷細璁?skill 褰撳墠鍏叡璇█銆乺egistry銆乨ocs 琛ㄨ堪瀵归綈锛屾槑纭摢浜涘凡瀹屾垚銆佸摢浜涙湭瀹屾垚銆佸摢浜涘彧鏄?provider-specific extension銆備笉瑕佸姩 runtime/integrations锛屼笉瑕佸洖婊氬埆浜烘敼鍔ㄣ€傚畬鎴愬悗璇存槑鏀逛簡鍝簺鏂囦欢鍜岄獙璇佺粨鏋溿€?```
 
-## 当前推荐执行顺序
+## 褰撳墠鎺ㄨ崘鎵ц椤哄簭
 
-如果后续继续用多智能体推进，建议顺序是：
+濡傛灉鍚庣画缁х画鐢ㄥ鏅鸿兘浣撴帹杩涳紝寤鸿椤哄簭鏄細
 
 1. `WP-SKILL-02`
 2. `WP-SKILL-01`
@@ -610,20 +499,16 @@
 5. `WP-SKILL-05`
 6. `WP-SKILL-04`
 
-理由：
+鐞嗙敱锛?
+- 鍏堢户缁敹绱у綋鍓嶆渶鐑殑 Anthropic API / SDK 鍙岃矾绾?- 鍐嶇户缁敹 OpenAI hosted lifecycle
+- 鎺ョ潃琛?Google parity
+- 鐒跺悗浼樺厛鎶?registry / docs / code truthfulness 閿侀綈锛岄伩鍏嶈矾绾垮啀婕?- 鏈€鍚庡啀鏀朵笂灞?API 鍜?source adapter
 
-- 先继续收紧当前最热的 Anthropic API / SDK 双路线
-- 再继续收 OpenAI hosted lifecycle
-- 接着补 Google parity
-- 然后优先把 registry / docs / code truthfulness 锁齐，避免路线再漂
-- 最后再收上层 API 和 source adapter
+## 涓€鍙ヨ瘽鏀跺彛
 
-## 一句话收口
+鐜板湪 `skill` 璺嚎宸茬粡涓嶆槸鈥滄槸鍚﹀彲鍋氣€濈殑闂锛岃€屾槸鈥滃浣曠户缁敤灏忔骞惰鎶婁笁瀹跺畼鏂?carrier 鍚冮€忊€濈殑闂銆?
+褰撳墠鏈€鍚堢悊鐨勫仛娉曞氨鏄細
 
-现在 `skill` 路线已经不是“是否可做”的问题，而是“如何继续用小步并行把三家官方 carrier 吃透”的问题。
+- 缁х画鎶?`skill` 缁存寔鎴愬畼鏂规壙杞介€傞厤灞?- 缁х画鎶婂鏉傝兘鍔涚暀鍦ㄥ寘瑁呮満鏋舵瀯
+- 鐢ㄨ繖浠借矾绾垮浘鎶婂悗缁瘡涓瓙鏅鸿兘浣撶殑浠诲姟鏀跺湪灏忚寖鍥淬€佸彲楠岃瘉銆佸彲浜ゆ帴鐨勭矑搴?
 
-当前最合理的做法就是：
-
-- 继续把 `skill` 维持成官方承载适配层
-- 继续把复杂能力留在包装机架构
-- 用这份路线图把后续每个子智能体的任务收在小范围、可验证、可交接的粒度
