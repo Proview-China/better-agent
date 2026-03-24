@@ -7,6 +7,9 @@ export {
   CMP_DB_AGENT_LOCAL_TABLE_KINDS,
   CMP_DB_SHARED_TABLE_KINDS,
   CMP_PROJECTION_STATES,
+  createCmpAgentLocalTableSet,
+  createCmpDbPostgresAdapter,
+  createCmpProjectDbTopology,
   sanitizeSqlIdentifier,
   validateCmpAgentLocalTableSet,
   validateCmpProjectDbTopology,
@@ -33,6 +36,7 @@ export type {
 export {
   CMP_MQ_CHANNEL_KINDS,
   CMP_NEIGHBORHOOD_DIRECTIONS,
+  createInMemoryCmpRedisMqAdapter,
   validateCmpAgentNeighborhood,
   validateCmpMqTopicDescriptor,
   validateCmpIcmaPublishEnvelope,

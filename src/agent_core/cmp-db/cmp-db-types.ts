@@ -45,28 +45,55 @@ export const CMP_DB_DELIVERY_RECORD_STATES = [
 export type CmpDbDeliveryRecordState =
   (typeof CMP_DB_DELIVERY_RECORD_STATES)[number];
 
+export const CMP_DB_STORAGE_ENGINES = ["postgresql"] as const;
+export type CmpDbStorageEngine = (typeof CMP_DB_STORAGE_ENGINES)[number];
+
+export const CMP_DB_SQL_COLUMN_TYPES = [
+  "uuid",
+  "text",
+  "jsonb",
+  "timestamptz",
+  "integer",
+  "boolean",
+] as const;
+export type CmpDbSqlColumnType = (typeof CMP_DB_SQL_COLUMN_TYPES)[number];
+
 export interface CmpDbIndexDefinition {
   name: string;
   columns: string[];
   unique?: boolean;
 }
 
+export interface CmpDbColumnDefinition {
+  name: string;
+  sqlType: CmpDbSqlColumnType;
+  nullable?: boolean;
+  defaultExpression?: string;
+  description?: string;
+}
+
 export interface CmpDbSharedTableDefinition {
+  schemaName: string;
   tableName: string;
   kind: CmpDbSharedTableKind;
+  storageEngine: CmpDbStorageEngine;
   ownership: "project_shared";
   primaryKey: string;
+  columns: CmpDbColumnDefinition[];
   description: string;
   indexes?: CmpDbIndexDefinition[];
   metadata?: Record<string, unknown>;
 }
 
 export interface CmpDbAgentLocalTableDefinition {
+  schemaName: string;
   tableName: string;
   agentId: string;
   kind: CmpDbAgentLocalTableKind;
+  storageEngine: CmpDbStorageEngine;
   ownership: "agent_local";
   primaryKey: string;
+  columns: CmpDbColumnDefinition[];
   description: string;
   indexes?: CmpDbIndexDefinition[];
   metadata?: Record<string, unknown>;
@@ -75,13 +102,36 @@ export interface CmpDbAgentLocalTableDefinition {
 export interface CmpProjectDbTopology {
   projectId: string;
   databaseName: string;
+  schemaName: string;
   sharedTables: CmpDbSharedTableDefinition[];
   metadata?: Record<string, unknown>;
 }
 
 export interface CmpAgentLocalTableSet {
+  projectId: string;
+  schemaName: string;
   agentId: string;
   tables: CmpDbAgentLocalTableDefinition[];
+}
+
+export interface CmpDbSqlStatement {
+  statementId: string;
+  phase: "bootstrap" | "read" | "write";
+  target: string;
+  text: string;
+  values?: readonly unknown[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpProjectDbBootstrapContract {
+  projectId: string;
+  databaseName: string;
+  schemaName: string;
+  topology: CmpProjectDbTopology;
+  localTableSets: CmpAgentLocalTableSet[];
+  bootstrapStatements: CmpDbSqlStatement[];
+  readbackStatements: CmpDbSqlStatement[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface CheckedSnapshotLike {
@@ -152,29 +202,36 @@ export function sanitizeSqlIdentifier(value: string): string {
 export function validateCmpDbSharedTableDefinition(
   table: CmpDbSharedTableDefinition,
 ): void {
+  assertNonEmptyString(table.schemaName, "CMP DB shared table schemaName");
   assertNonEmptyString(table.tableName, "CMP DB shared table name");
   assertNonEmptyString(table.primaryKey, "CMP DB shared table primaryKey");
+  validateCmpDbColumnDefinitions(table.columns, "CMP DB shared table columns");
   assertNonEmptyString(table.description, "CMP DB shared table description");
 }
 
 export function validateCmpDbAgentLocalTableDefinition(
   table: CmpDbAgentLocalTableDefinition,
 ): void {
+  assertNonEmptyString(table.schemaName, "CMP DB agent-local table schemaName");
   assertNonEmptyString(table.tableName, "CMP DB agent-local table name");
   assertNonEmptyString(table.agentId, "CMP DB agent-local table agentId");
   assertNonEmptyString(table.primaryKey, "CMP DB agent-local table primaryKey");
+  validateCmpDbColumnDefinitions(table.columns, "CMP DB agent-local table columns");
   assertNonEmptyString(table.description, "CMP DB agent-local table description");
 }
 
 export function validateCmpProjectDbTopology(topology: CmpProjectDbTopology): void {
   assertNonEmptyString(topology.projectId, "CMP DB projectId");
   assertNonEmptyString(topology.databaseName, "CMP DB databaseName");
+  assertNonEmptyString(topology.schemaName, "CMP DB schemaName");
   for (const table of topology.sharedTables) {
     validateCmpDbSharedTableDefinition(table);
   }
 }
 
 export function validateCmpAgentLocalTableSet(set: CmpAgentLocalTableSet): void {
+  assertNonEmptyString(set.projectId, "CMP DB local table set projectId");
+  assertNonEmptyString(set.schemaName, "CMP DB local table set schemaName");
   assertNonEmptyString(set.agentId, "CMP DB local table set agentId");
   if (set.tables.length === 0) {
     throw new Error("CMP DB local table set requires at least one table.");
@@ -186,6 +243,30 @@ export function validateCmpAgentLocalTableSet(set: CmpAgentLocalTableSet): void 
         `CMP DB local table ${table.tableName} belongs to ${table.agentId}, expected ${set.agentId}.`,
       );
     }
+  }
+}
+
+export function validateCmpDbSqlStatement(statement: CmpDbSqlStatement): void {
+  assertNonEmptyString(statement.statementId, "CMP DB SQL statementId");
+  assertNonEmptyString(statement.target, "CMP DB SQL target");
+  assertNonEmptyString(statement.text, "CMP DB SQL text");
+}
+
+export function validateCmpProjectDbBootstrapContract(
+  contract: CmpProjectDbBootstrapContract,
+): void {
+  assertNonEmptyString(contract.projectId, "CMP DB bootstrap projectId");
+  assertNonEmptyString(contract.databaseName, "CMP DB bootstrap databaseName");
+  assertNonEmptyString(contract.schemaName, "CMP DB bootstrap schemaName");
+  validateCmpProjectDbTopology(contract.topology);
+  for (const set of contract.localTableSets) {
+    validateCmpAgentLocalTableSet(set);
+  }
+  for (const statement of contract.bootstrapStatements) {
+    validateCmpDbSqlStatement(statement);
+  }
+  for (const statement of contract.readbackStatements) {
+    validateCmpDbSqlStatement(statement);
   }
 }
 
@@ -236,4 +317,19 @@ export function validateCmpDbDeliveryRegistryRecord(
   assertNonEmptyString(record.sourceAgentId, "CMP DB delivery record sourceAgentId");
   assertNonEmptyString(record.targetAgentId, "CMP DB delivery record targetAgentId");
   assertNonEmptyString(record.createdAt, "CMP DB delivery record createdAt");
+}
+
+function validateCmpDbColumnDefinitions(
+  columns: readonly CmpDbColumnDefinition[],
+  label: string,
+): void {
+  if (columns.length === 0) {
+    throw new Error(`${label} requires at least one column.`);
+  }
+  for (const column of columns) {
+    assertNonEmptyString(column.name, `${label} column name`);
+    if (!CMP_DB_SQL_COLUMN_TYPES.includes(column.sqlType)) {
+      throw new Error(`${label} column ${column.name} uses unsupported SQL type ${column.sqlType}.`);
+    }
+  }
 }

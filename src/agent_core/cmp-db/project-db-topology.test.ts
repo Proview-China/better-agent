@@ -12,6 +12,7 @@ test("createCmpProjectDbTopology builds one project db with all shared tables", 
   });
 
   assert.equal(topology.databaseName, "cmp_praxis_main");
+  assert.equal(topology.schemaName, "cmp");
   assert.equal(topology.sharedTables.length, 6);
   assert.equal(getCmpSharedTableByKind({
     topology,
@@ -19,7 +20,18 @@ test("createCmpProjectDbTopology builds one project db with all shared tables", 
   })?.tableName, "cmp_praxis_main_agent_registry");
   assert.equal(getCmpSharedTableByKind({
     topology,
+    kind: "agent_registry",
+  })?.storageEngine, "postgresql");
+  assert.equal(getCmpSharedTableByKind({
+    topology,
+    kind: "agent_registry",
+  })?.schemaName, "cmp");
+  assert.ok((getCmpSharedTableByKind({
+    topology,
+    kind: "agent_registry",
+  })?.columns.length ?? 0) > 0);
+  assert.equal(getCmpSharedTableByKind({
+    topology,
     kind: "delivery_registry",
   })?.ownership, "project_shared");
 });
-

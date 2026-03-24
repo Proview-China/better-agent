@@ -38,12 +38,14 @@ test("cmp-db validators reject empty topologies and table sets", () => {
   assert.throws(() => validateCmpProjectDbTopology({
     projectId: "",
     databaseName: "",
+    schemaName: "",
     sharedTables: [],
   }), /projectId/i);
 
   assert.throws(() => validateCmpAgentLocalTableSet({
+    projectId: "praxis-main",
+    schemaName: "cmp",
     agentId: "agent-1",
     tables: [],
   }), /at least one table/i);
 });
-

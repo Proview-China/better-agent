@@ -28,6 +28,13 @@ export const CMP_CRITICAL_ESCALATION_SEVERITIES = [
 ] as const;
 export type CmpCriticalEscalationSeverity = (typeof CMP_CRITICAL_ESCALATION_SEVERITIES)[number];
 
+export const CMP_REDIS_LANE_KINDS = [
+  "pubsub",
+  "stream",
+  "queue",
+] as const;
+export type CmpRedisLaneKind = (typeof CMP_REDIS_LANE_KINDS)[number];
+
 export interface CmpAgentNeighborhood {
   agentId: string;
   parentAgentId?: string;
@@ -76,6 +83,58 @@ export interface CmpCriticalEscalationEnvelope {
   createdAt: string;
   deliveryMode: "alert_envelope";
   redactionLevel: "summary_only";
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpRedisNamespace {
+  projectId: string;
+  namespaceRoot: string;
+  keyPrefix: string;
+  channelsPrefix: string;
+  streamsPrefix: string;
+  queuesPrefix: string;
+  consumerGroupPrefix: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpRedisTopicBinding {
+  projectId: string;
+  agentId: string;
+  channel: CmpMqChannelKind;
+  topic: string;
+  lane: CmpRedisLaneKind;
+  redisKey: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpRedisProjectBootstrap {
+  projectId: string;
+  agentId: string;
+  namespace: CmpRedisNamespace;
+  topicBindings: CmpRedisTopicBinding[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpRedisPublishReceipt {
+  receiptId: string;
+  projectId: string;
+  sourceAgentId: string;
+  channel: CmpMqChannelKind;
+  lane: CmpRedisLaneKind;
+  redisKey: string;
+  targetCount: number;
+  publishedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpRedisEscalationReceipt {
+  receiptId: string;
+  projectId: string;
+  sourceAgentId: string;
+  targetAncestorId: string;
+  lane: "queue";
+  redisKey: string;
+  publishedAt: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -135,6 +194,10 @@ export function isCmpCriticalEscalationSeverity(
   return CMP_CRITICAL_ESCALATION_SEVERITIES.includes(value as CmpCriticalEscalationSeverity);
 }
 
+export function isCmpRedisLaneKind(value: string): value is CmpRedisLaneKind {
+  return CMP_REDIS_LANE_KINDS.includes(value as CmpRedisLaneKind);
+}
+
 export function validateCmpSubscriptionRequest(
   request: CmpSubscriptionRequest,
 ): void {
@@ -172,5 +235,65 @@ export function validateCmpCriticalEscalationEnvelope(
   }
   if (envelope.redactionLevel !== "summary_only") {
     throw new Error("CMP critical escalation must use summary_only redaction.");
+  }
+}
+
+export function validateCmpRedisNamespace(namespace: CmpRedisNamespace): void {
+  assertNonEmptyString(namespace.projectId, "CMP Redis namespace projectId");
+  assertNonEmptyString(namespace.namespaceRoot, "CMP Redis namespace namespaceRoot");
+  assertNonEmptyString(namespace.keyPrefix, "CMP Redis namespace keyPrefix");
+  assertNonEmptyString(namespace.channelsPrefix, "CMP Redis namespace channelsPrefix");
+  assertNonEmptyString(namespace.streamsPrefix, "CMP Redis namespace streamsPrefix");
+  assertNonEmptyString(namespace.queuesPrefix, "CMP Redis namespace queuesPrefix");
+  assertNonEmptyString(namespace.consumerGroupPrefix, "CMP Redis namespace consumerGroupPrefix");
+}
+
+export function validateCmpRedisTopicBinding(binding: CmpRedisTopicBinding): void {
+  assertNonEmptyString(binding.projectId, "CMP Redis topic binding projectId");
+  assertNonEmptyString(binding.agentId, "CMP Redis topic binding agentId");
+  assertNonEmptyString(binding.topic, "CMP Redis topic binding topic");
+  assertNonEmptyString(binding.redisKey, "CMP Redis topic binding redisKey");
+  if (!isCmpRedisLaneKind(binding.lane)) {
+    throw new Error(`Unsupported CMP Redis lane kind: ${binding.lane}.`);
+  }
+}
+
+export function validateCmpRedisProjectBootstrap(
+  bootstrap: CmpRedisProjectBootstrap,
+): void {
+  assertNonEmptyString(bootstrap.projectId, "CMP Redis bootstrap projectId");
+  assertNonEmptyString(bootstrap.agentId, "CMP Redis bootstrap agentId");
+  validateCmpRedisNamespace(bootstrap.namespace);
+  if (bootstrap.topicBindings.length === 0) {
+    throw new Error("CMP Redis bootstrap requires at least one topic binding.");
+  }
+  for (const binding of bootstrap.topicBindings) {
+    validateCmpRedisTopicBinding(binding);
+  }
+}
+
+export function validateCmpRedisPublishReceipt(receipt: CmpRedisPublishReceipt): void {
+  assertNonEmptyString(receipt.receiptId, "CMP Redis publish receiptId");
+  assertNonEmptyString(receipt.projectId, "CMP Redis publish projectId");
+  assertNonEmptyString(receipt.sourceAgentId, "CMP Redis publish sourceAgentId");
+  assertNonEmptyString(receipt.redisKey, "CMP Redis publish redisKey");
+  assertNonEmptyString(receipt.publishedAt, "CMP Redis publish publishedAt");
+  if (!isCmpRedisLaneKind(receipt.lane)) {
+    throw new Error(`Unsupported CMP Redis publish lane: ${receipt.lane}.`);
+  }
+  if (receipt.targetCount < 1) {
+    throw new Error("CMP Redis publish targetCount must be at least 1.");
+  }
+}
+
+export function validateCmpRedisEscalationReceipt(receipt: CmpRedisEscalationReceipt): void {
+  assertNonEmptyString(receipt.receiptId, "CMP Redis escalation receiptId");
+  assertNonEmptyString(receipt.projectId, "CMP Redis escalation projectId");
+  assertNonEmptyString(receipt.sourceAgentId, "CMP Redis escalation sourceAgentId");
+  assertNonEmptyString(receipt.targetAncestorId, "CMP Redis escalation targetAncestorId");
+  assertNonEmptyString(receipt.redisKey, "CMP Redis escalation redisKey");
+  assertNonEmptyString(receipt.publishedAt, "CMP Redis escalation publishedAt");
+  if (receipt.lane !== "queue") {
+    throw new Error("CMP Redis escalation receipt must use queue lane.");
   }
 }

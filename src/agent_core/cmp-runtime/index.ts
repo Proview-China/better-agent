@@ -91,6 +91,13 @@ export {
 } from "./runtime-recovery.js";
 
 export type {
+  CmpInfraBackends,
+} from "./backend-contract.js";
+export {
+  createCmpInfraBackends,
+} from "./backend-contract.js";
+
+export type {
   CmpActiveLineStage,
   CmpDeliveryStatus,
   CmpGitUpdateRef,

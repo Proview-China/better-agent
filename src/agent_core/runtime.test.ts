@@ -8,7 +8,15 @@ import { createAgentCoreRuntime } from "./runtime.js";
 import type { CapabilityAdapter, CapabilityCallIntent } from "./index.js";
 import {
   createAgentLineage,
+  createCmpAgentLocalTableSet,
   createCmpBranchFamily,
+  createCmpDbPostgresAdapter,
+  createCmpGitAgentBranchRuntime,
+  createCmpGitLineageNode,
+  createCmpGitProjectRepo,
+  createCmpGitProjectRepoBootstrapPlan,
+  createCmpProjectDbTopology,
+  createInMemoryCmpRedisMqAdapter,
 } from "./index.js";
 import { createAgentCapabilityProfile, createProvisionRequest } from "./ta-pool-types/index.js";
 import { createReviewerRuntime } from "./ta-pool-review/index.js";
@@ -89,6 +97,83 @@ test("AgentCoreRuntime wires session, run, and internal journal flow together", 
     runtime.readRunEvents(outcome.run.runId).map((entry) => entry.event.type),
     ["run.created", "state.delta_applied", "intent.queued"],
   );
+});
+
+test("AgentCoreRuntime can keep CMP infra backends on the runtime boundary without wiring them yet", async () => {
+  const projectId = "proj-runtime-cmp-backends";
+  const topology = createCmpProjectDbTopology({
+    projectId,
+  });
+  const lineage = createCmpGitLineageNode({
+    agentId: "main",
+    projectId,
+    status: "active",
+  });
+  const projectRepo = createCmpGitProjectRepo({
+    projectId,
+    repoName: "proj-runtime-cmp-backends",
+  });
+  const branchRuntime = createCmpGitAgentBranchRuntime({
+    lineage,
+    projectRepo,
+    repoRootPath: "/tmp/praxis/proj-runtime-cmp-backends",
+  });
+
+  const gitBackend = {
+    bootstrapProjectRepo(plan: ReturnType<typeof createCmpGitProjectRepoBootstrapPlan>) {
+      return {
+        projectRepo: plan.projectRepo,
+        repoRootPath: plan.repoRootPath,
+        defaultBranchName: plan.defaultBranchName,
+        createdBranchNames: plan.branchKinds.map((kind) => `${kind}/${plan.projectRepo.defaultAgentId}`),
+        status: "bootstrapped" as const,
+      };
+    },
+    bootstrapAgentBranchRuntime(runtime: typeof branchRuntime) {
+      return [runtime.branchFamily.cmp.fullRef, runtime.branchFamily.work.fullRef] as const;
+    },
+    readBranchHead(runtime: typeof branchRuntime) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+      };
+    },
+    writeCheckedRef(runtime: typeof branchRuntime, commitSha: string) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+        checkedRefName: runtime.checkedRefName,
+        checkedCommitSha: commitSha,
+      };
+    },
+    writePromotedRef(runtime: typeof branchRuntime, commitSha: string) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+        promotedRefName: runtime.promotedRefName,
+        promotedCommitSha: commitSha,
+      };
+    },
+  };
+  const dbAdapter = createCmpDbPostgresAdapter({
+    topology,
+    localTableSets: [
+      createCmpAgentLocalTableSet({
+        projectId,
+        agentId: "main",
+      }),
+    ],
+  });
+  const mqAdapter = createInMemoryCmpRedisMqAdapter();
+
+  const runtime = createAgentCoreRuntime({
+    cmpInfraBackends: {
+      git: gitBackend,
+      db: dbAdapter,
+      mq: mqAdapter,
+    },
+  });
+
+  assert.equal(runtime.cmpInfraBackends.git, gitBackend);
+  assert.equal(runtime.cmpInfraBackends.db, dbAdapter);
+  assert.equal(runtime.cmpInfraBackends.mq, mqAdapter);
 });
 
 test("AgentCoreRuntime can dispatch a capability intent through the new gateway and pool path", async () => {

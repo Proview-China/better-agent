@@ -5,3 +5,5 @@ export * from "./projection-state.js";
 export * from "./delivery-registry.js";
 export * from "./dbagent-sync.js";
 export * from "./integration-hooks.js";
+export * from "./postgresql-bootstrap.js";
+export * from "./postgresql-adapter.js";

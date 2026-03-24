@@ -74,10 +74,12 @@ import {
   planCmpDispatcherDelivery,
   resolveCmpPassiveHistoricalDelivery,
   type CmpActiveLineRecord,
+  type CmpInfraBackends,
   type CmpDispatchReceipt,
   type CmpIngressRecord,
   type CmpProjectionRecord as CmpRuntimeProjectionRecord,
   type CmpRuntimeSnapshot,
+  createCmpInfraBackends,
 } from "./cmp-runtime/index.js";
 import {
   activateProvisionAsset,
@@ -202,6 +204,7 @@ export interface AgentCoreRuntimeOptions {
   runCoordinator?: AgentRunCoordinator;
   sessionManager?: SessionManager;
   modelInferenceExecutor?: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
+  cmpInfraBackends?: CmpInfraBackends;
 }
 
 export interface CreateAgentCoreRunInput extends Omit<CreateRunInput, "goal"> {
@@ -395,6 +398,7 @@ export class AgentCoreRuntime {
   readonly provisionerRuntime?: ProvisionerRuntime;
   readonly runCoordinator: AgentRunCoordinator;
   readonly sessionManager: SessionManager;
+  readonly cmpInfraBackends: CmpInfraBackends;
   readonly #taSafetyConfig?: TaSafetyInterceptorConfig;
   readonly #modelInferenceExecutor: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
   readonly #capabilityExecutionContext = new Map<string, DispatchCapabilityPlanInput>();
@@ -453,6 +457,7 @@ export class AgentCoreRuntime {
       checkpointStore: this.checkpointStore,
     });
     this.sessionManager = options.sessionManager ?? new SessionManager();
+    this.cmpInfraBackends = createCmpInfraBackends(options.cmpInfraBackends);
     this.#modelInferenceExecutor = options.modelInferenceExecutor ?? executeModelInference;
     this.capabilityGateway.onResult((result) => {
       void this.#handleCapabilityResultEnvelope(result);

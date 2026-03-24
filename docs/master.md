@@ -132,6 +132,10 @@
   - [32-cmp-db-projection-and-neighborhood-broadcast-contract.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/32-cmp-db-projection-and-neighborhood-broadcast-contract.md)
 - CMP Part 4: 五 agent 运行拓扑与主动/被动模式：
   - [33-cmp-five-agent-runtime-and-active-passive-flow.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/33-cmp-five-agent-runtime-and-active-passive-flow.md)
+- CMP infra 真实 backend 与 bootstrap 总纲：
+  - [34-cmp-infra-real-backend-and-bootstrap-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/34-cmp-infra-real-backend-and-bootstrap-outline.md)
+- CMP infra 并行编码任务包：
+  - [cmp-infra-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-infra-task-pack/README.md)
 - CMP 并行编码任务包：
   - [cmp-implementation-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-implementation-task-pack/README.md)
 - T/A Pool 并行编码任务包：

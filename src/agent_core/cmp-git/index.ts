@@ -73,6 +73,37 @@ export {
   type CreateCmpGitOrchestratorInput,
 } from "./orchestrator.js";
 export type {
+  CmpGitBootstrapStatus,
+  CmpGitProjectRepoBootstrapInput,
+  CmpGitProjectRepoBootstrapPlan,
+} from "./project-repo-bootstrap.js";
+export {
+  CMP_GIT_BOOTSTRAP_STATUSES,
+  createCmpGitProjectRepoBootstrapPlan,
+  isCmpGitBootstrapStatus,
+} from "./project-repo-bootstrap.js";
+export type {
+  CmpGitAgentBranchRuntime,
+  CreateCmpGitAgentBranchRuntimeInput,
+} from "./branch-runtime.js";
+export {
+  createCmpGitAgentBranchRuntime,
+  listCmpGitBranchRuntimes,
+  resolveCmpGitAgentBranchRuntime,
+} from "./branch-runtime.js";
+export type {
+  CmpGitBackend,
+  CmpGitBackendBootstrapReceipt,
+  CmpGitRefReadback,
+  CmpGitAdapterErrorCode,
+} from "./git-backend.js";
+export {
+  CMP_GIT_ADAPTER_ERROR_CODES,
+  CmpGitAdapterError,
+  createCmpGitAdapterError,
+  isCmpGitAdapterErrorCode,
+} from "./git-backend.js";
+export type {
   CmpGitLineageRelation,
   CmpGitCriticalEscalationAlert,
 } from "./lineage-guard.js";
