@@ -143,6 +143,42 @@
   - `npx tsx --test src/agent_core/cmp-git/*.test.ts src/agent_core/cmp-db/*.test.ts src/agent_core/cmp-mq/*.test.ts src/agent_core/cmp-runtime/*.test.ts src/agent_core/runtime.test.ts` 通过
   - 当前命中：`96 pass / 0 fail`
   - `npm run build` 通过
+- `CMP` 第四波也已完成并收口：
+  - `cmp-git/**`
+    - 当前已具备完整的 git 侧最终治理闭环：
+      - lineage guard
+      - non-skipping promotion guard
+      - peer exchange stays local
+      - critical escalation alert-only / summary-only guard
+      - cross-part integration hooks
+      - lineage governance smoke coverage
+  - `cmp-db/**`
+    - 当前已具备 cross-part integration hooks：
+      - `CheckedSnapshot + git promotion -> DB projection`
+      - `ContextPackage + DispatchReceipt -> package/delivery pipeline`
+  - `cmp-mq/**`
+    - 当前已具备：
+      - neighborhood publish plan lowering
+      - validated subscription requests
+      - `critical escalation` 作为唯一 upward exception 的 integration e2e 证据
+  - `cmp-runtime/**`
+    - 当前已具备：
+      - `CMP` runtime snapshot
+      - `CMP` runtime recovery hydration
+- `AgentCoreRuntime` 当前已把 `CMP` 做到第四波总装配：
+  - `cmp-git / cmp-db / cmp-mq / cmp-runtime` helper 已全部被主线程消费进更高层运行路径
+  - `CMP` runtime snapshot 已进入 checkpoint snapshot / recovery 结果
+  - `CMP` 的 active/passive flow、parent-child reseed、sibling exchange、non-skipping enforcement、recoverable lineage snapshot 都已有 runtime 级证据
+- 当前第四波验证基线：
+  - `npm run typecheck` 通过
+  - `npx tsx --test src/agent_core/cmp-git/*.test.ts src/agent_core/cmp-db/*.test.ts src/agent_core/cmp-mq/*.test.ts src/agent_core/cmp-runtime/*.test.ts src/agent_core/runtime.test.ts` 通过
+  - 当前命中：`96 pass / 0 fail`
+  - `npm run build` 通过
+- 以当前任务包口径看，`CMP` 这部分已完成：
+  - Part 1: core interface + object model 已完成
+  - Part 2: git lineage governance 已完成
+  - Part 3: DB projection + MQ neighborhood propagation 已完成
+  - Part 4: five-agent runtime + active/passive delivery + runtime assembly + e2e 已完成
 - `CMP` 的关键治理纪律已先冻结：
   - 一个项目一个 `repo`
   - 一个项目一个 `CMP DB`
