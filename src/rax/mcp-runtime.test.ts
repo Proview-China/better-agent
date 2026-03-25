@@ -12,8 +12,11 @@ import { CapabilityRouter } from "./router.js";
 import { rax } from "./runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
 
-async function setupInMemoryMcpServer() {
-  const server = new McpServer({ name: "test-mcp", version: "1.0.0" });
+async function setupInMemoryMcpServer(options: { serverName?: string } = {}) {
+  const server = new McpServer({
+    name: options.serverName ?? "test-mcp",
+    version: "1.0.0"
+  });
   server.registerTool(
     "echo",
     {
@@ -154,6 +157,44 @@ test("mcp.connect classifies a failed transport launch", async () => {
           transport: {
             kind: "stdio",
             command: "definitely-not-a-real-command"
+          }
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "mcp_connection_failed");
+      return true;
+    }
+  );
+});
+
+test("mcp.connect keeps startup connection-closed failures on the connection_failed lane", async () => {
+  const runtime = new McpRuntime();
+  const runtimeHack = runtime as unknown as {
+    createTransport(config: unknown): unknown;
+  };
+
+  runtimeHack.createTransport = () => ({
+    start: async () => {
+      throw new Error("connection closed during startup");
+    },
+    send: async () => undefined,
+    close: async () => undefined,
+    onclose: undefined,
+    onerror: undefined,
+    onmessage: undefined
+  });
+
+  await assert.rejects(
+    () =>
+      runtime.connect({
+        provider: "openai",
+        model: "gpt-5",
+        layer: "agent",
+        input: {
+          transport: {
+            kind: "in-memory",
+            transport: {} as never
           }
         }
       }),
@@ -772,10 +813,10 @@ test("mcp.getPrompt returns normalized prompt messages", async () => {
   }
 });
 
-test("mcp.connect replaces duplicate connection ids after closing the old client", async () => {
+test("mcp.connect replaces duplicate connection ids only after the replacement client is ready", async () => {
   const runtime = new McpRuntime();
-  const first = await setupInMemoryMcpServer();
-  const second = await setupInMemoryMcpServer();
+  const first = await setupInMemoryMcpServer({ serverName: "first-mcp" });
+  const second = await setupInMemoryMcpServer({ serverName: "replacement-mcp" });
 
   try {
     await runtime.connect({
@@ -791,7 +832,7 @@ test("mcp.connect replaces duplicate connection ids after closing the old client
       }
     });
 
-    await runtime.connect({
+    const replacement = await runtime.connect({
       provider: "anthropic",
       model: "claude-sonnet-4-6",
       layer: "api",
@@ -805,6 +846,7 @@ test("mcp.connect replaces duplicate connection ids after closing the old client
     });
 
     assert.deepEqual(runtime.listConnectionIds(), ["duplicate-id"]);
+    assert.equal(replacement.serverVersion?.name, "replacement-mcp");
   } finally {
     await runtime.disconnect({
       provider: "anthropic",
@@ -814,6 +856,70 @@ test("mcp.connect replaces duplicate connection ids after closing the old client
     });
     await first.server.close();
     await second.server.close();
+  }
+});
+
+test("mcp.connect keeps the old connection when duplicate-id replacement fails", async () => {
+  const runtime = new McpRuntime();
+  const { server, clientTransport } = await setupInMemoryMcpServer({
+    serverName: "primary-mcp"
+  });
+
+  try {
+    await runtime.connect({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "agent",
+      input: {
+        connectionId: "duplicate-id",
+        transport: {
+          kind: "in-memory",
+          transport: clientTransport
+        }
+      }
+    });
+
+    await assert.rejects(
+      () =>
+        runtime.connect({
+          provider: "openai",
+          model: "gpt-5",
+          layer: "agent",
+          input: {
+            connectionId: "duplicate-id",
+            transport: {
+              kind: "stdio",
+              command: "definitely-not-a-real-command"
+            }
+          }
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof RaxRoutingError);
+        assert.equal(error.code, "mcp_connection_failed");
+        return true;
+      }
+    );
+
+    assert.deepEqual(runtime.listConnectionIds(), ["duplicate-id"]);
+
+    const tools = await runtime.listTools({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "agent",
+      input: {
+        connectionId: "duplicate-id"
+      }
+    });
+
+    assert.equal(tools.tools[0]?.name, "echo");
+  } finally {
+    await runtime.disconnect({
+      provider: "openai",
+      model: "gpt-5",
+      layer: "agent",
+      connectionId: "duplicate-id"
+    });
+    await server.close();
   }
 });
 
@@ -1437,7 +1543,7 @@ test("facade mcp.native.prepare returns an OpenAI API Responses MCP payload for 
   );
 });
 
-test("facade mcp.native.prepare returns a hosted-style payload for openai agent streamable-http", () => {
+test("facade mcp.native.prepare reports openai agent streamable-http as unsupported in the current execute baseline", () => {
   const runtime = new McpRuntime();
   const router = new CapabilityRouter([]);
   const raxFacade = createRaxFacade(router, undefined, runtime);
@@ -1457,18 +1563,13 @@ test("facade mcp.native.prepare returns a hosted-style payload for openai agent 
     }
   });
 
-  assert.equal(plan.supported, true);
+  assert.equal(plan.supported, false);
   assert.equal(plan.builderId, "openai.agent.openai-agents-mcp");
-  assert.equal(plan.sdkPackageName, "@openai/agents");
-  assert.equal(plan.entrypoint, "hostedMcpTool");
-  assert.equal(
-    ((plan.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
-    "agent-remote-hosted"
-  );
-  assert.equal(
-    ((plan.payload as { mcpServer?: { transport?: string } } | undefined)?.mcpServer?.transport),
-    "streamable-http"
-  );
+  assert.match(plan.unsupportedReasons?.[0] ?? "", /streamable-http/u);
+  assert.deepEqual(plan.constraintSnapshot.nativeSupportedTransports, ["stdio"]);
+  assert.equal(plan.sdkPackageName, undefined);
+  assert.equal(plan.entrypoint, undefined);
+  assert.equal(plan.payload, undefined);
 });
 
 test("facade mcp.native.prepare returns an Anthropic API connector payload for streamable-http", () => {
@@ -1807,29 +1908,30 @@ test("facade mcp.native.build returns an Anthropic API connector invocation", ()
   );
 });
 
-test("facade mcp.native.build returns an OpenAI agent hosted invocation", () => {
+test("facade mcp.native.build rejects openai agent streamable-http until native hosted execute lands", () => {
   const runtime = new McpRuntime();
   const router = new CapabilityRouter([]);
   const raxFacade = createRaxFacade(router, undefined, runtime);
 
-  const invocation = raxFacade.mcp.native.build({
-    provider: "openai",
-    model: "gpt-5",
-    layer: "agent",
-    input: {
-      transport: {
-        kind: "streamable-http",
-        url: "https://example.com/mcp"
-      }
+  assert.throws(
+    () =>
+      raxFacade.mcp.native.build({
+        provider: "openai",
+        model: "gpt-5",
+        layer: "agent",
+        input: {
+          transport: {
+            kind: "streamable-http",
+            url: "https://example.com/mcp"
+          }
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "mcp_native_build_unsupported");
+      assert.match(error.message, /streamable-http/u);
+      return true;
     }
-  });
-
-  assert.equal(invocation.adapterId, "mcp.native.openai.agent.openai-agents-mcp");
-  assert.equal(invocation.sdk.packageName, "@openai/agents");
-  assert.equal(invocation.sdk.entrypoint, "hostedMcpTool");
-  assert.equal(
-    ((invocation.payload as { carrier?: { shape?: string } } | undefined)?.carrier?.shape),
-    "agent-remote-hosted"
   );
 });
 
