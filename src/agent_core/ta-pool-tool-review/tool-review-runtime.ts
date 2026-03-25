@@ -1,10 +1,15 @@
 import type {
   TaToolReviewActionStatus,
+  TaToolReviewQualityVerdict,
   ToolReviewActivationInputShell,
   ToolReviewActivationOutputShell,
   ToolReviewActionLedgerEntry,
+  ToolReviewGovernancePlan,
+  ToolReviewGovernancePlanCounts,
+  ToolReviewGovernancePlanItem,
   ToolReviewGovernanceInputShell,
   ToolReviewGovernanceOutputShell,
+  ToolReviewQualityReport,
   ToolReviewReplayInputShell,
   ToolReviewReplayOutputShell,
   ToolReviewHumanGateInputShell,
@@ -15,6 +20,7 @@ import type {
 import {
   createToolReviewActionLedgerEntry,
   resolveLifecycleTargetBindingState,
+  summarizeToolReviewAction,
 } from "./tool-review-contract.js";
 import {
   appendToolReviewActionToSession,
@@ -56,6 +62,85 @@ export interface ToolReviewerRuntimeOptions {
   sessionIdFactory?: () => string;
   reviewIdFactory?: (actionId: string) => string;
   restoreSnapshot?: ToolReviewSessionSnapshot[];
+}
+
+function compareActions(
+  left: ToolReviewActionLedgerEntry,
+  right: ToolReviewActionLedgerEntry,
+): number {
+  const recordedDelta = left.recordedAt.localeCompare(right.recordedAt);
+  if (recordedDelta !== 0) {
+    return recordedDelta;
+  }
+  return left.reviewId.localeCompare(right.reviewId);
+}
+
+function createEmptyCounts(): ToolReviewGovernancePlanCounts {
+  return {
+    total: 0,
+    recorded: 0,
+    readyForHandoff: 0,
+    waitingHuman: 0,
+    blocked: 0,
+    completed: 0,
+  };
+}
+
+function incrementCounts(
+  counts: ToolReviewGovernancePlanCounts,
+  status: TaToolReviewActionStatus,
+): void {
+  counts.total += 1;
+  switch (status) {
+    case "recorded":
+      counts.recorded += 1;
+      return;
+    case "ready_for_handoff":
+      counts.readyForHandoff += 1;
+      return;
+    case "waiting_human":
+      counts.waitingHuman += 1;
+      return;
+    case "blocked":
+      counts.blocked += 1;
+      return;
+    case "completed":
+      counts.completed += 1;
+      return;
+  }
+}
+
+function resolveRecommendedNextStep(
+  counts: ToolReviewGovernancePlanCounts,
+): string {
+  if (counts.blocked > 0) {
+    return "Inspect blocked governance actions first and either fix the capability package or send it back for another build iteration.";
+  }
+  if (counts.waitingHuman > 0) {
+    return "Wait for the human gate decision before continuing the tool governance chain.";
+  }
+  if (counts.readyForHandoff > 0) {
+    return "Continue the runtime handoff chain so the staged activation, lifecycle, or replay action can advance.";
+  }
+  if (counts.completed > 0 && counts.completed === counts.total) {
+    return "Session is fully settled; keep the evidence bundle for future audits or resumptions.";
+  }
+  return "Governance actions are recorded only; keep the session available for later runtime orchestration.";
+}
+
+function resolveQualityVerdict(
+  counts: ToolReviewGovernancePlanCounts,
+): TaToolReviewQualityVerdict {
+  if (counts.blocked > 0) {
+    return "blocked";
+  }
+  if (counts.waitingHuman > 0) {
+    return "waiting_human";
+  }
+  if (counts.readyForHandoff > 0) {
+    return "handoff_ready";
+  }
+  return "recorded_only";
 }
 
 function createActivationOutput(
@@ -311,6 +396,83 @@ export class ToolReviewerRuntime {
     return sessionId
       ? actions.filter((action) => action.sessionId === sessionId)
       : actions;
+  }
+
+  createGovernancePlan(sessionId: string): ToolReviewGovernancePlan | undefined {
+    const session = this.#sessions.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    const items: ToolReviewGovernancePlanItem[] = [...this.listActions(sessionId)]
+      .slice()
+      .sort(compareActions)
+      .map(summarizeToolReviewAction);
+    const counts = createEmptyCounts();
+    for (const item of items) {
+      incrementCounts(counts, item.status);
+    }
+    const latestItem = items.at(-1);
+
+    return {
+      sessionId,
+      status: session.status,
+      capabilityKeys: [...new Set(items.map((item) => item.capabilityKey))],
+      latestActionId: latestItem?.actionId ?? session.latestActionId,
+      latestReviewId: latestItem?.reviewId,
+      counts,
+      items,
+      recommendedNextStep: resolveRecommendedNextStep(counts),
+      generatedAt: session.updatedAt,
+    };
+  }
+
+  listGovernancePlans(): readonly ToolReviewGovernancePlan[] {
+    return this.listSessions()
+      .map((session) => this.createGovernancePlan(session.sessionId))
+      .filter((plan): plan is ToolReviewGovernancePlan => plan !== undefined);
+  }
+
+  createQualityReport(sessionId: string): ToolReviewQualityReport | undefined {
+    const plan = this.createGovernancePlan(sessionId);
+    if (!plan) {
+      return undefined;
+    }
+
+    const latestItem = plan.items.at(-1);
+    const verdict = resolveQualityVerdict(plan.counts);
+    const blockingItems = plan.items.filter((item) => item.blocked);
+    const waitingHumanItems = plan.items.filter((item) => item.requiresHuman);
+    const readyItems = plan.items.filter((item) => item.readyForHandoff);
+
+    let summary = "Tool governance has only recorded evidence so far.";
+    if (verdict === "blocked") {
+      summary = `Tool governance is blocked by ${blockingItems.length} action(s); latest block is ${blockingItems.at(-1)?.summary ?? "unknown"}.`;
+    } else if (verdict === "waiting_human") {
+      summary = `Tool governance is waiting for ${waitingHumanItems.length} human decision(s) before the chain can continue.`;
+    } else if (verdict === "handoff_ready") {
+      summary = `Tool governance has ${readyItems.length} handoff-ready action(s) that can continue in the runtime mainline.`;
+    }
+
+    return {
+      sessionId,
+      verdict,
+      summary,
+      recommendedNextStep: plan.recommendedNextStep,
+      generatedAt: plan.generatedAt,
+      counts: plan.counts,
+      latestActionId: plan.latestActionId,
+      latestReviewId: latestItem?.reviewId,
+      blockingReviewIds: blockingItems.map((item) => item.reviewId),
+      waitingHumanReviewIds: waitingHumanItems.map((item) => item.reviewId),
+      readyForHandoffReviewIds: readyItems.map((item) => item.reviewId),
+    };
+  }
+
+  listQualityReports(): readonly ToolReviewQualityReport[] {
+    return this.listSessions()
+      .map((session) => this.createQualityReport(session.sessionId))
+      .filter((report): report is ToolReviewQualityReport => report !== undefined);
   }
 
   createSnapshots(): ToolReviewSessionSnapshot[] {

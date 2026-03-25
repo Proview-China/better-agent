@@ -119,6 +119,15 @@ test("tool reviewer runtime stages activation and lifecycle shells as handoff-re
   ]);
   assert.equal(runtime.listSessions().length, 1);
   assert.equal(runtime.listActions(activation.sessionId).length, 2);
+  const plan = runtime.createGovernancePlan(activation.sessionId);
+  assert.ok(plan);
+  assert.deepEqual(plan?.capabilityKeys, ["mcp.playwright"]);
+  assert.equal(plan?.counts.readyForHandoff, 2);
+  assert.equal(plan?.latestActionId, "action-lifecycle-1");
+  const report = runtime.createQualityReport(activation.sessionId);
+  assert.ok(report);
+  assert.equal(report?.verdict, "handoff_ready");
+  assert.equal(report?.readyForHandoffReviewIds.length, 2);
 });
 
 test("tool reviewer runtime preserves human gate waiting status and replay re-review status", async () => {
@@ -270,6 +279,16 @@ test("tool reviewer runtime preserves human gate waiting status and replay re-re
   const defaultSession = runtime.getSession(replay.sessionId);
   assert.ok(defaultSession);
   assert.equal(defaultSession?.status, "blocked");
+  const quality = runtime.createQualityReport(replay.sessionId);
+  assert.ok(quality);
+  assert.equal(quality?.verdict, "blocked");
+  assert.equal(quality?.blockingReviewIds.length, 1);
+  const humanGateQuality = runtime.createQualityReport(humanGate.sessionId);
+  assert.ok(humanGateQuality);
+  assert.equal(humanGateQuality?.verdict, "waiting_human");
+  assert.equal(humanGateQuality?.waitingHumanReviewIds.length, 1);
+  const plans = runtime.listGovernancePlans();
+  assert.equal(plans.length, 2);
 });
 
 test("tool reviewer runtime can restore durable-friendly session snapshots", async () => {
@@ -319,6 +338,9 @@ test("tool reviewer runtime can restore durable-friendly session snapshots", asy
   const snapshots = runtime.createSnapshots();
   assert.equal(snapshots.length, 1);
   assert.equal(snapshots[0]?.session.latestActionId, "action-restore-1");
+  const restoredPlan = runtime.createGovernancePlan("tool-review-session:restore");
+  assert.ok(restoredPlan);
+  assert.equal(restoredPlan?.counts.readyForHandoff, 1);
 });
 
 test("tool reviewer hydration restores governance records without auto-creating new actions", async () => {
@@ -360,6 +382,9 @@ test("tool reviewer hydration restores governance records without auto-creating 
   assert.equal(restored.listActions().length, 1);
   assert.equal(restored.listActions()[0]?.governanceKind, "replay");
   assert.equal(restored.listActions()[0]?.status, "ready_for_handoff");
+  const restoredReport = restored.createQualityReport("tool-review-session:no-auto-run");
+  assert.ok(restoredReport);
+  assert.equal(restoredReport?.verdict, "handoff_ready");
 });
 
 test("tool reviewer lifecycle blocked output stays governance-only and preserves failure details", async () => {

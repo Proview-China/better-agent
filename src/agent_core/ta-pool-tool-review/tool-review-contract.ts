@@ -72,6 +72,15 @@ export const TA_TOOL_REVIEW_ACTION_STATUSES = [
 export type TaToolReviewActionStatus =
   (typeof TA_TOOL_REVIEW_ACTION_STATUSES)[number];
 
+export const TA_TOOL_REVIEW_QUALITY_VERDICTS = [
+  "recorded_only",
+  "handoff_ready",
+  "waiting_human",
+  "blocked",
+] as const;
+export type TaToolReviewQualityVerdict =
+  (typeof TA_TOOL_REVIEW_QUALITY_VERDICTS)[number];
+
 export interface ToolReviewSourceDecisionRef {
   decisionId: ReviewDecision["decisionId"];
   decision: ReviewDecision["decision"];
@@ -250,6 +259,56 @@ export interface ToolReviewActionLedgerEntry {
   metadata?: Record<string, unknown>;
 }
 
+export interface ToolReviewGovernancePlanItem {
+  reviewId: string;
+  actionId: string;
+  governanceKind: ToolReviewGovernanceInputShell["kind"];
+  capabilityKey: string;
+  status: TaToolReviewActionStatus;
+  boundaryMode: TaToolReviewAgentBoundaryMode;
+  summary: string;
+  recordedAt: string;
+  updatedAt: string;
+  requiresHuman: boolean;
+  readyForHandoff: boolean;
+  blocked: boolean;
+}
+
+export interface ToolReviewGovernancePlanCounts {
+  total: number;
+  recorded: number;
+  readyForHandoff: number;
+  waitingHuman: number;
+  blocked: number;
+  completed: number;
+}
+
+export interface ToolReviewGovernancePlan {
+  sessionId: string;
+  status: "open" | "waiting_human" | "blocked" | "completed";
+  capabilityKeys: string[];
+  latestActionId?: string;
+  latestReviewId?: string;
+  counts: ToolReviewGovernancePlanCounts;
+  items: ToolReviewGovernancePlanItem[];
+  recommendedNextStep: string;
+  generatedAt: string;
+}
+
+export interface ToolReviewQualityReport {
+  sessionId: string;
+  verdict: TaToolReviewQualityVerdict;
+  summary: string;
+  recommendedNextStep: string;
+  generatedAt: string;
+  counts: ToolReviewGovernancePlanCounts;
+  latestActionId?: string;
+  latestReviewId?: string;
+  blockingReviewIds: string[];
+  waitingHumanReviewIds: string[];
+  readyForHandoffReviewIds: string[];
+}
+
 export interface CreateToolReviewActionLedgerEntryInput {
   reviewId: string;
   sessionId: string;
@@ -319,5 +378,24 @@ export function createToolReviewActionLedgerEntry(
     recordedAt: assertNonEmpty(input.recordedAt, "Tool review action recordedAt"),
     updatedAt: assertNonEmpty(input.updatedAt ?? input.recordedAt, "Tool review action updatedAt"),
     metadata: input.metadata,
+  };
+}
+
+export function summarizeToolReviewAction(
+  action: ToolReviewActionLedgerEntry,
+): ToolReviewGovernancePlanItem {
+  return {
+    reviewId: action.reviewId,
+    actionId: action.actionId,
+    governanceKind: action.governanceKind,
+    capabilityKey: action.capabilityKey,
+    status: action.status,
+    boundaryMode: action.boundaryMode,
+    summary: action.output.summary,
+    recordedAt: action.recordedAt,
+    updatedAt: action.updatedAt,
+    requiresHuman: action.status === "waiting_human",
+    readyForHandoff: action.status === "ready_for_handoff",
+    blocked: action.status === "blocked",
   };
 }
