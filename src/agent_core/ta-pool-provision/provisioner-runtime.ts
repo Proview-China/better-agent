@@ -28,8 +28,10 @@ import {
 } from "./provision-durable-snapshot.js";
 import {
   cloneTmaSessionState,
+  markTmaSessionCompleted,
   type TmaSessionState,
 } from "./tma-session-state.js";
+import { createTmaReadyBundleReceipt } from "./tma-delivery-receipt.js";
 
 export interface ProvisionBuildArtifacts {
   toolArtifact: ProvisionArtifactRef;
@@ -48,6 +50,10 @@ export interface ProvisionerRuntimeOptions {
   idFactory?: () => string;
 }
 
+interface SubmitProvisionRequestOptions {
+  resumedFromSessionId?: string;
+}
+
 export interface ProvisionerRuntimeLike {
   submit(request: ProvisionRequest): Promise<ProvisionArtifactBundle>;
   getBundleHistory(provisionId: string): readonly ProvisionArtifactBundle[];
@@ -60,6 +66,26 @@ export interface ProvisionerRuntimeDurableState {
   assetIndex: ProvisionAssetIndexSnapshot;
   bundleHistory: ProvisionBundleHistorySnapshotEntry[];
   tmaSessions?: TmaSessionState[];
+}
+
+export interface ProvisionDeliveryReport {
+  provisionId: string;
+  status: "missing" | ProvisionArtifactBundle["status"];
+  latestBundleId?: string;
+  capabilityKey?: string;
+  replayPolicy?: ProvisionArtifactBundle["replayPolicy"];
+  activationMode?: NonNullable<ProvisionArtifactBundle["activationSpec"]>["activationMode"];
+  artifactRefs: {
+    tool?: string;
+    binding?: string;
+    verification?: string;
+    usage?: string;
+  };
+  tmaSessionIds: string[];
+  resumableSessionIds: string[];
+  recommendedNextStep: string;
+  summary: string;
+  generatedAt: string;
 }
 
 function defaultMockBuilder(request: ProvisionRequest): Promise<ProvisionBuildArtifacts> {
@@ -131,6 +157,13 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
   }
 
   async submit(request: ProvisionRequest): Promise<ProvisionArtifactBundle> {
+    return this.#submitProvisionRequest(request);
+  }
+
+  async #submitProvisionRequest(
+    request: ProvisionRequest,
+    options: SubmitProvisionRequestOptions = {},
+  ): Promise<ProvisionArtifactBundle> {
     this.registry.registerRequest(request);
 
     const buildingBundle = createProvisionArtifactBundle({
@@ -167,7 +200,33 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
         ],
         sessionState: planner.sessionState,
       });
+      const plannerSession = markTmaSessionCompleted(planner.sessionState, {
+        updatedAt: completedAt,
+        reportId: executor.report.reportId,
+        metadata: {
+          phaseResult: "ready_for_executor_delivery",
+          executorSessionId: executor.sessionState.sessionId,
+          resumedFromSessionId: options.resumedFromSessionId,
+        },
+      });
+      this.#tmaSessions.set(plannerSession.sessionId, cloneTmaSessionState(plannerSession));
       this.#tmaSessions.set(executor.sessionState.sessionId, cloneTmaSessionState(executor.sessionState));
+      const deliveryReceipt = createTmaReadyBundleReceipt({
+        provisionId: request.provisionId,
+        requestedCapabilityKey: request.requestedCapabilityKey,
+        lane: planner.lane,
+        readyAt: completedAt,
+        plannerSessionId: plannerSession.sessionId,
+        executorSessionId: executor.sessionState.sessionId,
+        resumedFromSessionId: options.resumedFromSessionId,
+        toolArtifact: output.toolArtifact,
+        bindingArtifact: output.bindingArtifact,
+        verificationArtifact: output.verificationArtifact,
+        usageArtifact: output.usageArtifact,
+        verificationEvidence: executor.verificationEvidence,
+        rollbackHandle: executor.rollbackHandle,
+        report: executor.report,
+      });
       const readyBundle = createProvisionArtifactBundle({
         bundleId: this.#idFactory(),
         provisionId: request.provisionId,
@@ -196,7 +255,9 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
             report: executor.report,
             verificationEvidence: executor.verificationEvidence,
             rollbackHandle: executor.rollbackHandle,
+            sessionId: executor.sessionState.sessionId,
           },
+          tmaDeliveryReceipt: deliveryReceipt,
           ...(output.metadata ?? {}),
         },
       });
@@ -226,6 +287,58 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
     return this.#bundleHistory.get(provisionId) ?? [];
   }
 
+  createDeliveryReport(provisionId: string): ProvisionDeliveryReport {
+    const history = this.getBundleHistory(provisionId);
+    const latestBundle = history.at(-1);
+    const record = this.registry.get(provisionId);
+    const relatedSessions = this.listTmaSessions().filter((session) => session.provisionId === provisionId);
+    const resumableSessionIds = relatedSessions
+      .filter((session) => session.status === "resumable")
+      .map((session) => session.sessionId);
+    const summary = !latestBundle
+      ? `No provision bundle exists yet for ${provisionId}.`
+      : latestBundle.status === "ready"
+        ? `Provision bundle ${latestBundle.bundleId} is ready with tool, binding, verification, and usage artifacts attached.`
+        : latestBundle.status === "failed"
+          ? `Provision bundle ${latestBundle.bundleId} failed and should be inspected before retrying.`
+          : `Provision bundle ${latestBundle.bundleId} is still building.`;
+    const recommendedNextStep = !latestBundle
+      ? "Submit a provision request first."
+      : latestBundle.status === "ready"
+        ? resumableSessionIds.length > 0
+          ? "Bundle is ready, but resumable TMA sessions still exist; inspect whether they should be resumed or closed."
+          : "Bundle is ready for tool reviewer quality checks, activation review, and replay planning."
+        : latestBundle.status === "failed"
+          ? resumableSessionIds.length > 0
+            ? "Resume the TMA session or fix the worker bridge inputs before retrying."
+            : "Inspect the failure bundle and rebuild the capability package."
+          : "Wait for the current build to finish or inspect the active worker lane.";
+
+    return {
+      provisionId,
+      status: latestBundle?.status ?? "missing",
+      latestBundleId: latestBundle?.bundleId,
+      capabilityKey: record?.request.requestedCapabilityKey,
+      replayPolicy: latestBundle?.replayPolicy,
+      activationMode: latestBundle?.activationSpec?.activationMode,
+      artifactRefs: {
+        tool: latestBundle?.toolArtifact?.ref,
+        binding: latestBundle?.bindingArtifact?.ref,
+        verification: latestBundle?.verificationArtifact?.ref,
+        usage: latestBundle?.usageArtifact?.ref,
+      },
+      tmaSessionIds: relatedSessions.map((session) => session.sessionId),
+      resumableSessionIds,
+      recommendedNextStep,
+      summary,
+      generatedAt: this.#clock().toISOString(),
+    };
+  }
+
+  listDeliveryReports(): readonly ProvisionDeliveryReport[] {
+    return this.registry.list().map((entry) => this.createDeliveryReport(entry.request.provisionId));
+  }
+
   getTmaSession(sessionId: string): TmaSessionState | undefined {
     const state = this.#tmaSessions.get(sessionId);
     return state ? cloneTmaSessionState(state) : undefined;
@@ -249,7 +362,9 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
       return undefined;
     }
 
-    return this.submit(record.request);
+    return this.#submitProvisionRequest(record.request, {
+      resumedFromSessionId: sessionId,
+    });
   }
 
   serializeDurableState(): ProvisionerDurableSnapshot {

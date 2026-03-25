@@ -120,7 +120,7 @@ function resolveRecommendedNextStep(
     return "Wait for the human gate decision before continuing the tool governance chain.";
   }
   if (counts.readyForHandoff > 0) {
-    return "Continue the runtime handoff chain so the staged activation, lifecycle, or replay action can advance.";
+    return "Continue the next activation, lifecycle, or replay handoff on the runtime mainline.";
   }
   if (counts.completed > 0 && counts.completed === counts.total) {
     return "Session is fully settled; keep the evidence bundle for future audits or resumptions.";
@@ -451,7 +451,7 @@ export class ToolReviewerRuntime {
     } else if (verdict === "waiting_human") {
       summary = `Tool governance is waiting for ${waitingHumanItems.length} human decision(s) before the chain can continue.`;
     } else if (verdict === "handoff_ready") {
-      summary = `Tool governance has ${readyItems.length} handoff-ready action(s) that can continue in the runtime mainline.`;
+      summary = `Tool governance has ${readyItems.length} action(s) ready to hand back into the runtime mainline.`;
     }
 
     return {

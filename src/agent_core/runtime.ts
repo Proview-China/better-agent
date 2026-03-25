@@ -30,6 +30,7 @@ import {
 } from "./ta-pool-model/index.js";
 import {
   activateProvisionAsset,
+  createTapGovernanceSnapshot,
   applyTaHumanGateEvent,
   createActivationFactoryResolver,
   createPoolRuntimeSnapshots,
@@ -41,10 +42,12 @@ import {
   createExecutionRequest,
   createInvocationPlanFromGrant,
   createTapPoolRuntimeSnapshot,
+  hasPendingTapGovernanceWork,
   TaControlPlaneGateway,
   type ActivationAdapterFactory,
   type ActivationDriverResult,
   type PoolRuntimeSnapshots,
+  type TapGovernanceSnapshot,
   type TapPoolRuntimeSnapshot,
   type TaActivationFailure,
   type TaActivationReceipt,
@@ -56,11 +59,17 @@ import {
 } from "./ta-pool-runtime/index.js";
 import { createReviewerRuntime, ReviewerRuntime } from "./ta-pool-review/index.js";
 import { createProvisionerRuntime, ProvisionerRuntime } from "./ta-pool-provision/index.js";
-import type { ProvisionAssetRecord } from "./ta-pool-provision/index.js";
+import type { ProvisionAssetRecord, ProvisionDeliveryReport, TmaSessionState } from "./ta-pool-provision/index.js";
 import {
   createToolReviewGovernanceTrace,
   createToolReviewerRuntime,
   ToolReviewerRuntime,
+} from "./ta-pool-tool-review/index.js";
+import type {
+  ToolReviewActionLedgerEntry,
+  ToolReviewGovernancePlan,
+  ToolReviewQualityReport,
+  ToolReviewSessionState,
 } from "./ta-pool-tool-review/index.js";
 import { evaluateSafetyInterception, type TaSafetyInterceptorConfig } from "./ta-pool-safety/index.js";
 import { formatPlainLanguageRisk } from "./ta-pool-context/plain-language-risk.js";
@@ -566,6 +575,22 @@ export class AgentCoreRuntime {
 
   listTaActivationAttempts(): readonly TaActivationAttemptRecord[] {
     return [...this.#taActivationAttempts.values()];
+  }
+
+  getToolReviewerSession(sessionId: string): ToolReviewSessionState | undefined {
+    return this.toolReviewerRuntime?.getSession(sessionId);
+  }
+
+  listToolReviewerSessions(): readonly ToolReviewSessionState[] {
+    return this.toolReviewerRuntime?.listSessions() ?? [];
+  }
+
+  listToolReviewerGovernancePlans(): readonly ToolReviewGovernancePlan[] {
+    return this.toolReviewerRuntime?.listGovernancePlans() ?? [];
+  }
+
+  listToolReviewerQualityReports(): readonly ToolReviewQualityReport[] {
+    return this.toolReviewerRuntime?.listQualityReports() ?? [];
   }
 
   getTaResumeEnvelope(envelopeId: string) {

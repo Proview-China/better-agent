@@ -415,3 +415,46 @@ test("tool reviewer lifecycle blocked output stays governance-only and preserves
   assert.equal(result.output.status, "lifecycle_blocked");
   assert.equal(result.output.failure?.code, "agent_core_capability_binding_missing");
 });
+
+test("tool reviewer runtime can summarize a governance plan and quality report from recorded actions", async () => {
+  const runtime = createToolReviewerRuntime();
+  const sessionId = "tool-review-session:plan-1";
+
+  await runtime.submit({
+    sessionId,
+    governanceAction: {
+      kind: "replay",
+      trace: createToolReviewGovernanceTrace({
+        actionId: "action-plan-replay-1",
+        actorId: "tool-reviewer",
+        reason: "Replay should be staged for re-review.",
+        createdAt: "2026-03-25T11:00:00.000Z",
+      }),
+      capabilityKey: "computer.use",
+      replay: createTaPendingReplay({
+        replayId: "replay-plan-1",
+        request: {
+          requestId: "req-plan-1",
+          requestedCapabilityKey: "computer.use",
+        },
+        provisionBundle: {
+          provisionId: "prov-plan-1",
+          replayPolicy: "re_review_then_dispatch",
+        },
+        createdAt: "2026-03-25T10:59:59.000Z",
+      }),
+    },
+  });
+
+  const plan = runtime.createGovernancePlan(sessionId);
+  const report = runtime.createQualityReport(sessionId);
+
+  assert.ok(plan);
+  assert.equal(plan?.counts.readyForHandoff, 1);
+  assert.equal(plan?.recommendedNextStep, "Continue the next activation, lifecycle, or replay handoff on the runtime mainline.");
+  assert.equal(plan?.items[0]?.readyForHandoff, true);
+  assert.ok(report);
+  assert.equal(report?.verdict, "handoff_ready");
+  assert.equal(report?.readyForHandoffReviewIds.length, 1);
+  assert.match(report?.summary ?? "", /ready to hand back/i);
+});

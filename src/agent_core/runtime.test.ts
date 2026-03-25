@@ -1037,6 +1037,11 @@ test("AgentCoreRuntime can assemble review -> provisioning through T/A pool for 
   assert.equal(typeof result.replay?.resumeEnvelopeId, "string");
   assert.equal(result.replay?.resumeEnvelopeId?.startsWith("resume:replay:"), true);
   assert.equal(runtime.listTaPendingReplays().length, 1);
+  assert.deepEqual(runtime.listResumableTmaSessions(), []);
+  assert.equal(
+    (result.provisionBundle?.metadata?.tmaDeliveryReceipt as { completionTarget?: string } | undefined)?.completionTarget,
+    "ready_bundle",
+  );
 });
 
 test("AgentCoreRuntime keeps restricted requests inside TAP until human approval arrives", async () => {
@@ -1610,6 +1615,7 @@ test("AgentCoreRuntime records tool reviewer governance sessions from runtime hu
   assert.equal(runtime.toolReviewerRuntime?.listActions().length, 1);
   assert.equal(runtime.toolReviewerRuntime?.listActions()[0]?.governanceKind, "human_gate");
   assert.equal(runtime.toolReviewerRuntime?.listActions().every((action) => action.boundaryMode === "governance_only"), true);
+  assert.equal(runtime.listToolReviewerQualityReports()[0]?.verdict, "waiting_human");
 
   const approved = await runtime.submitTaHumanGateDecision({
     gateId: runtime.listTaHumanGates()[0]!.gateId,
@@ -1652,6 +1658,10 @@ test("AgentCoreRuntime records tool reviewer governance sessions from runtime hu
   assert.equal(activation.status, "activated");
   assert.equal(runtime.toolReviewerRuntime?.listActions().some((action) => action.governanceKind === "activation"), true);
   assert.equal(runtime.toolReviewerRuntime?.listActions().every((action) => action.boundaryMode === "governance_only"), true);
+  const governancePlan = runtime.listToolReviewerGovernancePlans()[0];
+  assert.ok(governancePlan);
+  assert.equal(governancePlan?.counts.readyForHandoff >= 1, true);
+  assert.equal(runtime.listToolReviewerQualityReports()[0]?.verdict, "handoff_ready");
 });
 
 test("AgentCoreRuntime records blocked tool-review lifecycle when target binding is missing", async () => {
@@ -1679,6 +1689,7 @@ test("AgentCoreRuntime records blocked tool-review lifecycle when target binding
   assert.equal(latestLifecycleAction?.governanceKind, "lifecycle");
   assert.equal(latestLifecycleAction?.boundaryMode, "governance_only");
   assert.equal(latestLifecycleAction?.output.status, "lifecycle_blocked");
+  assert.equal(runtime.listToolReviewerQualityReports()[0]?.verdict, "blocked");
 });
 
 test("AgentCoreRuntime auto-continues eligible provisioning after lifecycle application", async () => {

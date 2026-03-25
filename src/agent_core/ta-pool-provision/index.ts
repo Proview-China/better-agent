@@ -25,6 +25,7 @@ export {
 export type {
   ProvisionerRuntimeDurableState,
   ProvisionBuildArtifacts,
+  ProvisionDeliveryReport,
   ProvisionerRuntimeLike,
   ProvisionerRuntimeOptions,
 } from "./provisioner-runtime.js";
@@ -67,6 +68,14 @@ export {
   createProvisionerDurableSnapshot,
   restoreProvisionerBundleHistory,
 } from "./provision-durable-snapshot.js";
+
+export type {
+  TmaReadyBundleArtifactRefs,
+  TmaReadyBundleReceipt,
+} from "./tma-delivery-receipt.js";
+export {
+  createTmaReadyBundleReceipt,
+} from "./tma-delivery-receipt.js";
 
 export type {
   TmaPlannerOutput,

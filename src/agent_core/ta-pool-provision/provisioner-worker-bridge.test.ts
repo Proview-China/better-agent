@@ -77,6 +77,11 @@ test("default provisioner worker output carries package artifacts plus activatio
   assert.equal(output.activationPayload.bindingPayload.bridgeLane, "bootstrap");
   assert.equal(output.replayRecommendation.policy, "auto_after_verify");
   assert.equal(output.replayRecommendation.suggestedTrigger, "after_verify");
+  assert.equal(output.metadata?.deliveryTarget, "ready_bundle_candidate");
+  assert.equal(
+    (output.metadata?.evidenceContract as { requiresVerificationArtifact?: boolean } | undefined)?.requiresVerificationArtifact,
+    true,
+  );
   assert.match(output.buildSummary, /Real builder execution and activation driver remain unimplemented/i);
 });
 
@@ -95,5 +100,9 @@ test("bootstrap tooling capabilities emit formal package payloads through the wo
   assert.equal(output.activationPayload.adapterFactoryRef, "factory:tap-tooling:skill.doc.generate");
   assert.equal(output.toolArtifact.metadata?.formalCapabilityPackage, true);
   assert.equal(output.metadata?.packageTemplateStatus, "formal");
+  assert.equal(
+    (output.metadata?.packageSectionsComplete as { usage?: boolean } | undefined)?.usage,
+    true,
+  );
   assert.match(output.buildSummary, /formal bootstrap tooling capability package/i);
 });

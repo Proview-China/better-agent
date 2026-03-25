@@ -37,12 +37,19 @@ test("provisioner runtime records building then ready through the default provis
   assert.equal(bundle.metadata?.workerPromptPackId, "provisioner-worker:bootstrap:v1");
   assert.equal((bundle.metadata?.tmaPlanner as { lane?: string } | undefined)?.lane, "bootstrap");
   assert.equal((bundle.metadata?.tmaExecutor as { report?: { status?: string } } | undefined)?.report?.status, "completed");
+  assert.equal((bundle.metadata?.tmaDeliveryReceipt as { completionTarget?: string } | undefined)?.completionTarget, "ready_bundle");
+  assert.equal((bundle.metadata?.tmaDeliveryReceipt as { plannerSessionId?: string } | undefined)?.plannerSessionId, "tma:provision-1:planner");
+  assert.equal((bundle.metadata?.tmaDeliveryReceipt as { executorSessionId?: string } | undefined)?.executorSessionId, "tma:provision-1:executor");
   assert.equal(registry.get(request.provisionId)?.bundle?.status, "ready");
   assert.deepEqual(runtime.assetIndex.listCapabilityKeysByStatus(["ready_for_review"]), ["mcp.playwright"]);
   assert.equal(
     runtime.assetIndex.getCurrent(request.provisionId)?.activation.bindingArtifactRef,
     "provisioned/mcp.playwright/binding.json",
   );
+  assert.deepEqual(runtime.listResumableTmaSessions(), []);
+  const plannerSession = runtime.getTmaSession("tma:provision-1:planner");
+  assert.equal(plannerSession?.status, "completed");
+  assert.equal(plannerSession?.metadata?.phaseResult, "ready_for_executor_delivery");
 });
 
 test("provisioner runtime records building then failed when builder throws", async () => {
@@ -328,9 +335,14 @@ test("provisioner runtime can explicitly resume a resumable TMA session after re
   const resumedBundle = await restored.resumeTmaSession(resumable[0]!.sessionId);
 
   assert.equal(resumedBundle?.status, "ready");
+  assert.equal(
+    (resumedBundle?.metadata?.tmaDeliveryReceipt as { resumedFromSessionId?: string } | undefined)?.resumedFromSessionId,
+    resumable[0]!.sessionId,
+  );
   assert.deepEqual(
     restored.getBundleHistory(request.provisionId).map((bundle) => bundle.status),
     ["building", "failed", "building", "ready"],
   );
   assert.equal(restored.listTmaSessions().some((session) => session.phase === "executor"), true);
+  assert.equal(restored.listResumableTmaSessions().length, 0);
 });

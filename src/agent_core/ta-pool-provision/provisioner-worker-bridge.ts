@@ -631,7 +631,7 @@ export function createDefaultProvisionerWorkerOutput(
         ? `Built a formal bootstrap tooling capability package for ${input.request.requestedCapabilityKey}.`
         : `Built a staged capability package for ${input.request.requestedCapabilityKey}.`,
       `Lane: ${input.lane}.`,
-      "This bridge returns package artifacts plus activation/replay guidance only.",
+      "This bridge returns a ready-bundle candidate with package artifacts, activation guidance, and replay guidance only.",
       capabilityPackage
         ? "Activation still needs the outer runtime, but the package contract is no longer placeholder-only."
         : "Real builder execution and activation driver remain unimplemented.",
@@ -650,6 +650,24 @@ export function createDefaultProvisionerWorkerOutput(
       realBuilderImplemented: !!capabilityPackage,
       activationDriverImplemented: !!capabilityPackage,
       formalCapabilityPackage: !!capabilityPackage,
+      deliveryTarget: "ready_bundle_candidate",
+      evidenceContract: {
+        requiresToolArtifact: true,
+        requiresBindingArtifact: true,
+        requiresVerificationArtifact: true,
+        requiresUsageArtifact: true,
+        requiresReplayRecommendation: true,
+        requiresActivationPayload: true,
+      },
+      packageSectionsComplete: {
+        manifest: true,
+        adapter: true,
+        policy: true,
+        builder: true,
+        lifecycle: true,
+        verification: true,
+        usage: true,
+      },
     },
   };
 }
