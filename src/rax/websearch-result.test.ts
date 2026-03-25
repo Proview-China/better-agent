@@ -146,7 +146,7 @@ test("normalizeWebSearchOutput extracts answer citations and sources from Gemini
   assert.equal(output.sources.length, 1);
 });
 
-test("normalizeWebSearchOutput keeps Gemini generateContent success without metadata as answer-only", () => {
+test("normalizeWebSearchOutput keeps Gemini generateContent answer-only payload for later truthfulness checks", () => {
   const output = normalizeWebSearchOutput("deepmind", {
     candidates: [
       {
@@ -165,13 +165,32 @@ test("normalizeWebSearchOutput keeps Gemini generateContent success without meta
 
 test("toWebSearchCapabilityResult wraps normalized output into a capability result", () => {
   const result = toWebSearchCapabilityResult("openai", "gpt-5", "api", {
-    output_text: "Grounded answer"
+    output_text: "Grounded answer",
+    output: [
+      {
+        type: "message",
+        content: [
+          {
+            type: "output_text",
+            text: "Grounded answer",
+            annotations: [
+              {
+                type: "url_citation",
+                url: "https://platform.openai.com/docs",
+                title: "OpenAI Docs"
+              }
+            ]
+          }
+        ]
+      }
+    ]
   });
 
   assert.equal(result.status, "success");
   assert.equal(result.capability, "search");
   assert.equal(result.action, "ground");
   assert.equal(result.output?.answer, "Grounded answer");
+  assert.equal(result.output?.citations[0]?.url, "https://platform.openai.com/docs");
 });
 
 test("toWebSearchCapabilityResult marks Anthropic tool_use-only search as partial", () => {
@@ -228,6 +247,105 @@ test("toWebSearchCapabilityResult marks Anthropic tool_use-only search as partia
   });
 });
 
+test("toWebSearchCapabilityResult keeps Anthropic grounded answers as success once text is finalized", () => {
+  const result = toWebSearchCapabilityResult("anthropic", "claude-opus-4-6-thinking", "api", {
+    stop_reason: "tool_use",
+    content: [
+      {
+        type: "text",
+        text: "The official documentation domain for Anthropic is docs.anthropic.com.",
+        citations: [
+          {
+            type: "web_search_result_location",
+            url: "https://docs.anthropic.com/en/home",
+            title: "Anthropic Docs"
+          }
+        ]
+      }
+    ]
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.error, undefined);
+  assert.equal(
+    result.output?.answer,
+    "The official documentation domain for Anthropic is docs.anthropic.com."
+  );
+  assert.equal(result.output?.citations[0]?.url, "https://docs.anthropic.com/en/home");
+});
+
+test("toWebSearchCapabilityResult marks answer-only grounded output as partial when evidence is missing", () => {
+  const result = toWebSearchCapabilityResult("deepmind", "gemini-2.5-pro", "api", {
+    candidates: [
+      {
+        content: {
+          parts: [{ text: "The Gemini docs domain is ai.google.dev." }]
+        },
+        finishReason: "STOP"
+      }
+    ]
+  });
+
+  assert.equal(result.status, "partial");
+  assert.deepEqual(result.error, {
+    code: "websearch_evidence_missing",
+    message:
+      "search.ground produced an answer without any citations or source evidence, so the result is not fully grounded yet.",
+    raw: {
+      candidates: [
+        {
+          content: {
+            parts: [{ text: "The Gemini docs domain is ai.google.dev." }]
+          },
+          finishReason: "STOP"
+        }
+      ]
+    }
+  });
+});
+
+test("toWebSearchCapabilityResult marks source-only grounded output as partial when answer text is missing", () => {
+  const result = toWebSearchCapabilityResult("openai", "gpt-5", "api", {
+    output: [
+      {
+        type: "web_search_call",
+        action: {
+          sources: [
+            {
+              url: "https://platform.openai.com/docs",
+              title: "OpenAI Docs",
+              snippet: "Responses API web search tool"
+            }
+          ]
+        }
+      }
+    ]
+  });
+
+  assert.equal(result.status, "partial");
+  assert.deepEqual(result.error, {
+    code: "websearch_answer_missing",
+    message:
+      "search.ground returned source evidence but no finalized answer text, so the result is only partially complete.",
+    raw: {
+      output: [
+        {
+          type: "web_search_call",
+          action: {
+            sources: [
+              {
+                url: "https://platform.openai.com/docs",
+                title: "OpenAI Docs",
+                snippet: "Responses API web search tool"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  });
+});
+
 test("toWebSearchFailureResult preserves error context", () => {
   const result = toWebSearchFailureResult(
     "anthropic",
@@ -242,5 +360,24 @@ test("toWebSearchFailureResult preserves error context", () => {
     code: "websearch_failed",
     message: "Search failed",
     raw: { cause: "rate_limit" }
+  });
+});
+
+test("toWebSearchFailureResult keeps explicit error codes when runtime provides them", () => {
+  const result = toWebSearchFailureResult(
+    "anthropic",
+    "claude-sonnet-4",
+    "agent",
+    "Claude Code search is unavailable on Windows.",
+    { platform: "win32" },
+    undefined,
+    "anthropic_agent_unavailable_on_windows"
+  );
+
+  assert.equal(result.status, "failed");
+  assert.deepEqual(result.error, {
+    code: "anthropic_agent_unavailable_on_windows",
+    message: "Claude Code search is unavailable on Windows.",
+    raw: { platform: "win32" }
   });
 });

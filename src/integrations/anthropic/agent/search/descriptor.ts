@@ -3,14 +3,17 @@ import type {
   PreparedInvocation
 } from "../../../../rax/contracts.js";
 import type { CapabilityRequest } from "../../../../rax/types.js";
-import type { WebSearchCreateInput } from "../../../../rax/websearch-types.js";
+import {
+  buildWebSearchTaskPrompt,
+  type WebSearchCreateInput
+} from "../../../../rax/websearch-types.js";
 
 export interface AnthropicAgentWebSearchInput extends WebSearchCreateInput {}
 
 function buildAnthropicAgentPrompt(
   input: AnthropicAgentWebSearchInput
 ): string {
-  return input.query.trim();
+  return buildWebSearchTaskPrompt(input);
 }
 
 export const anthropicAgentSearchGroundDescriptor: CapabilityAdapterDescriptor<

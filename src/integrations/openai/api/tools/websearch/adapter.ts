@@ -62,10 +62,12 @@ export const openAIResponsesSearchGroundDescriptor: OpenAIApiAdapterDescriptor<
     "Lower a unified grounded web search request into OpenAI Responses API with the native web_search tool.",
   prepare(request: CapabilityRequest<OpenAIWebSearchCreateInput>) {
     const input = request.input;
+    const taskPrompt = buildWebSearchTaskPrompt(input);
     const params = omitUndefined({
       model: request.model ?? input.model,
-      input: buildWebSearchTaskPrompt(input),
+      input: taskPrompt,
       include: ["web_search_call.action.sources"],
+      max_output_tokens: input.maxOutputTokens,
       metadata: input.metadata,
       tools: [buildOpenAIWebSearchTool(input)],
       stream: false as const
@@ -77,7 +79,8 @@ export const openAIResponsesSearchGroundDescriptor: OpenAIApiAdapterDescriptor<
       params,
       notes: [
         "Grounded web search uses the native Responses web_search tool and requests source annotations.",
-        "Known URLs are folded into the task prompt because OpenAI does not expose a separate first-class fetch tool on this path."
+        "Known URLs are folded into the task prompt because OpenAI does not expose a separate first-class fetch tool on this path.",
+        "maxSources is applied as a prompt-level hint on this route because Responses web_search does not expose a dedicated hard cap for cited sources."
       ]
     });
   }

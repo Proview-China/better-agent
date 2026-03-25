@@ -5,6 +5,7 @@ import type {
 } from "../../../../../rax/contracts.js";
 import type { CapabilityRequest } from "../../../../../rax/types.js";
 import {
+  buildWebSearchTaskPrompt,
   citationsEnabled,
   type WebSearchCreateInput
 } from "../../../../../rax/websearch-types.js";
@@ -24,7 +25,7 @@ const ANTHROPIC_SEARCH_SDK = {
 function buildAnthropicSearchPrompt(
   input: AnthropicWebSearchCreateInput
 ): string {
-  return input.query.trim();
+  return buildWebSearchTaskPrompt(input);
 }
 
 function buildWebSearchTool(
