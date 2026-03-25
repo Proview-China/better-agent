@@ -19,6 +19,163 @@ import type {
 import type { CreateRaxCmpConfigInput, RaxCmpConfig } from "./cmp-config.js";
 
 export type RaxCmpMode = "active_preferred" | "passive_only" | "mixed";
+export type RaxCmpExecutionStyle = "automatic" | "guided" | "manual";
+export type RaxCmpReadbackPriority = "git_first" | "db_first" | "redis_first" | "reconcile";
+export type RaxCmpFallbackPolicy = "git_rebuild" | "degraded" | "strict_not_found";
+export type RaxCmpRecoveryPreference = "snapshot_first" | "infra_first" | "reconcile" | "dry_run";
+export type RaxCmpDispatchScope = "lineage_only" | "core_agent_only" | "manual_targets" | "disabled";
+export type RaxCmpBranchFamilyScope = "work" | "cmp" | "mp" | "tap";
+
+export const RAX_CMP_EXECUTION_STYLES = ["automatic", "guided", "manual"] as const;
+export const RAX_CMP_READBACK_PRIORITIES = ["git_first", "db_first", "redis_first", "reconcile"] as const;
+export const RAX_CMP_FALLBACK_POLICIES = ["git_rebuild", "degraded", "strict_not_found"] as const;
+export const RAX_CMP_RECOVERY_PREFERENCES = ["snapshot_first", "infra_first", "reconcile", "dry_run"] as const;
+export const RAX_CMP_DISPATCH_SCOPES = ["lineage_only", "core_agent_only", "manual_targets", "disabled"] as const;
+export const RAX_CMP_BRANCH_FAMILY_SCOPES = ["work", "cmp", "mp", "tap"] as const;
+
+export const DEFAULT_RAX_CMP_EXECUTION_STYLE: RaxCmpExecutionStyle = "automatic";
+export const DEFAULT_RAX_CMP_READBACK_PRIORITY: RaxCmpReadbackPriority = "db_first";
+export const DEFAULT_RAX_CMP_FALLBACK_POLICY: RaxCmpFallbackPolicy = "git_rebuild";
+export const DEFAULT_RAX_CMP_RECOVERY_PREFERENCE: RaxCmpRecoveryPreference = "reconcile";
+export const DEFAULT_RAX_CMP_DISPATCH_SCOPE: RaxCmpDispatchScope = "lineage_only";
+
+export interface RaxCmpLineageScope {
+  projectIds: string[];
+  agentIds: string[];
+  lineageRoots: string[];
+  branchFamilies: RaxCmpBranchFamilyScope[];
+  targetAgentIds: string[];
+}
+
+export interface RaxCmpAutomationPolicy {
+  autoIngest: boolean;
+  autoCommit: boolean;
+  autoResolve: boolean;
+  autoMaterialize: boolean;
+  autoDispatch: boolean;
+  autoReturnToCoreAgent: boolean;
+  autoSeedChildren: boolean;
+}
+
+export interface RaxCmpManualControlSurface {
+  executionStyle: RaxCmpExecutionStyle;
+  mode: RaxCmpMode;
+  scope: {
+    lineage: RaxCmpLineageScope;
+    dispatch: RaxCmpDispatchScope;
+  };
+  truth: {
+    readbackPriority: RaxCmpReadbackPriority;
+    fallbackPolicy: RaxCmpFallbackPolicy;
+    recoveryPreference: RaxCmpRecoveryPreference;
+  };
+  automation: RaxCmpAutomationPolicy;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RaxCmpManualControlInput {
+  executionStyle?: RaxCmpExecutionStyle;
+  mode?: RaxCmpMode;
+  scope?: {
+    lineage?: Partial<RaxCmpLineageScope>;
+    dispatch?: RaxCmpDispatchScope;
+  };
+  truth?: Partial<RaxCmpManualControlSurface["truth"]>;
+  automation?: Partial<RaxCmpAutomationPolicy>;
+  metadata?: Record<string, unknown>;
+}
+
+function uniqueTrimmed(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))];
+}
+
+export function createRaxCmpLineageScope(
+  input: Partial<RaxCmpLineageScope> = {},
+): RaxCmpLineageScope {
+  return {
+    projectIds: uniqueTrimmed(input.projectIds),
+    agentIds: uniqueTrimmed(input.agentIds),
+    lineageRoots: uniqueTrimmed(input.lineageRoots),
+    branchFamilies: [...new Set((input.branchFamilies ?? ["cmp"]).filter((value): value is RaxCmpBranchFamilyScope =>
+      RAX_CMP_BRANCH_FAMILY_SCOPES.includes(value),
+    ))],
+    targetAgentIds: uniqueTrimmed(input.targetAgentIds),
+  };
+}
+
+export function createRaxCmpAutomationPolicy(
+  input: Partial<RaxCmpAutomationPolicy> = {},
+): RaxCmpAutomationPolicy {
+  return {
+    autoIngest: input.autoIngest ?? true,
+    autoCommit: input.autoCommit ?? true,
+    autoResolve: input.autoResolve ?? true,
+    autoMaterialize: input.autoMaterialize ?? true,
+    autoDispatch: input.autoDispatch ?? true,
+    autoReturnToCoreAgent: input.autoReturnToCoreAgent ?? true,
+    autoSeedChildren: input.autoSeedChildren ?? true,
+  };
+}
+
+export function createRaxCmpManualControlSurface(
+  input: RaxCmpManualControlInput = {},
+): RaxCmpManualControlSurface {
+  return {
+    executionStyle: input.executionStyle ?? DEFAULT_RAX_CMP_EXECUTION_STYLE,
+    mode: input.mode ?? "active_preferred",
+    scope: {
+      lineage: createRaxCmpLineageScope(input.scope?.lineage),
+      dispatch: input.scope?.dispatch ?? DEFAULT_RAX_CMP_DISPATCH_SCOPE,
+    },
+    truth: {
+      readbackPriority: input.truth?.readbackPriority ?? DEFAULT_RAX_CMP_READBACK_PRIORITY,
+      fallbackPolicy: input.truth?.fallbackPolicy ?? DEFAULT_RAX_CMP_FALLBACK_POLICY,
+      recoveryPreference: input.truth?.recoveryPreference ?? DEFAULT_RAX_CMP_RECOVERY_PREFERENCE,
+    },
+    automation: createRaxCmpAutomationPolicy(input.automation),
+    metadata: input.metadata,
+  };
+}
+
+export function mergeRaxCmpManualControlSurface(input: {
+  base: RaxCmpManualControlSurface;
+  override?: RaxCmpManualControlInput;
+}): RaxCmpManualControlSurface {
+  if (!input.override) {
+    return {
+      ...input.base,
+      scope: {
+        lineage: createRaxCmpLineageScope(input.base.scope.lineage),
+        dispatch: input.base.scope.dispatch,
+      },
+      truth: { ...input.base.truth },
+      automation: { ...input.base.automation },
+      metadata: input.base.metadata ? structuredClone(input.base.metadata) : undefined,
+    };
+  }
+
+  return {
+    executionStyle: input.override.executionStyle ?? input.base.executionStyle,
+    mode: input.override.mode ?? input.base.mode,
+    scope: {
+      lineage: createRaxCmpLineageScope({
+        ...input.base.scope.lineage,
+        ...(input.override.scope?.lineage ?? {}),
+      }),
+      dispatch: input.override.scope?.dispatch ?? input.base.scope.dispatch,
+    },
+    truth: {
+      readbackPriority: input.override.truth?.readbackPriority ?? input.base.truth.readbackPriority,
+      fallbackPolicy: input.override.truth?.fallbackPolicy ?? input.base.truth.fallbackPolicy,
+      recoveryPreference: input.override.truth?.recoveryPreference ?? input.base.truth.recoveryPreference,
+    },
+    automation: createRaxCmpAutomationPolicy({
+      ...input.base.automation,
+      ...(input.override.automation ?? {}),
+    }),
+    metadata: input.override.metadata ?? input.base.metadata,
+  };
+}
 
 export interface RaxCmpBootstrapAgentInput {
   agentId: string;
@@ -56,6 +213,7 @@ export interface RaxCmpSession {
   projectId: string;
   createdAt: string;
   config: RaxCmpConfig;
+  control: RaxCmpManualControlSurface;
   runtime: RaxCmpRuntimeLike;
   metadata?: Record<string, unknown>;
 }
@@ -63,6 +221,7 @@ export interface RaxCmpSession {
 export interface RaxCmpCreateInput {
   config: CreateRaxCmpConfigInput | RaxCmpConfig;
   runtime?: RaxCmpRuntimeLike;
+  control?: RaxCmpManualControlInput;
   metadata?: Record<string, unknown>;
 }
 
@@ -73,6 +232,7 @@ export interface RaxCmpBootstrapInput {
     repoName?: string;
     repoRootPath?: string;
   };
+  control?: RaxCmpManualControlInput;
   metadata?: Record<string, unknown>;
 }
 
@@ -80,12 +240,14 @@ export interface RaxCmpBootstrapResult {
   status: "bootstrapped";
   receipt: CmpProjectInfraBootstrapReceipt;
   session: RaxCmpSession;
+  control: RaxCmpManualControlSurface;
   metadata?: Record<string, unknown>;
 }
 
 export interface RaxCmpReadbackInput {
   session: RaxCmpSession;
   projectId?: string;
+  control?: RaxCmpManualControlInput;
   metadata?: Record<string, unknown>;
 }
 
@@ -94,7 +256,21 @@ export interface RaxCmpReadbackResult {
   receipt?: CmpProjectInfraBootstrapReceipt;
   infraState?: CmpRuntimeInfraProjectState;
   summary?: RaxCmpReadbackSummary;
+  control?: RaxCmpManualControlSurface;
   metadata?: Record<string, unknown>;
+}
+
+export interface RaxCmpTruthLayerSummary {
+  layer: "git" | "db" | "redis";
+  status: "ready" | "degraded" | "failed";
+  truthFor: string[];
+  readbackMode: "receipt" | "infra_state" | "reconciled";
+  details: Record<string, unknown>;
+}
+
+export interface RaxCmpFallbackReadiness {
+  gitHistoryRebuild: "available" | "not_needed" | "unavailable";
+  dbProjectionFallback: "available" | "not_needed" | "unavailable";
 }
 
 export interface RaxCmpReadbackSummary {
@@ -110,12 +286,15 @@ export interface RaxCmpReadbackSummary {
   hydratedLineageCount: number;
   expectedDbTargetCount?: number;
   presentDbTargetCount?: number;
+  truthLayers: RaxCmpTruthLayerSummary[];
+  fallbacks: RaxCmpFallbackReadiness;
   issues: string[];
 }
 
 export interface RaxCmpRecoverInput {
   session: RaxCmpSession;
   snapshot: CmpRuntimeSnapshot;
+  control?: RaxCmpManualControlInput;
   metadata?: Record<string, unknown>;
 }
 
@@ -123,6 +302,7 @@ export interface RaxCmpRecoverResult {
   status: "recovered";
   session: RaxCmpSession;
   snapshot: CmpRuntimeSnapshot;
+  control: RaxCmpManualControlSurface;
   metadata?: Record<string, unknown>;
 }
 
@@ -136,43 +316,51 @@ export interface RaxCmpSmokeCheck {
 export interface RaxCmpSmokeInput {
   session: RaxCmpSession;
   projectId?: string;
+  control?: RaxCmpManualControlInput;
   metadata?: Record<string, unknown>;
 }
 
 export interface RaxCmpSmokeResult {
   status: "ready" | "degraded" | "failed";
   checks: RaxCmpSmokeCheck[];
+  control?: RaxCmpManualControlSurface;
   metadata?: Record<string, unknown>;
 }
 
 export interface RaxCmpIngestInput {
   session: RaxCmpSession;
   payload: IngestRuntimeContextInput;
+  control?: RaxCmpManualControlInput;
 }
 
 export interface RaxCmpCommitInput {
   session: RaxCmpSession;
   payload: CommitContextDeltaInput;
+  control?: RaxCmpManualControlInput;
 }
 
 export interface RaxCmpRequestHistoryInput {
   session: RaxCmpSession;
   payload: RequestHistoricalContextInput;
+  control?: RaxCmpManualControlInput;
 }
 
 export interface RaxCmpResolveInput {
   session: RaxCmpSession;
   payload: ResolveCheckedSnapshotInput;
+  control?: RaxCmpManualControlInput;
 }
 
 export interface RaxCmpMaterializeInput {
   session: RaxCmpSession;
   payload: MaterializeContextPackageInput;
+  control?: RaxCmpManualControlInput;
 }
 
 export interface RaxCmpDispatchInput {
   session: RaxCmpSession;
   payload: DispatchContextPackageInput;
+  control?: RaxCmpManualControlInput;
 }
 
 export interface RaxCmpRuntimeLike {

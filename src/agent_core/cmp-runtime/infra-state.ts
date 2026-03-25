@@ -34,6 +34,19 @@ export interface CmpRuntimeHydratedInfraState {
   projects: Map<string, CmpRuntimeInfraProjectState>;
 }
 
+export interface CmpRuntimeInfraProjectReadbackSummary {
+  projectId: string;
+  gitStatus?: CmpGitBackendBootstrapReceipt["status"];
+  gitBranchBootstrapCount: number;
+  branchRuntimeCount: number;
+  dbReceiptStatus?: CmpProjectDbBootstrapReceipt["status"];
+  expectedDbTargetCount?: number;
+  presentDbTargetCount?: number;
+  mqBootstrapCount: number;
+  mqTopicBindingCount: number;
+  hydratedLineageCount: number;
+}
+
 function assertNonEmpty(value: string, label: string): string {
   const normalized = value.trim();
   if (!normalized) {
@@ -135,5 +148,25 @@ export function hydrateCmpRuntimeInfraState(
   }
   return {
     projects,
+  };
+}
+
+export function summarizeCmpRuntimeInfraProjectState(
+  project: CmpRuntimeInfraProjectState,
+): CmpRuntimeInfraProjectReadbackSummary {
+  const normalized = createCmpRuntimeInfraProjectState(project);
+  return {
+    projectId: normalized.projectId,
+    gitStatus: normalized.git?.status,
+    gitBranchBootstrapCount: normalized.gitBranchBootstraps.length,
+    branchRuntimeCount: normalized.branchRuntimes.length,
+    dbReceiptStatus: normalized.dbReceipt?.status,
+    expectedDbTargetCount: normalized.dbReceipt?.expectedTargetCount,
+    presentDbTargetCount: normalized.dbReceipt?.presentTargetCount,
+    mqBootstrapCount: normalized.mqBootstraps.length,
+    mqTopicBindingCount: normalized.mqBootstraps.reduce((count, bootstrap) => {
+      return count + bootstrap.topicBindings.length;
+    }, 0),
+    hydratedLineageCount: normalized.lineages.length,
   };
 }

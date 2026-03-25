@@ -90,6 +90,22 @@ test("cmp-mq redis-cli adapter writes stream publish and queue escalation to liv
   const streamLength = await runRedisCli(["XLEN", publishReceipt.redisKey]);
   assert.equal(streamLength, "1");
 
+  const truth = await adapter.readDeliveryTruth({
+    projectId,
+    sourceAgentId: agentId,
+    receiptId: publishReceipt.receiptId,
+  });
+  assert.equal(truth?.state, "published");
+
+  const acknowledged = await adapter.acknowledgeDelivery({
+    projectId,
+    sourceAgentId: agentId,
+    receiptId: publishReceipt.receiptId,
+    acknowledgedAt: "2026-03-24T20:01:00.000Z",
+  });
+  assert.equal(acknowledged.state, "acknowledged");
+  assert.equal(acknowledged.acknowledgedAt, "2026-03-24T20:01:00.000Z");
+
   const escalationReceipt = await adapter.publishCriticalEscalation({
     envelope: createCmpCriticalEscalationEnvelope({
       escalationId: "esc-1",
@@ -107,5 +123,11 @@ test("cmp-mq redis-cli adapter writes stream publish and queue escalation to liv
   const queueLength = await runRedisCli(["LLEN", escalationReceipt.redisKey]);
   assert.equal(queueLength, "1");
 
-  await runRedisCli(["DEL", publishReceipt.redisKey, escalationReceipt.redisKey, `${bootstrap.namespace.keyPrefix}:bootstrap:${agentId}`]);
+  await runRedisCli([
+    "DEL",
+    publishReceipt.redisKey,
+    escalationReceipt.redisKey,
+    `${bootstrap.namespace.keyPrefix}:bootstrap:${agentId}`,
+    `${bootstrap.namespace.keyPrefix}:delivery:${publishReceipt.receiptId}`,
+  ]);
 });

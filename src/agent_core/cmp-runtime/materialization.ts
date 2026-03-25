@@ -3,6 +3,7 @@ import {
   type CmpProjectionVisibility,
   assertNonEmpty,
 } from "./runtime-types.js";
+import type { CmpStoredSection } from "../cmp-types/cmp-section.js";
 
 export interface CmpProjectionRecord {
   projectionId: string;
@@ -34,6 +35,48 @@ export interface CreatePassiveHistoricalPackageInput {
   fidelityLabel: string;
   createdAt: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface CreateProjectionFromStoredSectionInput {
+  projectionId: string;
+  checkedSnapshotRef: string;
+  storedSection: CmpStoredSection;
+  visibility?: CmpProjectionVisibility;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateContextPackageFromStoredSectionInput {
+  packageId: string;
+  projectionId: string;
+  storedSection: CmpStoredSection;
+  targetAgentId: string;
+  packageKind: string;
+  packageRef: string;
+  fidelityLabel: string;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateProjectionAndPackageFromStoredSectionInput {
+  projectionId: string;
+  checkedSnapshotRef: string;
+  storedSection: CmpStoredSection;
+  visibility?: CmpProjectionVisibility;
+  updatedAt: string;
+  packageId: string;
+  targetAgentId: string;
+  packageKind: string;
+  packageRef: string;
+  fidelityLabel: string;
+  createdAt: string;
+  projectionMetadata?: Record<string, unknown>;
+  packageMetadata?: Record<string, unknown>;
+}
+
+export interface CmpStoredSectionMaterializationRecords {
+  projection: CmpProjectionRecord;
+  contextPackage: CmpContextPackageRecord;
 }
 
 export function createCmpProjectionRecord(input: CmpProjectionRecord): CmpProjectionRecord {
@@ -107,3 +150,70 @@ export function createPassiveHistoricalPackage(
   });
 }
 
+export function createCmpProjectionRecordFromStoredSection(
+  input: CreateProjectionFromStoredSectionInput,
+): CmpProjectionRecord {
+  return createCmpProjectionRecord({
+    projectionId: input.projectionId,
+    checkedSnapshotRef: assertNonEmpty(input.checkedSnapshotRef, "CMP projection checkedSnapshotRef"),
+    agentId: input.storedSection.agentId,
+    visibility: input.visibility ?? "local_only",
+    updatedAt: input.updatedAt,
+    metadata: {
+      sourceSectionId: input.storedSection.sourceSectionId,
+      storedSectionId: input.storedSection.id,
+      storedPlane: input.storedSection.plane,
+      storedState: input.storedSection.state,
+      ...(input.metadata ?? {}),
+    },
+  });
+}
+
+export function createCmpContextPackageRecordFromStoredSection(
+  input: CreateContextPackageFromStoredSectionInput,
+): CmpContextPackageRecord {
+  return createCmpContextPackageRecord({
+    packageId: input.packageId,
+    projectionId: input.projectionId,
+    sourceAgentId: input.storedSection.agentId,
+    targetAgentId: assertNonEmpty(input.targetAgentId, "CMP package targetAgentId"),
+    packageKind: input.packageKind,
+    packageRef: input.packageRef,
+    fidelityLabel: input.fidelityLabel,
+    createdAt: input.createdAt,
+    metadata: {
+      sourceSectionId: input.storedSection.sourceSectionId,
+      storedSectionId: input.storedSection.id,
+      storedPlane: input.storedSection.plane,
+      storedState: input.storedSection.state,
+      ...(input.metadata ?? {}),
+    },
+  });
+}
+
+export function createCmpProjectionAndPackageRecordsFromStoredSection(
+  input: CreateProjectionAndPackageFromStoredSectionInput,
+): CmpStoredSectionMaterializationRecords {
+  const projection = createCmpProjectionRecordFromStoredSection({
+    projectionId: input.projectionId,
+    checkedSnapshotRef: input.checkedSnapshotRef,
+    storedSection: input.storedSection,
+    visibility: input.visibility,
+    updatedAt: input.updatedAt,
+    metadata: input.projectionMetadata,
+  });
+  return {
+    projection,
+    contextPackage: createCmpContextPackageRecordFromStoredSection({
+      packageId: input.packageId,
+      projectionId: projection.projectionId,
+      storedSection: input.storedSection,
+      targetAgentId: input.targetAgentId,
+      packageKind: input.packageKind,
+      packageRef: input.packageRef,
+      fidelityLabel: input.fidelityLabel,
+      createdAt: input.createdAt,
+      metadata: input.packageMetadata,
+    }),
+  };
+}

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
   CmpCriticalEscalationEnvelope,
+  CmpRedisDeliveryTruthRecord,
   CmpIcmaPublishEnvelope,
   CmpRedisEscalationReceipt,
   CmpRedisProjectBootstrap,
@@ -11,6 +12,7 @@ import type {
 import {
   validateCmpCriticalEscalationEnvelope,
   validateCmpIcmaPublishEnvelope,
+  validateCmpRedisDeliveryTruthRecord,
   validateCmpRedisEscalationReceipt,
   validateCmpRedisPublishReceipt,
 } from "./cmp-mq-types.js";
@@ -38,7 +40,19 @@ export interface CmpRedisMqAdapter {
     projectId: string;
     agentId: string;
   }): Promise<CmpRedisProjectBootstrap | undefined> | CmpRedisProjectBootstrap | undefined;
+  readDeliveryTruth?(params: {
+    projectId: string;
+    sourceAgentId: string;
+    receiptId: string;
+  }): Promise<CmpRedisDeliveryTruthRecord | undefined> | CmpRedisDeliveryTruthRecord | undefined;
   publishEnvelope(input: PublishCmpRedisEnvelopeInput): Promise<CmpRedisPublishReceipt> | CmpRedisPublishReceipt;
+  acknowledgeDelivery?(params: {
+    projectId: string;
+    sourceAgentId: string;
+    receiptId: string;
+    acknowledgedAt?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<CmpRedisDeliveryTruthRecord> | CmpRedisDeliveryTruthRecord;
   publishCriticalEscalation(
     input: PublishCmpRedisCriticalEscalationInput,
   ): Promise<CmpRedisEscalationReceipt> | CmpRedisEscalationReceipt;
@@ -46,6 +60,7 @@ export interface CmpRedisMqAdapter {
 
 export class InMemoryCmpRedisMqAdapter implements CmpRedisMqAdapter {
   readonly #bootstraps = new Map<string, CmpRedisProjectBootstrap>();
+  readonly #deliveryTruth = new Map<string, CmpRedisDeliveryTruthRecord>();
 
   bootstrapProject(input: BootstrapCmpRedisProjectInput): CmpRedisProjectBootstrap {
     const bootstrap = createCmpRedisProjectBootstrap(input);
@@ -58,6 +73,18 @@ export class InMemoryCmpRedisMqAdapter implements CmpRedisMqAdapter {
     agentId: string;
   }): CmpRedisProjectBootstrap | undefined {
     return this.#bootstraps.get(this.#toBootstrapKey(params.projectId, params.agentId));
+  }
+
+  readDeliveryTruth(params: {
+    projectId: string;
+    sourceAgentId: string;
+    receiptId: string;
+  }): CmpRedisDeliveryTruthRecord | undefined {
+    return this.#deliveryTruth.get(this.#toDeliveryTruthKey(
+      params.projectId,
+      params.sourceAgentId,
+      params.receiptId,
+    ));
   }
 
   publishEnvelope(input: PublishCmpRedisEnvelopeInput): CmpRedisPublishReceipt {
@@ -93,7 +120,52 @@ export class InMemoryCmpRedisMqAdapter implements CmpRedisMqAdapter {
       },
     };
     validateCmpRedisPublishReceipt(receipt);
+    const truth: CmpRedisDeliveryTruthRecord = {
+      receiptId: receipt.receiptId,
+      projectId: receipt.projectId,
+      sourceAgentId: receipt.sourceAgentId,
+      channel: receipt.channel,
+      lane: receipt.lane,
+      redisKey: receipt.redisKey,
+      targetCount: receipt.targetCount,
+      state: "published",
+      publishedAt: receipt.publishedAt,
+      metadata: {
+        ...(receipt.metadata ?? {}),
+      },
+    };
+    validateCmpRedisDeliveryTruthRecord(truth);
+    this.#deliveryTruth.set(
+      this.#toDeliveryTruthKey(receipt.projectId, receipt.sourceAgentId, receipt.receiptId),
+      truth,
+    );
     return receipt;
+  }
+
+  acknowledgeDelivery(params: {
+    projectId: string;
+    sourceAgentId: string;
+    receiptId: string;
+    acknowledgedAt?: string;
+    metadata?: Record<string, unknown>;
+  }): CmpRedisDeliveryTruthRecord {
+    const key = this.#toDeliveryTruthKey(params.projectId, params.sourceAgentId, params.receiptId);
+    const existing = this.#deliveryTruth.get(key);
+    if (!existing) {
+      throw new Error(`CMP Redis delivery truth ${params.projectId}/${params.sourceAgentId}/${params.receiptId} was not found.`);
+    }
+    const next: CmpRedisDeliveryTruthRecord = {
+      ...existing,
+      state: "acknowledged",
+      acknowledgedAt: params.acknowledgedAt ?? new Date().toISOString(),
+      metadata: {
+        ...(existing.metadata ?? {}),
+        ...(params.metadata ?? {}),
+      },
+    };
+    validateCmpRedisDeliveryTruthRecord(next);
+    this.#deliveryTruth.set(key, next);
+    return next;
   }
 
   publishCriticalEscalation(
@@ -136,6 +208,10 @@ export class InMemoryCmpRedisMqAdapter implements CmpRedisMqAdapter {
 
   #toBootstrapKey(projectId: string, agentId: string): string {
     return `${projectId.trim()}::${agentId.trim()}`;
+  }
+
+  #toDeliveryTruthKey(projectId: string, sourceAgentId: string, receiptId: string): string {
+    return `${projectId.trim()}::${sourceAgentId.trim()}::${receiptId.trim()}`;
   }
 
   #requireBootstrap(params: {

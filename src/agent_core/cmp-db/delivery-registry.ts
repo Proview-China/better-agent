@@ -13,12 +13,19 @@ import {
   assertNonEmptyString,
 } from "./cmp-db-types.js";
 
+export const CMP_DB_PACKAGE_TRUTH_SOURCES = [
+  "db_primary",
+  "git_fallback_backfill",
+] as const;
+export type CmpDbPackageTruthSource = (typeof CMP_DB_PACKAGE_TRUTH_SOURCES)[number];
+
 export function createCmpDbContextPackageRecordFromContextPackage(input: {
   contextPackage: ContextPackage;
   sourceProjection: Pick<CmpProjectionRecord, "projectionId" | "snapshotId" | "agentId">;
   state?: CmpDbContextPackageRecordState;
   updatedAt?: string;
   metadata?: Record<string, unknown>;
+  truthSource?: CmpDbPackageTruthSource;
 }): CmpDbContextPackageRecord {
   const record: CmpDbContextPackageRecord = {
     packageId: input.contextPackage.packageId,
@@ -33,7 +40,45 @@ export function createCmpDbContextPackageRecordFromContextPackage(input: {
     createdAt: input.contextPackage.createdAt,
     updatedAt: input.updatedAt ?? input.contextPackage.createdAt,
     metadata: {
+      truthSource: input.truthSource ?? "db_primary",
       ...(input.contextPackage.metadata ?? {}),
+      ...(input.metadata ?? {}),
+    },
+  };
+  validateCmpDbContextPackageRecord(record);
+  return record;
+}
+
+export function createCmpDbContextPackageBackfillRecord(input: {
+  packageId: string;
+  sourceProjection: Pick<CmpProjectionRecord, "projectionId" | "snapshotId" | "agentId">;
+  targetAgentId: string;
+  packageKind: string;
+  packageRef: string;
+  fidelityLabel: string;
+  createdAt: string;
+  state?: CmpDbContextPackageRecordState;
+  updatedAt?: string;
+  metadata?: Record<string, unknown>;
+}): CmpDbContextPackageRecord {
+  const record: CmpDbContextPackageRecord = {
+    packageId: assertNonEmptyString(input.packageId, "CMP DB backfill packageId"),
+    sourceProjectionId: input.sourceProjection.projectionId,
+    sourceSnapshotId: input.sourceProjection.snapshotId,
+    sourceAgentId: input.sourceProjection.agentId,
+    targetAgentId: assertNonEmptyString(input.targetAgentId, "CMP DB backfill targetAgentId"),
+    packageKind: assertNonEmptyString(input.packageKind, "CMP DB backfill packageKind"),
+    packageRef: assertNonEmptyString(input.packageRef, "CMP DB backfill packageRef"),
+    fidelityLabel: assertNonEmptyString(input.fidelityLabel, "CMP DB backfill fidelityLabel"),
+    state: input.state ?? "materialized",
+    createdAt: assertNonEmptyString(input.createdAt, "CMP DB backfill createdAt"),
+    updatedAt: assertNonEmptyString(
+      input.updatedAt ?? input.createdAt,
+      "CMP DB backfill updatedAt",
+    ),
+    metadata: {
+      truthSource: "git_fallback_backfill" as const,
+      backfillSource: "git_checked_or_promoted",
       ...(input.metadata ?? {}),
     },
   };
@@ -113,4 +158,3 @@ export function createCmpDbDeliveryRegistryRecordFromDispatchReceipt(input: {
   validateCmpDbDeliveryRegistryRecord(record);
   return record;
 }
-

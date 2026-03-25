@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   advanceCmpDbContextPackageRecord,
+  createCmpDbContextPackageBackfillRecord,
   createCmpDbContextPackageRecordFromContextPackage,
   createCmpDbDeliveryRegistryRecordFromDispatchReceipt,
 } from "./index.js";
@@ -38,8 +39,34 @@ test("cmp delivery registry keeps package records and dispatch receipts separate
 
   assert.equal(packageRecord.packageId, "package-1");
   assert.equal(packageRecord.state, "materialized");
+  assert.equal(packageRecord.metadata?.truthSource, "db_primary");
   assert.equal(deliveryRecord.dispatchId, "dispatch-1");
   assert.equal(deliveryRecord.state, "delivered");
+});
+
+test("cmp package backfill record can rebuild a package truth entry from git-backed projection state", () => {
+  const backfilled = createCmpDbContextPackageBackfillRecord({
+    packageId: "package-backfill-1",
+    sourceProjection: {
+      projectionId: "projection-backfill-1",
+      snapshotId: "snapshot-backfill-1",
+      agentId: "main",
+    },
+    targetAgentId: "child-restore",
+    packageKind: "historical_reply",
+    packageRef: "cmp-package:git-rebuild:1",
+    fidelityLabel: "checked_high_fidelity",
+    createdAt: "2026-03-25T10:00:00.000Z",
+    metadata: {
+      rebuiltFromSnapshotId: "snapshot-backfill-1",
+    },
+  });
+
+  assert.equal(backfilled.sourceSnapshotId, "snapshot-backfill-1");
+  assert.equal(backfilled.state, "materialized");
+  assert.equal(backfilled.metadata?.truthSource, "git_fallback_backfill");
+  assert.equal(backfilled.metadata?.backfillSource, "git_checked_or_promoted");
+  assert.equal(backfilled.metadata?.rebuiltFromSnapshotId, "snapshot-backfill-1");
 });
 
 test("cmp package record only advances along the frozen delivery lifecycle", () => {
@@ -78,4 +105,3 @@ test("cmp package record only advances along the frozen delivery lifecycle", () 
     updatedAt: "2026-03-24T10:03:00.000Z",
   }), /cannot transition/i);
 });
-

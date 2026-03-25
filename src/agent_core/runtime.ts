@@ -26,6 +26,7 @@ import { SessionManager } from "./session/index.js";
 import { projectStateFromEvents } from "./state/index.js";
 import {
   createCmpGitBranchFamily,
+  type CmpGitProjectionSourceAnchor,
   createCmpGitProjectRepo,
   createCmpGitSyncRuntimeOrchestrator,
   syncCmpGitCommitDelta,
@@ -38,6 +39,7 @@ import {
 import {
   createCmpDbPostgresAdapter,
   createCmpDbAgentRuntimeSyncState,
+  createCmpDbContextPackageBackfillRecord,
   createCmpProjectionRecordFromCheckedSnapshot,
   promoteCmpDbProjectionForParent,
   syncCmpDbDeliveryFromDispatchReceipt,
@@ -59,27 +61,43 @@ import {
   acknowledgeCmpDispatchReceipt,
   acknowledgeCmpCoreAgentReturn,
   advanceCmpActiveLineRecord,
+  applyCmpMqDeliveryProjectionPatchToRecord,
   assertCmpProjectionVisibleToTarget,
+  createCmpDeliveryRecordFromMqProjectionPatch,
   createCmpRuntimeSnapshot,
   createCmpActiveLineRecord,
   createCmpHistoricalReplyPackage,
   createCmpContextPackageRecord,
+  createCmpContextPackageRecordFromStoredSection,
   createCmpCoreAgentReturnReceipt,
   createCmpDispatchInstruction,
   createCmpDispatchReceipt,
   createCmpIngressRecord,
+  createCmpMqDeliveryProjectionPatch,
+  createCmpMqDeliveryStateFromDeliveryTruth,
+  createCmpMqDeliveryStateFromPublish,
   createCmpProjectionRecord,
+  createCmpProjectionRecordFromStoredSection,
   createPassiveHistoricalPackage,
-  hydrateCmpRuntimeSnapshot,
+  createCmpSectionIngressRecordFromIngress,
+  executeCmpMqAckStateLowering,
+  executeCmpMqDispatchStateLowering,
+  getCmpRuntimeRecoveryReconciliation,
+  hydrateCmpRuntimeSnapshotWithReconciliation,
+  lowerCmpSectionIngressRecordWithRulePack,
+  planCmpHistoricalFallback,
+  rebuildCmpHistoricalContextWithBackfillFromGitTruth,
   markCmpDispatchDelivered,
   planCmpDispatcherDelivery,
   resolveCmpPassiveHistoricalDelivery,
   type CmpActiveLineRecord,
+  type CmpHistoricalFallbackDecision,
   type CmpInfraBackends,
   type CmpInfraBootstrapAgentInput,
   type CmpProjectInfraBootstrapPlan,
   type CmpProjectInfraBootstrapReceipt,
   type CmpRuntimeInfraState,
+  type CmpRuntimeHydratedRecovery,
   type CmpDispatchReceipt,
   type CmpIngressRecord,
   type CmpProjectionRecord as CmpRuntimeProjectionRecord,
@@ -185,6 +203,8 @@ import {
   createSyncEvent,
   type AgentLineage,
   type CheckedSnapshot,
+  type CmpRulePack,
+  type CmpStoredSection,
   type CommitContextDeltaInput,
   type CommitContextDeltaResult,
   type ContextDelta,
@@ -364,6 +384,90 @@ export interface TaCapabilityHumanGateHandoff {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
+  return (typeof value === "object" || typeof value === "function")
+    && value !== null
+    && "then" in value
+    && typeof (value as { then?: unknown }).then === "function";
+}
+
+function isCmpStoredSectionLike(value: unknown): value is CmpStoredSection {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.id === "string"
+    && typeof value.projectId === "string"
+    && typeof value.agentId === "string"
+    && typeof value.sourceSectionId === "string"
+    && typeof value.plane === "string"
+    && typeof value.storageRef === "string"
+    && typeof value.state === "string"
+    && typeof value.visibility === "string"
+    && typeof value.persistedAt === "string"
+    && typeof value.updatedAt === "string";
+}
+
+function readCmpStoredSectionsFromMetadata(value: unknown): CmpStoredSection[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter(isCmpStoredSectionLike)
+    .map((section) => ({
+      ...section,
+      metadata: section.metadata ? structuredClone(section.metadata) : undefined,
+    }));
+}
+
+function createCmpRuntimeDefaultSectionRulePack(): CmpRulePack {
+  return {
+    id: "cmp-runtime-default-section-pack",
+    name: "CMP Runtime Default Section Pack",
+    rules: [
+      {
+        id: "cmp-runtime-store-runtime-context",
+        name: "Store runtime context sections",
+        action: "store",
+        priority: 100,
+        sectionKinds: ["runtime_context"],
+        minFidelity: "exact",
+      },
+      {
+        id: "cmp-runtime-store-historical-context",
+        name: "Store historical context sections",
+        action: "store",
+        priority: 90,
+        sectionKinds: ["historical_context"],
+        minFidelity: "exact",
+      },
+      {
+        id: "cmp-runtime-store-task-seed",
+        name: "Store task seed sections",
+        action: "store",
+        priority: 80,
+        sectionKinds: ["task_seed"],
+        minFidelity: "exact",
+      },
+      {
+        id: "cmp-runtime-store-peer-signal",
+        name: "Store peer signal sections",
+        action: "store",
+        priority: 70,
+        sectionKinds: ["peer_signal"],
+        minFidelity: "exact",
+      },
+      {
+        id: "cmp-runtime-store-promotion-signal",
+        name: "Store promotion signal sections",
+        action: "store",
+        priority: 60,
+        sectionKinds: ["promotion_signal"],
+        minFidelity: "exact",
+      },
+    ],
+  };
 }
 
 export interface SubmitTaHumanGateDecisionInput {
@@ -1120,15 +1224,78 @@ export class AgentCoreRuntime {
         acknowledgedAt,
       });
 
-    this.#cmpDispatchReceipts.set(nextReceipt.dispatchId, nextReceipt);
+    let runtimeReceipt = nextReceipt;
+    const mqReceiptId = typeof receipt.metadata?.mqReceiptId === "string"
+      ? receipt.metadata.mqReceiptId
+      : undefined;
+    const sourceLineage = this.#cmpLineages.get(nextReceipt.sourceAgentId);
+    const deliveryRecord = this.#cmpDbRuntimeSync.deliveries.get(nextReceipt.dispatchId);
+    if (
+      mqReceiptId
+      && sourceLineage
+      && deliveryRecord
+      && this.cmpInfraBackends.mq?.acknowledgeDelivery
+      && targetKind !== "core_agent"
+    ) {
+      const applyAckTruth = (deliveryTruth: {
+        state: string;
+        acknowledgedAt?: string;
+        publishedAt: string;
+        lane: string;
+        redisKey: string;
+      }) => {
+        const deliveryState = createCmpMqDeliveryStateFromDeliveryTruth({
+          truth: deliveryTruth as Parameters<typeof createCmpMqDeliveryStateFromDeliveryTruth>[0]["truth"],
+          dispatchId: nextReceipt.dispatchId,
+          packageId: nextReceipt.packageId,
+          targetAgentId: nextReceipt.targetAgentId,
+          metadata: params.metadata,
+        });
+        const projectionPatch = createCmpMqDeliveryProjectionPatch(deliveryState);
+        this.#cmpDbRuntimeSync.deliveries.set(
+          deliveryRecord.deliveryId,
+          applyCmpMqDeliveryProjectionPatchToRecord({
+            record: deliveryRecord,
+            patch: projectionPatch,
+            metadata: {
+              source: "cmp-runtime-mq-ack-state",
+            },
+          }),
+        );
+        runtimeReceipt = createDispatchReceipt({
+          ...nextReceipt,
+          metadata: {
+            ...(nextReceipt.metadata ?? {}),
+            mqTruthState: deliveryTruth.state,
+            mqAcknowledgedAt: deliveryTruth.acknowledgedAt,
+            cmpMqProjectionPatch: projectionPatch,
+          },
+        });
+        this.#cmpDispatchReceipts.set(runtimeReceipt.dispatchId, runtimeReceipt);
+      };
+
+      const ackTruth = this.cmpInfraBackends.mq.acknowledgeDelivery({
+        projectId: sourceLineage.projectId,
+        sourceAgentId: nextReceipt.sourceAgentId,
+        receiptId: mqReceiptId,
+        acknowledgedAt,
+        metadata: params.metadata,
+      });
+      if (isPromiseLike(ackTruth)) {
+        void ackTruth.then(applyAckTruth).catch(() => undefined);
+      } else {
+        applyAckTruth(ackTruth);
+      }
+    }
+    this.#cmpDispatchReceipts.set(runtimeReceipt.dispatchId, runtimeReceipt);
     syncCmpDbDeliveryFromDispatchReceipt({
       state: this.#cmpDbRuntimeSync,
-      receipt: nextReceipt,
+      receipt: runtimeReceipt,
       metadata: {
         source: "cmp-runtime-ack",
       },
     });
-    return nextReceipt;
+    return runtimeReceipt;
   }
 
   createCmpRuntimeSnapshot(): CmpRuntimeSnapshot {
@@ -1168,7 +1335,11 @@ export class AgentCoreRuntime {
     this.#cmpDbRuntimeSync.packages.clear();
     this.#cmpDbRuntimeSync.deliveries.clear();
 
-    const hydrated = hydrateCmpRuntimeSnapshot(snapshot);
+    const recovery = hydrateCmpRuntimeSnapshotWithReconciliation({
+      snapshot,
+      projects: snapshot.infraState?.projects,
+    });
+    const hydrated = recovery.hydrated;
 
     for (const [projectId, repo] of hydrated.projectRepos) {
       this.#cmpProjectRepos.set(projectId, repo);
@@ -1256,6 +1427,26 @@ export class AgentCoreRuntime {
           metadata: project.metadata,
         });
       }
+      const reconciliation = getCmpRuntimeRecoveryReconciliation({
+        recovery,
+        projectId: project.projectId,
+      });
+      if (reconciliation && reconciliation.status !== "aligned") {
+        this.#recordCmpSyncEvent(createSyncEvent({
+          syncEventId: randomUUID(),
+          agentId: project.lineages[0]?.agentId ?? project.projectId,
+          channel: "db",
+          direction: "local",
+          objectRef: `cmp-recovery:${project.projectId}`,
+          createdAt: new Date().toISOString(),
+          metadata: {
+            source: "cmp-runtime-recovery-reconciliation",
+            status: reconciliation.status,
+            recommendedAction: reconciliation.recommendedAction,
+            issues: reconciliation.issues,
+          },
+        }));
+      }
     }
   }
 
@@ -1271,24 +1462,28 @@ export class AgentCoreRuntime {
     this.#ensureCmpProjectRepo(lineage);
 
     const createdAt = new Date().toISOString();
-    const ingress = createCmpIngressRecord({
+    const sectionIngress = createCmpSectionIngressRecordFromIngress({
+      ingest: normalized,
       ingressId: randomUUID(),
-      lineage: this.#toCmpRuntimeLineage(lineage),
-      sessionId: normalized.sessionId,
-      runId: normalized.runId ?? `${normalized.sessionId}:cmp`,
-      payloadRef: {
-        ref: normalized.materials[0]?.ref ?? `cmp-lineage:${lineage.agentId}`,
-        kind: normalized.materials[0]?.kind ?? "state_marker",
-        metadata: normalized.materials[0]?.metadata,
-      },
-      granularityLabel: normalized.taskSummary,
       createdAt,
-      source: "core_agent",
-      metadata: normalized.metadata,
+      metadata: {
+        source: "cmp-runtime-section-first-ingress",
+      },
     });
+    const sectionLowering = lowerCmpSectionIngressRecordWithRulePack({
+      record: sectionIngress,
+      pack: createCmpRuntimeDefaultSectionRulePack(),
+      plane: "git",
+      persistedAt: createdAt,
+      metadata: {
+        source: "cmp-runtime-section-first-lowering",
+      },
+    });
+    const ingress = createCmpIngressRecord(sectionIngress.ingress);
     this.#cmpIngressRecords.set(ingress.ingressId, ingress);
 
     const acceptedEvents: ContextEvent[] = normalized.materials.map((material) => {
+      const loweredSection = sectionLowering.lowered.find((record) => record.section.payloadRefs.includes(material.ref));
       const event = createContextEvent({
         eventId: randomUUID(),
         agentId: lineage.agentId,
@@ -1301,6 +1496,10 @@ export class AgentCoreRuntime {
         metadata: {
           ingressId: ingress.ingressId,
           materialKind: material.kind,
+          cmpSectionId: loweredSection?.section.id,
+          cmpStoredSectionId: loweredSection?.storedSection?.id,
+          cmpStoredSections: loweredSection?.storedSection ? [loweredSection.storedSection] : [],
+          cmpSectionRuleEvaluation: loweredSection?.evaluation,
           ...(material.metadata ?? {}),
         },
       });
@@ -1321,6 +1520,9 @@ export class AgentCoreRuntime {
       nextAction: normalized.requiresActiveSync === false ? "noop" : "commit_context_delta",
       metadata: {
         ingressId: ingress.ingressId,
+        sectionIds: sectionIngress.sections.map((section) => section.id),
+        storedSectionIds: sectionLowering.storedSections.map((section) => section.id),
+        droppedSectionIds: sectionLowering.droppedSectionIds,
       },
     });
   }
@@ -1329,6 +1531,7 @@ export class AgentCoreRuntime {
     const normalized = createCommitContextDeltaInput(input);
     const lineage = this.#requireCmpLineage(normalized.agentId);
     const createdAt = new Date().toISOString();
+    const storedSections = this.#collectCmpStoredSectionsFromEventIds(normalized.eventIds);
     const delta = createContextDelta({
       deltaId: randomUUID(),
       agentId: normalized.agentId,
@@ -1337,7 +1540,10 @@ export class AgentCoreRuntime {
       changeSummary: normalized.changeSummary,
       createdAt,
       syncIntent: normalized.syncIntent,
-      metadata: normalized.metadata,
+      metadata: {
+        ...(normalized.metadata ?? {}),
+        ...(storedSections.length > 0 ? { cmpStoredSections: storedSections } : {}),
+      },
     });
     this.#cmpDeltas.set(delta.deltaId, delta);
 
@@ -1365,6 +1571,7 @@ export class AgentCoreRuntime {
       createdAt: gitSync.candidate.createdAt,
       status: "pending_check",
       metadata: {
+        ...(delta.metadata ?? {}),
         projectId: lineage.projectId,
         bindingId: gitSync.binding.bindingId,
         source: "cmp-runtime-default-checker",
@@ -1435,6 +1642,7 @@ export class AgentCoreRuntime {
       qualityLabel: "usable",
       promotable: delta.syncIntent !== "local_record",
       metadata: {
+        ...(candidate.metadata ?? {}),
         projectId: lineage.projectId,
         candidateId: candidate.candidateId,
         checkedRefId: checkedRef.refId,
@@ -1598,28 +1806,51 @@ export class AgentCoreRuntime {
         snapshot,
         targetAgentId: normalized.targetAgentId,
       });
+    const storedSection = this.#selectCmpStoredSectionForSnapshot(snapshot);
 
-    const runtimeProjection = createCmpProjectionRecord({
-      projectionId: projection.projectionId,
-      checkedSnapshotRef: snapshot.snapshotId,
-      agentId: snapshot.agentId,
-      visibility: this.#mapProjectionStatusToRuntimeVisibility(projection.promotionStatus),
-      updatedAt: projection.updatedAt,
-      metadata: projection.metadata,
-    });
+    const runtimeProjection = storedSection
+      ? createCmpProjectionRecordFromStoredSection({
+        projectionId: projection.projectionId,
+        checkedSnapshotRef: snapshot.snapshotId,
+        storedSection,
+        visibility: this.#mapProjectionStatusToRuntimeVisibility(projection.promotionStatus),
+        updatedAt: projection.updatedAt,
+        metadata: projection.metadata,
+      })
+      : createCmpProjectionRecord({
+        projectionId: projection.projectionId,
+        checkedSnapshotRef: snapshot.snapshotId,
+        agentId: snapshot.agentId,
+        visibility: this.#mapProjectionStatusToRuntimeVisibility(projection.promotionStatus),
+        updatedAt: projection.updatedAt,
+        metadata: projection.metadata,
+      });
     this.#cmpRuntimeProjections.set(runtimeProjection.projectionId, runtimeProjection);
 
-    const runtimePackage = createCmpContextPackageRecord({
-      packageId: randomUUID(),
-      projectionId: runtimeProjection.projectionId,
-      sourceAgentId: snapshot.agentId,
-      targetAgentId: normalized.targetAgentId,
-      packageKind: normalized.packageKind,
-      packageRef: `cmp-package:${snapshot.snapshotId}:${normalized.targetAgentId}:${normalized.packageKind}`,
-      fidelityLabel: normalized.fidelityLabel ?? "checked_high_fidelity",
-      createdAt: new Date().toISOString(),
-      metadata: normalized.metadata,
-    });
+    const runtimePackageCreatedAt = new Date().toISOString();
+    const runtimePackage = storedSection
+      ? createCmpContextPackageRecordFromStoredSection({
+        packageId: randomUUID(),
+        projectionId: runtimeProjection.projectionId,
+        storedSection,
+        targetAgentId: normalized.targetAgentId,
+        packageKind: normalized.packageKind,
+        packageRef: `cmp-package:${snapshot.snapshotId}:${normalized.targetAgentId}:${normalized.packageKind}`,
+        fidelityLabel: normalized.fidelityLabel ?? "checked_high_fidelity",
+        createdAt: runtimePackageCreatedAt,
+        metadata: normalized.metadata,
+      })
+      : createCmpContextPackageRecord({
+        packageId: randomUUID(),
+        projectionId: runtimeProjection.projectionId,
+        sourceAgentId: snapshot.agentId,
+        targetAgentId: normalized.targetAgentId,
+        packageKind: normalized.packageKind,
+        packageRef: `cmp-package:${snapshot.snapshotId}:${normalized.targetAgentId}:${normalized.packageKind}`,
+        fidelityLabel: normalized.fidelityLabel ?? "checked_high_fidelity",
+        createdAt: runtimePackageCreatedAt,
+        metadata: normalized.metadata,
+      });
 
     const contextPackage = createContextPackage({
       packageId: runtimePackage.packageId,
@@ -1848,14 +2079,51 @@ export class AgentCoreRuntime {
         },
         createdAt,
       });
-      void executeCmpMqDispatchLowering({
+      void executeCmpMqDispatchStateLowering({
         adapter: this.cmpInfraBackends.mq,
         neighborhood: this.#createCmpNeighborhood(sourceLineage),
         envelope,
+        dispatchId: receipt.dispatchId,
+        packageId: contextPackage.packageId,
+        targetAgentId: normalized.targetAgentId,
+        metadata: {
+          targetKind: normalized.targetKind,
+        },
         knownAncestorIds: this.#collectCmpAncestorIds(sourceLineage.agentId)
           .filter((ancestorId) => ancestorId !== sourceLineage.parentAgentId),
         parentPeerIds: this.#findCmpParentPeerIds(sourceLineage),
       }).then((mqLowering) => {
+        const nextReceipt = createDispatchReceipt({
+          ...receipt,
+          metadata: {
+            ...(receipt.metadata ?? {}),
+            mqReceiptId: mqLowering.publishReceipt.receiptId,
+            mqRedisKey: mqLowering.publishReceipt.redisKey,
+            mqLane: mqLowering.publishReceipt.lane,
+            mqTruthState: mqLowering.deliveryTruth?.state ?? mqLowering.deliveryState.status,
+            mqTargetCount: mqLowering.publishReceipt.targetCount,
+            cmpMqProjectionPatch: mqLowering.projectionPatch,
+          },
+        });
+        this.#cmpDispatchReceipts.set(nextReceipt.dispatchId, nextReceipt);
+        const currentDeliveryRecord = this.#cmpDbRuntimeSync.deliveries.get(nextReceipt.dispatchId);
+        this.#cmpDbRuntimeSync.deliveries.set(
+          nextReceipt.dispatchId,
+          currentDeliveryRecord
+            ? applyCmpMqDeliveryProjectionPatchToRecord({
+              record: currentDeliveryRecord,
+              patch: mqLowering.projectionPatch,
+              metadata: {
+                source: "cmp-runtime-mq-dispatch-state",
+              },
+            })
+            : createCmpDeliveryRecordFromMqProjectionPatch({
+              patch: mqLowering.projectionPatch,
+              metadata: {
+                source: "cmp-runtime-mq-dispatch-state",
+              },
+            }),
+        );
         this.#recordCmpSyncEvent(createSyncEvent({
           syncEventId: randomUUID(),
           agentId: normalized.sourceAgentId,
@@ -1868,6 +2136,7 @@ export class AgentCoreRuntime {
             redisKey: mqLowering.publishReceipt.redisKey,
             mqBootstrapAgentId: agentInfra.mqBootstrap?.agentId,
             validatedTargets: mqLowering.validatedSubscriptions.length,
+            truthState: mqLowering.deliveryTruth?.state ?? mqLowering.deliveryState.status,
           },
         }));
       }).catch((error: unknown) => {
@@ -1902,74 +2171,148 @@ export class AgentCoreRuntime {
       };
     }
 
+    const projectReceipt = this.getCmpProjectInfraBootstrapReceipt(normalized.projectId);
     const projection = this.#findOrCreateCmpProjection({
       snapshot,
       targetAgentId: normalized.requesterAgentId,
     });
+    const dbProjection = this.#cmpDbRuntimeSync.projections.get(projection.projectionId);
+    const fallbackDecision = planCmpHistoricalFallback({
+      projectId: normalized.projectId,
+      requesterAgentId: normalized.requesterAgentId,
+      snapshotId: snapshot.snapshotId,
+      hasDbProjection: Boolean(dbProjection),
+      dbReadbackComplete: projectReceipt?.dbReceipt?.status === "bootstrapped",
+      dbAvailable: Boolean(projectReceipt?.db && this.cmpInfraBackends.dbExecutor),
+      hasGitCheckedSnapshot: true,
+    });
+    const requesterLineage = this.#requireCmpLineage(normalized.requesterAgentId);
     const runtimeProjection = this.#requireCmpRuntimeProjectionForSnapshot({
       projection,
       snapshot,
     });
-    const requesterLineage = this.#requireCmpLineage(normalized.requesterAgentId);
-    const passive = resolveCmpPassiveHistoricalDelivery({
-      request: {
-        requestId: randomUUID(),
-        requesterLineage: this.#toCmpRuntimeLineage(requesterLineage),
+    const createdAt = new Date().toISOString();
+    let contextPackage: ContextPackage;
+
+    if (fallbackDecision.resolvedSource === "git_checked") {
+      const anchor = this.#createCmpGitProjectionSourceAnchor(snapshot);
+      if (!anchor) {
+        throw new Error(
+          `CMP historical fallback could not derive git source anchor for snapshot ${snapshot.snapshotId}.`,
+        );
+      }
+      const rebuilt = rebuildCmpHistoricalContextWithBackfillFromGitTruth({
+        projectionId: projection.projectionId,
+        packageId: randomUUID(),
+        snapshot,
+        anchor,
+        requesterAgentId: normalized.requesterAgentId,
         packageKind: normalized.query.packageKindHint ?? "historical_reply",
         fidelityLabel: "checked_high_fidelity",
-        createdAt: new Date().toISOString(),
-        preferredProjectionId: normalized.query.snapshotId ? runtimeProjection.projectionId : undefined,
+        createdAt,
         metadata: {
           reason: normalized.reason,
           query: normalized.query,
+          degraded: true,
+          truthSource: fallbackDecision.resolvedSource,
+          fallbackReason: fallbackDecision.reason,
         },
-      },
-      sourceLineages: new Map(
-        [...this.#cmpLineages.values()].map((lineage) => [lineage.agentId, this.#toCmpRuntimeLineage(lineage)]),
-      ),
-      projections: [...this.#cmpRuntimeProjections.values()],
-    });
-    const passivePackage = createCmpHistoricalReplyPackage({
-      request: {
-        requestId: `${passive.contextPackage.packageId}:reply`,
-        requesterLineage: this.#toCmpRuntimeLineage(requesterLineage),
-        packageKind: passive.contextPackage.packageKind,
-        fidelityLabel: passive.contextPackage.fidelityLabel,
-        createdAt: passive.contextPackage.createdAt,
-        metadata: passive.contextPackage.metadata,
-      },
-      projection: passive.projection,
-    });
-    const contextPackage = createContextPackage({
-      packageId: passivePackage.packageId,
-      sourceProjectionId: passivePackage.projectionId,
-      targetAgentId: passivePackage.targetAgentId,
-      packageKind: "historical_reply",
-      packageRef: passivePackage.packageRef,
-      fidelityLabel: "checked_high_fidelity",
-      createdAt: passivePackage.createdAt,
-      metadata: passivePackage.metadata,
-    });
-    this.#cmpPackages.set(contextPackage.packageId, contextPackage);
-    syncCmpDbPackageFromContextPackage({
-      state: this.#cmpDbRuntimeSync,
-      contextPackage,
-      projection: {
-        projectionId: projection.projectionId,
-        snapshotId: projection.snapshotId,
-        agentId: projection.agentId,
-      },
-      metadata: {
-        source: "cmp-runtime-passive",
-      },
-    });
+      });
+      this.#cmpRuntimeProjections.set(rebuilt.projection.projectionId, rebuilt.projection);
+      this.#cmpDbRuntimeSync.projections.set(
+        projection.projectionId,
+        createCmpProjectionRecordFromCheckedSnapshot({
+          projectionId: projection.projectionId,
+          snapshot,
+          updatedAt: createdAt,
+          metadata: {
+            source: "cmp-runtime-passive-git-rebuild",
+            truthSource: fallbackDecision.resolvedSource,
+            fallbackReason: fallbackDecision.reason,
+          },
+        }),
+      );
+      this.#cmpDbRuntimeSync.packages.set(rebuilt.dbBackfillRecord.packageId, rebuilt.dbBackfillRecord);
+      contextPackage = createContextPackage({
+        packageId: rebuilt.contextPackage.packageId,
+        sourceProjectionId: rebuilt.contextPackage.projectionId,
+        targetAgentId: rebuilt.contextPackage.targetAgentId,
+        packageKind: "historical_reply",
+        packageRef: rebuilt.contextPackage.packageRef,
+        fidelityLabel: "checked_high_fidelity",
+        createdAt: rebuilt.contextPackage.createdAt,
+        metadata: rebuilt.contextPackage.metadata,
+      });
+    } else {
+      const passive = resolveCmpPassiveHistoricalDelivery({
+        request: {
+          requestId: randomUUID(),
+          requesterLineage: this.#toCmpRuntimeLineage(requesterLineage),
+          packageKind: normalized.query.packageKindHint ?? "historical_reply",
+          fidelityLabel: "checked_high_fidelity",
+          createdAt,
+          preferredProjectionId: normalized.query.snapshotId ? runtimeProjection.projectionId : undefined,
+          metadata: {
+            reason: normalized.reason,
+            query: normalized.query,
+            degraded: false,
+            truthSource: fallbackDecision.resolvedSource,
+          },
+        },
+        sourceLineages: new Map(
+          [...this.#cmpLineages.values()].map((lineage) => [lineage.agentId, this.#toCmpRuntimeLineage(lineage)]),
+        ),
+        projections: [...this.#cmpRuntimeProjections.values()],
+      });
+      const passivePackage = createCmpHistoricalReplyPackage({
+        request: {
+          requestId: `${passive.contextPackage.packageId}:reply`,
+          requesterLineage: this.#toCmpRuntimeLineage(requesterLineage),
+          packageKind: passive.contextPackage.packageKind,
+          fidelityLabel: passive.contextPackage.fidelityLabel,
+          createdAt: passive.contextPackage.createdAt,
+          metadata: passive.contextPackage.metadata,
+        },
+        projection: passive.projection,
+      });
+      contextPackage = createContextPackage({
+        packageId: passivePackage.packageId,
+        sourceProjectionId: passivePackage.projectionId,
+        targetAgentId: passivePackage.targetAgentId,
+        packageKind: "historical_reply",
+        packageRef: passivePackage.packageRef,
+        fidelityLabel: "checked_high_fidelity",
+        createdAt: passivePackage.createdAt,
+        metadata: passivePackage.metadata,
+      });
+      syncCmpDbPackageFromContextPackage({
+        state: this.#cmpDbRuntimeSync,
+        contextPackage,
+        projection: {
+          projectionId: projection.projectionId,
+          snapshotId: projection.snapshotId,
+          agentId: projection.agentId,
+        },
+        metadata: {
+          source: "cmp-runtime-passive",
+        },
+      });
+    }
 
-    const projectReceipt = this.getCmpProjectInfraBootstrapReceipt(normalized.projectId);
+    this.#cmpPackages.set(contextPackage.packageId, contextPackage);
     if (projectReceipt?.db && this.cmpInfraBackends.dbExecutor) {
       const adapter = createCmpDbPostgresAdapter({
         topology: projectReceipt.db.topology,
         localTableSets: projectReceipt.db.localTableSets,
       });
+      const projectionRecord = this.#cmpDbRuntimeSync.projections.get(projection.projectionId);
+      if (projectionRecord) {
+        void executeCmpProjectionLowering({
+          adapter,
+          executor: this.cmpInfraBackends.dbExecutor,
+          record: projectionRecord,
+        }).catch(() => undefined);
+      }
       const packageRecord = this.#cmpDbRuntimeSync.packages.get(contextPackage.packageId);
       if (packageRecord) {
         void executeCmpContextPackageLowering({
@@ -2012,6 +2355,11 @@ export class AgentCoreRuntime {
       found: true,
       snapshot,
       contextPackage,
+      metadata: {
+        degraded: fallbackDecision.degraded,
+        truthSource: fallbackDecision.resolvedSource,
+        fallbackReason: fallbackDecision.reason,
+      },
     };
   }
 
@@ -3685,6 +4033,54 @@ export class AgentCoreRuntime {
       return existing;
     }
     return this.#createCmpProjectionFromSnapshot(params);
+  }
+
+  #collectCmpStoredSectionsFromEventIds(eventIds: readonly string[]): CmpStoredSection[] {
+    const sections = new Map<string, CmpStoredSection>();
+    for (const eventId of eventIds) {
+      const event = this.#cmpEvents.get(eventId);
+      if (!event) {
+        continue;
+      }
+      const storedSections = readCmpStoredSectionsFromMetadata(event.metadata?.cmpStoredSections);
+      for (const storedSection of storedSections) {
+        sections.set(storedSection.id, storedSection);
+      }
+    }
+    return [...sections.values()];
+  }
+
+  #collectCmpStoredSectionsFromSnapshot(snapshot: CheckedSnapshot): CmpStoredSection[] {
+    return readCmpStoredSectionsFromMetadata(snapshot.metadata?.cmpStoredSections);
+  }
+
+  #selectCmpStoredSectionForSnapshot(snapshot: CheckedSnapshot): CmpStoredSection | undefined {
+    return this.#collectCmpStoredSectionsFromSnapshot(snapshot)[0];
+  }
+
+  #createCmpGitProjectionSourceAnchor(snapshot: CheckedSnapshot): CmpGitProjectionSourceAnchor | undefined {
+    const candidateId = typeof snapshot.metadata?.candidateId === "string"
+      ? snapshot.metadata.candidateId
+      : undefined;
+    const branchHead = this.#cmpGitOrchestrator.getBranchHead(snapshot.branchRef);
+    if (!candidateId) {
+      return {
+        candidateId: snapshot.snapshotId,
+        checkedRefName: branchHead?.checkedRefName,
+        promotedRefName: branchHead?.promotedRefName,
+        branchHeadRef: branchHead?.branchRef.fullRef ?? snapshot.branchRef,
+        commitSha: branchHead?.headCommitSha ?? snapshot.commitRef,
+      };
+    }
+    const candidate = this.#cmpGitOrchestrator.listCandidates()
+      .find((record) => record.candidateId === candidateId);
+    return {
+      candidateId,
+      checkedRefName: branchHead?.checkedRefName,
+      promotedRefName: branchHead?.promotedRefName,
+      branchHeadRef: branchHead?.branchRef.fullRef ?? candidate?.branchRef.fullRef ?? snapshot.branchRef,
+      commitSha: branchHead?.headCommitSha ?? candidate?.commitSha ?? snapshot.commitRef,
+    };
   }
 
   #requireCmpRuntimeProjectionForSnapshot(params: {

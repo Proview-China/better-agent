@@ -35,6 +35,21 @@ export const CMP_REDIS_LANE_KINDS = [
 ] as const;
 export type CmpRedisLaneKind = (typeof CMP_REDIS_LANE_KINDS)[number];
 
+export const CMP_MQ_DELIVERY_TRUTH_STATUSES = [
+  "published",
+  "acknowledged",
+  "retry_scheduled",
+  "expired",
+] as const;
+export type CmpMqDeliveryTruthStatus = (typeof CMP_MQ_DELIVERY_TRUTH_STATUSES)[number];
+
+export const CMP_REDIS_DELIVERY_TRUTH_STATES = [
+  "published",
+  "acknowledged",
+  "expired",
+] as const;
+export type CmpRedisDeliveryTruthState = (typeof CMP_REDIS_DELIVERY_TRUTH_STATES)[number];
+
 export interface CmpAgentNeighborhood {
   agentId: string;
   parentAgentId?: string;
@@ -127,6 +142,21 @@ export interface CmpRedisPublishReceipt {
   metadata?: Record<string, unknown>;
 }
 
+export interface CmpRedisDeliveryTruthRecord {
+  receiptId: string;
+  projectId: string;
+  sourceAgentId: string;
+  channel: CmpMqChannelKind;
+  lane: CmpRedisLaneKind;
+  redisKey: string;
+  targetCount: number;
+  state: CmpRedisDeliveryTruthState;
+  publishedAt: string;
+  acknowledgedAt?: string;
+  expiresAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CmpRedisEscalationReceipt {
   receiptId: string;
   projectId: string;
@@ -135,6 +165,46 @@ export interface CmpRedisEscalationReceipt {
   lane: "queue";
   redisKey: string;
   publishedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpMqRetryPolicy {
+  maxAttempts: number;
+  backoffMs: number;
+}
+
+export interface CmpMqExpiryPolicy {
+  ackTimeoutMs: number;
+}
+
+export interface CmpMqDeliveryStateRecord {
+  deliveryId: string;
+  dispatchId: string;
+  packageId: string;
+  projectId: string;
+  sourceAgentId: string;
+  targetAgentId: string;
+  redisKey: string;
+  lane: CmpRedisLaneKind;
+  status: CmpMqDeliveryTruthStatus;
+  currentAttempt: number;
+  maxAttempts: number;
+  publishedAt: string;
+  ackDeadlineAt: string;
+  nextRetryAt?: string;
+  acknowledgedAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpMqDeliveryProjectionPatch {
+  deliveryId: string;
+  dispatchId: string;
+  packageId: string;
+  sourceAgentId: string;
+  targetAgentId: string;
+  state: "pending_delivery" | "acknowledged" | "expired";
+  deliveredAt?: string;
+  acknowledgedAt?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -286,6 +356,23 @@ export function validateCmpRedisPublishReceipt(receipt: CmpRedisPublishReceipt):
   }
 }
 
+export function validateCmpRedisDeliveryTruthRecord(record: CmpRedisDeliveryTruthRecord): void {
+  assertNonEmptyString(record.receiptId, "CMP Redis delivery truth receiptId");
+  assertNonEmptyString(record.projectId, "CMP Redis delivery truth projectId");
+  assertNonEmptyString(record.sourceAgentId, "CMP Redis delivery truth sourceAgentId");
+  assertNonEmptyString(record.redisKey, "CMP Redis delivery truth redisKey");
+  assertNonEmptyString(record.publishedAt, "CMP Redis delivery truth publishedAt");
+  if (!isCmpRedisLaneKind(record.lane)) {
+    throw new Error(`Unsupported CMP Redis delivery truth lane: ${record.lane}.`);
+  }
+  if (!CMP_REDIS_DELIVERY_TRUTH_STATES.includes(record.state)) {
+    throw new Error(`Unsupported CMP Redis delivery truth state: ${record.state}.`);
+  }
+  if (record.targetCount < 1) {
+    throw new Error("CMP Redis delivery truth targetCount must be at least 1.");
+  }
+}
+
 export function validateCmpRedisEscalationReceipt(receipt: CmpRedisEscalationReceipt): void {
   assertNonEmptyString(receipt.receiptId, "CMP Redis escalation receiptId");
   assertNonEmptyString(receipt.projectId, "CMP Redis escalation projectId");
@@ -296,4 +383,53 @@ export function validateCmpRedisEscalationReceipt(receipt: CmpRedisEscalationRec
   if (receipt.lane !== "queue") {
     throw new Error("CMP Redis escalation receipt must use queue lane.");
   }
+}
+
+export function validateCmpMqRetryPolicy(policy: CmpMqRetryPolicy): void {
+  if (!Number.isInteger(policy.maxAttempts) || policy.maxAttempts < 1) {
+    throw new Error("CMP MQ retry policy maxAttempts must be an integer >= 1.");
+  }
+  if (!Number.isInteger(policy.backoffMs) || policy.backoffMs < 0) {
+    throw new Error("CMP MQ retry policy backoffMs must be an integer >= 0.");
+  }
+}
+
+export function validateCmpMqExpiryPolicy(policy: CmpMqExpiryPolicy): void {
+  if (!Number.isInteger(policy.ackTimeoutMs) || policy.ackTimeoutMs < 1) {
+    throw new Error("CMP MQ expiry policy ackTimeoutMs must be an integer >= 1.");
+  }
+}
+
+export function validateCmpMqDeliveryStateRecord(record: CmpMqDeliveryStateRecord): void {
+  assertNonEmptyString(record.deliveryId, "CMP MQ delivery state deliveryId");
+  assertNonEmptyString(record.dispatchId, "CMP MQ delivery state dispatchId");
+  assertNonEmptyString(record.packageId, "CMP MQ delivery state packageId");
+  assertNonEmptyString(record.projectId, "CMP MQ delivery state projectId");
+  assertNonEmptyString(record.sourceAgentId, "CMP MQ delivery state sourceAgentId");
+  assertNonEmptyString(record.targetAgentId, "CMP MQ delivery state targetAgentId");
+  assertNonEmptyString(record.redisKey, "CMP MQ delivery state redisKey");
+  assertNonEmptyString(record.publishedAt, "CMP MQ delivery state publishedAt");
+  assertNonEmptyString(record.ackDeadlineAt, "CMP MQ delivery state ackDeadlineAt");
+  if (!CMP_MQ_DELIVERY_TRUTH_STATUSES.includes(record.status)) {
+    throw new Error(`Unsupported CMP MQ delivery truth status: ${record.status}.`);
+  }
+  if (!isCmpRedisLaneKind(record.lane)) {
+    throw new Error(`Unsupported CMP MQ delivery state lane: ${record.lane}.`);
+  }
+  if (!Number.isInteger(record.currentAttempt) || record.currentAttempt < 1) {
+    throw new Error("CMP MQ delivery state currentAttempt must be an integer >= 1.");
+  }
+  if (!Number.isInteger(record.maxAttempts) || record.maxAttempts < record.currentAttempt) {
+    throw new Error("CMP MQ delivery state maxAttempts must be an integer >= currentAttempt.");
+  }
+}
+
+export function validateCmpMqDeliveryProjectionPatch(
+  patch: CmpMqDeliveryProjectionPatch,
+): void {
+  assertNonEmptyString(patch.deliveryId, "CMP MQ delivery projection deliveryId");
+  assertNonEmptyString(patch.dispatchId, "CMP MQ delivery projection dispatchId");
+  assertNonEmptyString(patch.packageId, "CMP MQ delivery projection packageId");
+  assertNonEmptyString(patch.sourceAgentId, "CMP MQ delivery projection sourceAgentId");
+  assertNonEmptyString(patch.targetAgentId, "CMP MQ delivery projection targetAgentId");
 }

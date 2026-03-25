@@ -144,6 +144,10 @@
   - [38-cmp-mp-ten-agent-minimum-capability-baseline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/38-cmp-mp-ten-agent-minimum-capability-baseline.md)
 - CMP runtime 正式接入与 TAP 最小接缝总纲：
   - [39-cmp-runtime-live-integration-and-tap-bridge-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/39-cmp-runtime-live-integration-and-tap-bridge-outline.md)
+- CMP 非五-agent收口总纲：
+  - [40-cmp-non-five-agent-closure-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/40-cmp-non-five-agent-closure-outline.md)
+- TAP capability family 与三角色总装配总纲：
+  - [41-tap-capability-family-and-three-agent-assembly-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/41-tap-capability-family-and-three-agent-assembly-outline.md)
 - TAP 第一波 capability 接入任务包：
   - [tap-first-wave-capability-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-first-wave-capability-task-pack/README.md)
 - CMP infra 并行编码任务包：
@@ -154,6 +158,11 @@
   - [rax-cmp-workflow-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/rax-cmp-workflow-task-pack/README.md)
 - CMP runtime 正式接入与联调任务包：
   - [cmp-runtime-live-integration-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-runtime-live-integration-task-pack/README.md)
+- CMP 非五-agent收口任务包：
+  - [cmp-non-five-agent-closure-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-non-five-agent-closure-task-pack/README.md)
+  - [cmp-non-five-agent-closure-task-pack/part0-program-control/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-non-five-agent-closure-task-pack/part0-program-control/README.md)
+- TAP capability family 与三角色并行任务包：
+  - [tap-capability-family-and-three-agent-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-capability-family-and-three-agent-task-pack/README.md)
 - CMP 并行编码任务包：
   - [cmp-implementation-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-implementation-task-pack/README.md)
 - T/A Pool 并行编码任务包：

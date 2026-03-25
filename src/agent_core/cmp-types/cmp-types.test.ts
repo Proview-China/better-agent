@@ -40,6 +40,18 @@ import {
   createSyncEvent,
   validateDispatchReceipt,
 } from "./index.js";
+import {
+  CMP_RULE_ACTIONS,
+  CMP_SECTION_FIDELITY,
+  CMP_SECTION_KINDS,
+  CMP_SECTION_SOURCES,
+  CMP_STORED_SECTION_PLANES,
+  CMP_STORED_SECTION_STATES,
+  createCmpRulePack,
+  createCmpSection,
+  createCmpStoredSectionFromSection,
+  evaluateCmpRulePack,
+} from "./cmp-section.js";
 
 test("cmp protocol constants expose the frozen Part 1 enums", () => {
   assert.deepEqual(CMP_BRANCH_LAYERS, ["work", "cmp", "mp", "tap"]);
@@ -110,6 +122,31 @@ test("cmp protocol constants expose the frozen Part 1 enums", () => {
     "rejected",
   ]);
   assert.deepEqual(CMP_DISPATCH_TARGET_KINDS, ["core_agent", "parent", "peer", "child"]);
+  assert.deepEqual(CMP_SECTION_KINDS, [
+    "runtime_context",
+    "historical_context",
+    "task_seed",
+    "peer_signal",
+    "promotion_signal",
+  ]);
+  assert.deepEqual(CMP_SECTION_SOURCES, [
+    "core_agent",
+    "dispatcher",
+    "parent_agent",
+    "peer_agent",
+    "child_agent",
+    "system",
+  ]);
+  assert.deepEqual(CMP_SECTION_FIDELITY, ["exact", "checked", "projected"]);
+  assert.deepEqual(CMP_STORED_SECTION_PLANES, ["git", "postgresql", "redis"]);
+  assert.deepEqual(CMP_STORED_SECTION_STATES, [
+    "stored",
+    "checked",
+    "promoted",
+    "dispatched",
+    "archived",
+  ]);
+  assert.deepEqual(CMP_RULE_ACTIONS, ["accept", "store", "promote", "dispatch", "defer", "drop"]);
 });
 
 test("agent lineage and branch family preserve non-skipping hierarchy anchors", () => {
@@ -300,4 +337,48 @@ test("cmp interface contracts normalize inputs without reaching into runtime ass
   assert.equal(materializeInput.packageKind, "child_seed");
   assert.equal(dispatchInput.targetKind, "child");
   assert.equal(historicalInput.query.packageKindHint, "historical_reply");
+});
+
+test("cmp section primitives can derive stored sections and evaluate rules", () => {
+  const section = createCmpSection({
+    id: "section-1",
+    projectId: "project.praxis",
+    agentId: "agent.main",
+    lineagePath: ["agent.root", "agent.main"],
+    source: "core_agent",
+    kind: "task_seed",
+    fidelity: "exact",
+    payloadRefs: ["payload:seed-1"],
+    tags: ["context_package", "task_seed"],
+    createdAt: "2026-03-25T01:00:00.000Z",
+  });
+  const stored = createCmpStoredSectionFromSection({
+    storedSectionId: "stored-1",
+    section,
+    plane: "git",
+    storageRef: "git:section-1",
+    state: "promoted",
+    persistedAt: "2026-03-25T01:00:01.000Z",
+  });
+  const pack = createCmpRulePack({
+    id: "pack-1",
+    name: "task-seed-pack",
+    rules: [
+      {
+        id: "rule-promote-task-seed",
+        name: "Promote task seed",
+        action: "promote",
+        priority: 10,
+        sectionKinds: ["task_seed"],
+      },
+    ],
+  });
+  const evaluation = evaluateCmpRulePack({
+    pack,
+    section,
+  });
+
+  assert.equal(stored.sourceSectionId, section.id);
+  assert.equal(stored.state, "promoted");
+  assert.equal(evaluation.recommendedAction, "promote");
 });

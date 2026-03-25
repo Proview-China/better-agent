@@ -18,6 +18,12 @@ import type {
   ResolveCheckedSnapshotInput,
   ResolveCheckedSnapshotResult,
 } from "../agent_core/index.js";
+import {
+  createCmpGitAgentBranchRuntime,
+  createCmpGitLineageNode,
+  createCmpGitProjectRepo,
+} from "../agent_core/cmp-git/index.js";
+import { createCmpRedisProjectBootstrap } from "../agent_core/cmp-mq/redis-bootstrap.js";
 import { createRaxCmpFacade } from "./cmp-facade.js";
 
 function createCmpRedisNamespaceFixture(projectId: string, agentId: string) {
@@ -49,6 +55,21 @@ function createCmpLineageFixture(projectId: string, agentId: string, childAgentI
     childAgentIds,
     status: "active" as const,
   };
+}
+
+function createCmpBranchRuntimeFixture(projectId: string, agentId: string) {
+  return createCmpGitAgentBranchRuntime({
+    projectRepo: createCmpGitProjectRepo({
+      projectId,
+      repoName: projectId,
+      defaultAgentId: agentId,
+    }),
+    lineage: createCmpGitLineageNode({
+      projectId,
+      agentId,
+    }),
+    repoRootPath: `/tmp/praxis/${projectId}`,
+  });
 }
 
 test("createRaxCmpFacade creates a session and delegates bootstrap/readback/recover/smoke", async () => {
@@ -100,17 +121,15 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
           readbackRecords: [],
         },
         mqBootstraps: [
-          {
+          createCmpRedisProjectBootstrap({
             projectId: "proj-facade",
             agentId: "main",
-            namespace: createCmpRedisNamespaceFixture("proj-facade", "main"),
-            topicBindings: [],
-          },
+          }),
         ],
         lineages: [
           createCmpLineageFixture("proj-facade", "main"),
         ],
-        branchRuntimes: [],
+        branchRuntimes: [createCmpBranchRuntimeFixture("proj-facade", "main")],
       } satisfies CmpProjectInfraBootstrapReceipt;
     },
     getCmpProjectInfraBootstrapReceipt() {
@@ -158,17 +177,15 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
           readbackRecords: [],
         },
         mqBootstraps: [
-          {
+          createCmpRedisProjectBootstrap({
             projectId: "proj-facade",
             agentId: "main",
-            namespace: createCmpRedisNamespaceFixture("proj-facade", "main"),
-            topicBindings: [],
-          },
+          }),
         ],
         lineages: [
           createCmpLineageFixture("proj-facade", "main"),
         ],
-        branchRuntimes: [],
+        branchRuntimes: [createCmpBranchRuntimeFixture("proj-facade", "main")],
       } satisfies CmpProjectInfraBootstrapReceipt;
     },
     getCmpRuntimeInfraProjectState() {
@@ -184,37 +201,21 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
           projectId: "proj-facade",
           databaseName: "cmp_proj_facade",
           schemaName: "cmp_proj_facade",
-          status: "bootstrapped",
+          status: "bootstrapped" as const,
           expectedTargetCount: 1,
           presentTargetCount: 1,
           readbackRecords: [],
         },
         mqBootstraps: [
-          {
+          createCmpRedisProjectBootstrap({
             projectId: "proj-facade",
             agentId: "main",
-            namespace: createCmpRedisNamespaceFixture("proj-facade", "main"),
-            topicBindings: [],
-          },
+          }),
         ],
         lineages: [
-          {
-            lineageId: "lineage-main",
-            projectId: "proj-facade",
-            agentId: "main",
-            depth: 0,
-            branchFamily: {
-              agentId: "main",
-              work: { kind: "work", agentId: "main", branchName: "work/main", fullRef: "refs/heads/work/main" },
-              cmp: { kind: "cmp", agentId: "main", branchName: "cmp/main", fullRef: "refs/heads/cmp/main" },
-              mp: { kind: "mp", agentId: "main", branchName: "mp/main", fullRef: "refs/heads/mp/main" },
-              tap: { kind: "tap", agentId: "main", branchName: "tap/main", fullRef: "refs/heads/tap/main" },
-            },
-            childAgentIds: [],
-            status: "active",
-          },
+          createCmpLineageFixture("proj-facade", "main"),
         ],
-        branchRuntimes: [],
+        branchRuntimes: [createCmpBranchRuntimeFixture("proj-facade", "main")],
         updatedAt: "2026-03-24T00:00:00.000Z",
       } satisfies CmpRuntimeInfraProjectState;
     },
@@ -320,8 +321,11 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
   assert.equal(bootstrapCalls.length, 1);
   assert.equal(readback.status, "found");
   assert.equal(readback.summary?.status, "ready");
+  assert.equal(readback.summary?.truthLayers.length, 3);
+  assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "git")?.status, "ready");
+  assert.equal(readback.summary?.fallbacks.gitHistoryRebuild, "not_needed");
   assert.equal(smoke.status, "ready");
-  assert.equal(smoke.checks.length, 6);
+  assert.equal(smoke.checks.length, 9);
 });
 
 test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime", async () => {
@@ -676,7 +680,215 @@ test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage 
     "CMP git branch bootstrap coverage is incomplete.",
     "CMP mq bootstrap coverage is incomplete.",
   ]);
+  assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "git")?.status, "degraded");
+  assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "db")?.status, "degraded");
+  assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "redis")?.status, "degraded");
+  assert.equal(readback.summary?.fallbacks.gitHistoryRebuild, "available");
   assert.equal(smoke.status, "degraded");
+  assert.equal(smoke.checks.find((check) => check.id === "cmp.truth.git")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.db.readback")?.status, "degraded");
+  assert.equal(smoke.checks.find((check) => check.id === "cmp.truth.redis")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.lineage.coverage")?.status, "degraded");
+});
+
+test("createRaxCmpFacade seeds default manual control surface and guided mode disables auto-return and auto-seed", () => {
+  const cmp = createRaxCmpFacade();
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      throw new Error("not used");
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return undefined;
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() {
+      throw new Error("not used");
+    },
+    async commitContextDelta() {
+      throw new Error("not used");
+    },
+    async resolveCheckedSnapshot() {
+      throw new Error("not used");
+    },
+    async materializeContextPackage() {
+      throw new Error("not used");
+    },
+    async dispatchContextPackage() {
+      throw new Error("not used");
+    },
+    async requestHistoricalContext() {
+      throw new Error("not used");
+    },
+  };
+
+  const automatic = cmp.create({
+    config: {
+      projectId: "proj-control-auto",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-control-auto",
+        repoRootPath: "/tmp/praxis/proj-control-auto",
+        defaultBranchName: "main",
+      },
+    },
+    runtime,
+  });
+  const guided = cmp.create({
+    config: {
+      projectId: "proj-control-guided",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-control-guided",
+        repoRootPath: "/tmp/praxis/proj-control-guided",
+        defaultBranchName: "main",
+      },
+    },
+    control: {
+      executionStyle: "guided",
+    },
+    runtime,
+  });
+  const manual = cmp.create({
+    config: {
+      projectId: "proj-control-manual",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-control-manual",
+        repoRootPath: "/tmp/praxis/proj-control-manual",
+        defaultBranchName: "main",
+      },
+    },
+    control: {
+      executionStyle: "manual",
+    },
+    runtime,
+  });
+
+  assert.equal(automatic.control.executionStyle, "automatic");
+  assert.equal(automatic.control.automation.autoReturnToCoreAgent, true);
+  assert.equal(automatic.control.automation.autoSeedChildren, true);
+  assert.deepEqual(automatic.control.scope.lineage.projectIds, ["proj-control-auto"]);
+  assert.deepEqual(automatic.control.scope.lineage.branchFamilies, ["cmp"]);
+
+  assert.equal(guided.control.executionStyle, "guided");
+  assert.equal(guided.control.automation.autoReturnToCoreAgent, false);
+  assert.equal(guided.control.automation.autoSeedChildren, false);
+
+  assert.equal(manual.control.executionStyle, "manual");
+  assert.equal(manual.control.automation.autoDispatch, false);
+  assert.equal(manual.control.automation.autoReturnToCoreAgent, false);
+  assert.equal(manual.control.automation.autoSeedChildren, false);
+});
+
+test("createRaxCmpFacade dispatch enforces auto-return, auto-seed and manual-target overrides", async () => {
+  const cmp = createRaxCmpFacade();
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      throw new Error("not used");
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return undefined;
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() {
+      throw new Error("not used");
+    },
+    async commitContextDelta() {
+      throw new Error("not used");
+    },
+    async resolveCheckedSnapshot() {
+      throw new Error("not used");
+    },
+    async materializeContextPackage() {
+      throw new Error("not used");
+    },
+    async dispatchContextPackage(_input: DispatchContextPackageInput) {
+      return {
+        status: "dispatched",
+        receipt: {
+          dispatchId: "dispatch-control",
+          packageId: "package-control",
+          sourceAgentId: "main",
+          targetAgentId: "child-1",
+          status: "delivered",
+          deliveredAt: "2026-03-24T00:00:00.000Z",
+        },
+      } satisfies DispatchContextPackageResult;
+    },
+    async requestHistoricalContext() {
+      throw new Error("not used");
+    },
+  };
+
+  const session = cmp.create({
+    config: {
+      projectId: "proj-control-dispatch",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-control-dispatch",
+        repoRootPath: "/tmp/praxis/proj-control-dispatch",
+        defaultBranchName: "main",
+      },
+    },
+    control: {
+      executionStyle: "guided",
+      scope: {
+        dispatch: "manual_targets",
+      },
+    },
+    runtime,
+  });
+
+  await assert.rejects(
+    () => cmp.dispatch({
+      session,
+      payload: {
+        agentId: "main",
+        packageId: "package-control",
+        sourceAgentId: "main",
+        targetAgentId: "child-1",
+        targetKind: "child",
+      },
+    }),
+    /manual override|auto-seed|manual_targets/i,
+  );
+
+  const manualDispatch = await cmp.dispatch({
+    session,
+    control: {
+      executionStyle: "manual",
+      metadata: {
+        manualOverride: true,
+      },
+    },
+    payload: {
+      agentId: "main",
+      packageId: "package-control",
+      sourceAgentId: "main",
+      targetAgentId: "child-1",
+      targetKind: "child",
+      metadata: {
+        manualOverride: true,
+      },
+    },
+  });
+  assert.equal(manualDispatch.status, "dispatched");
+
+  await assert.rejects(
+    () => cmp.dispatch({
+      session,
+      payload: {
+        agentId: "main",
+        packageId: "package-return",
+        sourceAgentId: "main",
+        targetAgentId: "core-main",
+        targetKind: "core_agent",
+      },
+    }),
+    /manual override|auto-return|manual_targets/i,
+  );
 });

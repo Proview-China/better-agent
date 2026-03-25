@@ -39,6 +39,22 @@ test("cmp-mq redis adapter can bootstrap one agent and publish a neighborhood en
   assert.equal(receipt.lane, "stream");
   assert.equal(receipt.targetCount, 1);
   assert.match(receipt.redisKey, /^cmp:cmp-project:stream:/);
+
+  const truth = adapter.readDeliveryTruth({
+    projectId: "cmp-project",
+    sourceAgentId: "agent-main",
+    receiptId: receipt.receiptId,
+  });
+  assert.equal(truth?.state, "published");
+
+  const acknowledged = adapter.acknowledgeDelivery({
+    projectId: "cmp-project",
+    sourceAgentId: "agent-main",
+    receiptId: receipt.receiptId,
+    acknowledgedAt: "2026-03-24T19:01:00.000Z",
+  });
+  assert.equal(acknowledged.state, "acknowledged");
+  assert.equal(acknowledged.acknowledgedAt, "2026-03-24T19:01:00.000Z");
 });
 
 test("cmp-mq redis adapter keeps critical escalation on the queue lane only", () => {

@@ -8,6 +8,7 @@ import {
   createCmpPayloadRef,
   isCmpNeighborRelation,
 } from "./runtime-types.js";
+import type { CmpSection } from "../cmp-types/cmp-section.js";
 
 export interface CmpIngressRecord {
   ingressId: string;
@@ -38,6 +39,11 @@ export interface PlanCmpNeighborhoodBroadcastInput {
   parentAgentId?: string;
   peerAgentIds?: string[];
   childAgentIds?: string[];
+}
+
+export interface CmpSectionIngressRecord {
+  ingress: CmpIngressRecord;
+  sections: CmpSection[];
 }
 
 function normalizeTargetIds(values?: string[]): string[] {
@@ -139,3 +145,17 @@ export function isAllowedCmpNeighborhoodRelation(relation: string): relation is 
   return CMP_NEIGHBOR_RELATIONS.includes(relation as CmpNeighborRelation);
 }
 
+export function createCmpSectionIngressRecord(
+  input: CmpSectionIngressRecord,
+): CmpSectionIngressRecord {
+  return {
+    ingress: createCmpIngressRecord(input.ingress),
+    sections: input.sections.map((section) => ({
+      ...section,
+      payloadRefs: [...section.payloadRefs],
+      lineagePath: [...section.lineagePath],
+      tags: [...section.tags],
+      metadata: section.metadata ? structuredClone(section.metadata) : undefined,
+    })),
+  };
+}

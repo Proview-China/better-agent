@@ -1,6 +1,14 @@
 import type { CmpGitProjectRepo } from "../cmp-git/index.js";
 import type { AgentLineage, CheckedSnapshot, ContextDelta, ContextEvent, ContextPackage, DispatchReceipt, PromotedProjection, SnapshotCandidate, SyncEvent } from "../cmp-types/index.js";
 import type { CmpActiveLineRecord } from "./active-line.js";
+import type { CmpRuntimeInfraProjectState } from "./infra-state.js";
+import {
+  getCmpRecoveryReconciliationRecord,
+  reconcileCmpRuntimeSnapshotWithInfraProjects,
+  type CmpRecoveryReconciliationRecord,
+  type CmpRecoveryReconciliationSummary,
+  summarizeCmpRecoveryReconciliation,
+} from "./recovery-reconciliation.js";
 import { hydrateCmpRuntimeInfraState, type CmpRuntimeHydratedInfraState } from "./infra-state.js";
 import { createCmpRuntimeSnapshot, type CmpRuntimeSnapshot } from "./runtime-snapshot.js";
 
@@ -17,6 +25,12 @@ export interface CmpRuntimeHydratedState {
   dispatchReceipts: Map<string, DispatchReceipt>;
   syncEvents: Map<string, SyncEvent>;
   infraState: CmpRuntimeHydratedInfraState;
+}
+
+export interface CmpRuntimeHydratedRecovery {
+  hydrated: CmpRuntimeHydratedState;
+  reconciliation: CmpRecoveryReconciliationRecord[];
+  summary: CmpRecoveryReconciliationSummary;
 }
 
 function assertUniqueKey(kind: string, key: string, seen: Set<string>): void {
@@ -122,4 +136,35 @@ export function hydrateCmpRuntimeSnapshot(
     syncEvents,
     infraState: hydrateCmpRuntimeInfraState(normalized.infraState),
   };
+}
+
+export function hydrateCmpRuntimeSnapshotWithReconciliation(input: {
+  snapshot?: CmpRuntimeSnapshot;
+  projects?: readonly CmpRuntimeInfraProjectState[];
+}): CmpRuntimeHydratedRecovery {
+  const normalized = createCmpRuntimeSnapshot(input.snapshot);
+  const hydrated = hydrateCmpRuntimeSnapshot(normalized);
+  const projects = input.projects
+    ?? normalized.infraState?.projects
+    ?? [];
+  const reconciliation = reconcileCmpRuntimeSnapshotWithInfraProjects({
+    snapshot: normalized,
+    projects,
+  });
+
+  return {
+    hydrated,
+    reconciliation,
+    summary: summarizeCmpRecoveryReconciliation(reconciliation),
+  };
+}
+
+export function getCmpRuntimeRecoveryReconciliation(input: {
+  recovery: CmpRuntimeHydratedRecovery;
+  projectId: string;
+}): CmpRecoveryReconciliationRecord | undefined {
+  return getCmpRecoveryReconciliationRecord({
+    records: input.recovery.reconciliation,
+    projectId: input.projectId,
+  });
 }

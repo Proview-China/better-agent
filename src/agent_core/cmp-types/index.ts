@@ -143,3 +143,32 @@ export {
   validateRequestHistoricalContextInput,
   validateResolveCheckedSnapshotInput,
 } from "./cmp-interface.js";
+
+export type {
+  CmpRule,
+  CmpRuleAction,
+  CmpRuleEvaluation,
+  CmpRuleMatch,
+  CmpRulePack,
+  CmpSection,
+  CmpSectionFidelity,
+  CmpSectionKind,
+  CmpSectionSource,
+  CmpStoredSection,
+  CmpStoredSectionPlane,
+  CmpStoredSectionState,
+} from "./cmp-section.js";
+export {
+  CMP_RULE_ACTIONS,
+  CMP_SECTION_FIDELITY,
+  CMP_SECTION_KINDS,
+  CMP_SECTION_SOURCES,
+  CMP_STORED_SECTION_PLANES,
+  CMP_STORED_SECTION_STATES,
+  createCmpRule,
+  createCmpRulePack,
+  createCmpSection,
+  createCmpStoredSection,
+  createCmpStoredSectionFromSection,
+  evaluateCmpRulePack,
+} from "./cmp-section.js";

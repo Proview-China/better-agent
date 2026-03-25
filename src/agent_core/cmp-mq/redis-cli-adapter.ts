@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 
 import type {
   CmpCriticalEscalationEnvelope,
+  CmpRedisDeliveryTruthRecord,
   CmpIcmaPublishEnvelope,
   CmpRedisEscalationReceipt,
   CmpRedisProjectBootstrap,
@@ -13,6 +14,7 @@ import type {
 import {
   validateCmpCriticalEscalationEnvelope,
   validateCmpIcmaPublishEnvelope,
+  validateCmpRedisDeliveryTruthRecord,
   validateCmpRedisEscalationReceipt,
   validateCmpRedisProjectBootstrap,
   validateCmpRedisPublishReceipt,
@@ -46,6 +48,13 @@ function assertNonEmpty(value: string, label: string): string {
 
 function createBootstrapKey(bootstrap: Pick<CmpRedisProjectBootstrap, "namespace" | "agentId">): string {
   return `${bootstrap.namespace.keyPrefix}:bootstrap:${bootstrap.agentId}`;
+}
+
+function createDeliveryTruthKey(input: {
+  bootstrap: Pick<CmpRedisProjectBootstrap, "namespace">;
+  receiptId: string;
+}): string {
+  return `${input.bootstrap.namespace.keyPrefix}:delivery:${input.receiptId.trim()}`;
 }
 
 function envelopeDirectionToChannel(
@@ -144,6 +153,33 @@ export class RedisCliCmpRedisMqAdapter implements CmpRedisMqAdapter {
     return parsed;
   }
 
+  async readDeliveryTruth(params: {
+    projectId: string;
+    sourceAgentId: string;
+    receiptId: string;
+  }): Promise<CmpRedisDeliveryTruthRecord | undefined> {
+    const bootstrap = createCmpRedisProjectBootstrap({
+      projectId: params.projectId,
+      agentId: params.sourceAgentId,
+    });
+    const raw = await this.#runRedisCommand([
+      "--raw",
+      "GET",
+      createDeliveryTruthKey({
+        bootstrap,
+        receiptId: params.receiptId,
+      }),
+    ], {
+      allowEmptyStdout: true,
+    });
+    if (!raw.stdout.trim()) {
+      return undefined;
+    }
+    const parsed = JSON.parse(raw.stdout) as CmpRedisDeliveryTruthRecord;
+    validateCmpRedisDeliveryTruthRecord(parsed);
+    return parsed;
+  }
+
   async publishEnvelope(input: PublishCmpRedisEnvelopeInput): Promise<CmpRedisPublishReceipt> {
     validateCmpIcmaPublishEnvelope(input.envelope);
     const bootstrap = await this.#requireBootstrap({
@@ -203,7 +239,66 @@ export class RedisCliCmpRedisMqAdapter implements CmpRedisMqAdapter {
       },
     };
     validateCmpRedisPublishReceipt(receipt);
+    const truth: CmpRedisDeliveryTruthRecord = {
+      receiptId: receipt.receiptId,
+      projectId: receipt.projectId,
+      sourceAgentId: receipt.sourceAgentId,
+      channel: receipt.channel,
+      lane: receipt.lane,
+      redisKey: receipt.redisKey,
+      targetCount: receipt.targetCount,
+      state: "published",
+      publishedAt: receipt.publishedAt,
+      metadata: {
+        ...(receipt.metadata ?? {}),
+      },
+    };
+    validateCmpRedisDeliveryTruthRecord(truth);
+    await this.#runRedisCommand([
+      "SET",
+      createDeliveryTruthKey({
+        bootstrap,
+        receiptId: receipt.receiptId,
+      }),
+      JSON.stringify(truth),
+    ]);
     return receipt;
+  }
+
+  async acknowledgeDelivery(params: {
+    projectId: string;
+    sourceAgentId: string;
+    receiptId: string;
+    acknowledgedAt?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<CmpRedisDeliveryTruthRecord> {
+    const existing = await this.readDeliveryTruth(params);
+    if (!existing) {
+      throw new Error(`CMP Redis delivery truth ${params.projectId}/${params.sourceAgentId}/${params.receiptId} was not found.`);
+    }
+    const bootstrap = createCmpRedisProjectBootstrap({
+      projectId: params.projectId,
+      agentId: params.sourceAgentId,
+    });
+    const next: CmpRedisDeliveryTruthRecord = {
+      ...existing,
+      state: "acknowledged",
+      acknowledgedAt: params.acknowledgedAt ?? new Date().toISOString(),
+      metadata: {
+        ...(existing.metadata ?? {}),
+        ...(params.metadata ?? {}),
+      },
+    };
+    validateCmpRedisDeliveryTruthRecord(next);
+    await this.#runRedisCommand([
+      "SET",
+      createDeliveryTruthKey({
+        bootstrap,
+        receiptId: params.receiptId,
+      }),
+      JSON.stringify(next),
+    ]);
+    return next;
   }
 
   async publishCriticalEscalation(

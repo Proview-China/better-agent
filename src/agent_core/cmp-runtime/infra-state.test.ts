@@ -8,7 +8,7 @@ import {
   createCmpGitProjectRepo,
   createCmpGitProjectRepoBootstrapPlan,
 } from "../cmp-git/index.js";
-import { createCmpRedisProjectBootstrap } from "../cmp-mq/index.js";
+import { createCmpRedisProjectBootstrap } from "../cmp-mq/redis-bootstrap.js";
 import {
   createCmpProjectInfraBootstrapPlan,
   executeCmpProjectInfraBootstrap,
@@ -18,6 +18,7 @@ import {
   getCmpRuntimeInfraProjectState,
   hydrateCmpRuntimeInfraState,
   recordCmpProjectInfraBootstrapReceipt,
+  summarizeCmpRuntimeInfraProjectState,
 } from "./infra-state.js";
 
 test("cmp runtime infra state can record one bootstrap receipt and read it back by project", async () => {
@@ -66,6 +67,12 @@ test("cmp runtime infra state can record one bootstrap receipt and read it back 
       },
       readProjectBootstrap() {
         return undefined;
+      },
+      readDeliveryTruth() {
+        return undefined;
+      },
+      acknowledgeDelivery() {
+        throw new Error("not implemented");
       },
       publishEnvelope() {
         throw new Error("not implemented");
@@ -235,4 +242,55 @@ test("cmp runtime infra hydration builds a project map and rejects duplicates", 
       ],
     });
   }, /Duplicate CMP infra project state detected/);
+});
+
+test("cmp runtime infra summary reports git db and redis readback coverage", () => {
+  const summary = summarizeCmpRuntimeInfraProjectState({
+    projectId: "proj-summary",
+    git: {
+      projectRepo: createCmpGitProjectRepo({
+        projectId: "proj-summary",
+        repoName: "proj-summary",
+      }),
+      repoRootPath: "/tmp/praxis/proj-summary",
+      defaultBranchName: "main",
+      createdBranchNames: ["cmp/main", "work/main"],
+      status: "bootstrapped",
+    },
+    gitBranchBootstraps: [{ agentId: "main", createdBranchNames: ["cmp/main", "work/main"] }],
+    branchRuntimes: [createCmpGitAgentBranchRuntime({
+      projectRepo: createCmpGitProjectRepo({
+        projectId: "proj-summary",
+        repoName: "proj-summary",
+      }),
+      lineage: createCmpGitLineageNode({
+        projectId: "proj-summary",
+        agentId: "main",
+      }),
+      repoRootPath: "/tmp/praxis/proj-summary",
+    })],
+    db: undefined,
+    dbReceipt: createCmpProjectDbBootstrapReceipt({
+      contract: createCmpProjectDbBootstrapContract({
+        projectId: "proj-summary",
+        agentIds: ["main"],
+      }),
+    }),
+    mqBootstraps: [createCmpRedisProjectBootstrap({
+      projectId: "proj-summary",
+      agentId: "main",
+    })],
+    lineages: [createCmpGitLineageNode({
+      projectId: "proj-summary",
+      agentId: "main",
+    })],
+    updatedAt: "2026-03-25T10:00:00.000Z",
+  });
+
+  assert.equal(summary.gitStatus, "bootstrapped");
+  assert.equal(summary.gitBranchBootstrapCount, 1);
+  assert.equal(summary.branchRuntimeCount, 1);
+  assert.equal(summary.dbReceiptStatus, "readback_incomplete");
+  assert.equal(summary.mqBootstrapCount, 1);
+  assert.equal(summary.hydratedLineageCount, 1);
 });

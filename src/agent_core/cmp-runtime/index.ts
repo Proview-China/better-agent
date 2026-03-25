@@ -32,11 +32,13 @@ export {
 
 export type {
   CmpIngressRecord,
+  CmpSectionIngressRecord,
   CmpNeighborhoodBroadcastEnvelope,
   PlanCmpNeighborhoodBroadcastInput,
 } from "./ingress-contract.js";
 export {
   createCmpIngressRecord,
+  createCmpSectionIngressRecord,
   createCmpNeighborhoodBroadcastEnvelope,
   isAllowedCmpNeighborhoodRelation,
   planCmpNeighborhoodBroadcast,
@@ -55,14 +57,45 @@ export {
 export type {
   CmpContextPackageRecord,
   CmpProjectionRecord,
+  CmpStoredSectionMaterializationRecords,
+  CreateContextPackageFromStoredSectionInput,
+  CreateProjectionAndPackageFromStoredSectionInput,
+  CreateProjectionFromStoredSectionInput,
   CreatePassiveHistoricalPackageInput,
 } from "./materialization.js";
 export {
   advanceCmpProjectionVisibility,
+  createCmpProjectionAndPackageRecordsFromStoredSection,
+  createCmpContextPackageRecordFromStoredSection,
   createCmpContextPackageRecord,
+  createCmpProjectionRecordFromStoredSection,
   createCmpProjectionRecord,
   createPassiveHistoricalPackage,
 } from "./materialization.js";
+
+export type {
+  CmpSectionLoweringRecord,
+  CmpSectionIngressLoweringResult,
+  CreateCmpSectionsFromIngestInput,
+  LowerCmpSectionIngressRecordWithRulePackInput,
+  LowerCmpSectionsWithRulePackInput,
+} from "./section-rules.js";
+export {
+  createCmpSectionsFromIngest,
+  lowerCmpSectionIngressRecordWithRulePack,
+  lowerCmpSectionsWithRulePack,
+} from "./section-rules.js";
+
+export type {
+  CreateCmpExactSectionFromMaterialInput,
+  CreateCmpExactSectionsFromIngressInput,
+  CreateCmpSectionIngressRecordFromIngressInput,
+} from "./section-ingress.js";
+export {
+  createCmpExactSectionFromMaterial,
+  createCmpExactSectionsFromIngress,
+  createCmpSectionIngressRecordFromIngress,
+} from "./section-ingress.js";
 
 export type {
   CmpLineageRelation,
@@ -85,9 +118,12 @@ export {
 
 export type {
   CmpRuntimeHydratedState,
+  CmpRuntimeHydratedRecovery,
 } from "./runtime-recovery.js";
 export {
+  getCmpRuntimeRecoveryReconciliation,
   hydrateCmpRuntimeSnapshot,
+  hydrateCmpRuntimeSnapshotWithReconciliation,
 } from "./runtime-recovery.js";
 
 export type {
@@ -167,6 +203,8 @@ export type {
   CmpDbLoweringExecution,
 } from "./db-lowering.js";
 export {
+  applyCmpMqDeliveryProjectionPatchToRecord,
+  createCmpDeliveryRecordFromMqProjectionPatch,
   executeCmpProjectionLowering,
   executeCmpContextPackageLowering,
   executeCmpDeliveryLowering,
@@ -177,12 +215,47 @@ export type {
 } from "./mq-lowering.js";
 export {
   createCmpMqDispatchEnvelope,
+  executeCmpMqAckStateLowering,
   executeCmpMqDispatchLowering,
+  executeCmpMqDispatchStateLowering,
 } from "./mq-lowering.js";
 
+export {
+  acknowledgeCmpMqDeliveryState,
+  createCmpMqDeliveryProjectionPatch,
+  createCmpMqDeliveryStateFromDeliveryTruth,
+  createCmpMqDeliveryStateFromPublish,
+  evaluateCmpMqDeliveryTimeout,
+  expireCmpMqDeliveryState,
+  reconcileCmpMqDeliveryStateWithTruth,
+  scheduleCmpMqDeliveryRetry,
+} from "./mq-delivery-state.js";
+
 export type {
+  CmpHistoricalFallbackDecision,
   CmpRecoveryReconciliationRecord,
+  CmpRecoveryReconciliationStatus,
+  CmpRecoveryReconciliationSummary,
 } from "./recovery-reconciliation.js";
 export {
+  CMP_RECOVERY_RECONCILIATION_STATUSES,
+  getCmpRecoveryReconciliationRecord,
+  planCmpHistoricalFallback,
   reconcileCmpRuntimeSnapshotWithInfraProjects,
+  summarizeCmpRecoveryReconciliation,
 } from "./recovery-reconciliation.js";
+
+export type {
+  CmpGitRebuildResult,
+  CmpGitRebuildWithBackfillResult,
+  RebuildCmpHistoricalContextFromGitTruthInput,
+  RebuildCmpPassiveHistoricalPackageFromGitTruthInput,
+  RebuildCmpProjectionFromGitTruthInput,
+} from "./git-rebuild.js";
+export {
+  createCmpDbBackfillRecordFromGitRebuild,
+  rebuildCmpHistoricalContextFromGitTruth,
+  rebuildCmpHistoricalContextWithBackfillFromGitTruth,
+  rebuildCmpPassiveHistoricalPackageFromGitTruth,
+  rebuildCmpProjectionFromGitTruth,
+} from "./git-rebuild.js";
