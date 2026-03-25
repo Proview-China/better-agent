@@ -31,6 +31,11 @@ export type {
 export type {
   CreateRaxWebsearchCapabilityPackageOptions,
 } from "./search-ground-capability-package.js";
+export type {
+  FirstClassToolingAllowedOperation,
+  FirstClassToolingCapabilityBaselineDescriptor,
+  FirstClassToolingBaselineCapabilityKey,
+} from "./first-class-tooling-baseline.js";
 export type { TapToolingBaselineCapabilityKey } from "./tap-tooling-baseline.js";
 export {
   CAPABILITY_PACKAGE_TEMPLATE_VERSION,
@@ -74,3 +79,13 @@ export {
   RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
   SEARCH_GROUND_CAPABILITY_KEY,
 } from "./search-ground-capability-package.js";
+export {
+  createCapabilityManifestFromPackage,
+  createCodeReadCapabilityPackage,
+  createDocsReadCapabilityPackage,
+  FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS,
+  FIRST_CLASS_TOOLING_BASELINE_CAPABILITY_KEYS,
+  getFirstClassToolingCapabilityBaselineDescriptor,
+  listFirstClassToolingBaselineCapabilityPackages,
+  listFirstClassToolingCapabilityBaselineDescriptors,
+} from "./first-class-tooling-baseline.js";
