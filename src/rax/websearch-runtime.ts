@@ -22,6 +22,15 @@ import type { WebSearchOutput } from "./websearch-types.js";
 
 const execFileAsync = promisify(execFile);
 
+function extractErrorCode(error: unknown, fallback = "websearch_failed"): string {
+  if (!error || typeof error !== "object" || Array.isArray(error)) {
+    return fallback;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && code.length > 0 ? code : fallback;
+}
+
 function extractFirstJsonArray(source: string): string {
   const start = source.indexOf("[{");
   if (start === -1) {
@@ -101,7 +110,8 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
         invocation.layer,
         error instanceof Error ? error.message : "Unknown websearch execution failure.",
         error,
-        compatibilityProfileId
+        compatibilityProfileId,
+        extractErrorCode(error)
       );
     }
   }
@@ -142,7 +152,8 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
         layer,
         error.message,
         error,
-        compatibilityProfileId
+        compatibilityProfileId,
+        error.code
       );
     }
 
@@ -152,7 +163,8 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
       layer,
       error instanceof Error ? error.message : "Unknown websearch routing failure.",
       error,
-      compatibilityProfileId
+      compatibilityProfileId,
+      extractErrorCode(error)
     );
   }
 
@@ -213,6 +225,13 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
   }
 
   async #executeAnthropicAgent(invocation: PreparedInvocation): Promise<unknown> {
+    if (process.platform === "win32") {
+      throw new RaxRoutingError(
+        "anthropic_agent_unavailable_on_windows",
+        "Anthropic Claude Code agent websearch currently requires a Unix-like shell via script(1); use layer: \"api\" on Windows."
+      );
+    }
+
     const payload = invocation.payload as {
       command: string;
       args: string[];

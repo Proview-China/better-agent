@@ -349,6 +349,9 @@ function inferWebSearchStatus(
   status: CapabilityResult<WebSearchOutput>["status"];
   error?: CapabilityResult<WebSearchOutput>["error"];
 } {
+  const hasEvidence = output.citations.length > 0 || output.sources.length > 0;
+  const hasAnswer = output.answer.length > 0;
+
   if (provider === "anthropic" && isRecord(raw)) {
     const stopReason = asString(raw.stop_reason);
     if (stopReason === "tool_use" && output.answer.length === 0) {
@@ -362,6 +365,30 @@ function inferWebSearchStatus(
         }
       };
     }
+  }
+
+  if (hasAnswer && !hasEvidence) {
+    return {
+      status: "partial",
+      error: {
+        code: "websearch_evidence_missing",
+        message:
+          "search.ground produced an answer without any citations or source evidence, so the result is not fully grounded yet.",
+        raw
+      }
+    };
+  }
+
+  if (!hasAnswer && hasEvidence) {
+    return {
+      status: "partial",
+      error: {
+        code: "websearch_answer_missing",
+        message:
+          "search.ground returned source evidence but no finalized answer text, so the result is only partially complete.",
+        raw
+      }
+    };
   }
 
   return { status: "success" };
@@ -410,7 +437,8 @@ export function toWebSearchFailureResult(
   layer: Exclude<SdkLayer, "auto">,
   message: string,
   raw?: unknown,
-  profileId?: string
+  profileId?: string,
+  code = "websearch_failed"
 ): CapabilityResult<WebSearchOutput> {
   return {
     status: "failed",
@@ -421,7 +449,7 @@ export function toWebSearchFailureResult(
     capability: "search",
     action: "ground",
     error: {
-      code: "websearch_failed",
+      code,
       message,
       raw
     }

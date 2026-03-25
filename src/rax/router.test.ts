@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { LOCAL_GATEWAY_COMPATIBILITY_PROFILES } from "./compatibility.js";
 import type { CapabilityAdapterDescriptor } from "./contracts.js";
-import { createRaxFacade } from "./facade.js";
-import { UnsupportedCapabilityError } from "./errors.js";
+import { createConfiguredRaxFacade, createRaxFacade } from "./facade.js";
+import { CompatibilityBlockedError, UnsupportedCapabilityError } from "./errors.js";
 import { CapabilityRouter } from "./router.js";
 import type { CapabilityResult } from "./types.js";
 import type { WebSearchOutput } from "./websearch-types.js";
@@ -261,4 +262,118 @@ test("createRaxFacade routes websearch.create through the injected runtime", asy
 
   assert.equal(result.status, "success");
   assert.equal(result.output?.answer, "mock answer");
+});
+
+test("configured facade keeps official websearch routes unblocked and reports compatibility blocks clearly", async () => {
+  const mockWebSearchGround: CapabilityAdapterDescriptor<
+    { query: string },
+    { endpoint: string; body: object }
+  > = {
+    id: "mock.openai.search.ground",
+    key: "search.ground",
+    namespace: "search",
+    action: "ground",
+    provider: "openai",
+    layer: "api",
+    description: "Mock OpenAI search.ground adapter.",
+    prepare(request) {
+      return {
+        key: this.key,
+        provider: request.provider,
+        model: request.model,
+        layer: this.layer,
+        adapterId: this.id,
+        sdk: {
+          packageName: "openai",
+          entrypoint: "responses.create"
+        },
+        payload: {
+          endpoint: "responses.create",
+          body: {
+            query: request.input.query
+          }
+        }
+      };
+    }
+  };
+
+  const fakeWebSearchRuntime: WebSearchRuntimeLike = {
+    async executePreparedInvocation(invocation): Promise<CapabilityResult<WebSearchOutput>> {
+      return {
+        status: "success",
+        provider: invocation.provider,
+        model: invocation.model,
+        layer: invocation.layer,
+        capability: "search",
+        action: "ground",
+        output: {
+          answer: "official route answer",
+          citations: [],
+          sources: []
+        }
+      };
+    },
+    createErrorResult(params) {
+      const message =
+        params.error instanceof Error
+          ? params.error.message
+          : "Unknown websearch error.";
+
+      return {
+        status: params.error instanceof CompatibilityBlockedError ? "blocked" : "failed",
+        provider: params.provider,
+        model: params.model,
+        layer: "api",
+        capability: "search",
+        action: "ground",
+        error: {
+          code:
+            params.error instanceof CompatibilityBlockedError
+              ? params.error.code
+              : "websearch_failed",
+          message,
+          raw: params.error
+        }
+      };
+    }
+  };
+
+  const router = new CapabilityRouter([mockWebSearchGround]);
+
+  const official = createConfiguredRaxFacade(
+    router,
+    undefined,
+    undefined,
+    fakeWebSearchRuntime
+  );
+  const officialResult = await official.websearch.create({
+    provider: "openai",
+    model: "gpt-5",
+    input: { query: "official route" }
+  });
+  assert.equal(officialResult.status, "success");
+  assert.equal(officialResult.output?.answer, "official route answer");
+
+  const compat = createConfiguredRaxFacade(
+    router,
+    LOCAL_GATEWAY_COMPATIBILITY_PROFILES,
+    undefined,
+    fakeWebSearchRuntime
+  );
+  const compatResult = await compat.websearch.create({
+    provider: "openai",
+    model: "gpt-5",
+    compatibilityProfileId: "openai-chat-only-gateway",
+    input: { query: "compat route" }
+  });
+
+  assert.equal(compatResult.status, "blocked");
+  const error = compatResult.error as {
+    code: string;
+    message: string;
+    raw: CompatibilityBlockedError;
+  };
+  assert.equal(error.code, "blocked_by_compatibility_profile");
+  assert.match(error.message, /compatibility profile openai-chat-only-gateway/u);
+  assert.ok(error.raw instanceof CompatibilityBlockedError);
 });
