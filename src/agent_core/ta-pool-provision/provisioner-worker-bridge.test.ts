@@ -79,3 +79,21 @@ test("default provisioner worker output carries package artifacts plus activatio
   assert.equal(output.replayRecommendation.suggestedTrigger, "after_verify");
   assert.match(output.buildSummary, /Real builder execution and activation driver remain unimplemented/i);
 });
+
+test("bootstrap tooling capabilities emit formal package payloads through the worker bridge", () => {
+  const input = createProvisionerWorkerBridgeInput(createRequest({
+    requestedCapabilityKey: "skill.doc.generate",
+    requestedTier: "B0",
+    desiredProviderOrRuntime: "local-tooling",
+  }));
+
+  const output = createDefaultProvisionerWorkerOutput(input);
+
+  validateProvisionerWorkerOutput(output);
+
+  assert.equal(output.activationPayload.activationMode, "activate_after_verify");
+  assert.equal(output.activationPayload.adapterFactoryRef, "factory:tap-tooling:skill.doc.generate");
+  assert.equal(output.toolArtifact.metadata?.formalCapabilityPackage, true);
+  assert.equal(output.metadata?.packageTemplateStatus, "formal");
+  assert.match(output.buildSummary, /formal bootstrap tooling capability package/i);
+});

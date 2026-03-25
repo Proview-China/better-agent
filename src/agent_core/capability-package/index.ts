@@ -50,3 +50,11 @@ export {
   validateCapabilityPackageUsageExample,
   validateCapabilityPackageVerification,
 } from "./capability-package.js";
+
+export {
+  TAP_TOOLING_BASELINE_CAPABILITY_KEYS,
+  createTapToolingBaselineCapabilityPackages,
+  createTapToolingCapabilityPackage,
+  isTapToolingBaselineCapabilityKey,
+} from "./tap-tooling-baseline.js";
+export type { TapToolingBaselineCapabilityKey } from "./tap-tooling-baseline.js";
