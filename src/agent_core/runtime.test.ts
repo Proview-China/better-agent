@@ -5,13 +5,15 @@ import { createGoalSource } from "./goal/goal-source.js";
 import type { ModelInferenceExecutionResult } from "./integrations/model-inference.js";
 import { createRaxSearchGroundCapabilityDefinition } from "./integrations/rax-port.js";
 import { createAgentCoreRuntime } from "./runtime.js";
-import type { CapabilityAdapter, CapabilityCallIntent } from "./index.js";
+import type { CapabilityAdapter, CapabilityCallIntent, CmpActionIntent } from "./index.js";
 import {
   createAgentLineage,
   createCmpAgentLocalTableSet,
   createCmpBranchFamily,
   createCmpDbPostgresAdapter,
   createCmpGitAgentBranchRuntime,
+  type CmpGitBranchRef,
+  type CmpGitProjectRepoBootstrapPlan,
   createCmpGitLineageNode,
   createCmpGitProjectRepo,
   createCmpGitProjectRepoBootstrapPlan,
@@ -174,6 +176,112 @@ test("AgentCoreRuntime can keep CMP infra backends on the runtime boundary witho
   assert.equal(runtime.cmpInfraBackends.git, gitBackend);
   assert.equal(runtime.cmpInfraBackends.db, dbAdapter);
   assert.equal(runtime.cmpInfraBackends.mq, mqAdapter);
+});
+
+test("AgentCoreRuntime can bootstrap CMP infra through configured git and mq backends", async () => {
+  const projectId = "proj-runtime-bootstrap";
+  const gitBackend = {
+    bootstrapProjectRepo(plan: CmpGitProjectRepoBootstrapPlan) {
+      return {
+        projectRepo: plan.projectRepo,
+        repoRootPath: plan.repoRootPath,
+        defaultBranchName: plan.defaultBranchName,
+        createdBranchNames: plan.branchKinds.map((kind: string) => `${kind}/${plan.projectRepo.defaultAgentId}`),
+        status: "bootstrapped" as const,
+      };
+    },
+    bootstrapAgentBranchRuntime(runtime: { branchFamily: { work: { fullRef: string }; cmp: { fullRef: string }; mp: { fullRef: string }; tap: { fullRef: string } } }) {
+      return [
+        runtime.branchFamily.work.fullRef,
+        runtime.branchFamily.cmp.fullRef,
+        runtime.branchFamily.mp.fullRef,
+        runtime.branchFamily.tap.fullRef,
+      ] as const;
+    },
+    readBranchHead(runtime: { branchFamily: { cmp: CmpGitBranchRef } }) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+      };
+    },
+    writeCheckedRef(runtime: { branchFamily: { cmp: CmpGitBranchRef }; checkedRefName: string }, commitSha: string) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+        checkedRefName: runtime.checkedRefName,
+        checkedCommitSha: commitSha,
+      };
+    },
+    writePromotedRef(runtime: { branchFamily: { cmp: CmpGitBranchRef }; promotedRefName: string }, commitSha: string) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+        promotedRefName: runtime.promotedRefName,
+        promotedCommitSha: commitSha,
+      };
+    },
+  };
+  const runtime = createAgentCoreRuntime({
+    cmpInfraBackends: {
+      git: gitBackend,
+      mq: createInMemoryCmpRedisMqAdapter(),
+      db: createCmpDbPostgresAdapter({
+        topology: createCmpProjectDbTopology({
+          projectId,
+        }),
+        localTableSets: [
+          createCmpAgentLocalTableSet({
+            projectId,
+            agentId: "main",
+          }),
+        ],
+      }),
+      dbExecutor: {
+        connection: {
+          databaseName: projectId,
+        },
+        async executeStatement() {
+          throw new Error("not used in bootstrapCmpProjectInfra test");
+        },
+        async executeBootstrapContract(contract) {
+          return {
+            receipt: {
+              projectId: contract.projectId,
+              databaseName: contract.databaseName,
+              schemaName: contract.schemaName,
+              status: "bootstrapped" as const,
+              expectedTargetCount: contract.readbackStatements.length,
+              presentTargetCount: contract.readbackStatements.length,
+              readbackRecords: contract.readbackStatements.map((statement) => ({
+                target: statement.target,
+                schemaName: contract.schemaName,
+                tableName: statement.target.split(".").slice(1).join("."),
+                tableRef: statement.target,
+                status: "present" as const,
+              })),
+            },
+            bootstrapExecutions: [],
+            readbackExecutions: [],
+          };
+        },
+      },
+    },
+  });
+
+  const receipt = await runtime.bootstrapCmpProjectInfra({
+    projectId,
+    repoName: projectId,
+    repoRootPath: `/tmp/praxis/${projectId}`,
+    agents: [
+      { agentId: "main", depth: 0 },
+      { agentId: "child-a", parentAgentId: "main", depth: 1 },
+    ],
+  });
+
+  assert.equal(receipt.git.projectRepo.projectId, projectId);
+  assert.equal(receipt.gitBranchBootstraps.length, 2);
+  assert.equal(receipt.dbReceipt.status, "bootstrapped");
+  assert.equal(receipt.mqBootstraps.length, 2);
+  assert.equal(runtime.listCmpLineages().length, 2);
+  assert.equal(runtime.getCmpProjectInfraBootstrapReceipt(projectId)?.git.projectRepo.projectId, projectId);
+  assert.equal(runtime.listCmpProjectInfraBootstrapReceipts().length, 1);
 });
 
 test("AgentCoreRuntime can dispatch a capability intent through the new gateway and pool path", async () => {
@@ -1560,6 +1668,78 @@ test("AgentCoreRuntime can run the first CMP active path through ingest, delta, 
   assert.equal(runtime.listCmpDeltas().length, 1);
   assert.equal(runtime.listCmpSyncEvents("main").length >= 2, true);
   assert.ok(runtime.getCmpDispatchReceipt(dispatched.receipt.dispatchId));
+});
+
+test("AgentCoreRuntime can dispatch a cmp_action intent through the kernel loop", async () => {
+  const runtime = createAgentCoreRuntime();
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-cmp-intent",
+      sessionId: session.sessionId,
+      userInput: "Drive CMP through the kernel intent path.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+
+  const lineage = createAgentLineage({
+    agentId: "cmp-main",
+    depth: 0,
+    projectId: "cmp-project-kernel-intent",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/cmp-main",
+      cmpBranch: "cmp/cmp-main",
+      mpBranch: "mp/cmp-main",
+      tapBranch: "tap/cmp-main",
+    }),
+  });
+
+  const intent: CmpActionIntent<"ingest_runtime_context"> = {
+    intentId: "cmp-intent-1",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    kind: "cmp_action",
+    createdAt: "2026-03-25T00:00:00.000Z",
+    priority: "normal",
+    request: {
+      requestId: "cmp-request-1",
+      intentId: "cmp-intent-1",
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      action: "ingest_runtime_context",
+      input: {
+        agentId: "cmp-main",
+        sessionId: session.sessionId,
+        runId: created.run.runId,
+        lineage,
+        taskSummary: "Kernel CMP ingest path",
+        materials: [
+          {
+            kind: "user_input",
+            ref: "payload:cmp-kernel-intent",
+          },
+        ],
+      },
+      priority: "normal",
+    },
+  };
+
+  const dispatched = await runtime.dispatchIntent(intent);
+
+  assert.equal(dispatched.action, "ingest_runtime_context");
+  assert.equal(dispatched.error, undefined);
+  assert.equal(dispatched.runOutcome.run.status, "waiting");
+  assert.equal(dispatched.runOutcome.queuedIntent?.kind, "model_inference");
+  assert.equal(runtime.readCmpEvents("cmp-main").length, 1);
+  const tailEventTypes = runtime.readRunEvents(created.run.runId).slice(-3).map((entry) => entry.event.type);
+  assert.deepEqual(tailEventTypes, [
+    "capability.result_received",
+    "state.delta_applied",
+    "intent.queued",
+  ]);
 });
 
 test("AgentCoreRuntime can serve the first CMP passive historical reply", () => {

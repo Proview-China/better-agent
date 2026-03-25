@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  type CmpDbBootstrapReadbackRecord,
+  type CmpProjectDbBootstrapReceipt,
   type CmpAgentLocalTableSet,
   type CmpDbAgentLocalTableDefinition,
   type CmpDbColumnDefinition,
@@ -11,6 +13,7 @@ import {
   type CmpProjectDbTopology,
   sanitizeSqlIdentifier,
   validateCmpProjectDbBootstrapContract,
+  validateCmpProjectDbBootstrapReceipt,
 } from "./cmp-db-types.js";
 import { createCmpAgentLocalTableSet } from "./agent-local-hot-tables.js";
 import { createCmpProjectDbTopology } from "./project-db-topology.js";
@@ -90,6 +93,12 @@ export interface CreateCmpProjectDbBootstrapContractInput {
   agentIds: readonly string[];
   databaseName?: string;
   schemaName?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpProjectDbReadbackRowInput {
+  target: string;
+  tableRef?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -191,4 +200,78 @@ export function createCmpProjectDbBootstrapContract(
 
   validateCmpProjectDbBootstrapContract(contract);
   return contract;
+}
+
+function splitTarget(target: string): { schemaName: string; tableName: string } {
+  const normalized = target.trim();
+  const [schemaName, ...rest] = normalized.split(".");
+  if (!schemaName || rest.length === 0) {
+    throw new Error(`CMP DB bootstrap target ${target} must use schema.table form.`);
+  }
+  return {
+    schemaName,
+    tableName: rest.join("."),
+  };
+}
+
+export function createCmpProjectDbBootstrapReadbackRecord(input: {
+  statement: Pick<CmpDbSqlStatement, "target" | "metadata">;
+  tableRef?: string | null;
+  metadata?: Record<string, unknown>;
+}): CmpDbBootstrapReadbackRecord {
+  const target = input.statement.target.trim();
+  const { schemaName, tableName } = splitTarget(target);
+  const tableRef = input.tableRef?.trim() || undefined;
+  return {
+    target,
+    schemaName,
+    tableName,
+    tableRef,
+    status: tableRef ? "present" : "missing",
+    metadata: {
+      ...(input.statement.metadata ?? {}),
+      ...(input.metadata ?? {}),
+    },
+  };
+}
+
+export function listCmpProjectDbReadbackTargets(
+  contract: Pick<CmpProjectDbBootstrapContract, "readbackStatements">,
+): string[] {
+  return [...new Set(contract.readbackStatements.map((statement) => statement.target))];
+}
+
+export function createCmpProjectDbBootstrapReceipt(input: {
+  contract: CmpProjectDbBootstrapContract;
+  readbackRows?: readonly CmpProjectDbReadbackRowInput[];
+  metadata?: Record<string, unknown>;
+}): CmpProjectDbBootstrapReceipt {
+  const readbackByTarget = new Map(
+    (input.readbackRows ?? []).map((row) => [row.target.trim(), row]),
+  );
+  const readbackRecords = input.contract.readbackStatements.map((statement) => {
+    const row = readbackByTarget.get(statement.target);
+    return createCmpProjectDbBootstrapReadbackRecord({
+      statement,
+      tableRef: row?.tableRef,
+      metadata: row?.metadata,
+    });
+  });
+  const expectedTargetCount = readbackRecords.length;
+  const presentTargetCount = readbackRecords.filter((record) => record.status === "present").length;
+  const receipt: CmpProjectDbBootstrapReceipt = {
+    projectId: input.contract.projectId,
+    databaseName: input.contract.databaseName,
+    schemaName: input.contract.schemaName,
+    status: presentTargetCount === expectedTargetCount ? "bootstrapped" : "readback_incomplete",
+    expectedTargetCount,
+    presentTargetCount,
+    readbackRecords,
+    metadata: {
+      ...(input.contract.metadata ?? {}),
+      ...(input.metadata ?? {}),
+    },
+  };
+  validateCmpProjectDbBootstrapReceipt(receipt);
+  return receipt;
 }

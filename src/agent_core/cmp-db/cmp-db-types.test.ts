@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   CMP_DB_AGENT_LOCAL_TABLE_KINDS,
+  CMP_DB_BOOTSTRAP_READBACK_STATUSES,
+  CMP_DB_BOOTSTRAP_RECEIPT_STATUSES,
   CMP_DB_SHARED_TABLE_KINDS,
   CMP_PROJECTION_STATES,
   validateCmpAgentLocalTableSet,
@@ -31,6 +33,14 @@ test("cmp-db protocol constants expose frozen shared/local table kinds and proje
     "promoted_by_parent",
     "dispatched_downward",
     "archived",
+  ]);
+  assert.deepEqual(CMP_DB_BOOTSTRAP_READBACK_STATUSES, [
+    "present",
+    "missing",
+  ]);
+  assert.deepEqual(CMP_DB_BOOTSTRAP_RECEIPT_STATUSES, [
+    "bootstrapped",
+    "readback_incomplete",
   ]);
 });
 

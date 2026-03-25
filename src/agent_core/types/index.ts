@@ -8,6 +8,11 @@ export type {
 } from "./kernel-goal.js";
 export type {
   CapabilityCallIntent,
+  CmpActionInput,
+  CmpActionInputByAction,
+  CmpActionIntent,
+  CmpActionRequest,
+  CmpIntentAction,
   CapabilityPortRequest,
   InternalStepIntent,
   IntentPriority,
@@ -17,6 +22,7 @@ export type {
   ModelInferenceIntent
 } from "./kernel-intents.js";
 export {
+  CMP_INTENT_ACTIONS,
   INTENT_PRIORITIES,
   KERNEL_INTENT_KINDS
 } from "./kernel-intents.js";

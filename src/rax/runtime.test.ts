@@ -44,6 +44,33 @@ test("default rax runtime routes OpenAI generate.create to Responses API by defa
   assert.equal(payload.surface, "responses");
 });
 
+test("default rax runtime now exposes cmp facade", () => {
+  const session = rax.cmp.create({
+    config: {
+      projectId: "proj-rax-cmp-default",
+      git: {
+        repoName: "proj-rax-cmp-default",
+        repoRootPath: "/tmp/praxis/proj-rax-cmp-default",
+      },
+      db: {
+        databaseName: "cmp_proj_rax_cmp_default",
+        liveExecutionPreferred: false,
+      },
+      mq: {
+        liveExecutionPreferred: false,
+      },
+    },
+  });
+
+  assert.equal(session.projectId, "proj-rax-cmp-default");
+  assert.equal(typeof rax.cmp.bootstrap, "function");
+  assert.equal(typeof rax.cmp.readback, "function");
+  assert.equal(typeof rax.cmp.resolve, "function");
+  assert.equal(typeof rax.cmp.materialize, "function");
+  assert.equal(typeof rax.cmp.dispatch, "function");
+  assert.equal(typeof rax.cmp.requestHistory, "function");
+});
+
 test("default rax runtime can route OpenAI generate.create through compat variant", () => {
   const invocation = rax.generate.create({
     provider: "openai",

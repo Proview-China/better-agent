@@ -134,6 +134,40 @@ export interface CmpProjectDbBootstrapContract {
   metadata?: Record<string, unknown>;
 }
 
+export const CMP_DB_BOOTSTRAP_READBACK_STATUSES = [
+  "present",
+  "missing",
+] as const;
+export type CmpDbBootstrapReadbackStatus =
+  (typeof CMP_DB_BOOTSTRAP_READBACK_STATUSES)[number];
+
+export const CMP_DB_BOOTSTRAP_RECEIPT_STATUSES = [
+  "bootstrapped",
+  "readback_incomplete",
+] as const;
+export type CmpDbBootstrapReceiptStatus =
+  (typeof CMP_DB_BOOTSTRAP_RECEIPT_STATUSES)[number];
+
+export interface CmpDbBootstrapReadbackRecord {
+  target: string;
+  schemaName: string;
+  tableName: string;
+  tableRef?: string;
+  status: CmpDbBootstrapReadbackStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpProjectDbBootstrapReceipt {
+  projectId: string;
+  databaseName: string;
+  schemaName: string;
+  status: CmpDbBootstrapReceiptStatus;
+  expectedTargetCount: number;
+  presentTargetCount: number;
+  readbackRecords: CmpDbBootstrapReadbackRecord[];
+  metadata?: Record<string, unknown>;
+}
+
 export interface CheckedSnapshotLike {
   snapshotId: string;
   agentId: string;
@@ -267,6 +301,37 @@ export function validateCmpProjectDbBootstrapContract(
   }
   for (const statement of contract.readbackStatements) {
     validateCmpDbSqlStatement(statement);
+  }
+}
+
+export function validateCmpDbBootstrapReadbackRecord(
+  record: CmpDbBootstrapReadbackRecord,
+): void {
+  assertNonEmptyString(record.target, "CMP DB bootstrap readback target");
+  assertNonEmptyString(record.schemaName, "CMP DB bootstrap readback schemaName");
+  assertNonEmptyString(record.tableName, "CMP DB bootstrap readback tableName");
+  if (!CMP_DB_BOOTSTRAP_READBACK_STATUSES.includes(record.status)) {
+    throw new Error(`Unsupported CMP DB bootstrap readback status: ${record.status}.`);
+  }
+}
+
+export function validateCmpProjectDbBootstrapReceipt(
+  receipt: CmpProjectDbBootstrapReceipt,
+): void {
+  assertNonEmptyString(receipt.projectId, "CMP DB bootstrap receipt projectId");
+  assertNonEmptyString(receipt.databaseName, "CMP DB bootstrap receipt databaseName");
+  assertNonEmptyString(receipt.schemaName, "CMP DB bootstrap receipt schemaName");
+  if (!CMP_DB_BOOTSTRAP_RECEIPT_STATUSES.includes(receipt.status)) {
+    throw new Error(`Unsupported CMP DB bootstrap receipt status: ${receipt.status}.`);
+  }
+  if (receipt.expectedTargetCount < 0 || receipt.presentTargetCount < 0) {
+    throw new Error("CMP DB bootstrap receipt target counts cannot be negative.");
+  }
+  if (receipt.presentTargetCount > receipt.expectedTargetCount) {
+    throw new Error("CMP DB bootstrap receipt presentTargetCount cannot exceed expectedTargetCount.");
+  }
+  for (const record of receipt.readbackRecords) {
+    validateCmpDbBootstrapReadbackRecord(record);
   }
 }
 

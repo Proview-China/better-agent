@@ -1,6 +1,7 @@
 import type { CmpGitProjectRepo } from "../cmp-git/index.js";
 import type { AgentLineage, CheckedSnapshot, ContextDelta, ContextEvent, ContextPackage, DispatchReceipt, PromotedProjection, SnapshotCandidate, SyncEvent } from "../cmp-types/index.js";
 import type { CmpActiveLineRecord } from "./active-line.js";
+import { createCmpRuntimeInfraState, type CmpRuntimeInfraState } from "./infra-state.js";
 
 export interface CmpRuntimeSnapshot {
   projectRepos: CmpGitProjectRepo[];
@@ -14,6 +15,7 @@ export interface CmpRuntimeSnapshot {
   contextPackages: ContextPackage[];
   dispatchReceipts: DispatchReceipt[];
   syncEvents: SyncEvent[];
+  infraState?: CmpRuntimeInfraState;
   metadata?: Record<string, unknown>;
 }
 
@@ -29,6 +31,7 @@ export interface CreateCmpRuntimeSnapshotInput {
   contextPackages?: readonly ContextPackage[];
   dispatchReceipts?: readonly DispatchReceipt[];
   syncEvents?: readonly SyncEvent[];
+  infraState?: CmpRuntimeInfraState;
   metadata?: Record<string, unknown>;
 }
 
@@ -47,6 +50,7 @@ export function createCmpRuntimeSnapshot(
     contextPackages: [...(input.contextPackages ?? [])],
     dispatchReceipts: [...(input.dispatchReceipts ?? [])],
     syncEvents: [...(input.syncEvents ?? [])],
+    infraState: input.infraState ? createCmpRuntimeInfraState(input.infraState) : undefined,
     metadata: input.metadata,
   };
 }

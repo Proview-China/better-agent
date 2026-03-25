@@ -1,4 +1,56 @@
 export type {
+  RaxCmpBootstrapInput,
+  RaxCmpBootstrapResult,
+  RaxCmpCreateInput,
+  RaxCmpDatabaseConfig,
+  RaxCmpFacade,
+  RaxCmpGitInfraConfig,
+  RaxCmpIngestInput,
+  RaxCmpMode,
+  RaxCmpMqConfig,
+  RaxCmpReadbackInput,
+  RaxCmpReadbackResult,
+  RaxCmpRecoverInput,
+  RaxCmpRecoverResult,
+  RaxCmpRequestHistoryInput,
+  RaxCmpRuntimeLike,
+  RaxCmpSession,
+  RaxCmpSmokeInput,
+  RaxCmpSmokeResult,
+  RaxCmpSmokeCheck,
+} from "./cmp-types.js";
+export type {
+  CreateRaxCmpConfigInput,
+  RaxCmpConfig,
+} from "./cmp-config.js";
+export type {
+  CmpSection,
+  CmpSectionFidelity,
+  CmpSectionKind,
+  CmpSectionSource,
+  CmpStoredSection,
+  CmpStoredSectionPlane,
+  CmpStoredSectionState,
+  CmpRule,
+  CmpRuleAction,
+  CmpRuleEvaluation,
+  CmpRuleMatch,
+  CmpRulePack,
+} from "./cmp-domain.js";
+export type {
+  CmpConnectorOwnership,
+  CmpPostgresConnector,
+  CmpRedisConnector,
+  CmpSharedGitInfraConnector,
+  CmpSharedInfraConnectorMetadata,
+  CmpSharedInfraConnectors,
+  CmpWorkflowAgentInput,
+} from "./cmp-connectors.js";
+export type {
+  CreateRaxCmpRuntimeInput,
+  RaxCmpRuntime,
+} from "./cmp-runtime.js";
+export type {
   CapabilityAction,
   CapabilityDefinition,
   CapabilityKey,
@@ -130,6 +182,36 @@ export type {
   OpenAICompatibilityProfile
 } from "./compatibility.js";
 
+export {
+  createRaxCmpConfig,
+  loadRaxCmpConfigFromEnv
+} from "./cmp-config.js";
+export {
+  createRaxCmpFacade
+} from "./cmp-facade.js";
+export {
+  createCmpSection,
+  createCmpStoredSection,
+  createCmpStoredSectionFromSection,
+  createCmpRule,
+  createCmpRulePack,
+  evaluateCmpRulePack,
+  CMP_RULE_ACTIONS,
+  CMP_SECTION_FIDELITY,
+  CMP_SECTION_KINDS,
+  CMP_SECTION_SOURCES,
+  CMP_STORED_SECTION_PLANES,
+  CMP_STORED_SECTION_STATES
+} from "./cmp-domain.js";
+export {
+  createCmpSharedGitInfraConnector,
+  createCmpPostgresConnector,
+  createCmpRedisConnector,
+  createCmpSharedInfraConnectors
+} from "./cmp-connectors.js";
+export {
+  createRaxCmpRuntime
+} from "./cmp-runtime.js";
 export {
   CAPABILITY_ACTIONS,
   CAPABILITY_NAMESPACES,

@@ -92,6 +92,46 @@ test("state.delta_applied can choose a capability_call action from working state
   assert.equal(decision.nextAction?.intent?.request.capabilityKey, "search.web");
 });
 
+test("state.delta_applied can choose a cmp_action from working state hints", () => {
+  resetTransitionRules();
+  const state: AgentState = {
+    ...createState("deciding", "decision"),
+    working: {
+      nextCmpAction: "request_historical_context",
+      nextCmpInput: {
+        requesterAgentId: "main",
+        projectId: "cmp-project",
+        reason: "Need the latest high-signal checked history.",
+        query: {},
+      }
+    }
+  };
+  const event = createEvent({
+    eventId: "evt-cmp-state-delta",
+    type: "state.delta_applied",
+    sessionId: "session-1",
+    runId: "run-1",
+    createdAt: "2026-03-17T12:01:30.000Z",
+    payload: {
+      delta: {
+        working: state.working
+      }
+    }
+  });
+
+  const decision = evaluateTransition(state, event, goalFrame);
+
+  assert.equal(decision.toStatus, "acting");
+  assert.equal(decision.nextAction?.kind, "cmp_action");
+  assert.equal(decision.nextAction?.intent?.kind, "cmp_action");
+  assert.equal(decision.nextAction?.intent?.request.action, "request_historical_context");
+  const cmpInput = decision.nextAction?.intent?.request.input;
+  if (!cmpInput || !("projectId" in cmpInput)) {
+    throw new Error("Expected CMP request_historical_context input to carry projectId.");
+  }
+  assert.equal(cmpInput.projectId, "cmp-project");
+});
+
 test("intent.queued moves the run into waiting and stores the pending intent id", () => {
   resetTransitionRules();
   const state = createState("acting", "execution");

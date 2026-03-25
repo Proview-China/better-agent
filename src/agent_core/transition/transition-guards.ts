@@ -1,18 +1,33 @@
 import type { KernelEvent } from "../types/kernel-events.js";
 import type { GoalFrameCompiled } from "../types/kernel-goal.js";
 import {
+  CMP_INTENT_ACTIONS,
   INTENT_PRIORITIES,
   type CapabilityCallIntent,
   type CapabilityPortRequest,
+  type CmpActionInputByAction,
+  type CmpActionIntent,
+  type CmpActionRequest,
+  type CmpIntentAction,
   type InternalStepIntent,
   type IntentPriority,
   type ModelInferenceIntent
 } from "../types/kernel-intents.js";
 import type { StateRecord, StateValue, AgentState } from "../types/kernel-state.js";
 import type { StepTransitionAction, StepActionKind } from "../types/kernel-transition.js";
+import {
+  createCommitContextDeltaInput,
+  createDispatchContextPackageInput,
+  createIngestRuntimeContextInput,
+  createMaterializeContextPackageInput,
+  createRequestHistoricalContextInput,
+  createResolveCheckedSnapshotInput,
+} from "../cmp-types/cmp-interface.js";
 
 export const NEXT_CAPABILITY_KEY = "nextCapabilityKey";
 export const NEXT_CAPABILITY_INPUT = "nextCapabilityInput";
+export const NEXT_CMP_ACTION = "nextCmpAction";
+export const NEXT_CMP_INPUT = "nextCmpInput";
 export const NEXT_INTERNAL_INSTRUCTION = "nextInternalInstruction";
 export const NEXT_INTENT_PRIORITY = "nextIntentPriority";
 export const MODEL_STATE_SUMMARY = "modelStateSummary";
@@ -26,6 +41,7 @@ export function isHotPath(kind: StepActionKind): boolean {
     kind === "internal_step" ||
     kind === "model_inference" ||
     kind === "capability_call" ||
+    kind === "cmp_action" ||
     kind === "wait"
   );
 }
@@ -129,12 +145,109 @@ export function buildCapabilityCallIntent(params: {
   };
 }
 
+function asCmpIntentAction(value: StateValue | undefined): CmpIntentAction | undefined {
+  return typeof value === "string" && CMP_INTENT_ACTIONS.includes(value as CmpIntentAction)
+    ? (value as CmpIntentAction)
+    : undefined;
+}
+
+function normalizeCmpActionInput<TAction extends CmpIntentAction>(params: {
+  action: TAction;
+  input: Record<string, unknown>;
+}): CmpActionInputByAction[TAction] {
+  const { action, input } = params;
+
+  switch (action) {
+    case "ingest_runtime_context":
+      return createIngestRuntimeContextInput(
+        input as unknown as CmpActionInputByAction["ingest_runtime_context"],
+      ) as CmpActionInputByAction[TAction];
+    case "commit_context_delta":
+      return createCommitContextDeltaInput(
+        input as unknown as CmpActionInputByAction["commit_context_delta"],
+      ) as CmpActionInputByAction[TAction];
+    case "resolve_checked_snapshot":
+      return createResolveCheckedSnapshotInput(
+        input as unknown as CmpActionInputByAction["resolve_checked_snapshot"],
+      ) as CmpActionInputByAction[TAction];
+    case "materialize_context_package":
+      return createMaterializeContextPackageInput(
+        input as unknown as CmpActionInputByAction["materialize_context_package"],
+      ) as CmpActionInputByAction[TAction];
+    case "dispatch_context_package":
+      return createDispatchContextPackageInput(
+        input as unknown as CmpActionInputByAction["dispatch_context_package"],
+      ) as CmpActionInputByAction[TAction];
+    case "request_historical_context":
+      return createRequestHistoricalContextInput(
+        input as unknown as CmpActionInputByAction["request_historical_context"],
+      ) as CmpActionInputByAction[TAction];
+  }
+}
+
+export function buildCmpActionIntent<TAction extends CmpIntentAction>(params: {
+  state: AgentState;
+  event: KernelEvent;
+  action: TAction;
+  input: Record<string, unknown>;
+}): CmpActionIntent<TAction> {
+  const { state, event, action, input } = params;
+  const intentId = `${event.eventId}:cmp`;
+  const normalizedInput = normalizeCmpActionInput({
+    action,
+    input,
+  });
+  const request: CmpActionRequest<TAction> = {
+    requestId: `${event.eventId}:cmp-request`,
+    intentId,
+    sessionId: event.sessionId,
+    runId: event.runId,
+    action,
+    input: normalizedInput,
+    priority: resolvePriority(state),
+    idempotencyKey: `cmp:${action}:${event.eventId}`,
+  };
+
+  return {
+    intentId,
+    sessionId: event.sessionId,
+    runId: event.runId,
+    kind: "cmp_action",
+    createdAt: event.createdAt,
+    priority: request.priority,
+    correlationId: event.correlationId ?? event.eventId,
+    idempotencyKey: request.idempotencyKey,
+    request,
+  };
+}
+
 export function resolveNextAction(params: {
   state: AgentState;
   event: KernelEvent;
   goalFrame: GoalFrameCompiled;
 }): StepTransitionAction {
   const { state, event, goalFrame } = params;
+
+  const cmpAction = asCmpIntentAction(getStateValue(state.working, NEXT_CMP_ACTION));
+  const cmpInput = asRecord(getStateValue(state.working, NEXT_CMP_INPUT));
+  if (cmpAction || cmpInput) {
+    if (!cmpAction || !cmpInput) {
+      throw new Error("CMP next action requires both nextCmpAction and nextCmpInput.");
+    }
+    return {
+      kind: "cmp_action",
+      intent: buildCmpActionIntent({
+        state,
+        event,
+        action: cmpAction,
+        input: cmpInput,
+      }),
+      metadata: {
+        path: "state-driven-cmp",
+        cmpAction,
+      }
+    };
+  }
 
   const capabilityKey = asString(getStateValue(state.working, NEXT_CAPABILITY_KEY));
   const capabilityInput = asRecord(getStateValue(state.working, NEXT_CAPABILITY_INPUT));

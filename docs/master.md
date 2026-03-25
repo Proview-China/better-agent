@@ -134,8 +134,26 @@
   - [33-cmp-five-agent-runtime-and-active-passive-flow.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/33-cmp-five-agent-runtime-and-active-passive-flow.md)
 - CMP infra 真实 backend 与 bootstrap 总纲：
   - [34-cmp-infra-real-backend-and-bootstrap-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/34-cmp-infra-real-backend-and-bootstrap-outline.md)
+- CMP infra 收尾总纲：
+  - [35-cmp-infra-closure-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/35-cmp-infra-closure-outline.md)
+- RAX CMP 工作流接入总纲：
+  - [36-rax-cmp-workflow-integration-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/36-rax-cmp-workflow-integration-outline.md)
+- TAP 第一波 capability 接入总纲：
+  - [37-tap-first-wave-capability-intake-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/37-tap-first-wave-capability-intake-outline.md)
+- CMP/MP 十 agent 最小能力基线：
+  - [38-cmp-mp-ten-agent-minimum-capability-baseline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/38-cmp-mp-ten-agent-minimum-capability-baseline.md)
+- CMP runtime 正式接入与 TAP 最小接缝总纲：
+  - [39-cmp-runtime-live-integration-and-tap-bridge-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/39-cmp-runtime-live-integration-and-tap-bridge-outline.md)
+- TAP 第一波 capability 接入任务包：
+  - [tap-first-wave-capability-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-first-wave-capability-task-pack/README.md)
 - CMP infra 并行编码任务包：
   - [cmp-infra-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-infra-task-pack/README.md)
+- CMP infra 收尾并行编码任务包：
+  - [cmp-infra-closure-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-infra-closure-task-pack/README.md)
+- RAX CMP 工作流接入任务包：
+  - [rax-cmp-workflow-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/rax-cmp-workflow-task-pack/README.md)
+- CMP runtime 正式接入与联调任务包：
+  - [cmp-runtime-live-integration-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-runtime-live-integration-task-pack/README.md)
 - CMP 并行编码任务包：
   - [cmp-implementation-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-implementation-task-pack/README.md)
 - T/A Pool 并行编码任务包：

@@ -91,6 +91,40 @@ export {
 } from "./runtime-recovery.js";
 
 export type {
+  CmpGitBranchBootstrapRecord,
+  CmpRuntimeHydratedInfraState,
+  CmpRuntimeInfraProjectState,
+  CmpRuntimeInfraState,
+} from "./infra-state.js";
+export {
+  createCmpRuntimeInfraProjectState,
+  createCmpRuntimeInfraState,
+  getCmpRuntimeInfraProjectState,
+  hydrateCmpRuntimeInfraState,
+  recordCmpProjectInfraBootstrapReceipt,
+} from "./infra-state.js";
+export type {
+  CmpProjectInfraAccess,
+  CmpAgentInfraAccess,
+} from "./infra-access.js";
+export {
+  createCmpProjectInfraAccess,
+  resolveCmpAgentInfraAccess,
+} from "./infra-access.js";
+
+export type {
+  CmpInfraBootstrapAgentInput,
+  CmpProjectInfraBootstrapPlan,
+  CmpProjectInfraBootstrapReceipt,
+  CreateCmpProjectInfraBootstrapPlanInput,
+  ExecuteCmpProjectInfraBootstrapInput,
+} from "./infra-bootstrap.js";
+export {
+  createCmpProjectInfraBootstrapPlan,
+  executeCmpProjectInfraBootstrap,
+} from "./infra-bootstrap.js";
+
+export type {
   CmpInfraBackends,
 } from "./backend-contract.js";
 export {
@@ -120,3 +154,35 @@ export {
   validateCmpLineageNode,
   validateCmpPayloadRef,
 } from "./runtime-types.js";
+
+export type {
+  CmpGitSnapshotLoweringResult,
+  ExecuteCmpGitSnapshotLoweringInput,
+} from "./git-lowering.js";
+export {
+  executeCmpGitSnapshotLowering,
+} from "./git-lowering.js";
+
+export type {
+  CmpDbLoweringExecution,
+} from "./db-lowering.js";
+export {
+  executeCmpProjectionLowering,
+  executeCmpContextPackageLowering,
+  executeCmpDeliveryLowering,
+} from "./db-lowering.js";
+
+export type {
+  CreateCmpMqDispatchEnvelopeInput,
+} from "./mq-lowering.js";
+export {
+  createCmpMqDispatchEnvelope,
+  executeCmpMqDispatchLowering,
+} from "./mq-lowering.js";
+
+export type {
+  CmpRecoveryReconciliationRecord,
+} from "./recovery-reconciliation.js";
+export {
+  reconcileCmpRuntimeSnapshotWithInfraProjects,
+} from "./recovery-reconciliation.js";

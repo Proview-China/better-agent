@@ -7,3 +7,4 @@ export * from "./integration-hooks.js";
 export * from "./redis-routing.js";
 export * from "./redis-bootstrap.js";
 export * from "./redis-adapter.js";
+export * from "./redis-cli-adapter.js";

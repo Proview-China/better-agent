@@ -7,3 +7,4 @@ export * from "./dbagent-sync.js";
 export * from "./integration-hooks.js";
 export * from "./postgresql-bootstrap.js";
 export * from "./postgresql-adapter.js";
+export * from "./postgresql-live-executor.js";

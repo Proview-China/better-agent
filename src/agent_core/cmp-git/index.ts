@@ -103,6 +103,15 @@ export {
   createCmpGitAdapterError,
   isCmpGitAdapterErrorCode,
 } from "./git-backend.js";
+export {
+  InMemoryCmpGitBackend,
+  createInMemoryCmpGitBackend,
+} from "./in-memory-backend.js";
+export {
+  GitCliCmpGitBackend,
+  assertGitCliAvailable,
+  createGitCliCmpGitBackend,
+} from "./git-cli-backend.js";
 export type {
   CmpGitLineageRelation,
   CmpGitCriticalEscalationAlert,

@@ -1,6 +1,7 @@
 import type { CmpGitProjectRepo } from "../cmp-git/index.js";
 import type { AgentLineage, CheckedSnapshot, ContextDelta, ContextEvent, ContextPackage, DispatchReceipt, PromotedProjection, SnapshotCandidate, SyncEvent } from "../cmp-types/index.js";
 import type { CmpActiveLineRecord } from "./active-line.js";
+import { hydrateCmpRuntimeInfraState, type CmpRuntimeHydratedInfraState } from "./infra-state.js";
 import { createCmpRuntimeSnapshot, type CmpRuntimeSnapshot } from "./runtime-snapshot.js";
 
 export interface CmpRuntimeHydratedState {
@@ -15,6 +16,7 @@ export interface CmpRuntimeHydratedState {
   contextPackages: Map<string, ContextPackage>;
   dispatchReceipts: Map<string, DispatchReceipt>;
   syncEvents: Map<string, SyncEvent>;
+  infraState: CmpRuntimeHydratedInfraState;
 }
 
 function assertUniqueKey(kind: string, key: string, seen: Set<string>): void {
@@ -118,5 +120,6 @@ export function hydrateCmpRuntimeSnapshot(
     contextPackages,
     dispatchReceipts,
     syncEvents,
+    infraState: hydrateCmpRuntimeInfraState(normalized.infraState),
   };
 }

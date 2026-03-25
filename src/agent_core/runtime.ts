@@ -36,6 +36,7 @@ import {
   type CmpGitSyncIntent,
 } from "./cmp-git/index.js";
 import {
+  createCmpDbPostgresAdapter,
   createCmpDbAgentRuntimeSyncState,
   createCmpProjectionRecordFromCheckedSnapshot,
   promoteCmpDbProjectionForParent,
@@ -75,11 +76,27 @@ import {
   resolveCmpPassiveHistoricalDelivery,
   type CmpActiveLineRecord,
   type CmpInfraBackends,
+  type CmpInfraBootstrapAgentInput,
+  type CmpProjectInfraBootstrapPlan,
+  type CmpProjectInfraBootstrapReceipt,
+  type CmpRuntimeInfraState,
   type CmpDispatchReceipt,
   type CmpIngressRecord,
   type CmpProjectionRecord as CmpRuntimeProjectionRecord,
   type CmpRuntimeSnapshot,
+  createCmpRuntimeInfraState,
   createCmpInfraBackends,
+  createCmpProjectInfraBootstrapPlan,
+  createCmpMqDispatchEnvelope,
+  executeCmpContextPackageLowering,
+  executeCmpDeliveryLowering,
+  executeCmpGitSnapshotLowering,
+  executeCmpMqDispatchLowering,
+  executeCmpProjectionLowering,
+  getCmpRuntimeInfraProjectState,
+  recordCmpProjectInfraBootstrapReceipt,
+  resolveCmpAgentInfraAccess,
+  executeCmpProjectInfraBootstrap,
 } from "./cmp-runtime/index.js";
 import {
   activateProvisionAsset,
@@ -113,6 +130,7 @@ import { formatPlainLanguageRisk } from "./ta-pool-context/plain-language-risk.j
 import { toProvisionRequestFromReviewDecision, type ReviewDecisionEngineInventory } from "./ta-pool-review/index.js";
 import type {
   CapabilityCallIntent,
+  CmpActionIntent,
   ModelInferenceIntent,
   CapabilityPortResponse,
   GoalFrameCompiled,
@@ -228,6 +246,18 @@ export interface DispatchModelInferenceIntentResult {
   runOutcome: RunTransitionOutcome;
 }
 
+export interface DispatchCmpActionIntentResult {
+  result: KernelEvent;
+  action: CmpActionIntent["request"]["action"];
+  actionResult?: unknown;
+  error?: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  runOutcome: RunTransitionOutcome;
+}
+
 export interface DispatchCapabilityPlanInput {
   plan: CapabilityInvocationPlan;
   sessionId: string;
@@ -242,6 +272,20 @@ export interface DispatchCapabilityPlanResult {
   lease: Awaited<ReturnType<KernelCapabilityGatewayLike["acquire"]>>;
   prepared: Awaited<ReturnType<KernelCapabilityGatewayLike["prepare"]>>;
   handle: CapabilityExecutionHandle;
+}
+
+export interface BootstrapCmpProjectInfraInput {
+  projectId: string;
+  repoName: string;
+  repoRootPath: string;
+  agents: readonly CmpInfraBootstrapAgentInput[];
+  defaultAgentId?: string;
+  defaultBranchName?: string;
+  worktreeRootPath?: string;
+  databaseName?: string;
+  dbSchemaName?: string;
+  redisNamespaceRoot?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DispatchCapabilityIntentViaTaPoolOptions {
@@ -434,6 +478,8 @@ export class AgentCoreRuntime {
   readonly #cmpDispatchReceipts = new Map<string, DispatchReceipt>();
   readonly #cmpRuntimeDispatchReceipts = new Map<string, CmpDispatchReceipt>();
   readonly #cmpSyncEvents = new Map<string, SyncEvent>();
+  readonly #cmpProjectInfraBootstrapReceipts = new Map<string, CmpProjectInfraBootstrapReceipt>();
+  #cmpRuntimeInfraState: CmpRuntimeInfraState = createCmpRuntimeInfraState();
 
   constructor(options: AgentCoreRuntimeOptions = {}) {
     this.journal = options.journal ?? new AppendOnlyEventJournal();
@@ -920,6 +966,70 @@ export class AgentCoreRuntime {
     return this.#cmpGitOrchestrator.listCheckedRefs();
   }
 
+  getCmpProjectInfraBootstrapReceipt(projectId: string): CmpProjectInfraBootstrapReceipt | undefined {
+    return this.#cmpProjectInfraBootstrapReceipts.get(projectId);
+  }
+
+  listCmpProjectInfraBootstrapReceipts(): readonly CmpProjectInfraBootstrapReceipt[] {
+    return [...this.#cmpProjectInfraBootstrapReceipts.values()];
+  }
+
+  getCmpRuntimeInfraProjectState(projectId: string) {
+    return getCmpRuntimeInfraProjectState(this.#cmpRuntimeInfraState, projectId);
+  }
+
+  createCmpProjectInfraBootstrapPlan(
+    input: BootstrapCmpProjectInfraInput,
+  ): CmpProjectInfraBootstrapPlan {
+    return createCmpProjectInfraBootstrapPlan(input);
+  }
+
+  async bootstrapCmpProjectInfra(
+    input: BootstrapCmpProjectInfraInput,
+  ): Promise<CmpProjectInfraBootstrapReceipt> {
+    if (!this.cmpInfraBackends.git) {
+      throw new Error("CMP git backend is not configured on this runtime.");
+    }
+    if (!this.cmpInfraBackends.mq) {
+      throw new Error("CMP mq backend is not configured on this runtime.");
+    }
+
+    const receipt = await executeCmpProjectInfraBootstrap({
+      plan: this.createCmpProjectInfraBootstrapPlan(input),
+      gitBackend: this.cmpInfraBackends.git,
+      dbExecutor: this.cmpInfraBackends.dbExecutor,
+      mqAdapter: this.cmpInfraBackends.mq,
+    });
+
+    this.#cmpProjectRepos.set(receipt.git.projectRepo.projectId, receipt.git.projectRepo);
+    for (const lineage of receipt.lineages) {
+      this.#cmpGitOrchestrator.registry.register(lineage);
+      this.#cmpLineages.set(lineage.agentId, createAgentLineage({
+        agentId: lineage.agentId,
+        parentAgentId: lineage.parentAgentId,
+        depth: lineage.depth,
+        projectId: lineage.projectId,
+        branchFamily: {
+          workBranch: lineage.branchFamily.work.branchName,
+          cmpBranch: lineage.branchFamily.cmp.branchName,
+          mpBranch: lineage.branchFamily.mp.branchName,
+          tapBranch: lineage.branchFamily.tap.branchName,
+        },
+        childAgentIds: lineage.childAgentIds,
+        status: "active",
+        metadata: lineage.metadata,
+      }));
+    }
+    this.#cmpProjectInfraBootstrapReceipts.set(receipt.git.projectRepo.projectId, receipt);
+    this.#cmpRuntimeInfraState = recordCmpProjectInfraBootstrapReceipt({
+      state: this.#cmpRuntimeInfraState,
+      receipt,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return receipt;
+  }
+
   getCmpGitBranchHead(branchRef: string) {
     return this.#cmpGitOrchestrator.getBranchHead(branchRef);
   }
@@ -1034,6 +1144,7 @@ export class AgentCoreRuntime {
       contextPackages: [...this.#cmpPackages.values()],
       dispatchReceipts: [...this.#cmpDispatchReceipts.values()],
       syncEvents: [...this.#cmpSyncEvents.values()],
+      infraState: this.#cmpRuntimeInfraState,
     };
   }
 
@@ -1051,6 +1162,8 @@ export class AgentCoreRuntime {
     this.#cmpPackages.clear();
     this.#cmpDispatchReceipts.clear();
     this.#cmpSyncEvents.clear();
+    this.#cmpProjectInfraBootstrapReceipts.clear();
+    this.#cmpRuntimeInfraState = createCmpRuntimeInfraState();
     this.#cmpDbRuntimeSync.projections.clear();
     this.#cmpDbRuntimeSync.packages.clear();
     this.#cmpDbRuntimeSync.deliveries.clear();
@@ -1123,6 +1236,26 @@ export class AgentCoreRuntime {
     }
     for (const syncEvent of hydrated.syncEvents.values()) {
       this.#cmpSyncEvents.set(syncEvent.syncEventId, syncEvent);
+    }
+    this.#cmpRuntimeInfraState = {
+      projects: [...hydrated.infraState.projects.values()],
+    };
+    for (const project of hydrated.infraState.projects.values()) {
+      if (project.git && project.db && project.dbReceipt) {
+        this.#cmpProjectInfraBootstrapReceipts.set(project.projectId, {
+          git: project.git,
+          gitBranchBootstraps: project.gitBranchBootstraps.map((record) => ({
+            agentId: record.agentId,
+            createdBranchNames: [...record.createdBranchNames],
+          })),
+          db: project.db,
+          dbReceipt: project.dbReceipt,
+          mqBootstraps: [...project.mqBootstraps],
+          lineages: [...project.lineages],
+          branchRuntimes: [],
+          metadata: project.metadata,
+        });
+      }
     }
   }
 
@@ -1362,6 +1495,51 @@ export class AgentCoreRuntime {
       },
     }));
 
+    const projectInfraState = getCmpRuntimeInfraProjectState(
+      this.#cmpRuntimeInfraState,
+      lineage.projectId,
+    );
+    if (projectInfraState && this.cmpInfraBackends.git) {
+      const agentInfra = resolveCmpAgentInfraAccess({
+        project: projectInfraState,
+        agentId: delta.agentId,
+      });
+      void executeCmpGitSnapshotLowering({
+        backend: this.cmpInfraBackends.git,
+        runtime: agentInfra.branchRuntime,
+        commitSha: candidate.commitRef,
+        promotedCommitSha: promotionRecord ? candidate.commitRef : undefined,
+      }).then((lowering) => {
+        this.#recordCmpSyncEvent(createSyncEvent({
+          syncEventId: randomUUID(),
+          agentId: delta.agentId,
+          channel: "git",
+          direction: this.#mapCmpSyncIntentToDirection(gitSync.binding.syncIntent),
+          objectRef: checked.snapshotId,
+          createdAt: checked.checkedAt,
+          metadata: {
+            source: "cmp-runtime-git-lowering",
+            initialHead: lowering.initialReadback.headCommitSha,
+            checkedCommitSha: lowering.checkedReadback.checkedCommitSha,
+            promotedCommitSha: lowering.promotedReadback?.promotedCommitSha,
+          },
+        }));
+      }).catch((error: unknown) => {
+        this.#recordCmpSyncEvent(createSyncEvent({
+          syncEventId: randomUUID(),
+          agentId: delta.agentId,
+          channel: "git",
+          direction: "local",
+          objectRef: checked.snapshotId,
+          createdAt: new Date().toISOString(),
+          metadata: {
+            source: "cmp-runtime-git-lowering",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        }));
+      });
+    }
+
     return {
       status: "accepted",
       delta,
@@ -1482,6 +1660,59 @@ export class AgentCoreRuntime {
       },
     }));
 
+    const projectReceipt = this.getCmpProjectInfraBootstrapReceipt(snapshot.metadata?.projectId as string);
+    if (projectReceipt?.db && this.cmpInfraBackends.dbExecutor) {
+      const adapter = createCmpDbPostgresAdapter({
+        topology: projectReceipt.db.topology,
+        localTableSets: projectReceipt.db.localTableSets,
+      });
+      const projectionRecord = this.#cmpDbRuntimeSync.projections.get(projection.projectionId);
+      const packageRecord = this.#cmpDbRuntimeSync.packages.get(contextPackage.packageId);
+      if (projectionRecord && packageRecord) {
+        void Promise.all([
+          executeCmpProjectionLowering({
+            adapter,
+            executor: this.cmpInfraBackends.dbExecutor,
+            record: projectionRecord,
+          }),
+          executeCmpContextPackageLowering({
+            adapter,
+            executor: this.cmpInfraBackends.dbExecutor,
+            record: packageRecord,
+          }),
+        ]).then(([projectionLowering, packageLowering]) => {
+          this.#recordCmpSyncEvent(createSyncEvent({
+            syncEventId: randomUUID(),
+            agentId: normalized.agentId,
+            channel: "db",
+            direction: "local",
+            objectRef: contextPackage.packageId,
+            createdAt: contextPackage.createdAt,
+            metadata: {
+              source: "cmp-runtime-db-lowering",
+              projectionWriteTarget: projectionLowering.writeStatement.target,
+              projectionReadTarget: projectionLowering.readStatement.target,
+              packageWriteTarget: packageLowering.writeStatement.target,
+              packageReadTarget: packageLowering.readStatement.target,
+            },
+          }));
+        }).catch((error: unknown) => {
+          this.#recordCmpSyncEvent(createSyncEvent({
+            syncEventId: randomUUID(),
+            agentId: normalized.agentId,
+            channel: "db",
+            direction: "local",
+            objectRef: contextPackage.packageId,
+            createdAt: new Date().toISOString(),
+            metadata: {
+              source: "cmp-runtime-db-lowering",
+              error: error instanceof Error ? error.message : String(error),
+            },
+          }));
+        });
+      }
+    }
+
     return {
       status: "materialized",
       contextPackage,
@@ -1542,6 +1773,118 @@ export class AgentCoreRuntime {
         targetAgentId: normalized.targetAgentId,
       },
     }));
+
+    const sourceLineage = this.#requireCmpLineage(normalized.sourceAgentId);
+    const projectReceipt = this.getCmpProjectInfraBootstrapReceipt(sourceLineage.projectId);
+    if (projectReceipt?.db && this.cmpInfraBackends.dbExecutor) {
+      const adapter = createCmpDbPostgresAdapter({
+        topology: projectReceipt.db.topology,
+        localTableSets: projectReceipt.db.localTableSets,
+      });
+      const deliveryRecord = this.#cmpDbRuntimeSync.deliveries.get(receipt.dispatchId);
+      if (deliveryRecord) {
+        void executeCmpDeliveryLowering({
+          adapter,
+          executor: this.cmpInfraBackends.dbExecutor,
+          record: deliveryRecord,
+        }).then((deliveryLowering) => {
+          this.#recordCmpSyncEvent(createSyncEvent({
+            syncEventId: randomUUID(),
+            agentId: normalized.sourceAgentId,
+            channel: "db",
+            direction: "local",
+            objectRef: receipt.dispatchId,
+            createdAt,
+            metadata: {
+              source: "cmp-runtime-delivery-lowering",
+              writeTarget: deliveryLowering.writeStatement.target,
+              readTarget: deliveryLowering.readStatement.target,
+            },
+          }));
+        }).catch((error: unknown) => {
+          this.#recordCmpSyncEvent(createSyncEvent({
+            syncEventId: randomUUID(),
+            agentId: normalized.sourceAgentId,
+            channel: "db",
+            direction: "local",
+            objectRef: receipt.dispatchId,
+            createdAt: new Date().toISOString(),
+            metadata: {
+              source: "cmp-runtime-delivery-lowering",
+              error: error instanceof Error ? error.message : String(error),
+            },
+          }));
+        });
+      }
+    }
+
+    const projectInfraState = getCmpRuntimeInfraProjectState(
+      this.#cmpRuntimeInfraState,
+      sourceLineage.projectId,
+    );
+    if (
+      normalized.targetKind !== "core_agent" &&
+      projectInfraState &&
+      this.cmpInfraBackends.mq
+    ) {
+      const agentInfra = resolveCmpAgentInfraAccess({
+        project: projectInfraState,
+        agentId: normalized.sourceAgentId,
+      });
+      const direction = normalized.targetKind === "parent"
+        ? "parent"
+        : normalized.targetKind === "peer"
+          ? "peer"
+          : "child";
+      const envelope = createCmpMqDispatchEnvelope({
+        projectId: sourceLineage.projectId,
+        sourceAgentId: normalized.sourceAgentId,
+        targetAgentId: normalized.targetAgentId,
+        direction,
+        contextPackage: {
+          packageId: contextPackage.packageId,
+          packageRef: contextPackage.packageRef,
+          packageKind: contextPackage.packageKind,
+        },
+        createdAt,
+      });
+      void executeCmpMqDispatchLowering({
+        adapter: this.cmpInfraBackends.mq,
+        neighborhood: this.#createCmpNeighborhood(sourceLineage),
+        envelope,
+        knownAncestorIds: this.#collectCmpAncestorIds(sourceLineage.agentId)
+          .filter((ancestorId) => ancestorId !== sourceLineage.parentAgentId),
+        parentPeerIds: this.#findCmpParentPeerIds(sourceLineage),
+      }).then((mqLowering) => {
+        this.#recordCmpSyncEvent(createSyncEvent({
+          syncEventId: randomUUID(),
+          agentId: normalized.sourceAgentId,
+          channel: "mq",
+          direction: this.#mapDispatchTargetKindToDirection(normalized.targetKind),
+          objectRef: receipt.dispatchId,
+          createdAt,
+          metadata: {
+            source: "cmp-runtime-mq-lowering",
+            redisKey: mqLowering.publishReceipt.redisKey,
+            mqBootstrapAgentId: agentInfra.mqBootstrap?.agentId,
+            validatedTargets: mqLowering.validatedSubscriptions.length,
+          },
+        }));
+      }).catch((error: unknown) => {
+        this.#recordCmpSyncEvent(createSyncEvent({
+          syncEventId: randomUUID(),
+          agentId: normalized.sourceAgentId,
+          channel: "mq",
+          direction: this.#mapDispatchTargetKindToDirection(normalized.targetKind),
+          objectRef: receipt.dispatchId,
+          createdAt: new Date().toISOString(),
+          metadata: {
+            source: "cmp-runtime-mq-lowering",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        }));
+      });
+    }
 
     return {
       status: "dispatched",
@@ -1620,6 +1963,49 @@ export class AgentCoreRuntime {
         source: "cmp-runtime-passive",
       },
     });
+
+    const projectReceipt = this.getCmpProjectInfraBootstrapReceipt(normalized.projectId);
+    if (projectReceipt?.db && this.cmpInfraBackends.dbExecutor) {
+      const adapter = createCmpDbPostgresAdapter({
+        topology: projectReceipt.db.topology,
+        localTableSets: projectReceipt.db.localTableSets,
+      });
+      const packageRecord = this.#cmpDbRuntimeSync.packages.get(contextPackage.packageId);
+      if (packageRecord) {
+        void executeCmpContextPackageLowering({
+          adapter,
+          executor: this.cmpInfraBackends.dbExecutor,
+          record: packageRecord,
+        }).then((packageLowering) => {
+          this.#recordCmpSyncEvent(createSyncEvent({
+            syncEventId: randomUUID(),
+            agentId: normalized.requesterAgentId,
+            channel: "db",
+            direction: "local",
+            objectRef: contextPackage.packageId,
+            createdAt: contextPackage.createdAt,
+            metadata: {
+              source: "cmp-runtime-passive-db-lowering",
+              writeTarget: packageLowering.writeStatement.target,
+              readTarget: packageLowering.readStatement.target,
+            },
+          }));
+        }).catch((error: unknown) => {
+          this.#recordCmpSyncEvent(createSyncEvent({
+            syncEventId: randomUUID(),
+            agentId: normalized.requesterAgentId,
+            channel: "db",
+            direction: "local",
+            objectRef: contextPackage.packageId,
+            createdAt: new Date().toISOString(),
+            metadata: {
+              source: "cmp-runtime-passive-db-lowering",
+              error: error instanceof Error ? error.message : String(error),
+            },
+          }));
+        });
+      }
+    }
 
     return {
       status: "materialized",
@@ -2175,14 +2561,109 @@ export class AgentCoreRuntime {
     };
   }
 
+  async dispatchCmpActionIntent(intent: CmpActionIntent): Promise<DispatchCmpActionIntentResult> {
+    const completedAt = new Date().toISOString();
+    let actionResult: unknown;
+    let error: DispatchCmpActionIntentResult["error"] | undefined;
+
+    try {
+      switch (intent.request.action) {
+        case "ingest_runtime_context":
+          actionResult = this.ingestRuntimeContext(
+            intent.request.input as CmpActionIntent<"ingest_runtime_context">["request"]["input"],
+          );
+          break;
+        case "commit_context_delta":
+          actionResult = this.commitContextDelta(
+            intent.request.input as CmpActionIntent<"commit_context_delta">["request"]["input"],
+          );
+          break;
+        case "resolve_checked_snapshot":
+          actionResult = this.resolveCheckedSnapshot(
+            intent.request.input as CmpActionIntent<"resolve_checked_snapshot">["request"]["input"],
+          );
+          break;
+        case "materialize_context_package":
+          actionResult = this.materializeContextPackage(
+            intent.request.input as CmpActionIntent<"materialize_context_package">["request"]["input"],
+          );
+          break;
+        case "dispatch_context_package":
+          actionResult = this.dispatchContextPackage(
+            intent.request.input as CmpActionIntent<"dispatch_context_package">["request"]["input"],
+          );
+          break;
+        case "request_historical_context":
+          actionResult = this.requestHistoricalContext(
+            intent.request.input as CmpActionIntent<"request_historical_context">["request"]["input"],
+          );
+          break;
+        default: {
+          const unreachableAction: never = intent.request.action;
+          throw new Error(`Unsupported CMP action: ${String(unreachableAction)}`);
+        }
+      }
+    } catch (cause) {
+      error = {
+        code: "cmp_action_failed",
+        message: cause instanceof Error ? cause.message : String(cause),
+        details: cause instanceof Error
+          ? {
+              name: cause.name,
+            }
+          : undefined,
+      };
+    }
+
+    const resultEvent: KernelEvent = {
+      eventId: randomUUID(),
+      type: "capability.result_received",
+      sessionId: intent.sessionId,
+      runId: intent.runId,
+      createdAt: completedAt,
+      correlationId: intent.correlationId ?? intent.intentId,
+      payload: {
+        requestId: intent.request.requestId,
+        resultId: `${intent.intentId}:cmp-result`,
+        status: error ? "failed" : "success",
+      },
+      metadata: {
+        resultSource: "cmp",
+        cmpAction: intent.request.action,
+        output: actionResult,
+        error,
+      },
+    };
+
+    this.journal.appendEvent(resultEvent);
+    const runOutcome = await this.runCoordinator.tickRun({
+      runId: intent.runId,
+      incomingEvent: resultEvent,
+    });
+    this.#syncSessionFromRun(runOutcome.run);
+
+    return {
+      result: resultEvent,
+      action: intent.request.action,
+      actionResult,
+      error,
+      runOutcome,
+    };
+  }
+
   async dispatchIntent(intent: CapabilityCallIntent): Promise<DispatchCapabilityIntentViaTaPoolResult>;
   async dispatchIntent(intent: ModelInferenceIntent): Promise<DispatchModelInferenceIntentResult>;
-  async dispatchIntent(intent: CapabilityCallIntent | ModelInferenceIntent) {
+  async dispatchIntent(intent: CmpActionIntent): Promise<DispatchCmpActionIntentResult>;
+  async dispatchIntent(intent: CapabilityCallIntent | ModelInferenceIntent | CmpActionIntent) {
     if (intent.kind === "capability_call") {
       return this.dispatchCapabilityIntentViaTaPool(
         intent,
         this.#createDefaultTaDispatchOptions(intent),
       );
+    }
+
+    if (intent.kind === "cmp_action") {
+      return this.dispatchCmpActionIntent(intent);
     }
 
     return this.dispatchModelInferenceIntent(intent);
@@ -2201,6 +2682,7 @@ export class AgentCoreRuntime {
     let current = created;
     let lastModelResult: DispatchModelInferenceIntentResult["kernelResult"] | undefined;
     let lastCapabilityDispatch: DispatchCapabilityIntentViaTaPoolResult | undefined;
+    let lastCmpDispatch: DispatchCmpActionIntentResult | undefined;
     const maxSteps = params.maxSteps ?? 8;
     let steps = 0;
 
@@ -2237,6 +2719,16 @@ export class AgentCoreRuntime {
         continue;
       }
 
+      if (intent.kind === "cmp_action") {
+        const dispatched = await this.dispatchCmpActionIntent(intent);
+        lastCmpDispatch = dispatched;
+        current = dispatched.runOutcome;
+        if (current.run.status === "completed" || current.run.status === "failed" || current.run.status === "cancelled") {
+          break;
+        }
+        continue;
+      }
+
       throw new Error(`Unsupported queued intent kind for terminal runner: ${intent.kind}`);
     }
 
@@ -2248,6 +2740,7 @@ export class AgentCoreRuntime {
           ? (lastModelResult.output as { text?: string }).text
           : undefined,
       capabilityDispatch: lastCapabilityDispatch,
+      cmpDispatch: lastCmpDispatch,
       steps,
       finalEvents: this.readRunEvents(current.run.runId),
     };
