@@ -182,7 +182,18 @@ test("registerTapToolingBaseline makes B-group capabilities available to bootstr
     taProfile: createTapBootstrapTmaProfile(),
   });
 
-  registerTapToolingBaseline(runtime, { workspaceRoot });
+  const result = registerTapToolingBaseline(runtime, { workspaceRoot });
+
+  assert.deepEqual(result.capabilityKeys, [
+    "repo.write",
+    "shell.restricted",
+    "test.run",
+    "skill.doc.generate",
+  ]);
+  assert.equal(result.packages.length, 4);
+  assert.equal(result.manifests.length, 4);
+  assert.equal(result.bindings.length, 4);
+  assert.equal(result.activationFactoryRefs.length, 4);
 
   const reviewer = createTapReviewerProfile();
   assert.equal(reviewer.baselineCapabilities?.includes("repo.write"), false);

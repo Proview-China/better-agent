@@ -12,6 +12,15 @@ import { registerRaxSkillCapabilityFamily } from "./rax-skill-adapter.js";
 import type { RegisterRaxMcpCapabilitiesInput } from "./rax-mcp-adapter.js";
 import { registerRaxMcpCapabilities } from "./rax-mcp-adapter.js";
 
+export const TAP_FORMAL_CAPABILITY_FAMILY_KEYS = [
+  "foundation",
+  "websearch",
+  "skill",
+  "mcp",
+] as const;
+export type TapFormalCapabilityFamilyKey =
+  (typeof TAP_FORMAL_CAPABILITY_FAMILY_KEYS)[number];
+
 export interface TapCapabilityFamilyAssemblyTarget {
   registerCapabilityAdapter(
     manifest: CapabilityManifest,
@@ -33,24 +42,52 @@ export interface RegisterTapCapabilityFamilyAssemblyInput {
   websearch?: Omit<RaxWebsearchAdapterOptions, "capabilityKey">;
   skill?: Omit<RegisterRaxSkillCapabilityFamilyInput, "runtime">;
   mcp?: Omit<RegisterRaxMcpCapabilitiesInput, "runtime">;
-  includeFamilies?: {
-    foundation?: boolean;
-    websearch?: boolean;
-    skill?: boolean;
-    mcp?: boolean;
-  };
+  includeFamilies?: Partial<Record<TapFormalCapabilityFamilyKey, boolean>>;
+}
+
+export interface TapCapabilityRegistrationAuditEntry {
+  capabilityKey: string;
+  familyKey?: TapFormalCapabilityFamilyKey;
+  manifest: CapabilityManifest;
+  adapterId: string;
+  runtimeKind: string;
+  bindingId?: string;
+  supportsPrepare: boolean;
+  supportsCancellation: boolean;
+  hasHealthCheck: boolean;
+}
+
+export interface TapActivationFactoryAuditEntry {
+  ref: string;
+  capabilityKey?: string;
+  familyKey?: TapFormalCapabilityFamilyKey;
 }
 
 export interface RegisterTapCapabilityFamilyAssemblyResult {
   packages: CapabilityPackage[];
   bindings: unknown[];
   activationFactoryRefs: string[];
-  familyKeys: {
-    foundation: string[];
-    websearch: string[];
-    skill: string[];
-    mcp: string[];
+  familyKeys: Record<TapFormalCapabilityFamilyKey, string[]>;
+  registrationAudit: TapCapabilityRegistrationAuditEntry[];
+  activationFactoryAudit: TapActivationFactoryAuditEntry[];
+}
+
+function createEmptyFamilyKeys(): Record<TapFormalCapabilityFamilyKey, string[]> {
+  return {
+    foundation: [],
+    websearch: [],
+    skill: [],
+    mcp: [],
   };
+}
+
+function readBindingId(binding: unknown): string | undefined {
+  if (!binding || typeof binding !== "object") {
+    return undefined;
+  }
+
+  const candidate = (binding as { bindingId?: unknown }).bindingId;
+  return typeof candidate === "string" && candidate.trim() ? candidate : undefined;
 }
 
 export function registerTapCapabilityFamilyAssembly(
@@ -59,35 +96,51 @@ export function registerTapCapabilityFamilyAssembly(
   const packages: CapabilityPackage[] = [];
   const bindings: unknown[] = [];
   const activationFactoryRefs = new Set<string>();
-  const familyKeys: RegisterTapCapabilityFamilyAssemblyResult["familyKeys"] = {
-    foundation: [],
-    websearch: [],
-    skill: [],
-    mcp: [],
-  };
-  const includeFamilies = {
+  const familyKeys = createEmptyFamilyKeys();
+  const registrationAudit: TapCapabilityRegistrationAuditEntry[] = [];
+  const includeFamilies: Record<TapFormalCapabilityFamilyKey, boolean> = {
     foundation: input.includeFamilies?.foundation ?? true,
     websearch: input.includeFamilies?.websearch ?? true,
     skill: input.includeFamilies?.skill ?? true,
     mcp: input.includeFamilies?.mcp ?? true,
   };
+  const runtime: TapCapabilityFamilyAssemblyTarget = {
+    registerCapabilityAdapter(manifest, adapter) {
+      const binding = input.runtime.registerCapabilityAdapter(manifest, adapter);
+      registrationAudit.push({
+        capabilityKey: manifest.capabilityKey,
+        manifest,
+        adapterId: adapter.id,
+        runtimeKind: adapter.runtimeKind,
+        bindingId: readBindingId(binding),
+        supportsPrepare: manifest.supportsPrepare ?? false,
+        supportsCancellation: manifest.supportsCancellation ?? false,
+        hasHealthCheck: typeof adapter.healthCheck === "function",
+      });
+      return binding;
+    },
+    registerTaActivationFactory(ref, factory) {
+      activationFactoryRefs.add(ref);
+      input.runtime.registerTaActivationFactory(ref, factory);
+    },
+  };
 
   if (includeFamilies.foundation) {
     const firstClass = registerFirstClassToolingBaselineCapabilities({
-      runtime: input.runtime,
+      runtime,
       workspaceRoot: input.foundation.workspaceRoot,
     });
-    const tapTooling = registerTapToolingBaseline(input.runtime, {
+    const tapTooling = registerTapToolingBaseline(runtime, {
       workspaceRoot: input.foundation.workspaceRoot,
       ...(input.foundation.tooling ?? {}),
     });
-    packages.push(...firstClass.packages, ...tapTooling);
-    bindings.push(...firstClass.bindings);
+    packages.push(...firstClass.packages, ...tapTooling.packages);
+    bindings.push(...firstClass.bindings, ...tapTooling.bindings);
     familyKeys.foundation.push(
       ...firstClass.capabilityKeys,
-      ...tapTooling.map((entry) => entry.manifest.capabilityKey),
+      ...tapTooling.capabilityKeys,
     );
-    for (const capabilityPackage of [...firstClass.packages, ...tapTooling]) {
+    for (const capabilityPackage of [...firstClass.packages, ...tapTooling.packages]) {
       const ref = capabilityPackage.activationSpec?.adapterFactoryRef;
       if (ref) {
         activationFactoryRefs.add(ref);
@@ -97,7 +150,7 @@ export function registerTapCapabilityFamilyAssembly(
 
   if (includeFamilies.websearch) {
     const registration = registerRaxWebsearchCapability({
-      runtime: input.runtime,
+      runtime,
       facade: input.websearch?.facade,
     });
     packages.push(registration.capabilityPackage);
@@ -108,7 +161,7 @@ export function registerTapCapabilityFamilyAssembly(
 
   if (includeFamilies.skill) {
     const registration = registerRaxSkillCapabilityFamily({
-      runtime: input.runtime,
+      runtime,
       ...input.skill,
     });
     packages.push(...registration.packages);
@@ -121,7 +174,7 @@ export function registerTapCapabilityFamilyAssembly(
 
   if (includeFamilies.mcp) {
     const registration = registerRaxMcpCapabilities({
-      runtime: input.runtime,
+      runtime,
       ...input.mcp,
     });
     packages.push(...registration.packages);
@@ -132,10 +185,33 @@ export function registerTapCapabilityFamilyAssembly(
     }
   }
 
+  const capabilityToFamily = new Map<string, TapFormalCapabilityFamilyKey>();
+  for (const familyKey of TAP_FORMAL_CAPABILITY_FAMILY_KEYS) {
+    for (const capabilityKey of familyKeys[familyKey]) {
+      capabilityToFamily.set(capabilityKey, familyKey);
+    }
+  }
+  for (const entry of registrationAudit) {
+    entry.familyKey = capabilityToFamily.get(entry.capabilityKey);
+  }
+  const activationFactoryAudit = [...activationFactoryRefs].map((ref) => {
+    const capabilityPackage = packages.find(
+      (item) => item.activationSpec?.adapterFactoryRef === ref,
+    );
+    const capabilityKey = capabilityPackage?.manifest.capabilityKey;
+    return {
+      ref,
+      capabilityKey,
+      familyKey: capabilityKey ? capabilityToFamily.get(capabilityKey) : undefined,
+    };
+  });
+
   return {
     packages,
     bindings,
     activationFactoryRefs: [...activationFactoryRefs],
     familyKeys,
+    registrationAudit,
+    activationFactoryAudit,
   };
 }

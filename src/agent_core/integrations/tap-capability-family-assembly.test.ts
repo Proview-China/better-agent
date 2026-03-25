@@ -46,9 +46,33 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
     "mcp.native.execute",
   ]);
   assert.equal(result.packages.length, 14);
-  assert.equal(result.bindings.length, 10);
+  assert.equal(result.bindings.length, 14);
   assert.equal(result.activationFactoryRefs.length, activationFactories.size);
+  assert.equal(result.registrationAudit.length, 14);
+  assert.equal(result.activationFactoryAudit.length, activationFactories.size);
   assert.equal(registeredCapabilityKeys.includes("search.ground"), true);
   assert.equal(registeredCapabilityKeys.includes("skill.use"), true);
   assert.equal(registeredCapabilityKeys.includes("mcp.native.execute"), true);
+
+  const codeReadAudit = result.registrationAudit.find(
+    (entry) => entry.capabilityKey === "code.read",
+  );
+  assert.ok(codeReadAudit);
+  assert.equal(codeReadAudit.familyKey, "foundation");
+  assert.equal(codeReadAudit.bindingId, "binding:code.read");
+  assert.equal(codeReadAudit.supportsPrepare, true);
+  assert.equal(codeReadAudit.hasHealthCheck, false);
+
+  const searchAudit = result.registrationAudit.find(
+    (entry) => entry.capabilityKey === "search.ground",
+  );
+  assert.ok(searchAudit);
+  assert.equal(searchAudit.familyKey, "websearch");
+  assert.equal(searchAudit.hasHealthCheck, true);
+
+  const nativeExecuteFactory = result.activationFactoryAudit.find(
+    (entry) => entry.capabilityKey === "mcp.native.execute",
+  );
+  assert.ok(nativeExecuteFactory);
+  assert.equal(nativeExecuteFactory.familyKey, "mcp");
 });

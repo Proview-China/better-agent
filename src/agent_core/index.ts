@@ -8,6 +8,7 @@ export * from "./ta-pool-safety/index.js";
 export * from "./ta-pool-context/index.js";
 export * from "./ta-pool-runtime/index.js";
 export * from "./ta-pool-tool-review/index.js";
+export * from "./tap-availability/index.js";
 export * from "./capability-model/index.js";
 export * from "./capability-invocation/index.js";
 export * from "./capability-result/index.js";

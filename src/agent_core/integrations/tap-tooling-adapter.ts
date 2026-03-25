@@ -128,6 +128,14 @@ export interface TapToolingRegistrationTarget {
   ): void;
 }
 
+export interface RegisterTapToolingBaselineResult {
+  capabilityKeys: TapToolingBaselineCapabilityKey[];
+  manifests: CapabilityManifest[];
+  packages: CapabilityPackage[];
+  bindings: unknown[];
+  activationFactoryRefs: string[];
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || Array.isArray(value) || typeof value !== "object") {
     return undefined;
@@ -1026,8 +1034,12 @@ export function createTapToolingActivationFactory(
 export function registerTapToolingBaseline(
   target: TapToolingRegistrationTarget,
   options: TapToolingAdapterOptions,
-): CapabilityPackage[] {
+): RegisterTapToolingBaselineResult {
   const packages = createTapToolingBaselineCapabilityPackages();
+  const manifests: CapabilityManifest[] = [];
+  const bindings: unknown[] = [];
+  const activationFactoryRefs = new Set<string>();
+  const capabilityKeys: TapToolingBaselineCapabilityKey[] = [];
 
   for (const capabilityPackage of packages) {
     const capabilityKey = capabilityPackage.manifest.capabilityKey;
@@ -1045,15 +1057,24 @@ export function registerTapToolingBaseline(
       activationSpec,
       capabilityIdPrefix: "capability",
     });
+    manifests.push(manifest);
+    capabilityKeys.push(capabilityKey);
     const adapter = createTapToolingCapabilityAdapter(capabilityKey, options);
-    target.registerCapabilityAdapter(manifest, adapter);
+    bindings.push(target.registerCapabilityAdapter(manifest, adapter));
     target.registerTaActivationFactory(
       activationSpec.adapterFactoryRef,
       createTapToolingActivationFactory(capabilityKey, options),
     );
+    activationFactoryRefs.add(activationSpec.adapterFactoryRef);
   }
 
-  return packages;
+  return {
+    capabilityKeys,
+    manifests,
+    packages,
+    bindings,
+    activationFactoryRefs: [...activationFactoryRefs],
+  };
 }
 
 export function createTapToolingProvisioningPackage(
