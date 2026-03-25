@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MCP_READ_FAMILY_CAPABILITY_KEYS,
   createCapabilityPackage,
   createCapabilityPackageActivationSpecRef,
   createCapabilityPackageFixture,
   createCapabilityPackageFromProvisionBundle,
+  createMcpReadCapabilityPackage,
+  isMcpReadFamilyCapabilityKey,
 } from "./index.js";
 import { createPoolActivationSpec, createProvisionArtifactBundle } from "../ta-pool-types/index.js";
 
@@ -21,6 +24,28 @@ test("capability package fixture satisfies the frozen seven-part template", () =
   assert.equal(capabilityPackage.replayPolicy, "auto_after_verify");
   assert.equal(capabilityPackage.activationSpec?.targetPool, "ta-capability-pool");
   assert.equal(capabilityPackage.usage.exampleInvocations.length, 1);
+});
+
+test("MCP read family capability packages freeze lower-risk defaults for listTools and readResource", () => {
+  for (const capabilityKey of MCP_READ_FAMILY_CAPABILITY_KEYS) {
+    const capabilityPackage = createMcpReadCapabilityPackage({
+      capabilityKey,
+    });
+
+    assert.equal(isMcpReadFamilyCapabilityKey(capabilityKey), true);
+    assert.equal(capabilityPackage.manifest.capabilityKey, capabilityKey);
+    assert.equal(capabilityPackage.manifest.capabilityKind, "resource");
+    assert.equal(capabilityPackage.policy.riskLevel, "normal");
+    assert.deepEqual(capabilityPackage.policy.defaultBaseline.scope?.allowedOperations, ["read"]);
+    assert.deepEqual(capabilityPackage.adapter.supports, [capabilityKey]);
+    assert.equal(capabilityPackage.adapter.adapterId, "rax.mcp.adapter");
+    assert.equal(capabilityPackage.builder.replayCapability, "auto_after_verify");
+    assert.equal(capabilityPackage.metadata?.capabilityFamily, "mcp-read");
+    assert.equal(
+      capabilityPackage.usage.exampleInvocations[0]?.capabilityKey,
+      capabilityKey,
+    );
+  }
 });
 
 test("capability package can be created directly from a ready provision bundle", () => {

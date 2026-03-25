@@ -4,11 +4,14 @@ import test from "node:test";
 import { createGoalSource } from "./goal/goal-source.js";
 import type { ModelInferenceExecutionResult } from "./integrations/model-inference.js";
 import { createRaxSearchGroundCapabilityDefinition } from "./integrations/rax-port.js";
+import { createRaxMcpCapabilityAdapter } from "./integrations/rax-mcp-adapter.js";
 import { createAgentCoreRuntime } from "./runtime.js";
-import type { CapabilityAdapter, CapabilityCallIntent } from "./index.js";
+import { createMcpReadCapabilityPackage } from "./capability-package/index.js";
+import type { CapabilityAdapter, CapabilityCallIntent, CapabilityPackage } from "./index.js";
 import { createAgentCapabilityProfile, createProvisionRequest } from "./ta-pool-types/index.js";
 import { createReviewerRuntime } from "./ta-pool-review/index.js";
 import { TA_ENFORCEMENT_METADATA_KEY } from "./ta-pool-runtime/enforcement-guard.js";
+import type { RaxFacade } from "../rax/facade.js";
 import {
   DEFAULT_COMPATIBILITY_PROFILES,
   McpNativeRuntime,
@@ -59,6 +62,84 @@ function createFakeRaxFacade() {
     new SkillRuntime(),
     new McpNativeRuntime(),
   );
+}
+
+function createFakeMcpFacade(): Pick<RaxFacade, "mcp"> {
+  return {
+    mcp: {
+      shared: {} as RaxFacade["mcp"]["shared"],
+      native: {
+        prepare: () => {
+          throw new Error("not used");
+        },
+        serve: () => {
+          throw new Error("not used");
+        },
+        build: () => {
+          throw new Error("not used");
+        },
+        compose: () => {
+          throw new Error("not used");
+        },
+        execute: async () => {
+          throw new Error("not used");
+        },
+        composeAndExecute: async () => {
+          throw new Error("not used");
+        },
+      },
+      use: async () => {
+        throw new Error("not used");
+      },
+      connect: async () => {
+        throw new Error("not used");
+      },
+      listConnections: () => [],
+      disconnect: async () => {},
+      disconnectAll: async () => {},
+      listTools: async (options) => ({
+        connectionId: options.input.connectionId,
+        tools: [{ name: "browser.search" }, { name: "filesystem.read" }],
+      }),
+      listResources: async () => {
+        throw new Error("not used");
+      },
+      readResource: async (options) => ({
+        connectionId: options.input.connectionId,
+        uri: options.input.uri,
+        contents: [{ type: "text", text: "resource-body" }],
+      }),
+      listPrompts: async () => {
+        throw new Error("not used");
+      },
+      getPrompt: async () => {
+        throw new Error("not used");
+      },
+      call: async () => {
+        throw new Error("not used");
+      },
+      serve: () => {
+        throw new Error("not used");
+      },
+    },
+  };
+}
+
+function toRuntimeCapabilityManifest(
+  capabilityPackage: CapabilityPackage,
+  capabilityId: string,
+) {
+  return {
+    capabilityId,
+    capabilityKey: capabilityPackage.manifest.capabilityKey,
+    kind: capabilityPackage.manifest.capabilityKind,
+    version: capabilityPackage.manifest.version,
+    generation: capabilityPackage.manifest.generation,
+    description: capabilityPackage.manifest.description,
+    routeHints: capabilityPackage.manifest.routeHints,
+    tags: capabilityPackage.manifest.tags,
+    metadata: capabilityPackage.manifest.metadata,
+  };
 }
 
 test("AgentCoreRuntime wires session, run, and internal journal flow together", async () => {
@@ -356,6 +437,100 @@ test("AgentCoreRuntime routes capability_call through TAP by default in dispatch
     runtime.readRunEvents(created.run.runId).map((entry) => entry.event.type).slice(-3),
     ["capability.result_received", "state.delta_applied", "intent.queued"],
   );
+});
+
+test("AgentCoreRuntime dispatches MCP read family capability packages through the default TAP path", async () => {
+  const listToolsPackage = createMcpReadCapabilityPackage({
+    capabilityKey: "mcp.listTools",
+  });
+  const readResourcePackage = createMcpReadCapabilityPackage({
+    capabilityKey: "mcp.readResource",
+  });
+  const runtime = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.mcp-read-default-route",
+      agentClass: "main-agent",
+      baselineCapabilities: [
+        listToolsPackage.manifest.capabilityKey,
+        readResourcePackage.manifest.capabilityKey,
+      ],
+    }),
+  });
+  const adapter = createRaxMcpCapabilityAdapter({
+    facade: createFakeMcpFacade(),
+  });
+
+  runtime.registerCapabilityAdapter(
+    toRuntimeCapabilityManifest(listToolsPackage, "cap-mcp-list-tools"),
+    adapter,
+  );
+  runtime.registerCapabilityAdapter(
+    toRuntimeCapabilityManifest(readResourcePackage, "cap-mcp-read-resource"),
+    adapter,
+  );
+
+  const scenarios = [
+    {
+      package: listToolsPackage,
+      goalId: "goal-runtime-mcp-list-tools-default-route",
+      runIdSuffix: "list-tools",
+      requestInput: {
+        route: { provider: "openai", model: "gpt-5.4" },
+        input: { connectionId: "conn-read-1" },
+      },
+    },
+    {
+      package: readResourcePackage,
+      goalId: "goal-runtime-mcp-read-resource-default-route",
+      runIdSuffix: "read-resource",
+      requestInput: {
+        route: { provider: "openai", model: "gpt-5.4" },
+        input: { connectionId: "conn-read-1", uri: "memory://resource" },
+      },
+    },
+  ] as const;
+
+  for (const scenario of scenarios) {
+    const session = runtime.createSession();
+    const goal = runtime.createCompiledGoal(
+      createGoalSource({
+        goalId: scenario.goalId,
+        sessionId: session.sessionId,
+        userInput: `Dispatch ${scenario.package.manifest.capabilityKey} through TAP.`,
+      }),
+    );
+    const created = await runtime.createRun({
+      sessionId: session.sessionId,
+      goal,
+    });
+
+    const result = await runtime.dispatchIntent({
+      intentId: `intent-${scenario.runIdSuffix}`,
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      kind: "capability_call",
+      createdAt: "2026-03-25T09:00:00.000Z",
+      priority: "high",
+      request: {
+        requestId: `request-${scenario.runIdSuffix}`,
+        intentId: `intent-${scenario.runIdSuffix}`,
+        sessionId: session.sessionId,
+        runId: created.run.runId,
+        capabilityKey: scenario.package.manifest.capabilityKey,
+        input: scenario.requestInput,
+        priority: "high",
+      },
+    });
+
+    assert.equal(result.status, "dispatched");
+    assert.equal(result.grant?.capabilityKey, scenario.package.manifest.capabilityKey);
+    assert.equal(result.dispatch?.prepared.capabilityKey, scenario.package.manifest.capabilityKey);
+    assert.equal(result.runOutcome?.run.runId, created.run.runId);
+    assert.deepEqual(
+      runtime.readRunEvents(created.run.runId).map((entry) => entry.event.type).slice(-3),
+      ["capability.result_received", "state.delta_applied", "intent.queued"],
+    );
+  }
 });
 
 test("AgentCoreRuntime surfaces review-required T/A access when capability is not baseline", async () => {

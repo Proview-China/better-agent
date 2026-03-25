@@ -24,6 +24,11 @@ export type {
   CreateCapabilityPackageUsageInput,
   CreateCapabilityPackageVerificationInput,
 } from "./capability-package.js";
+export type {
+  CreateMcpReadCapabilityPackageInput,
+  McpReadFamilyCapabilityKey,
+} from "./mcp-read-family-package.js";
+export type { TapToolingBaselineCapabilityKey } from "./tap-tooling-baseline.js";
 export {
   CAPABILITY_PACKAGE_TEMPLATE_VERSION,
   createCapabilityPackage,
@@ -57,4 +62,8 @@ export {
   createTapToolingCapabilityPackage,
   isTapToolingBaselineCapabilityKey,
 } from "./tap-tooling-baseline.js";
-export type { TapToolingBaselineCapabilityKey } from "./tap-tooling-baseline.js";
+export {
+  MCP_READ_FAMILY_CAPABILITY_KEYS,
+  createMcpReadCapabilityPackage,
+  isMcpReadFamilyCapabilityKey,
+} from "./mcp-read-family-package.js";
