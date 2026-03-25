@@ -27,6 +27,30 @@ export type {
   TapFamilyCheckSeverity,
   TapFamilyCheckStatus,
 } from "./family-check-types.js";
+export type {
+  TapBacklogAuditEntry,
+  TapBacklogCapabilityAudit,
+  TapBacklogEntryKind,
+  TapBacklogPriorityLevel,
+  TapBacklogPrioritySummary,
+} from "./backlog-capability-audit.js";
+export type {
+  TapFailureClassification,
+  TapFailureClassificationInput,
+  TapFailureDecision,
+  TapFailureEvidenceClass,
+  TapFailureEvidenceRequirement,
+  TapFailureSeverity,
+  TapFailureTaxonomyEntry,
+  TapFailureClass,
+} from "./failure-taxonomy.js";
+export type {
+  TapAvailabilityGateDecision,
+  TapAvailabilityGateRecord,
+  TapAvailabilityGatingReport,
+  TapBacklogCapabilityAuditEntry,
+  TapBacklogPriorityLevel as TapAvailabilityBacklogPriorityLevel,
+} from "./availability-gating.js";
 export {
   TAP_AVAILABILITY_EVIDENCE_SOURCES,
   TAP_AVAILABILITY_EVIDENCE_STATUSES,
@@ -40,6 +64,26 @@ export {
   TAP_FAMILY_CHECK_SEVERITIES,
   TAP_FAMILY_CHECK_STATUSES,
 } from "./family-check-types.js";
+export {
+  TAP_BACKLOG_ENTRY_KINDS,
+  TAP_BACKLOG_PRIORITY_LEVELS,
+  createBacklogCapabilityAudit,
+} from "./backlog-capability-audit.js";
+export {
+  TAP_FAILURE_CLASSES,
+  TAP_FAILURE_DECISIONS,
+  TAP_FAILURE_EVIDENCE_CLASSES,
+  TAP_FAILURE_SEVERITIES,
+  classifyTapFailure,
+  getTapFailureTaxonomyEntry,
+  listTapFailureTaxonomy,
+  resolveTapFailureDecision,
+} from "./failure-taxonomy.js";
+export {
+  TAP_AVAILABILITY_GATE_DECISIONS,
+  TAP_BACKLOG_PRIORITY_LEVELS as TAP_GATING_BACKLOG_PRIORITY_LEVELS,
+  createTapAvailabilityGatingReport,
+} from "./availability-gating.js";
 export {
   createFoundationFamilyAvailabilityCheck,
   createFoundationFamilyCheckReport,
