@@ -8,6 +8,7 @@ import {
   type ProvisionRequest,
 } from "../ta-pool-types/index.js";
 import { ProvisionAssetIndex } from "./provision-asset-index.js";
+import type { ProvisionAssetIndexSnapshot } from "./provision-asset-index.js";
 import {
   createDefaultProvisionerWorkerOutput,
   createProvisionerWorkerBridgeInput,
@@ -16,8 +17,19 @@ import {
   type ProvisionerWorkerBridge,
 } from "./provisioner-worker-bridge.js";
 import { ProvisionRegistry } from "./provision-registry.js";
+import type { ProvisionRegistrySnapshot } from "./provision-registry.js";
 import { createTmaPlannerOutput } from "./tma-planner.js";
 import { executeTmaPlan } from "./tma-executor.js";
+import {
+  createProvisionerDurableSnapshot,
+  restoreProvisionerBundleHistory,
+  type ProvisionBundleHistorySnapshotEntry,
+  type ProvisionerDurableSnapshot,
+} from "./provision-durable-snapshot.js";
+import {
+  cloneTmaSessionState,
+  type TmaSessionState,
+} from "./tma-session-state.js";
 
 export interface ProvisionBuildArtifacts {
   toolArtifact: ProvisionArtifactRef;
@@ -39,6 +51,13 @@ export interface ProvisionerRuntimeOptions {
 export interface ProvisionerRuntimeLike {
   submit(request: ProvisionRequest): Promise<ProvisionArtifactBundle>;
   getBundleHistory(provisionId: string): readonly ProvisionArtifactBundle[];
+}
+
+export interface ProvisionerRuntimeDurableState {
+  registry: ProvisionRegistrySnapshot;
+  assetIndex: ProvisionAssetIndexSnapshot;
+  bundleHistory: ProvisionBundleHistorySnapshotEntry[];
+  tmaSessions?: TmaSessionState[];
 }
 
 function defaultMockBuilder(request: ProvisionRequest): Promise<ProvisionBuildArtifacts> {
@@ -98,6 +117,7 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
   readonly #clock: () => Date;
   readonly #idFactory: () => string;
   readonly #bundleHistory = new Map<string, ProvisionArtifactBundle[]>();
+  readonly #tmaSessions = new Map<string, TmaSessionState>();
 
   constructor(options: ProvisionerRuntimeOptions = {}) {
     this.registry = options.registry ?? new ProvisionRegistry();
@@ -124,6 +144,7 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
 
     try {
       const planner = createTmaPlannerOutput(request);
+      this.#tmaSessions.set(planner.sessionState.sessionId, cloneTmaSessionState(planner.sessionState));
       const bridgeInput = createProvisionerWorkerBridgeInput(request);
       const output = await this.#workerBridge(bridgeInput);
       validateProvisionerWorkerOutput(output);
@@ -142,7 +163,9 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
         verificationRefs: [
           output.verificationArtifact.ref ?? output.verificationArtifact.artifactId,
         ],
+        sessionState: planner.sessionState,
       });
+      this.#tmaSessions.set(executor.sessionState.sessionId, cloneTmaSessionState(executor.sessionState));
       const readyBundle = createProvisionArtifactBundle({
         bundleId: this.#idFactory(),
         provisionId: request.provisionId,
@@ -199,6 +222,49 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
 
   getBundleHistory(provisionId: string): readonly ProvisionArtifactBundle[] {
     return this.#bundleHistory.get(provisionId) ?? [];
+  }
+
+  getTmaSession(sessionId: string): TmaSessionState | undefined {
+    const state = this.#tmaSessions.get(sessionId);
+    return state ? cloneTmaSessionState(state) : undefined;
+  }
+
+  listTmaSessions(): readonly TmaSessionState[] {
+    return [...this.#tmaSessions.values()].map(cloneTmaSessionState);
+  }
+
+  serializeDurableState(): ProvisionerDurableSnapshot {
+    return createProvisionerDurableSnapshot({
+      registry: this.registry.serialize(),
+      assetIndex: this.assetIndex.serialize(),
+      bundleHistory: [...this.#bundleHistory.entries()].map(([provisionId, bundles]) => ({
+        provisionId,
+        bundles,
+      })),
+      tmaSessions: [...this.listTmaSessions()],
+    });
+  }
+
+  restoreDurableState(snapshot: ProvisionerRuntimeDurableState): void {
+    this.registry.restore(snapshot.registry);
+    this.assetIndex.restore(snapshot.assetIndex);
+    this.#bundleHistory.clear();
+    for (const [provisionId, bundles] of restoreProvisionerBundleHistory(snapshot.bundleHistory)) {
+      this.#bundleHistory.set(provisionId, bundles);
+    }
+    this.#tmaSessions.clear();
+    for (const session of snapshot.tmaSessions ?? []) {
+      this.#tmaSessions.set(session.sessionId, cloneTmaSessionState(session));
+    }
+  }
+
+  static fromDurableState(
+    snapshot: ProvisionerRuntimeDurableState,
+    options: ProvisionerRuntimeOptions = {},
+  ): ProvisionerRuntime {
+    const runtime = new ProvisionerRuntime(options);
+    runtime.restoreDurableState(snapshot);
+    return runtime;
   }
 
   #recordBundle(bundle: ProvisionArtifactBundle): void {

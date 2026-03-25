@@ -48,6 +48,21 @@ export {
 } from "./reviewer-worker-bridge.js";
 
 export type {
+  CreateReviewerDurableStateInput,
+  ReviewerDurableSnapshot,
+  ReviewerDurableSource,
+  ReviewerDurableStage,
+  ReviewerDurableState,
+} from "./reviewer-durable-state.js";
+export {
+  createReviewerDurableSnapshot,
+  createReviewerDurableState,
+  hydrateReviewerDurableSnapshot,
+  REVIEWER_DURABLE_SOURCES,
+  REVIEWER_DURABLE_STAGES,
+} from "./reviewer-durable-state.js";
+
+export type {
   ReviewerRuntimeHookInput,
   ReviewerRuntimeLlmHook,
   ReviewerRuntimeOptions,

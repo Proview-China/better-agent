@@ -4,6 +4,10 @@ import {
   type TmaBuildPlan,
 } from "../ta-pool-types/index.js";
 import {
+  createTmaSessionState,
+  type TmaSessionState,
+} from "./tma-session-state.js";
+import {
   createProvisionerWorkerBridgeInput,
   type ProvisionerWorkerBridgeInput,
   type ProvisionerWorkerEnvelope,
@@ -16,6 +20,7 @@ export interface TmaPlannerOutput {
   envelope: ProvisionerWorkerEnvelope;
   promptPack: ProvisionerWorkerPromptPack;
   buildPlan: TmaBuildPlan;
+  sessionState: TmaSessionState;
 }
 
 function createImplementationSteps(
@@ -94,11 +99,28 @@ export function createTmaPlannerOutput(
       projectConstraints: bridgeInput.envelope.projectConstraints,
     },
   });
+  const sessionState = createTmaSessionState({
+    sessionId: `tma:${request.provisionId}:planner`,
+    provisionId: request.provisionId,
+    planId: buildPlan.planId,
+    requestedCapabilityKey: request.requestedCapabilityKey,
+    lane: buildPlan.requestedLane,
+    phase: "planner",
+    status: "resumable",
+    createdAt: request.createdAt,
+    updatedAt: request.createdAt,
+    resumeSummary: `Planner can resume ${request.requestedCapabilityKey} from the generated build plan without executing the original task.`,
+    metadata: {
+      promptPackId: bridgeInput.promptPack.promptPackId,
+      workerLane: bridgeInput.lane,
+    },
+  });
 
   return {
     lane: bridgeInput.lane,
     envelope: bridgeInput.envelope,
     promptPack: bridgeInput.promptPack,
     buildPlan,
+    sessionState,
   };
 }

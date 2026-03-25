@@ -1,6 +1,8 @@
 export type {
   ProvisionRegistryEntry,
   ProvisionRegistryRecord,
+  ProvisionRegistrySnapshot,
+  ProvisionRegistrySnapshotRecord,
 } from "./provision-registry.js";
 export {
   ProvisionRegistry,
@@ -11,6 +13,7 @@ export type {
   ProvisionAssetActivationBinding,
   ProvisionAssetRecord,
   ProvisionAssetStatus,
+  ProvisionAssetIndexSnapshot,
   UpdateProvisionAssetStateInput,
 } from "./provision-asset-index.js";
 export {
@@ -20,6 +23,7 @@ export {
 } from "./provision-asset-index.js";
 
 export type {
+  ProvisionerRuntimeDurableState,
   ProvisionBuildArtifacts,
   ProvisionerRuntimeLike,
   ProvisionerRuntimeOptions,
@@ -56,6 +60,15 @@ export {
 } from "./provisioner-worker-bridge.js";
 
 export type {
+  ProvisionBundleHistorySnapshotEntry,
+  ProvisionerDurableSnapshot,
+} from "./provision-durable-snapshot.js";
+export {
+  createProvisionerDurableSnapshot,
+  restoreProvisionerBundleHistory,
+} from "./provision-durable-snapshot.js";
+
+export type {
   TmaPlannerOutput,
 } from "./tma-planner.js";
 export {
@@ -70,3 +83,18 @@ export {
   executeTmaBuildPlan,
   executeTmaPlan,
 } from "./tma-executor.js";
+
+export type {
+  CreateTmaSessionStateInput,
+  TmaSessionPhase,
+  TmaSessionState,
+  TmaSessionStatus,
+} from "./tma-session-state.js";
+export {
+  cloneTmaSessionState,
+  createTmaSessionState,
+  markTmaSessionCompleted,
+  markTmaSessionResumable,
+  TMA_SESSION_PHASES,
+  TMA_SESSION_STATUSES,
+} from "./tma-session-state.js";

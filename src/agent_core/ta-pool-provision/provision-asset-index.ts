@@ -41,6 +41,14 @@ export interface ProvisionAssetRecord {
   metadata?: Record<string, unknown>;
 }
 
+export interface ProvisionAssetIndexSnapshot {
+  assets: ProvisionAssetRecord[];
+  currentAssetIds: Array<{
+    provisionId: string;
+    assetId: string;
+  }>;
+}
+
 export interface UpdateProvisionAssetStateInput {
   provisionId: string;
   status: Extract<ProvisionAssetStatus, "activating" | "active" | "failed" | "superseded">;
@@ -73,6 +81,45 @@ function buildActivationBinding(bundle: ProvisionArtifactBundle): ProvisionAsset
     targetPool: bundle.activationSpec?.targetPool,
     adapterFactoryRef: bundle.activationSpec?.adapterFactoryRef,
     spec: bundle.activationSpec,
+  };
+}
+
+function cloneArtifactRef(artifact: ProvisionArtifactRef): ProvisionArtifactRef {
+  return {
+    ...artifact,
+    metadata: artifact.metadata ? { ...artifact.metadata } : undefined,
+  };
+}
+
+function cloneActivationBinding(binding: ProvisionAssetActivationBinding): ProvisionAssetActivationBinding {
+  return {
+    bindingArtifact: cloneArtifactRef(binding.bindingArtifact),
+    bindingArtifactRef: binding.bindingArtifactRef,
+    targetPool: binding.targetPool,
+    adapterFactoryRef: binding.adapterFactoryRef,
+    spec: binding.spec
+      ? {
+        ...binding.spec,
+        manifestPayload: { ...binding.spec.manifestPayload },
+        bindingPayload: { ...binding.spec.bindingPayload },
+        rollbackHandle: binding.spec.rollbackHandle
+          ? cloneArtifactRef(binding.spec.rollbackHandle)
+          : undefined,
+        metadata: binding.spec.metadata ? { ...binding.spec.metadata } : undefined,
+      }
+      : undefined,
+  };
+}
+
+function cloneAssetRecord(asset: ProvisionAssetRecord): ProvisionAssetRecord {
+  return {
+    ...asset,
+    toolArtifact: cloneArtifactRef(asset.toolArtifact),
+    bindingArtifact: cloneArtifactRef(asset.bindingArtifact),
+    verificationArtifact: cloneArtifactRef(asset.verificationArtifact),
+    usageArtifact: cloneArtifactRef(asset.usageArtifact),
+    activation: cloneActivationBinding(asset.activation),
+    metadata: asset.metadata ? { ...asset.metadata } : undefined,
   };
 }
 
@@ -141,11 +188,12 @@ export class ProvisionAssetIndex {
 
   getCurrent(provisionId: string): ProvisionAssetRecord | undefined {
     const assetId = this.#currentAssetIds.get(provisionId);
-    return assetId ? this.#assets.get(assetId) : undefined;
+    const asset = assetId ? this.#assets.get(assetId) : undefined;
+    return asset ? cloneAssetRecord(asset) : undefined;
   }
 
   list(): readonly ProvisionAssetRecord[] {
-    return [...this.#assets.values()];
+    return [...this.#assets.values()].map(cloneAssetRecord);
   }
 
   listCurrent(): readonly ProvisionAssetRecord[] {
@@ -201,6 +249,33 @@ export class ProvisionAssetIndex {
     this.#assets.set(asset.assetId, asset);
     this.#currentAssetIds.set(asset.provisionId, asset.assetId);
     return asset;
+  }
+
+  serialize(): ProvisionAssetIndexSnapshot {
+    return {
+      assets: [...this.#assets.values()].map(cloneAssetRecord),
+      currentAssetIds: [...this.#currentAssetIds.entries()].map(([provisionId, assetId]) => ({
+        provisionId,
+        assetId,
+      })),
+    };
+  }
+
+  restore(snapshot: ProvisionAssetIndexSnapshot): void {
+    this.#assets.clear();
+    this.#currentAssetIds.clear();
+    for (const asset of snapshot.assets) {
+      this.#assets.set(asset.assetId, cloneAssetRecord(asset));
+    }
+    for (const entry of snapshot.currentAssetIds) {
+      this.#currentAssetIds.set(entry.provisionId, entry.assetId);
+    }
+  }
+
+  static fromSnapshot(snapshot: ProvisionAssetIndexSnapshot): ProvisionAssetIndex {
+    const index = new ProvisionAssetIndex();
+    index.restore(snapshot);
+    return index;
   }
 }
 

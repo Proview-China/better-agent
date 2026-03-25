@@ -21,6 +21,10 @@ import {
   createToolReviewGovernanceTrace,
 } from "./tool-review-contract.js";
 import {
+  createToolReviewSessionState,
+  type ToolReviewSessionSnapshot,
+} from "./tool-review-session.js";
+import {
   createToolReviewerRuntime,
 } from "./tool-review-runtime.js";
 
@@ -101,6 +105,8 @@ test("tool reviewer runtime stages activation and lifecycle shells as handoff-re
   });
 
   assert.equal(activation.runtimeStatus, "ready_for_handoff");
+  assert.equal(activation.placeholder, false);
+  assert.equal(activation.action.boundaryMode, "governance_only");
   assert.equal(activation.output.kind, "activation");
   assert.equal(activation.output.status, "ready_for_activation_handoff");
   assert.match(activation.output.summary, /staged/u);
@@ -111,6 +117,8 @@ test("tool reviewer runtime stages activation and lifecycle shells as handoff-re
     "activation:ready_for_handoff",
     "lifecycle:ready_for_handoff",
   ]);
+  assert.equal(runtime.listSessions().length, 1);
+  assert.equal(runtime.listActions(activation.sessionId).length, 2);
 });
 
 test("tool reviewer runtime preserves human gate waiting status and replay re-review status", async () => {
@@ -247,6 +255,7 @@ test("tool reviewer runtime preserves human gate waiting status and replay re-re
   });
 
   assert.equal(humanGate.runtimeStatus, "waiting_human");
+  assert.equal(humanGate.placeholder, false);
   assert.equal(humanGate.output.kind, "human_gate");
   assert.equal(humanGate.output.status, "waiting_human");
   assert.equal(replay.runtimeStatus, "ready_for_handoff");
@@ -255,4 +264,59 @@ test("tool reviewer runtime preserves human gate waiting status and replay re-re
   assert.equal(activationFailure.runtimeStatus, "blocked");
   assert.equal(activationFailure.output.kind, "activation");
   assert.equal(activationFailure.output.status, "activation_failed");
+  const humanGateSession = runtime.getSession(humanGate.sessionId);
+  assert.ok(humanGateSession);
+  assert.equal(humanGateSession?.status, "waiting_human");
+  const defaultSession = runtime.getSession(replay.sessionId);
+  assert.ok(defaultSession);
+  assert.equal(defaultSession?.status, "blocked");
+});
+
+test("tool reviewer runtime can restore durable-friendly session snapshots", async () => {
+  const snapshotSession = createToolReviewSessionState({
+    sessionId: "tool-review-session:restore",
+    createdAt: "2026-03-25T10:30:00.000Z",
+  });
+  const restoreSnapshot: ToolReviewSessionSnapshot[] = [
+    {
+      session: snapshotSession,
+      actions: [],
+    },
+  ];
+  const runtime = createToolReviewerRuntime({
+    restoreSnapshot,
+  });
+
+  const result = await runtime.submit({
+    sessionId: "tool-review-session:restore",
+    governanceAction: {
+      kind: "replay",
+      trace: createToolReviewGovernanceTrace({
+        actionId: "action-restore-1",
+        actorId: "tool-reviewer",
+        reason: "Resume replay governance after restart.",
+        createdAt: "2026-03-25T10:31:00.000Z",
+      }),
+      capabilityKey: "mcp.playwright",
+      replay: createTaPendingReplay({
+        replayId: "replay-restore-1",
+        request: {
+          requestId: "req-restore-1",
+          requestedCapabilityKey: "mcp.playwright",
+        },
+        provisionBundle: {
+          provisionId: "prov-restore-1",
+          replayPolicy: "re_review_then_dispatch",
+        },
+        createdAt: "2026-03-25T10:30:59.000Z",
+      }),
+    },
+  });
+
+  assert.equal(result.sessionId, "tool-review-session:restore");
+  assert.equal(runtime.listSessions().length, 1);
+  assert.equal(runtime.listActions(result.sessionId).length, 1);
+  const snapshots = runtime.createSnapshots();
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.session.latestActionId, "action-restore-1");
 });

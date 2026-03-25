@@ -35,7 +35,9 @@ import {
   createPoolRuntimeSnapshots,
   createTaHumanGateEvent,
   createTaHumanGateStateFromReviewDecision,
+  createTaResumeEnvelope,
   createTaPendingReplay,
+  hydrateTapRuntimeSnapshot as hydrateRecoveredTapRuntimeState,
   createExecutionRequest,
   createInvocationPlanFromGrant,
   createTapPoolRuntimeSnapshot,
@@ -55,6 +57,7 @@ import {
 import { createReviewerRuntime, ReviewerRuntime } from "./ta-pool-review/index.js";
 import { createProvisionerRuntime, ProvisionerRuntime } from "./ta-pool-provision/index.js";
 import type { ProvisionAssetRecord } from "./ta-pool-provision/index.js";
+import { createToolReviewerRuntime, ToolReviewerRuntime } from "./ta-pool-tool-review/index.js";
 import { evaluateSafetyInterception, type TaSafetyInterceptorConfig } from "./ta-pool-safety/index.js";
 import { formatPlainLanguageRisk } from "./ta-pool-context/plain-language-risk.js";
 import { toProvisionRequestFromReviewDecision, type ReviewDecisionEngineInventory } from "./ta-pool-review/index.js";
@@ -106,6 +109,7 @@ export interface AgentCoreRuntimeOptions {
   taControlPlaneGateway?: TaControlPlaneGateway;
   taProfile?: AgentCapabilityProfile;
   reviewerRuntime?: ReviewerRuntime;
+  toolReviewerRuntime?: ToolReviewerRuntime;
   provisionerRuntime?: ProvisionerRuntime;
   taSafetyConfig?: TaSafetyInterceptorConfig;
   runCoordinator?: AgentRunCoordinator;
@@ -307,6 +311,7 @@ export class AgentCoreRuntime {
   readonly capabilityGateway: KernelCapabilityGatewayLike;
   readonly taControlPlaneGateway?: TaControlPlaneGateway;
   readonly reviewerRuntime?: ReviewerRuntime;
+  readonly toolReviewerRuntime?: ToolReviewerRuntime;
   readonly provisionerRuntime?: ProvisionerRuntime;
   readonly runCoordinator: AgentRunCoordinator;
   readonly sessionManager: SessionManager;
@@ -324,6 +329,7 @@ export class AgentCoreRuntime {
   readonly #taHumanGateEvents = new Map<string, TaHumanGateEvent[]>();
   readonly #taPendingReplays = new Map<string, TaPendingReplay>();
   readonly #taActivationAttempts = new Map<string, TaActivationAttemptRecord>();
+  readonly #taResumeEnvelopes = new Map<string, ReturnType<typeof createTaResumeEnvelope>>();
   readonly #taActivationFactoryResolver = createActivationFactoryResolver();
 
   constructor(options: AgentCoreRuntimeOptions = {}) {
@@ -340,6 +346,8 @@ export class AgentCoreRuntime {
       ?? (options.taProfile ? new TaControlPlaneGateway({ profile: options.taProfile }) : undefined);
     this.reviewerRuntime = options.reviewerRuntime
       ?? (this.taControlPlaneGateway ? createReviewerRuntime() : undefined);
+    this.toolReviewerRuntime = options.toolReviewerRuntime
+      ?? (this.taControlPlaneGateway ? createToolReviewerRuntime() : undefined);
     this.provisionerRuntime = options.provisionerRuntime
       ?? (this.taControlPlaneGateway ? createProvisionerRuntime() : undefined);
     this.#taSafetyConfig = options.taSafetyConfig;
@@ -481,6 +489,10 @@ export class AgentCoreRuntime {
     return [...this.#taActivationAttempts.values()];
   }
 
+  listTaResumeEnvelopes() {
+    return [...this.#taResumeEnvelopes.values()];
+  }
+
   createTapCheckpointSnapshot(runId: string) {
     const run = this.runCoordinator.getRun(runId);
     if (!run) {
@@ -530,13 +542,70 @@ export class AgentCoreRuntime {
     return getTapPoolRuntimeSnapshotFromRecoveryResult(recovery);
   }
 
+  async recoverAndHydrateTapRuntime(runId: string) {
+    const snapshot = await this.recoverTapRuntimeSnapshot(runId);
+    if (snapshot) {
+      this.hydrateRecoveredTapRuntimeSnapshot(snapshot);
+    }
+    return snapshot;
+  }
+
+  hydrateRecoveredTapRuntimeSnapshot(snapshot: TapPoolRuntimeSnapshot): void {
+    const hydrated = hydrateRecoveredTapRuntimeState(snapshot);
+    this.#taHumanGates.clear();
+    for (const [gateId, gate] of hydrated.humanGates) {
+      this.#taHumanGates.set(gateId, gate);
+    }
+    this.#taHumanGateContexts.clear();
+    for (const [gateId, context] of hydrated.humanGateContexts) {
+      this.#taHumanGateContexts.set(gateId, {
+        intent: context.intent,
+        accessRequest: context.accessRequest,
+        reviewDecision: context.reviewDecision,
+        options: context.options,
+      });
+    }
+    this.#taHumanGateEvents.clear();
+    for (const [gateId, events] of hydrated.humanGateEvents) {
+      this.#taHumanGateEvents.set(gateId, events);
+    }
+    this.#taPendingReplays.clear();
+    for (const [replayId, replay] of hydrated.pendingReplays) {
+      this.#taPendingReplays.set(replayId, replay);
+    }
+    this.#taActivationAttempts.clear();
+    for (const [attemptId, attempt] of hydrated.activationAttempts) {
+      this.#taActivationAttempts.set(attemptId, attempt);
+    }
+    this.#taResumeEnvelopes.clear();
+    for (const [envelopeId, envelope] of hydrated.resumeEnvelopes) {
+      this.#taResumeEnvelopes.set(envelopeId, envelope);
+    }
+    this.reviewerRuntime?.hydrateDurableSnapshot(hydrated.reviewerDurableSnapshot);
+    this.toolReviewerRuntime?.hydrateSnapshots(hydrated.toolReviewerSessions);
+    if (hydrated.provisionerDurableSnapshot) {
+      this.provisionerRuntime?.restoreDurableState(hydrated.provisionerDurableSnapshot);
+    }
+  }
+
   createTapRuntimeSnapshot(): TapPoolRuntimeSnapshot {
     return createTapPoolRuntimeSnapshot({
       humanGates: [...this.listTaHumanGates()],
+      humanGateContexts: [...this.#taHumanGateContexts.entries()].map(([gateId, context]) => ({
+        gateId,
+        intent: context.intent,
+        accessRequest: context.accessRequest,
+        reviewDecision: context.reviewDecision,
+        options: context.options,
+      })),
       humanGateEvents: [...this.#taHumanGateEvents.values()].flat(),
       pendingReplays: [...this.listTaPendingReplays()],
       activationAttempts: [...this.listTaActivationAttempts()],
-      resumeEnvelopes: [],
+      resumeEnvelopes: this.listTaResumeEnvelopes(),
+      reviewerDurableSnapshot: this.reviewerRuntime?.exportDurableSnapshot(),
+      toolReviewerSessions: this.toolReviewerRuntime?.createSnapshots(),
+      provisionerDurableSnapshot: this.provisionerRuntime?.serializeDurableState(),
+      tmaSessions: this.provisionerRuntime?.listTmaSessions(),
     });
   }
 
@@ -1831,6 +1900,26 @@ export class AgentCoreRuntime {
         reviewDecisionId: params.reviewDecision.decisionId,
       },
     }));
+    this.#recordResumeEnvelope(createTaResumeEnvelope({
+      envelopeId: `resume:human-gate:${gateId}`,
+      source: "human_gate",
+      requestId: params.accessRequest.requestId,
+      sessionId: params.accessRequest.sessionId,
+      runId: params.accessRequest.runId,
+      capabilityKey: params.accessRequest.requestedCapabilityKey,
+      requestedTier: params.accessRequest.requestedTier,
+      mode: params.accessRequest.mode,
+      reason: params.accessRequest.reason,
+      reviewDecisionId: params.reviewDecision.decisionId,
+      intentRequest: {
+        requestId: params.intent.request.requestId,
+        intentId: params.intent.intentId,
+        capabilityKey: params.intent.request.capabilityKey,
+        input: params.intent.request.input,
+        priority: params.intent.priority,
+        metadata: params.intent.request.metadata,
+      },
+    }));
     this.#writeTapControlPlaneCheckpoint({
       sessionId: params.accessRequest.sessionId,
       runId: params.accessRequest.runId,
@@ -1885,6 +1974,29 @@ export class AgentCoreRuntime {
       },
     });
     this.#taPendingReplays.set(replay.replayId, replay);
+    this.#recordResumeEnvelope(createTaResumeEnvelope({
+      envelopeId: `resume:replay:${replay.replayId}`,
+      source: "replay",
+      requestId: params.accessRequest.requestId,
+      sessionId: params.intent.sessionId,
+      runId: params.intent.runId,
+      capabilityKey: params.accessRequest.requestedCapabilityKey,
+      requestedTier: params.accessRequest.requestedTier,
+      mode: params.accessRequest.mode,
+      reason: params.accessRequest.reason,
+      intentRequest: {
+        requestId: params.intent.request.requestId,
+        intentId: params.intent.intentId,
+        capabilityKey: params.intent.request.capabilityKey,
+        input: params.intent.request.input,
+        priority: params.intent.priority,
+        metadata: params.intent.request.metadata,
+      },
+      metadata: {
+        replayId: replay.replayId,
+        provisionId: params.provisionBundle.provisionId,
+      },
+    }));
     this.#writeTapControlPlaneCheckpoint({
       sessionId: params.intent.sessionId,
       runId: params.intent.runId,
@@ -1909,6 +2021,12 @@ export class AgentCoreRuntime {
     }
 
     this.sessionManager.setActiveRun(run.sessionId, run.runId);
+  }
+
+  #recordResumeEnvelope(
+    envelope: ReturnType<typeof createTaResumeEnvelope>,
+  ): void {
+    this.#taResumeEnvelopes.set(envelope.envelopeId, envelope);
   }
 
   #createDefaultTaDispatchOptions(

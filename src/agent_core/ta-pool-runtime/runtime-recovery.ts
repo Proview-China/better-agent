@@ -1,20 +1,32 @@
 import type { TaActivationAttemptRecord } from "./activation-types.js";
 import type { TaHumanGateEvent, TaHumanGateState } from "./human-gate.js";
 import type { TaPendingReplay } from "./replay-policy.js";
+import type { ReviewerDurableSnapshot } from "../ta-pool-review/index.js";
+import type { ToolReviewSessionSnapshot } from "../ta-pool-tool-review/index.js";
+import type {
+  ProvisionerDurableSnapshot,
+  TmaSessionState,
+} from "../ta-pool-provision/index.js";
 import {
   createPoolRuntimeSnapshots,
   createTapPoolRuntimeSnapshot,
   type PoolRuntimeSnapshots,
   type TapPoolRuntimeSnapshot,
+  type TaHumanGateContextSnapshot,
   type TaResumeEnvelope,
 } from "./runtime-snapshot.js";
 
 export interface TapRuntimeHydratedState {
   humanGates: Map<string, TaHumanGateState>;
+  humanGateContexts: Map<string, TaHumanGateContextSnapshot>;
   humanGateEvents: Map<string, TaHumanGateEvent[]>;
   pendingReplays: Map<string, TaPendingReplay>;
   activationAttempts: Map<string, TaActivationAttemptRecord>;
   resumeEnvelopes: Map<string, TaResumeEnvelope>;
+  reviewerDurableSnapshot?: ReviewerDurableSnapshot;
+  toolReviewerSessions: ToolReviewSessionSnapshot[];
+  provisionerDurableSnapshot?: ProvisionerDurableSnapshot;
+  tmaSessions: Map<string, TmaSessionState>;
 }
 
 function assertUniqueKey(kind: string, key: string, seen: Set<string>): void {
@@ -45,15 +57,23 @@ export function hydrateTapRuntimeSnapshot(
 ): TapRuntimeHydratedState {
   const normalized = cloneTapSnapshot(snapshot);
   const humanGates = new Map<string, TaHumanGateState>();
+  const humanGateContexts = new Map<string, TaHumanGateContextSnapshot>();
   const humanGateEvents = new Map<string, TaHumanGateEvent[]>();
   const pendingReplays = new Map<string, TaPendingReplay>();
   const activationAttempts = new Map<string, TaActivationAttemptRecord>();
   const resumeEnvelopes = new Map<string, TaResumeEnvelope>();
+  const tmaSessions = new Map<string, TmaSessionState>();
 
   const seenGateIds = new Set<string>();
   for (const gate of normalized.humanGates) {
     assertUniqueKey("human gate", gate.gateId, seenGateIds);
     humanGates.set(gate.gateId, gate);
+  }
+
+  const seenGateContextIds = new Set<string>();
+  for (const context of normalized.humanGateContexts ?? []) {
+    assertUniqueKey("human gate context", context.gateId, seenGateContextIds);
+    humanGateContexts.set(context.gateId, context);
   }
 
   for (const event of normalized.humanGateEvents) {
@@ -84,12 +104,23 @@ export function hydrateTapRuntimeSnapshot(
     resumeEnvelopes.set(envelope.envelopeId, envelope);
   }
 
+  const seenTmaSessionIds = new Set<string>();
+  for (const session of normalized.tmaSessions ?? []) {
+    assertUniqueKey("tma session", session.sessionId, seenTmaSessionIds);
+    tmaSessions.set(session.sessionId, session);
+  }
+
   return {
     humanGates,
+    humanGateContexts,
     humanGateEvents,
     pendingReplays,
     activationAttempts,
     resumeEnvelopes,
+    reviewerDurableSnapshot: normalized.reviewerDurableSnapshot,
+    toolReviewerSessions: [...(normalized.toolReviewerSessions ?? [])],
+    provisionerDurableSnapshot: normalized.provisionerDurableSnapshot,
+    tmaSessions,
   };
 }
 

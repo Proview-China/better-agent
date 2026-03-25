@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createToolReviewActionLedgerEntry,
   createToolReviewGovernanceTrace,
   resolveLifecycleTargetBindingState,
+  TA_TOOL_REVIEW_ACTION_STATUSES,
+  TA_TOOL_REVIEW_AGENT_BOUNDARY_MODES,
   TA_TOOL_REVIEW_GOVERNANCE_KINDS,
   TA_TOOL_REVIEW_LIFECYCLE_ACTIONS,
 } from "./tool-review-contract.js";
@@ -51,4 +54,48 @@ test("tool review contract lifecycle helper maps lifecycle verbs to binding stat
   assert.equal(resolveLifecycleTargetBindingState("resume"), "active");
   assert.equal(resolveLifecycleTargetBindingState("suspend"), "disabled");
   assert.equal(resolveLifecycleTargetBindingState("unregister"), undefined);
+});
+
+test("tool review contract action ledger entry stays governance-only", () => {
+  assert.deepEqual(TA_TOOL_REVIEW_AGENT_BOUNDARY_MODES, ["governance_only"]);
+  assert.deepEqual(TA_TOOL_REVIEW_ACTION_STATUSES, [
+    "recorded",
+    "ready_for_handoff",
+    "waiting_human",
+    "blocked",
+    "completed",
+  ]);
+
+  const trace = createToolReviewGovernanceTrace({
+    actionId: "action-2",
+    actorId: "tool-reviewer",
+    reason: "Track lifecycle handoff.",
+    createdAt: "2026-03-25T10:00:00.000Z",
+  });
+  const entry = createToolReviewActionLedgerEntry({
+    reviewId: "review-2",
+    sessionId: "session-2",
+    input: {
+      kind: "lifecycle",
+      trace,
+      capabilityKey: "mcp.playwright",
+      lifecycleAction: "register",
+      targetPool: "ta-capability-pool",
+    },
+    output: {
+      kind: "lifecycle",
+      actionId: trace.actionId,
+      status: "ready_for_lifecycle_handoff",
+      capabilityKey: "mcp.playwright",
+      lifecycleAction: "register",
+      targetPool: "ta-capability-pool",
+      summary: "Lifecycle handoff staged.",
+    },
+    status: "ready_for_handoff",
+    recordedAt: trace.createdAt,
+  });
+
+  assert.equal(entry.boundaryMode, "governance_only");
+  assert.equal(entry.capabilityKey, "mcp.playwright");
+  assert.equal(entry.status, "ready_for_handoff");
 });

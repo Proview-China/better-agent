@@ -38,6 +38,10 @@ test("tma planner defaults to bootstrap lane and emits a repo-local build plan",
   ]);
   assert.match(output.buildPlan.implementationSteps.join(" "), /repo-local/i);
   assert.equal(output.promptPack.lane, "bootstrap");
+  assert.equal(output.sessionState.phase, "planner");
+  assert.equal(output.sessionState.status, "resumable");
+  assert.equal(output.sessionState.boundary.mayExecuteOriginalTask, false);
+  assert.match(output.sessionState.resumeSummary, /generated build plan/i);
 });
 
 test("tma planner upgrades to extended lane only after approval metadata is present", () => {
@@ -59,4 +63,7 @@ test("tma planner upgrades to extended lane only after approval metadata is pres
   assert.match(output.buildPlan.implementationSteps.join(" "), /dependency installation/i);
   assert.match(output.buildPlan.rollbackPlan.join(" "), /Undo dependency installation/i);
   assert.equal(output.envelope.allowedBuildScope.mayConfigureMcp, true);
+  assert.equal(output.sessionState.lane, "extended");
+  assert.equal(output.sessionState.phase, "planner");
+  assert.equal(output.sessionState.status, "resumable");
 });

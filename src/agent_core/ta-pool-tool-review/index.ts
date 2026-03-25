@@ -1,8 +1,12 @@
 export type {
+  CreateToolReviewActionLedgerEntryInput,
   CreateToolReviewGovernanceTraceInput,
+  TaToolReviewActionStatus,
+  TaToolReviewAgentBoundaryMode,
   TaToolReviewGovernanceKind,
   TaToolReviewLifecycleAction,
   TaToolReviewOutputStatus,
+  ToolReviewActionLedgerEntry,
   ToolReviewActivationInputShell,
   ToolReviewActivationOutputShell,
   ToolReviewGovernanceInputShell,
@@ -18,12 +22,29 @@ export type {
   ToolReviewSourceDecisionRef,
 } from "./tool-review-contract.js";
 export {
+  createToolReviewActionLedgerEntry,
   createToolReviewGovernanceTrace,
   resolveLifecycleTargetBindingState,
+  TA_TOOL_REVIEW_ACTION_STATUSES,
+  TA_TOOL_REVIEW_AGENT_BOUNDARY_MODES,
   TA_TOOL_REVIEW_GOVERNANCE_KINDS,
   TA_TOOL_REVIEW_LIFECYCLE_ACTIONS,
   TA_TOOL_REVIEW_OUTPUT_STATUSES,
 } from "./tool-review-contract.js";
+
+export type {
+  CreateToolReviewSessionStateInput,
+  TaToolReviewSessionStatus,
+  ToolReviewSessionSnapshot,
+  ToolReviewSessionState,
+} from "./tool-review-session.js";
+export {
+  appendToolReviewActionToSession,
+  createToolReviewSessionSnapshot,
+  createToolReviewSessionState,
+  restoreToolReviewSessionSnapshot,
+  TA_TOOL_REVIEW_SESSION_STATUSES,
+} from "./tool-review-session.js";
 
 export type {
   TaToolReviewRuntimeStatus,

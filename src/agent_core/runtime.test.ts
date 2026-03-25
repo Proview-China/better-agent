@@ -17,6 +17,7 @@ import type { CapabilityAdapter, CapabilityCallIntent, CapabilityPackage } from 
 import { createAgentCapabilityProfile, createProvisionArtifactBundle, createProvisionRequest } from "./ta-pool-types/index.js";
 import { createFirstWaveCapabilityProfile } from "./ta-pool-model/index.js";
 import { createReviewerRuntime } from "./ta-pool-review/index.js";
+import { createToolReviewGovernanceTrace } from "./ta-pool-tool-review/index.js";
 import { TA_ENFORCEMENT_METADATA_KEY } from "./ta-pool-runtime/enforcement-guard.js";
 import type { RaxFacade } from "../rax/facade.js";
 import {
@@ -1372,6 +1373,111 @@ test("AgentCoreRuntime can persist and recover TAP control-plane snapshot throug
   const tapSnapshot = await runtime.recoverTapRuntimeSnapshot(created.run.runId);
   assert.equal(tapSnapshot?.humanGates.length, 1);
   assert.equal(tapSnapshot?.humanGates[0]?.capabilityKey, "computer.use");
+});
+
+test("AgentCoreRuntime can hydrate reviewer, tool_reviewer, and provision durable state from TAP snapshot", async () => {
+  const profile = createAgentCapabilityProfile({
+    profileId: "profile.runtime.tap-hydrate",
+    agentClass: "main-agent",
+    baselineCapabilities: ["docs.read"],
+    allowedCapabilityPatterns: ["computer.*"],
+  });
+  const runtime = createAgentCoreRuntime({ taProfile: profile });
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-tap-hydrate",
+      sessionId: session.sessionId,
+      userInput: "Hydrate reviewer, tool reviewer, and provision durable state.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+
+  const intent: CapabilityCallIntent = {
+    intentId: "intent-ta-hydrate-1",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    kind: "capability_call",
+    createdAt: "2026-03-25T18:00:00.000Z",
+    priority: "normal",
+    request: {
+      requestId: "request-ta-hydrate-1",
+      intentId: "intent-ta-hydrate-1",
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      capabilityKey: "computer.use",
+      input: {
+        task: "hydrate durable lanes",
+      },
+      priority: "normal",
+    },
+  };
+
+  const waiting = await runtime.dispatchCapabilityIntentViaTaPool(intent, {
+    agentId: "agent-main",
+    requestedTier: "B2",
+    mode: "restricted",
+    reason: "Need a waiting human gate for durability hydration.",
+  });
+  assert.equal(waiting.status, "waiting_human");
+  assert.ok(waiting.accessRequest);
+
+  await runtime.reviewerRuntime?.submit({
+    request: waiting.accessRequest,
+    profile,
+  });
+  assert.equal(runtime.reviewerRuntime?.listDurableStates().length, 1);
+
+  const toolReviewTrace = createToolReviewGovernanceTrace({
+    actionId: "tool-review-action-1",
+    actorId: "tool-reviewer",
+    reason: "Stage activation governance review.",
+    createdAt: "2026-03-25T18:00:01.000Z",
+  });
+  await runtime.toolReviewerRuntime?.submit({
+    governanceAction: {
+      kind: "activation",
+      trace: toolReviewTrace,
+      provisionId: "provision-hydrate-1",
+      capabilityKey: "computer.use",
+      activationSpec: {
+        targetPool: "ta-capability-pool",
+        activationMode: "activate_after_verify",
+        registerOrReplace: "register_or_replace",
+        generationStrategy: "create_next_generation",
+        drainStrategy: "graceful",
+        adapterFactoryRef: "factory:computer.use",
+      },
+    },
+    sessionId: "tool-review-session-hydrate-1",
+  });
+
+  const provisionRequest = createProvisionRequest({
+    provisionId: "provision-hydrate-1",
+    sourceRequestId: "request-hydrate-1",
+    requestedCapabilityKey: "computer.use",
+    reason: "Need provision runtime durable state.",
+    createdAt: "2026-03-25T18:00:02.000Z",
+  });
+  await runtime.provisionerRuntime?.submit(provisionRequest);
+
+  const snapshot = runtime.createTapRuntimeSnapshot();
+  assert.ok(snapshot.reviewerDurableSnapshot);
+  assert.ok(snapshot.toolReviewerSessions);
+  assert.ok(snapshot.provisionerDurableSnapshot);
+  assert.equal(snapshot.humanGateContexts?.length, 1);
+
+  const recovered = createAgentCoreRuntime({ taProfile: profile });
+  recovered.hydrateRecoveredTapRuntimeSnapshot(snapshot);
+
+  assert.equal(recovered.reviewerRuntime?.listDurableStates().length, 1);
+  assert.equal(recovered.toolReviewerRuntime?.listSessions().length, 1);
+  assert.equal(recovered.provisionerRuntime?.getBundleHistory("provision-hydrate-1").length, 2);
+  assert.equal(recovered.listTaHumanGates().length, 1);
+  assert.equal(recovered.listTaResumeEnvelopes().length >= 1, true);
 });
 
 test("AgentCoreRuntime inventory sees ready provision assets and avoids duplicate provisioning redirects", async () => {

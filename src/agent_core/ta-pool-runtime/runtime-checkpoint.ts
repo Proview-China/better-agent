@@ -5,9 +5,16 @@ import type {
 import type { TaActivationAttemptRecord } from "./activation-types.js";
 import type { TaHumanGateEvent, TaHumanGateState } from "./human-gate.js";
 import type { TaPendingReplay } from "./replay-policy.js";
+import type { ReviewerDurableSnapshot } from "../ta-pool-review/index.js";
+import type { ToolReviewSessionSnapshot } from "../ta-pool-tool-review/index.js";
+import type {
+  ProvisionerDurableSnapshot,
+  TmaSessionState,
+} from "../ta-pool-provision/index.js";
 import type {
   PoolRuntimeSnapshots,
   TapPoolRuntimeSnapshot,
+  TaHumanGateContextSnapshot,
   TaResumeEnvelope,
 } from "./runtime-snapshot.js";
 import {
@@ -23,10 +30,15 @@ function isStoredCheckpoint(
 
 export interface TapRuntimeSnapshotStateInput {
   humanGates: Iterable<TaHumanGateState>;
+  humanGateContexts?: Iterable<TaHumanGateContextSnapshot>;
   humanGateEvents: Iterable<TaHumanGateEvent> | Map<string, readonly TaHumanGateEvent[]>;
   pendingReplays: Iterable<TaPendingReplay>;
   activationAttempts: Iterable<TaActivationAttemptRecord>;
   resumeEnvelopes: Iterable<TaResumeEnvelope>;
+  reviewerDurableSnapshot?: ReviewerDurableSnapshot;
+  toolReviewerSessions?: Iterable<ToolReviewSessionSnapshot>;
+  provisionerDurableSnapshot?: ProvisionerDurableSnapshot;
+  tmaSessions?: Iterable<TmaSessionState>;
   metadata?: Record<string, unknown>;
 }
 
@@ -44,10 +56,15 @@ export function createTapRuntimeSnapshotFromState(
 ): TapPoolRuntimeSnapshot {
   return createTapPoolRuntimeSnapshot({
     humanGates: [...input.humanGates],
+    humanGateContexts: [...(input.humanGateContexts ?? [])],
     humanGateEvents: flattenHumanGateEvents(input.humanGateEvents),
     pendingReplays: [...input.pendingReplays],
     activationAttempts: [...input.activationAttempts],
     resumeEnvelopes: [...input.resumeEnvelopes],
+    reviewerDurableSnapshot: input.reviewerDurableSnapshot,
+    toolReviewerSessions: input.toolReviewerSessions ? [...input.toolReviewerSessions] : undefined,
+    provisionerDurableSnapshot: input.provisionerDurableSnapshot,
+    tmaSessions: input.tmaSessions ? [...input.tmaSessions] : undefined,
     metadata: input.metadata,
   });
 }

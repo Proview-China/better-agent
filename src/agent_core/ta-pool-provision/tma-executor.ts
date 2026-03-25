@@ -8,6 +8,12 @@ import {
   type TmaRollbackHandle,
   type TmaVerificationEvidence,
 } from "../ta-pool-types/index.js";
+import {
+  createTmaSessionState,
+  markTmaSessionCompleted,
+  markTmaSessionResumable,
+  type TmaSessionState,
+} from "./tma-session-state.js";
 
 export interface ExecuteTmaPlanInput {
   plan: TmaBuildPlan;
@@ -17,12 +23,14 @@ export interface ExecuteTmaPlanInput {
   producedArtifactRefs?: string[];
   verificationRefs?: string[];
   status?: "completed" | "failed" | "cancelled";
+  sessionState?: TmaSessionState;
 }
 
 export interface TmaExecutorResult {
   report: TmaExecutionReport;
   verificationEvidence: TmaVerificationEvidence[];
   rollbackHandle: TmaRollbackHandle;
+  sessionState: TmaSessionState;
 }
 
 export function executeTmaPlan(
@@ -63,11 +71,39 @@ export function executeTmaPlan(
     verificationEvidenceIds: verificationEvidence.map((item) => item.evidenceId),
     rollbackHandleId: rollbackHandle.handleId,
   });
+  const baseSessionState = input.sessionState ?? createTmaSessionState({
+    sessionId: `tma:${input.plan.provisionId}:executor`,
+    provisionId: input.plan.provisionId,
+    planId: input.plan.planId,
+    requestedCapabilityKey: input.plan.requestedCapabilityKey,
+    lane: input.lane ?? input.plan.requestedLane,
+    phase: "executor",
+    status: "in_progress",
+    createdAt: input.startedAt,
+    resumeSummary: `Executor started processing ${input.plan.requestedCapabilityKey}.`,
+  });
+  const sessionState = report.status === "completed"
+    ? markTmaSessionCompleted(baseSessionState, {
+      updatedAt: input.completedAt ?? input.startedAt,
+      reportId: report.reportId,
+      metadata: {
+        status: report.status,
+      },
+    })
+    : markTmaSessionResumable(baseSessionState, {
+      updatedAt: input.completedAt ?? input.startedAt,
+      resumeSummary: `Executor can resume ${input.plan.requestedCapabilityKey} after ${report.status}.`,
+      metadata: {
+        status: report.status,
+        reportId: report.reportId,
+      },
+    });
 
   return {
     report,
     verificationEvidence,
     rollbackHandle,
+    sessionState,
   };
 }
 

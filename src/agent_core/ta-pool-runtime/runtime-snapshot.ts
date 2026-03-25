@@ -4,9 +4,16 @@ import type {
   TaCapabilityTier,
   TaPoolMode,
 } from "../ta-pool-types/index.js";
+import type { CapabilityCallIntent } from "../types/index.js";
 import type { TaHumanGateEvent, TaHumanGateState } from "./human-gate.js";
 import type { TaActivationAttemptRecord } from "./activation-types.js";
 import type { TaPendingReplay } from "./replay-policy.js";
+import type { ReviewerDurableSnapshot } from "../ta-pool-review/index.js";
+import type { ToolReviewSessionSnapshot } from "../ta-pool-tool-review/index.js";
+import type {
+  ProvisionerDurableSnapshot,
+  TmaSessionState,
+} from "../ta-pool-provision/index.js";
 
 export interface TaResumeEnvelope {
   envelopeId: string;
@@ -48,12 +55,34 @@ export interface CreateTaResumeEnvelopeInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface TaHumanGateContextSnapshot {
+  gateId: string;
+  intent: CapabilityCallIntent;
+  accessRequest: AccessRequest;
+  reviewDecision: ReviewDecision;
+  options: {
+    agentId: string;
+    reason?: string;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    requestedScope?: AccessRequest["requestedScope"];
+    requestedDurationMs?: number;
+    taskContext?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  };
+}
+
 export interface TapPoolRuntimeSnapshot {
   humanGates: TaHumanGateState[];
+  humanGateContexts?: TaHumanGateContextSnapshot[];
   humanGateEvents: TaHumanGateEvent[];
   pendingReplays: TaPendingReplay[];
   activationAttempts: TaActivationAttemptRecord[];
   resumeEnvelopes: TaResumeEnvelope[];
+  reviewerDurableSnapshot?: ReviewerDurableSnapshot;
+  toolReviewerSessions?: ToolReviewSessionSnapshot[];
+  provisionerDurableSnapshot?: ProvisionerDurableSnapshot;
+  tmaSessions?: TmaSessionState[];
   metadata?: Record<string, unknown>;
 }
 
@@ -64,10 +93,15 @@ export interface PoolRuntimeSnapshots {
 
 export interface TapPoolRuntimeSnapshotInput {
   humanGates?: readonly TaHumanGateState[];
+  humanGateContexts?: readonly TaHumanGateContextSnapshot[];
   humanGateEvents?: readonly TaHumanGateEvent[];
   pendingReplays?: readonly TaPendingReplay[];
   activationAttempts?: readonly TaActivationAttemptRecord[];
   resumeEnvelopes?: readonly TaResumeEnvelope[];
+  reviewerDurableSnapshot?: ReviewerDurableSnapshot;
+  toolReviewerSessions?: readonly ToolReviewSessionSnapshot[];
+  provisionerDurableSnapshot?: ProvisionerDurableSnapshot;
+  tmaSessions?: readonly TmaSessionState[];
   metadata?: Record<string, unknown>;
 }
 
@@ -104,10 +138,73 @@ export function createTapPoolRuntimeSnapshot(
 ): TapPoolRuntimeSnapshot {
   return {
     humanGates: [...(input.humanGates ?? [])],
+    humanGateContexts: [...(input.humanGateContexts ?? [])],
     humanGateEvents: [...(input.humanGateEvents ?? [])],
     pendingReplays: [...(input.pendingReplays ?? [])],
     activationAttempts: [...(input.activationAttempts ?? [])],
     resumeEnvelopes: [...(input.resumeEnvelopes ?? [])],
+    reviewerDurableSnapshot: input.reviewerDurableSnapshot
+      ? {
+        states: input.reviewerDurableSnapshot.states.map((state) => ({
+          ...state,
+          metadata: state.metadata ? { ...state.metadata } : undefined,
+        })),
+        metadata: input.reviewerDurableSnapshot.metadata
+          ? { ...input.reviewerDurableSnapshot.metadata }
+          : undefined,
+      }
+      : undefined,
+    toolReviewerSessions: input.toolReviewerSessions?.map((snapshot) => ({
+      session: {
+        ...snapshot.session,
+        actionIds: [...snapshot.session.actionIds],
+        metadata: snapshot.session.metadata ? { ...snapshot.session.metadata } : undefined,
+      },
+      actions: snapshot.actions.map((action) => ({
+        ...action,
+        metadata: action.metadata ? { ...action.metadata } : undefined,
+      })),
+    })),
+    provisionerDurableSnapshot: input.provisionerDurableSnapshot
+      ? {
+        ...input.provisionerDurableSnapshot,
+        registry: {
+          records: input.provisionerDurableSnapshot.registry.records.map((record) => ({
+            ...record,
+            request: {
+              ...record.request,
+              requiredVerification: record.request.requiredVerification
+                ? [...record.request.requiredVerification]
+                : undefined,
+              expectedArtifacts: record.request.expectedArtifacts
+                ? [...record.request.expectedArtifacts]
+                : undefined,
+              metadata: record.request.metadata ? { ...record.request.metadata } : undefined,
+            },
+            bundle: record.bundle ? { ...record.bundle } : undefined,
+            bundleHistory: record.bundleHistory.map((bundle) => ({ ...bundle })),
+          })),
+        },
+        assetIndex: {
+          assets: input.provisionerDurableSnapshot.assetIndex.assets.map((asset) => ({ ...asset })),
+          currentAssetIds: input.provisionerDurableSnapshot.assetIndex.currentAssetIds.map((entry) => ({ ...entry })),
+        },
+        bundleHistory: input.provisionerDurableSnapshot.bundleHistory.map((entry) => ({
+          provisionId: entry.provisionId,
+          bundles: entry.bundles.map((bundle) => ({ ...bundle })),
+        })),
+        tmaSessions: input.provisionerDurableSnapshot.tmaSessions?.map((session) => ({
+          ...session,
+          boundary: { ...session.boundary },
+          metadata: session.metadata ? { ...session.metadata } : undefined,
+        })),
+      }
+      : undefined,
+    tmaSessions: input.tmaSessions?.map((session) => ({
+      ...session,
+      boundary: { ...session.boundary },
+      metadata: session.metadata ? { ...session.metadata } : undefined,
+    })),
     metadata: input.metadata,
   };
 }

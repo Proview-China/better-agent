@@ -200,3 +200,55 @@ test("reviewer runtime rejects bridge output that tries to return an inline gran
     /vote-only; forbidden field grant/i,
   );
 });
+
+test("reviewer runtime records durable state after submit and can export/hydrate snapshot", async () => {
+  const recorded: string[] = [];
+  const runtime = createReviewerRuntime({
+    durableStateHook: async (state) => {
+      recorded.push(`${state.requestId}:${state.stage}`);
+    },
+  });
+  const request = createRequest({
+    requestedCapabilityKey: "mcp.playwright",
+    requestedTier: "B3",
+    mode: "strict",
+  });
+
+  const decision = await runtime.submit({
+    request,
+    profile: createProfile(),
+    inventory: {
+      availableCapabilityKeys: ["mcp.playwright"],
+    },
+  });
+
+  assert.equal(decision.decision, "escalated_to_human");
+  assert.equal(runtime.getDurableState(request.requestId)?.stage, "waiting_human");
+  assert.deepEqual(recorded, [`${request.requestId}:waiting_human`]);
+
+  const hydrated = createReviewerRuntime();
+  hydrated.hydrateDurableSnapshot(runtime.exportDurableSnapshot());
+  assert.equal(hydrated.getDurableState(request.requestId)?.decision, "escalated_to_human");
+  assert.equal(hydrated.listDurableStates().length, 1);
+});
+
+test("reviewer runtime keeps provisioning redirects resumable but still vote-only", async () => {
+  const runtime = createReviewerRuntime();
+  const request = createRequest({
+    requestedCapabilityKey: "computer.use",
+    requestedTier: "B2",
+  });
+
+  const decision = await runtime.submit({
+    request,
+    profile: createProfile(),
+    inventory: {
+      availableCapabilityKeys: ["mcp.playwright"],
+    },
+  });
+
+  assert.equal(decision.decision, "redirected_to_provisioning");
+  const durable = runtime.getDurableState(request.requestId);
+  assert.equal(durable?.stage, "ready_to_resume");
+  assert.equal(durable?.hasGrantCompilerDirective, false);
+});

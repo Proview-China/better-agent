@@ -21,6 +21,14 @@ import {
   createReviewerWorkerPromptPack,
   type ReviewerWorkerVoteOutput,
 } from "./reviewer-worker-bridge.js";
+import {
+  createReviewerDurableSnapshot,
+  createReviewerDurableState,
+  hydrateReviewerDurableSnapshot,
+  type ReviewerDurableSnapshot,
+  type ReviewerDurableSource,
+  type ReviewerDurableState,
+} from "./reviewer-durable-state.js";
 
 export interface ReviewerRuntimeSubmitInput {
   request: AccessRequest;
@@ -46,6 +54,7 @@ export type ReviewerRuntimeLlmHook = (
 
 export interface ReviewerRuntimeOptions {
   llmReviewerHook?: ReviewerRuntimeLlmHook;
+  durableStateHook?: (state: ReviewerDurableState) => Promise<void> | void;
 }
 
 function normalizeStringArray(values?: string[]): string[] {
@@ -71,13 +80,49 @@ function inventoryTracksCapabilityLifecycle(
 
 export class ReviewerRuntime {
   readonly #llmReviewerHook?: ReviewerRuntimeLlmHook;
+  readonly #durableStateHook?: ReviewerRuntimeOptions["durableStateHook"];
+  readonly #durableStates = new Map<string, ReviewerDurableState>();
 
   constructor(options: ReviewerRuntimeOptions = {}) {
     this.#llmReviewerHook = options.llmReviewerHook;
+    this.#durableStateHook = options.durableStateHook;
   }
 
   hasLlmReviewerHook(): boolean {
     return this.#llmReviewerHook !== undefined;
+  }
+
+  getDurableState(requestId: string): ReviewerDurableState | undefined {
+    return this.#durableStates.get(requestId);
+  }
+
+  listDurableStates(): readonly ReviewerDurableState[] {
+    return [...this.#durableStates.values()];
+  }
+
+  exportDurableSnapshot(metadata?: Record<string, unknown>): ReviewerDurableSnapshot {
+    return createReviewerDurableSnapshot(this.#durableStates.values(), metadata);
+  }
+
+  hydrateDurableSnapshot(snapshot: ReviewerDurableSnapshot | undefined): void {
+    this.#durableStates.clear();
+    for (const [requestId, state] of hydrateReviewerDurableSnapshot(snapshot)) {
+      this.#durableStates.set(requestId, state);
+    }
+  }
+
+  async #recordDurableState(
+    request: AccessRequest,
+    decision: ReviewDecision,
+    source: ReviewerDurableSource,
+  ): Promise<void> {
+    const state = createReviewerDurableState({
+      request,
+      decision,
+      source,
+    });
+    this.#durableStates.set(request.requestId, state);
+    await this.#durableStateHook?.(state);
   }
 
   async submit(input: ReviewerRuntimeSubmitInput): Promise<ReviewDecision> {
@@ -148,6 +193,7 @@ export class ReviewerRuntime {
     });
 
     if (routed.outcome !== "review_required") {
+      await this.#recordDurableState(input.request, routed.decision, "routing_fast_path");
       return routed.decision;
     }
 
@@ -177,15 +223,19 @@ export class ReviewerRuntime {
         workerEnvelope,
       });
       if (hookDecision) {
-        return compileReviewerWorkerVote({
+        const decision = compileReviewerWorkerVote({
           request: input.request,
           promptPack,
           output: hookDecision,
         });
+        await this.#recordDurableState(input.request, decision, "llm_hook");
+        return decision;
       }
     }
 
-    return evaluateReviewDecision(fallback);
+    const decision = evaluateReviewDecision(fallback);
+    await this.#recordDurableState(input.request, decision, "review_engine");
+    return decision;
   }
 }
 

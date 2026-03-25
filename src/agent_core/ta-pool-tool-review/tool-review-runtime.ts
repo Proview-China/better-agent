@@ -1,6 +1,8 @@
 import type {
+  TaToolReviewActionStatus,
   ToolReviewActivationInputShell,
   ToolReviewActivationOutputShell,
+  ToolReviewActionLedgerEntry,
   ToolReviewGovernanceInputShell,
   ToolReviewGovernanceOutputShell,
   ToolReviewReplayInputShell,
@@ -10,7 +12,18 @@ import type {
   ToolReviewLifecycleInputShell,
   ToolReviewLifecycleOutputShell,
 } from "./tool-review-contract.js";
-import { resolveLifecycleTargetBindingState } from "./tool-review-contract.js";
+import {
+  createToolReviewActionLedgerEntry,
+  resolveLifecycleTargetBindingState,
+} from "./tool-review-contract.js";
+import {
+  appendToolReviewActionToSession,
+  createToolReviewSessionSnapshot,
+  createToolReviewSessionState,
+  restoreToolReviewSessionSnapshot,
+  type ToolReviewSessionSnapshot,
+  type ToolReviewSessionState,
+} from "./tool-review-session.js";
 
 export const TA_TOOL_REVIEW_RUNTIME_STATUSES = [
   "recorded",
@@ -23,20 +36,26 @@ export type TaToolReviewRuntimeStatus =
 
 export interface ToolReviewerRuntimeSubmitInput {
   governanceAction: ToolReviewGovernanceInputShell;
+  sessionId?: string;
 }
 
 export interface ToolReviewerRuntimeResult {
   reviewId: string;
-  placeholder: true;
+  sessionId: string;
+  placeholder: false;
   governanceKind: ToolReviewGovernanceInputShell["kind"];
   runtimeStatus: TaToolReviewRuntimeStatus;
   output: ToolReviewGovernanceOutputShell;
   recordedAt: string;
+  action: ToolReviewActionLedgerEntry;
   metadata?: Record<string, unknown>;
 }
 
 export interface ToolReviewerRuntimeOptions {
   recordHook?: (result: ToolReviewerRuntimeResult) => Promise<void> | void;
+  sessionIdFactory?: () => string;
+  reviewIdFactory?: (actionId: string) => string;
+  restoreSnapshot?: ToolReviewSessionSnapshot[];
 }
 
 function createActivationOutput(
@@ -158,27 +177,85 @@ function toRuntimeStatus(
   }
 }
 
+function toActionStatus(
+  runtimeStatus: TaToolReviewRuntimeStatus,
+): TaToolReviewActionStatus {
+  switch (runtimeStatus) {
+    case "ready_for_handoff":
+      return "ready_for_handoff";
+    case "waiting_human":
+      return "waiting_human";
+    case "blocked":
+      return "blocked";
+    case "recorded":
+      return "recorded";
+  }
+}
+
 export class ToolReviewerRuntime {
   readonly #recordHook?: ToolReviewerRuntimeOptions["recordHook"];
+  readonly #sessionIdFactory: () => string;
+  readonly #reviewIdFactory: (actionId: string) => string;
+  readonly #sessions = new Map<string, ToolReviewSessionState>();
+  readonly #actions = new Map<string, ToolReviewActionLedgerEntry>();
 
   constructor(options: ToolReviewerRuntimeOptions = {}) {
     this.#recordHook = options.recordHook;
+    this.#sessionIdFactory = options.sessionIdFactory ?? (() => "tool-review-session:1");
+    this.#reviewIdFactory = options.reviewIdFactory ?? ((actionId) => `tool-review:${actionId}`);
+
+    for (const snapshot of options.restoreSnapshot ?? []) {
+      const restored = restoreToolReviewSessionSnapshot(snapshot);
+      this.#sessions.set(restored.session.sessionId, restored.session);
+      for (const action of restored.actions) {
+        this.#actions.set(action.reviewId, action);
+      }
+    }
   }
 
   async submit(
     input: ToolReviewerRuntimeSubmitInput,
   ): Promise<ToolReviewerRuntimeResult> {
+    const sessionId = input.sessionId
+      ?? input.governanceAction.trace.request?.sessionId
+      ?? this.#sessionIdFactory();
+    const existingSession = this.#sessions.get(sessionId);
+    const session = existingSession ?? createToolReviewSessionState({
+      sessionId,
+      createdAt: input.governanceAction.trace.createdAt,
+      metadata: {
+        actorId: input.governanceAction.trace.actorId,
+      },
+    });
     const output = this.createOutputShell(input.governanceAction);
-    const result: ToolReviewerRuntimeResult = {
-      reviewId: `tool-review:${input.governanceAction.trace.actionId}`,
-      placeholder: true,
-      governanceKind: input.governanceAction.kind,
-      runtimeStatus: toRuntimeStatus(output),
+    const runtimeStatus = toRuntimeStatus(output);
+    const action = createToolReviewActionLedgerEntry({
+      reviewId: this.#reviewIdFactory(input.governanceAction.trace.actionId),
+      sessionId,
+      input: input.governanceAction,
       output,
+      status: toActionStatus(runtimeStatus),
       recordedAt: input.governanceAction.trace.createdAt,
       metadata: {
         actorId: input.governanceAction.trace.actorId,
         sourceDecisionId: input.governanceAction.trace.sourceDecision?.decisionId,
+      },
+    });
+    this.#actions.set(action.reviewId, action);
+    this.#sessions.set(sessionId, appendToolReviewActionToSession(session, action));
+    const result: ToolReviewerRuntimeResult = {
+      reviewId: action.reviewId,
+      sessionId,
+      placeholder: false,
+      governanceKind: input.governanceAction.kind,
+      runtimeStatus,
+      output,
+      recordedAt: input.governanceAction.trace.createdAt,
+      action,
+      metadata: {
+        actorId: input.governanceAction.trace.actorId,
+        sourceDecisionId: input.governanceAction.trace.sourceDecision?.decisionId,
+        boundaryMode: action.boundaryMode,
       },
     };
 
@@ -198,6 +275,45 @@ export class ToolReviewerRuntime {
         return createHumanGateOutput(input);
       case "replay":
         return createReplayOutput(input);
+    }
+  }
+
+  getSession(sessionId: string): ToolReviewSessionState | undefined {
+    return this.#sessions.get(sessionId);
+  }
+
+  listSessions(): readonly ToolReviewSessionState[] {
+    return [...this.#sessions.values()];
+  }
+
+  getAction(reviewId: string): ToolReviewActionLedgerEntry | undefined {
+    return this.#actions.get(reviewId);
+  }
+
+  listActions(sessionId?: string): readonly ToolReviewActionLedgerEntry[] {
+    const actions = [...this.#actions.values()];
+    return sessionId
+      ? actions.filter((action) => action.sessionId === sessionId)
+      : actions;
+  }
+
+  createSnapshots(): ToolReviewSessionSnapshot[] {
+    return [...this.#sessions.values()].map((session) =>
+      createToolReviewSessionSnapshot(
+        session,
+        this.listActions(session.sessionId),
+      ));
+  }
+
+  hydrateSnapshots(snapshots: readonly ToolReviewSessionSnapshot[]): void {
+    this.#sessions.clear();
+    this.#actions.clear();
+    for (const snapshot of snapshots) {
+      const restored = restoreToolReviewSessionSnapshot(snapshot);
+      this.#sessions.set(restored.session.sessionId, restored.session);
+      for (const action of restored.actions) {
+        this.#actions.set(action.reviewId, action);
+      }
     }
   }
 }

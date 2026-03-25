@@ -56,6 +56,22 @@ export const TA_TOOL_REVIEW_OUTPUT_STATUSES = [
 export type TaToolReviewOutputStatus =
   (typeof TA_TOOL_REVIEW_OUTPUT_STATUSES)[number];
 
+export const TA_TOOL_REVIEW_AGENT_BOUNDARY_MODES = [
+  "governance_only",
+] as const;
+export type TaToolReviewAgentBoundaryMode =
+  (typeof TA_TOOL_REVIEW_AGENT_BOUNDARY_MODES)[number];
+
+export const TA_TOOL_REVIEW_ACTION_STATUSES = [
+  "recorded",
+  "ready_for_handoff",
+  "waiting_human",
+  "blocked",
+  "completed",
+] as const;
+export type TaToolReviewActionStatus =
+  (typeof TA_TOOL_REVIEW_ACTION_STATUSES)[number];
+
 export interface ToolReviewSourceDecisionRef {
   decisionId: ReviewDecision["decisionId"];
   decision: ReviewDecision["decision"];
@@ -212,6 +228,31 @@ export type ToolReviewGovernanceOutputShell =
   | ToolReviewHumanGateOutputShell
   | ToolReviewReplayOutputShell;
 
+export interface ToolReviewActionLedgerEntry {
+  reviewId: string;
+  sessionId: string;
+  actionId: string;
+  governanceKind: ToolReviewGovernanceInputShell["kind"];
+  capabilityKey: string;
+  status: TaToolReviewActionStatus;
+  boundaryMode: TaToolReviewAgentBoundaryMode;
+  output: ToolReviewGovernanceOutputShell;
+  recordedAt: string;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateToolReviewActionLedgerEntryInput {
+  reviewId: string;
+  sessionId: string;
+  input: ToolReviewGovernanceInputShell;
+  output: ToolReviewGovernanceOutputShell;
+  status: TaToolReviewActionStatus;
+  recordedAt: string;
+  updatedAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
 function assertNonEmpty(value: string, label: string): string {
   const normalized = value.trim();
   if (!normalized) {
@@ -247,4 +288,28 @@ export function resolveLifecycleTargetBindingState(
     case "unregister":
       return undefined;
   }
+}
+
+export function extractToolReviewCapabilityKey(
+  input: ToolReviewGovernanceInputShell | ToolReviewGovernanceOutputShell,
+): string {
+  return input.capabilityKey;
+}
+
+export function createToolReviewActionLedgerEntry(
+  input: CreateToolReviewActionLedgerEntryInput,
+): ToolReviewActionLedgerEntry {
+  return {
+    reviewId: assertNonEmpty(input.reviewId, "Tool review action reviewId"),
+    sessionId: assertNonEmpty(input.sessionId, "Tool review action sessionId"),
+    actionId: assertNonEmpty(input.input.trace.actionId, "Tool review action actionId"),
+    governanceKind: input.input.kind,
+    capabilityKey: extractToolReviewCapabilityKey(input.input),
+    status: input.status,
+    boundaryMode: "governance_only",
+    output: input.output,
+    recordedAt: assertNonEmpty(input.recordedAt, "Tool review action recordedAt"),
+    updatedAt: assertNonEmpty(input.updatedAt ?? input.recordedAt, "Tool review action updatedAt"),
+    metadata: input.metadata,
+  };
 }

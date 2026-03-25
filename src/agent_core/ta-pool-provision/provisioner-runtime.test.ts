@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { createProvisionRequest } from "../ta-pool-types/index.js";
 import { ProvisionRegistry } from "./provision-registry.js";
+import { createProvisionerDurableSnapshot } from "./provision-durable-snapshot.js";
 import { createProvisionerRuntime } from "./provisioner-runtime.js";
 
 test("provisioner runtime records building then ready through the default provisioner worker bridge", async () => {
@@ -176,4 +177,36 @@ test("provisioner runtime emits a formal tooling package for bootstrap B-group c
   assert.equal(toolMetadata?.manifest?.capabilityKey, "repo.write");
   assert.equal(toolMetadata?.formalCapabilityPackage, true);
   assert.equal(bundle.activationSpec?.adapterFactoryRef, "factory:tap-tooling:repo.write");
+});
+
+test("provisioner runtime can serialize and restore durable state without losing bundle history order", async () => {
+  let counter = 0;
+  const runtime = createProvisionerRuntime({
+    clock: () => new Date("2026-03-25T10:00:00.000Z"),
+    idFactory: () => `bundle-durable-${++counter}`,
+  });
+
+  const request = createProvisionRequest({
+    provisionId: "provision-durable-1",
+    sourceRequestId: "request-durable-1",
+    requestedCapabilityKey: "network.download",
+    reason: "Need durable download capability record.",
+    createdAt: "2026-03-25T10:00:00.000Z",
+  });
+
+  await runtime.submit(request);
+
+  const snapshot = createProvisionerDurableSnapshot(runtime.serializeDurableState());
+  const restored = createProvisionerRuntime();
+  restored.restoreDurableState(snapshot);
+
+  assert.deepEqual(
+    restored.getBundleHistory(request.provisionId).map((bundle) => bundle.status),
+    ["building", "ready"],
+  );
+  assert.equal(restored.registry.get(request.provisionId)?.bundle?.status, "ready");
+  assert.equal(
+    restored.assetIndex.getCurrent(request.provisionId)?.status,
+    "ready_for_review",
+  );
 });

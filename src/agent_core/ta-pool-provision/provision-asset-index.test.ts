@@ -45,6 +45,7 @@ function createLedgerRecord() {
   return {
     request,
     bundle,
+    bundleHistory: [bundle],
   };
 }
 
@@ -82,4 +83,24 @@ test("provision asset index tracks activating and active lifecycle states", () =
   assert.equal(activating?.status, "activating");
   assert.equal(active?.status, "active");
   assert.deepEqual(index.listCapabilityKeysByStatus(["active"]), ["mcp.playwright"]);
+});
+
+test("provision asset index can serialize and restore current assets", () => {
+  const index = new ProvisionAssetIndex();
+  const record = createLedgerRecord();
+  index.ingest(record);
+  index.updateState({
+    provisionId: record.request.provisionId,
+    status: "activating",
+    updatedAt: "2026-03-19T04:00:06.000Z",
+  });
+
+  const snapshot = index.serialize();
+  const restored = ProvisionAssetIndex.fromSnapshot(snapshot);
+  const current = restored.getCurrent(record.request.provisionId);
+
+  assert.ok(current);
+  assert.equal(current?.status, "activating");
+  assert.equal(current?.activation.adapterFactoryRef, "factory:playwright");
+  assert.deepEqual(restored.listCapabilityKeysByStatus(["activating"]), ["mcp.playwright"]);
 });
