@@ -82,6 +82,7 @@ import {
   createCmpSectionIngressRecordFromIngress,
   executeCmpMqAckStateLowering,
   executeCmpMqDispatchStateLowering,
+  evaluateCmpMqDeliveryTimeout,
   getCmpRuntimeRecoveryReconciliation,
   hydrateCmpRuntimeSnapshotWithReconciliation,
   lowerCmpSectionIngressRecordWithRulePack,
@@ -308,6 +309,53 @@ export interface BootstrapCmpProjectInfraInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface CmpRuntimeProjectRecoverySummary {
+  projectId: string;
+  status: "aligned" | "degraded" | "snapshot_only" | "infra_only";
+  recommendedAction:
+    | "none"
+    | "hydrate_from_snapshot"
+    | "hydrate_from_infra"
+    | "reconcile_snapshot_and_infra";
+  issues: string[];
+}
+
+export interface CmpRuntimeRecoverySummary {
+  totalProjects: number;
+  alignedProjectIds: string[];
+  degradedProjectIds: string[];
+  snapshotOnlyProjectIds: string[];
+  infraOnlyProjectIds: string[];
+  recommendedHydrateFromSnapshot: string[];
+  recommendedHydrateFromInfra: string[];
+  recommendedReconcile: string[];
+}
+
+export interface CmpRuntimeDeliveryTruthSummary {
+  projectId: string;
+  totalDispatches: number;
+  publishedCount: number;
+  acknowledgedCount: number;
+  retryScheduledCount: number;
+  expiredCount: number;
+  driftCount: number;
+  pendingAckCount: number;
+  status: "ready" | "degraded" | "failed";
+  issues: string[];
+}
+
+export interface AdvanceCmpMqDeliveryTimeoutsInput {
+  projectId?: string;
+  now?: string;
+}
+
+export interface AdvanceCmpMqDeliveryTimeoutsResult {
+  projectId?: string;
+  processedCount: number;
+  retryScheduledCount: number;
+  expiredCount: number;
+}
+
 export interface DispatchCapabilityIntentViaTaPoolOptions {
   agentId: string;
   reason?: string;
@@ -391,6 +439,44 @@ function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
     && value !== null
     && "then" in value
     && typeof (value as { then?: unknown }).then === "function";
+}
+
+function mapCmpDispatchKindToMqChannel(targetKind: DispatchContextPackageInput["targetKind"]): "to_parent" | "peer" | "to_children" {
+  switch (targetKind) {
+    case "parent":
+      return "to_parent";
+    case "child":
+      return "to_children";
+    case "peer":
+    default:
+      return "peer";
+  }
+}
+
+function mapCmpDeliveryRecordStateToTruthStatus(
+  state: CmpDbDeliveryRegistryRecord["state"],
+): "published" | "acknowledged" | "retry_scheduled" | "expired" {
+  switch (state) {
+    case "acknowledged":
+      return "acknowledged";
+    case "expired":
+      return "expired";
+    default:
+      return "published";
+  }
+}
+
+function mapCmpMqTruthStatusToDispatchStatus(
+  status: "published" | "acknowledged" | "retry_scheduled" | "expired",
+): DispatchReceipt["status"] {
+  switch (status) {
+    case "acknowledged":
+      return "acknowledged";
+    case "expired":
+      return "expired";
+    default:
+      return "delivered";
+  }
 }
 
 function isCmpStoredSectionLike(value: unknown): value is CmpStoredSection {
@@ -1172,6 +1258,212 @@ export class AgentCoreRuntime {
 
   getCmpDbDeliveryRecord(deliveryId: string): CmpDbDeliveryRegistryRecord | undefined {
     return this.#cmpDbRuntimeSync.deliveries.get(deliveryId);
+  }
+
+  listCmpDbDeliveryRecords(): readonly CmpDbDeliveryRegistryRecord[] {
+    return [...this.#cmpDbRuntimeSync.deliveries.values()];
+  }
+
+  getCmpRuntimeRecoverySummary(): CmpRuntimeRecoverySummary {
+    const recovery = hydrateCmpRuntimeSnapshotWithReconciliation({
+      snapshot: this.createCmpRuntimeSnapshot(),
+      projects: this.#cmpRuntimeInfraState.projects,
+    });
+    return recovery.summary;
+  }
+
+  getCmpRuntimeProjectRecoverySummary(projectId: string): CmpRuntimeProjectRecoverySummary | undefined {
+    const recovery = hydrateCmpRuntimeSnapshotWithReconciliation({
+      snapshot: this.createCmpRuntimeSnapshot(),
+      projects: this.#cmpRuntimeInfraState.projects,
+    });
+    const projectRecovery = getCmpRuntimeRecoveryReconciliation({
+      recovery,
+      projectId,
+    });
+    if (!projectRecovery) {
+      return undefined;
+    }
+    return {
+      projectId,
+      status: projectRecovery.status,
+      recommendedAction: projectRecovery.recommendedAction,
+      issues: [...projectRecovery.issues],
+    };
+  }
+
+  getCmpRuntimeDeliveryTruthSummary(projectId: string): CmpRuntimeDeliveryTruthSummary {
+    const receipts = this.listCmpDispatchReceipts().filter((receipt) => {
+      const sourceLineage = this.#cmpLineages.get(receipt.sourceAgentId);
+      return sourceLineage?.projectId === projectId;
+    });
+    let publishedCount = 0;
+    let acknowledgedCount = 0;
+    let retryScheduledCount = 0;
+    let expiredCount = 0;
+    let driftCount = 0;
+    let pendingAckCount = 0;
+    const issues: string[] = [];
+
+    for (const receipt of receipts) {
+      const deliveryRecord = this.#cmpDbRuntimeSync.deliveries.get(receipt.dispatchId);
+      const truthStatus: "published" | "acknowledged" | "retry_scheduled" | "expired" =
+        typeof deliveryRecord?.metadata?.truthStatus === "string"
+          && ["published", "acknowledged", "retry_scheduled", "expired"].includes(deliveryRecord.metadata.truthStatus)
+          ? deliveryRecord.metadata.truthStatus as "published" | "acknowledged" | "retry_scheduled" | "expired"
+          : mapCmpDeliveryRecordStateToTruthStatus(deliveryRecord?.state ?? "pending_delivery");
+
+      if (truthStatus === "acknowledged") {
+        acknowledgedCount += 1;
+      } else if (truthStatus === "retry_scheduled") {
+        retryScheduledCount += 1;
+      } else if (truthStatus === "expired") {
+        expiredCount += 1;
+      } else {
+        publishedCount += 1;
+      }
+
+      if (truthStatus === "published") {
+        pendingAckCount += 1;
+      }
+
+      const expectedStatus = mapCmpMqTruthStatusToDispatchStatus(
+        truthStatus === "retry_scheduled" ? "published" : truthStatus,
+      );
+      if (receipt.status !== expectedStatus) {
+        driftCount += 1;
+      }
+      if (truthStatus === "retry_scheduled") {
+        issues.push(`CMP delivery ${receipt.dispatchId} is waiting for retry.`);
+      }
+      if (truthStatus === "expired") {
+        issues.push(`CMP delivery ${receipt.dispatchId} has expired.`);
+      }
+    }
+
+    return {
+      projectId,
+      totalDispatches: receipts.length,
+      publishedCount,
+      acknowledgedCount,
+      retryScheduledCount,
+      expiredCount,
+      driftCount,
+      pendingAckCount,
+      status: expiredCount > 0 || driftCount > 0
+        ? "degraded"
+        : receipts.length === 0
+          ? "failed"
+          : "ready",
+      issues,
+    };
+  }
+
+  advanceCmpMqDeliveryTimeouts(
+    params: AdvanceCmpMqDeliveryTimeoutsInput = {},
+  ): AdvanceCmpMqDeliveryTimeoutsResult {
+    const now = params.now ?? new Date().toISOString();
+    let processedCount = 0;
+    let retryScheduledCount = 0;
+    let expiredCount = 0;
+
+    for (const receipt of this.listCmpDispatchReceipts()) {
+      const sourceLineage = this.#cmpLineages.get(receipt.sourceAgentId);
+      if (!sourceLineage) {
+        continue;
+      }
+      if (params.projectId && sourceLineage.projectId !== params.projectId) {
+        continue;
+      }
+      const mqReceiptId = typeof receipt.metadata?.mqReceiptId === "string"
+        ? receipt.metadata.mqReceiptId
+        : undefined;
+      if (!mqReceiptId) {
+        continue;
+      }
+      const deliveryRecord = this.#cmpDbRuntimeSync.deliveries.get(receipt.dispatchId);
+      if (!deliveryRecord) {
+        continue;
+      }
+
+      const truthState = typeof deliveryRecord.metadata?.truthStatus === "string"
+        ? deliveryRecord.metadata.truthStatus
+        : mapCmpDeliveryRecordStateToTruthStatus(deliveryRecord.state);
+      if (truthState === "acknowledged" || truthState === "expired") {
+        continue;
+      }
+
+      const deliveryState = createCmpMqDeliveryStateFromDeliveryTruth({
+        truth: {
+          receiptId: mqReceiptId,
+          projectId: sourceLineage.projectId,
+          sourceAgentId: receipt.sourceAgentId,
+          channel: mapCmpDispatchKindToMqChannel(this.#mapDispatchTargetKindFromReceipt(receipt)),
+          lane: (typeof receipt.metadata?.mqLane === "string" ? receipt.metadata.mqLane : "stream") as "pubsub" | "stream" | "queue",
+          redisKey: typeof receipt.metadata?.mqRedisKey === "string" ? receipt.metadata.mqRedisKey : `cmp:${sourceLineage.projectId}:unknown`,
+          targetCount: typeof receipt.metadata?.mqTargetCount === "number" ? receipt.metadata.mqTargetCount : 1,
+          state: (truthState === "retry_scheduled" ? "published" : truthState) as "published" | "acknowledged" | "expired",
+          publishedAt: receipt.deliveredAt ?? now,
+          acknowledgedAt: receipt.acknowledgedAt,
+          metadata: deliveryRecord.metadata,
+        },
+        dispatchId: receipt.dispatchId,
+        packageId: receipt.packageId,
+        targetAgentId: receipt.targetAgentId,
+      });
+      const evaluated = evaluateCmpMqDeliveryTimeout({
+        state: deliveryState,
+        now,
+      });
+      processedCount += 1;
+      if (evaluated.outcome === "retry_scheduled") {
+        retryScheduledCount += 1;
+      } else if (evaluated.outcome === "expired") {
+        expiredCount += 1;
+      }
+
+      this.#cmpDbRuntimeSync.deliveries.set(
+        deliveryRecord.deliveryId,
+        applyCmpMqDeliveryProjectionPatchToRecord({
+          record: deliveryRecord,
+          patch: evaluated.projectionPatch,
+          metadata: {
+            source: "cmp-runtime-delivery-timeout-sweep",
+          },
+        }),
+      );
+      const nextReceipt = createDispatchReceipt({
+        ...receipt,
+        status: evaluated.outcome === "expired" ? "expired" : receipt.status,
+        metadata: {
+          ...(receipt.metadata ?? {}),
+          mqTruthState: evaluated.state.status,
+          cmpMqProjectionPatch: evaluated.projectionPatch,
+        },
+      });
+      this.#cmpDispatchReceipts.set(nextReceipt.dispatchId, nextReceipt);
+      this.#recordCmpSyncEvent(createSyncEvent({
+        syncEventId: randomUUID(),
+        agentId: receipt.sourceAgentId,
+        channel: "mq",
+        direction: this.#mapDispatchTargetKindToDirection(this.#mapDispatchTargetKindFromReceipt(receipt)),
+        objectRef: receipt.dispatchId,
+        createdAt: now,
+        metadata: {
+          source: "cmp-runtime-delivery-timeout-sweep",
+          outcome: evaluated.outcome,
+          nextRetryAt: evaluated.state.nextRetryAt,
+          acknowledgedAt: evaluated.state.acknowledgedAt,
+        },
+      }));
+    }
+
+    return {
+      projectId: params.projectId,
+      processedCount,
+      retryScheduledCount,
+      expiredCount,
+    };
   }
 
   acknowledgeCmpDispatch(params: {

@@ -219,6 +219,40 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
         updatedAt: "2026-03-24T00:00:00.000Z",
       } satisfies CmpRuntimeInfraProjectState;
     },
+    getCmpRuntimeRecoverySummary() {
+      return {
+        totalProjects: 1,
+        alignedProjectIds: ["proj-facade"],
+        degradedProjectIds: [],
+        snapshotOnlyProjectIds: [],
+        infraOnlyProjectIds: [],
+        recommendedHydrateFromSnapshot: [],
+        recommendedHydrateFromInfra: [],
+        recommendedReconcile: [],
+      };
+    },
+    getCmpRuntimeProjectRecoverySummary() {
+      return {
+        projectId: "proj-facade",
+        status: "aligned" as const,
+        recommendedAction: "none" as const,
+        issues: [],
+      };
+    },
+    getCmpRuntimeDeliveryTruthSummary() {
+      return {
+        projectId: "proj-facade",
+        totalDispatches: 1,
+        publishedCount: 0,
+        acknowledgedCount: 1,
+        retryScheduledCount: 0,
+        expiredCount: 0,
+        driftCount: 0,
+        pendingAckCount: 0,
+        status: "ready" as const,
+        issues: [],
+      };
+    },
     async recoverCmpRuntimeSnapshot(_snapshot: CmpRuntimeSnapshot) {
       return undefined;
     },
@@ -325,7 +359,7 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
   assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "git")?.status, "ready");
   assert.equal(readback.summary?.fallbacks.gitHistoryRebuild, "not_needed");
   assert.equal(smoke.status, "ready");
-  assert.equal(smoke.checks.length, 9);
+  assert.equal(smoke.checks.length, 13);
 });
 
 test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime", async () => {
@@ -891,4 +925,171 @@ test("createRaxCmpFacade dispatch enforces auto-return, auto-seed and manual-tar
     }),
     /manual override|auto-return|manual_targets/i,
   );
+});
+
+test("createRaxCmpFacade requestHistory respects strict_not_found fallback policy", async () => {
+  const cmp = createRaxCmpFacade();
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      throw new Error("not used");
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return undefined;
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() {
+      throw new Error("not used");
+    },
+    async commitContextDelta() {
+      throw new Error("not used");
+    },
+    async resolveCheckedSnapshot() {
+      throw new Error("not used");
+    },
+    async materializeContextPackage() {
+      throw new Error("not used");
+    },
+    async dispatchContextPackage() {
+      throw new Error("not used");
+    },
+    async requestHistoricalContext() {
+      return {
+        status: "materialized",
+        found: true,
+        contextPackage: {
+          packageId: "pkg-history",
+          sourceProjectionId: "projection-history",
+          targetAgentId: "main",
+          packageKind: "historical_reply",
+          packageRef: "cmp-package:history",
+          fidelityLabel: "checked_high_fidelity",
+          createdAt: "2026-03-25T00:00:00.000Z",
+        },
+        metadata: {
+          degraded: true,
+          truthSource: "git_checked",
+        },
+      } satisfies RequestHistoricalContextResult;
+    },
+  };
+
+  const session = cmp.create({
+    config: {
+      projectId: "proj-history-strict",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-history-strict",
+        repoRootPath: "/tmp/praxis/proj-history-strict",
+        defaultBranchName: "main",
+      },
+    },
+    runtime,
+    control: {
+      truth: {
+        fallbackPolicy: "strict_not_found",
+      },
+    },
+  });
+
+  const result = await cmp.requestHistory({
+    session,
+    payload: {
+      requesterAgentId: "main",
+      projectId: "proj-history-strict",
+      reason: "Need history",
+      query: {},
+    },
+  });
+
+  assert.equal(result.status, "not_found");
+  assert.equal(result.found, false);
+  assert.equal(result.metadata?.blockedByFallbackPolicy, "strict_not_found");
+});
+
+test("createRaxCmpFacade recover respects dry_run recovery preference", async () => {
+  const cmp = createRaxCmpFacade();
+  let recovered = false;
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      throw new Error("not used");
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return undefined;
+    },
+    getCmpRuntimeRecoverySummary() {
+      return {
+        totalProjects: 0,
+        alignedProjectIds: [],
+        degradedProjectIds: [],
+        snapshotOnlyProjectIds: [],
+        infraOnlyProjectIds: [],
+        recommendedHydrateFromSnapshot: [],
+        recommendedHydrateFromInfra: [],
+        recommendedReconcile: [],
+      };
+    },
+    async recoverCmpRuntimeSnapshot() {
+      recovered = true;
+    },
+    async ingestRuntimeContext() {
+      throw new Error("not used");
+    },
+    async commitContextDelta() {
+      throw new Error("not used");
+    },
+    async resolveCheckedSnapshot() {
+      throw new Error("not used");
+    },
+    async materializeContextPackage() {
+      throw new Error("not used");
+    },
+    async dispatchContextPackage() {
+      throw new Error("not used");
+    },
+    async requestHistoricalContext() {
+      throw new Error("not used");
+    },
+  };
+
+  const session = cmp.create({
+    config: {
+      projectId: "proj-recover-dry-run",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-recover-dry-run",
+        repoRootPath: "/tmp/praxis/proj-recover-dry-run",
+        defaultBranchName: "main",
+      },
+    },
+    runtime,
+    control: {
+      truth: {
+        recoveryPreference: "dry_run",
+      },
+    },
+  });
+
+  const result = await cmp.recover({
+    session,
+    snapshot: {
+      projectRepos: [],
+      lineages: [],
+      events: [],
+      deltas: [],
+      activeLines: [],
+      snapshotCandidates: [],
+      checkedSnapshots: [],
+      promotedProjections: [],
+      contextPackages: [],
+      dispatchReceipts: [],
+      syncEvents: [],
+      infraState: { projects: [] },
+    },
+  });
+
+  assert.equal(recovered, false);
+  assert.equal(result.recovery?.dryRun, true);
+  assert.equal(result.recovery?.appliedPreference, "dry_run");
 });

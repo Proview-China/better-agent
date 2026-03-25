@@ -88,6 +88,18 @@ export function createRaxCmpRuntime(input: CreateRaxCmpRuntimeInput): RaxCmpRunt
     getCmpRuntimeInfraProjectState(projectId) {
       return agentCoreRuntime.getCmpRuntimeInfraProjectState(projectId);
     },
+    getCmpRuntimeRecoverySummary() {
+      return agentCoreRuntime.getCmpRuntimeRecoverySummary();
+    },
+    getCmpRuntimeProjectRecoverySummary(projectId) {
+      return agentCoreRuntime.getCmpRuntimeProjectRecoverySummary(projectId);
+    },
+    getCmpRuntimeDeliveryTruthSummary(projectId) {
+      return agentCoreRuntime.getCmpRuntimeDeliveryTruthSummary(projectId);
+    },
+    advanceCmpMqDeliveryTimeouts(input) {
+      return agentCoreRuntime.advanceCmpMqDeliveryTimeouts(input);
+    },
     recoverCmpRuntimeSnapshot(snapshot) {
       return agentCoreRuntime.recoverCmpRuntimeSnapshot(snapshot);
     },

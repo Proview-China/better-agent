@@ -12,6 +12,7 @@ import {
   createCmpBranchFamily,
   createCmpDbPostgresAdapter,
   createCmpGitAgentBranchRuntime,
+  createInMemoryCmpGitBackend,
   type CmpGitBranchRef,
   type CmpGitProjectRepoBootstrapPlan,
   createCmpGitLineageNode,
@@ -2055,6 +2056,96 @@ test("AgentCoreRuntime third wave can complete parent-child reseed and acknowled
   assert.equal(acknowledged.status, "acknowledged");
   assert.equal(runtime.getCmpDbContextPackageRecord(materialized.contextPackage.packageId)?.state, "acknowledged");
   assert.equal(runtime.getCmpDbDeliveryRecord(dispatched.receipt.dispatchId)?.state, "acknowledged");
+});
+
+test("AgentCoreRuntime can advance MQ delivery timeout into retry and expiry states", async () => {
+  const runtime = createAgentCoreRuntime({
+    cmpInfraBackends: {
+      git: createInMemoryCmpGitBackend(),
+      mq: createInMemoryCmpRedisMqAdapter(),
+    },
+  });
+
+  await runtime.bootstrapCmpProjectInfra({
+    projectId: "cmp-project-timeout",
+    repoName: "cmp-project-timeout",
+    repoRootPath: "/tmp/praxis/cmp-project-timeout",
+    agents: [
+      { agentId: "parent", depth: 0 },
+      { agentId: "child", parentAgentId: "parent", depth: 1 },
+    ],
+    defaultAgentId: "parent",
+  });
+
+  const parent = createAgentLineage({
+    agentId: "parent",
+    depth: 0,
+    projectId: "cmp-project-timeout",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/parent",
+      cmpBranch: "cmp/parent",
+      mpBranch: "mp/parent",
+      tapBranch: "tap/parent",
+    }),
+    childAgentIds: ["child"],
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "parent",
+    sessionId: "session-timeout",
+    runId: "run-timeout",
+    lineage: parent,
+    taskSummary: "prepare timeout package",
+    materials: [{ kind: "context_package", ref: "payload:timeout-package" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "parent",
+    sessionId: "session-timeout",
+    runId: "run-timeout",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Build timeout package.",
+    syncIntent: "dispatch_to_children",
+  });
+  const checked = runtime.getCmpCheckedSnapshot(committed.metadata?.checkedSnapshotId as string);
+  const materialized = runtime.materializeContextPackage({
+    agentId: "parent",
+    snapshotId: checked!.snapshotId,
+    targetAgentId: "child",
+    packageKind: "child_seed",
+  });
+  const dispatched = runtime.dispatchContextPackage({
+    agentId: "parent",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "parent",
+    targetAgentId: "child",
+    targetKind: "child",
+  });
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (runtime.getCmpDispatchReceipt(dispatched.receipt.dispatchId)?.metadata?.mqReceiptId) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  const firstSweep = runtime.advanceCmpMqDeliveryTimeouts({
+    projectId: "cmp-project-timeout",
+    now: "2099-03-25T01:01:10.000Z",
+  });
+  const secondSweep = runtime.advanceCmpMqDeliveryTimeouts({
+    projectId: "cmp-project-timeout",
+    now: "2099-03-25T01:02:20.000Z",
+  });
+  const thirdSweep = runtime.advanceCmpMqDeliveryTimeouts({
+    projectId: "cmp-project-timeout",
+    now: "2099-03-25T01:03:30.000Z",
+  });
+
+  assert.equal(firstSweep.retryScheduledCount, 1);
+  assert.equal(secondSweep.retryScheduledCount, 1);
+  assert.equal(thirdSweep.expiredCount, 1);
+  assert.equal(runtime.getCmpDbDeliveryRecord(dispatched.receipt.dispatchId)?.state, "expired");
+  assert.equal(runtime.getCmpRuntimeDeliveryTruthSummary("cmp-project-timeout").expiredCount, 1);
 });
 
 test("AgentCoreRuntime third wave keeps sibling exchange out of upward promotion", () => {

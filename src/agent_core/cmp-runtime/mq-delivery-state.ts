@@ -285,6 +285,7 @@ export function createCmpMqDeliveryProjectionPatch(
     deliveredAt: state.publishedAt,
     acknowledgedAt: state.acknowledgedAt,
     metadata: {
+      ...(state.metadata ?? {}),
       redisKey: state.redisKey,
       lane: state.lane,
       truthStatus: state.status,
@@ -292,7 +293,6 @@ export function createCmpMqDeliveryProjectionPatch(
       maxAttempts: state.maxAttempts,
       ackDeadlineAt: state.ackDeadlineAt,
       nextRetryAt: state.nextRetryAt,
-      ...(state.metadata ?? {}),
     },
   };
   validateCmpMqDeliveryProjectionPatch(patch);

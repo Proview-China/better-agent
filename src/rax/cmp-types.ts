@@ -1,5 +1,8 @@
 import type {
   BootstrapCmpProjectInfraInput,
+  CmpRuntimeDeliveryTruthSummary,
+  CmpRuntimeProjectRecoverySummary,
+  CmpRuntimeRecoverySummary,
   CommitContextDeltaInput,
   CommitContextDeltaResult,
   CmpProjectInfraBootstrapReceipt,
@@ -271,6 +274,8 @@ export interface RaxCmpTruthLayerSummary {
 export interface RaxCmpFallbackReadiness {
   gitHistoryRebuild: "available" | "not_needed" | "unavailable";
   dbProjectionFallback: "available" | "not_needed" | "unavailable";
+  recoveryReconciliation: "available" | "not_needed" | "unavailable";
+  redisDeliveryRecovery: "available" | "partial" | "unavailable";
 }
 
 export interface RaxCmpReadbackSummary {
@@ -286,8 +291,14 @@ export interface RaxCmpReadbackSummary {
   hydratedLineageCount: number;
   expectedDbTargetCount?: number;
   presentDbTargetCount?: number;
+  appliedReadbackPriority: RaxCmpReadbackPriority;
+  appliedFallbackPolicy: RaxCmpFallbackPolicy;
+  appliedRecoveryPreference: RaxCmpRecoveryPreference;
   truthLayers: RaxCmpTruthLayerSummary[];
   fallbacks: RaxCmpFallbackReadiness;
+  recoverySummary?: CmpRuntimeRecoverySummary;
+  projectRecovery?: CmpRuntimeProjectRecoverySummary;
+  deliverySummary?: CmpRuntimeDeliveryTruthSummary;
   issues: string[];
 }
 
@@ -303,11 +314,19 @@ export interface RaxCmpRecoverResult {
   session: RaxCmpSession;
   snapshot: CmpRuntimeSnapshot;
   control: RaxCmpManualControlSurface;
+  readback?: RaxCmpReadbackSummary;
+  recovery?: {
+    status: "aligned" | "degraded";
+    projectRecovery?: CmpRuntimeProjectRecoverySummary;
+    appliedPreference: RaxCmpRecoveryPreference;
+    dryRun: boolean;
+  };
   metadata?: Record<string, unknown>;
 }
 
 export interface RaxCmpSmokeCheck {
   id: string;
+  gate?: "truth" | "recovery" | "manual_control" | "delivery" | "lineage" | "final_acceptance";
   status: "ready" | "degraded" | "failed";
   summary: string;
   metadata?: Record<string, unknown>;
@@ -369,6 +388,15 @@ export interface RaxCmpRuntimeLike {
   ): Promise<CmpProjectInfraBootstrapReceipt> | CmpProjectInfraBootstrapReceipt;
   getCmpProjectInfraBootstrapReceipt(projectId: string): CmpProjectInfraBootstrapReceipt | undefined;
   getCmpRuntimeInfraProjectState?(projectId: string): CmpRuntimeInfraProjectState | undefined;
+  getCmpRuntimeRecoverySummary?(): CmpRuntimeRecoverySummary;
+  getCmpRuntimeProjectRecoverySummary?(projectId: string): CmpRuntimeProjectRecoverySummary | undefined;
+  getCmpRuntimeDeliveryTruthSummary?(projectId: string): CmpRuntimeDeliveryTruthSummary;
+  advanceCmpMqDeliveryTimeouts?(input?: { projectId?: string; now?: string }): {
+    projectId?: string;
+    processedCount: number;
+    retryScheduledCount: number;
+    expiredCount: number;
+  };
   recoverCmpRuntimeSnapshot(snapshot: CmpRuntimeSnapshot): Promise<void> | void;
   ingestRuntimeContext(
     input: IngestRuntimeContextInput,

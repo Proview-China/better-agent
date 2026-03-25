@@ -268,8 +268,12 @@ function assertDispatchAllowed(input: {
 
 function createReadbackSummary(input: {
   projectId: string;
+  control: RaxCmpManualControlSurface;
   receipt?: RaxCmpReadbackResult["receipt"];
   infraState?: RaxCmpReadbackResult["infraState"];
+  recoverySummary?: RaxCmpReadbackSummary["recoverySummary"];
+  projectRecovery?: RaxCmpReadbackSummary["projectRecovery"];
+  deliverySummary?: RaxCmpReadbackSummary["deliverySummary"];
 }): RaxCmpReadbackSummary {
   const expectedLineageCount = input.receipt?.lineages.length ?? 0;
   const infraSummary = input.infraState
@@ -302,6 +306,15 @@ function createReadbackSummary(input: {
   }
   if (expectedLineageCount > 0 && mqBootstrapCount < expectedLineageCount) {
     issues.push("CMP mq bootstrap coverage is incomplete.");
+  }
+  if (input.projectRecovery?.status && input.projectRecovery.status !== "aligned") {
+    issues.push(...input.projectRecovery.issues);
+  }
+  if ((input.deliverySummary?.driftCount ?? 0) > 0) {
+    issues.push(`CMP delivery drift detected on ${input.deliverySummary?.driftCount ?? 0} dispatch(es).`);
+  }
+  if ((input.deliverySummary?.expiredCount ?? 0) > 0) {
+    issues.push(`CMP has ${input.deliverySummary?.expiredCount ?? 0} expired delivery truth record(s).`);
   }
 
   const status = !input.receipt
@@ -359,13 +372,38 @@ function createReadbackSummary(input: {
         mqBootstrapCount,
         expectedLineageCount,
         topicBindingCount: infraSummary?.mqTopicBindingCount ?? 0,
+        deliveryTruthStateCoverage: input.deliverySummary
+          ? {
+            published: input.deliverySummary.publishedCount,
+            acknowledged: input.deliverySummary.acknowledgedCount,
+            retryScheduled: input.deliverySummary.retryScheduledCount,
+            expired: input.deliverySummary.expiredCount,
+          }
+          : undefined,
+        deliveryDriftDetected: (input.deliverySummary?.driftCount ?? 0) > 0,
+        ackDriftCount: input.deliverySummary?.driftCount ?? 0,
       },
     },
   ];
 
+  const readbackPriorityOrder = input.control.truth.readbackPriority === "redis_first"
+    ? ["redis", "db", "git"]
+    : input.control.truth.readbackPriority === "git_first"
+      ? ["git", "db", "redis"]
+      : input.control.truth.readbackPriority === "db_first"
+        ? ["db", "git", "redis"]
+        : ["git", "db", "redis"];
+  truthLayers.sort((left, right) => readbackPriorityOrder.indexOf(left.layer) - readbackPriorityOrder.indexOf(right.layer));
+
   const fallbacks: RaxCmpReadbackSummary["fallbacks"] = {
     gitHistoryRebuild: dbReceipt?.status === "bootstrapped" ? "not_needed" : truthLayers[0].status !== "failed" ? "available" : "unavailable",
     dbProjectionFallback: dbReceipt?.status === "bootstrapped" ? "not_needed" : truthLayers[0].status !== "failed" ? "available" : "unavailable",
+    recoveryReconciliation: input.recoverySummary ? "available" : "unavailable",
+    redisDeliveryRecovery: input.deliverySummary
+      ? input.deliverySummary.driftCount > 0 || input.deliverySummary.expiredCount > 0
+        ? "partial"
+        : "available"
+      : "unavailable",
   };
 
   return {
@@ -381,8 +419,14 @@ function createReadbackSummary(input: {
     hydratedLineageCount,
     expectedDbTargetCount: dbReceipt?.expectedTargetCount,
     presentDbTargetCount: dbReceipt?.presentTargetCount,
+    appliedReadbackPriority: input.control.truth.readbackPriority,
+    appliedFallbackPolicy: input.control.truth.fallbackPolicy,
+    appliedRecoveryPreference: input.control.truth.recoveryPreference,
     truthLayers,
     fallbacks,
+    recoverySummary: input.recoverySummary,
+    projectRecovery: input.projectRecovery,
+    deliverySummary: input.deliverySummary,
     issues,
   };
 }
@@ -437,6 +481,11 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         base: readbackInput.session.control,
         override: readbackInput.control,
       });
+      if (control.executionStyle !== "manual") {
+        readbackInput.session.runtime.advanceCmpMqDeliveryTimeouts?.({
+          projectId,
+        });
+      }
       const receipt = readbackInput.session.runtime.getCmpProjectInfraBootstrapReceipt(projectId);
       const infraState = readbackInput.session.runtime.getCmpRuntimeInfraProjectState?.(projectId);
       if (!receipt && !infraState) {
@@ -448,8 +497,12 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
       }
       const summary = createReadbackSummary({
         projectId,
+        control,
         receipt,
         infraState,
+        recoverySummary: readbackInput.session.runtime.getCmpRuntimeRecoverySummary?.(),
+        projectRecovery: readbackInput.session.runtime.getCmpRuntimeProjectRecoverySummary?.(projectId),
+        deliverySummary: readbackInput.session.runtime.getCmpRuntimeDeliveryTruthSummary?.(projectId),
       });
       return {
         status: "found",
@@ -467,12 +520,30 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         base: recoverInput.session.control,
         override: recoverInput.control,
       });
-      await recoverInput.session.runtime.recoverCmpRuntimeSnapshot(recoverInput.snapshot);
+      const dryRun = control.truth.recoveryPreference === "dry_run";
+      if (!dryRun) {
+        await recoverInput.session.runtime.recoverCmpRuntimeSnapshot(recoverInput.snapshot);
+      }
+      const readback = await this.readback({
+        session: recoverInput.session,
+        projectId: recoverInput.session.projectId,
+        control: recoverInput.control,
+        metadata: recoverInput.metadata,
+      });
       return {
         status: "recovered",
         session: recoverInput.session,
         snapshot: recoverInput.snapshot,
         control,
+        readback: readback.summary,
+        recovery: {
+          status: readback.summary?.projectRecovery?.status === "aligned" || !readback.summary?.projectRecovery
+            ? "aligned"
+            : "degraded",
+          projectRecovery: readback.summary?.projectRecovery,
+          appliedPreference: control.truth.recoveryPreference,
+          dryRun,
+        },
         metadata: recoverInput.metadata,
       };
     },
@@ -556,7 +627,31 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
     async requestHistory(
       historyInput: RaxCmpRequestHistoryInput,
     ): Promise<RequestHistoricalContextResult> {
-      return historyInput.session.runtime.requestHistoricalContext(historyInput.payload);
+      const control = resolveControlSurface({
+        projectId: historyInput.session.projectId,
+        base: historyInput.session.control,
+        override: historyInput.control,
+      });
+      const result = await historyInput.session.runtime.requestHistoricalContext({
+        ...historyInput.payload,
+        metadata: {
+          ...(historyInput.payload.metadata ?? {}),
+          readbackPriority: control.truth.readbackPriority,
+          fallbackPolicy: control.truth.fallbackPolicy,
+          recoveryPreference: control.truth.recoveryPreference,
+        },
+      });
+      if (control.truth.fallbackPolicy === "strict_not_found" && result.metadata?.degraded === true) {
+        return {
+          status: "not_found",
+          found: false,
+          metadata: {
+            blockedByFallbackPolicy: "strict_not_found",
+            originalResult: result.metadata,
+          },
+        };
+      }
+      return result;
     },
 
     async smoke(smokeInput: RaxCmpSmokeInput): Promise<RaxCmpSmokeResult> {
@@ -576,16 +671,19 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
       const checks: RaxCmpSmokeCheck[] = [
         {
           id: "cmp.bootstrap.receipt",
+          gate: "truth",
           status: readback.receipt ? "ready" : "failed",
           summary: readback.receipt ? "CMP bootstrap receipt is available." : "CMP bootstrap receipt is missing.",
         },
         {
           id: "cmp.infra.state",
+          gate: "truth",
           status: readback.infraState ? "ready" : "degraded",
           summary: readback.infraState ? "CMP runtime infra state is available." : "CMP runtime infra state has not been read back yet.",
         },
         {
           id: "cmp.truth.git",
+          gate: "truth",
           status: readback.summary?.truthLayers.find((layer) => layer.layer === "git")?.status ?? "failed",
           summary: readback.summary
             ? `CMP git truth is ${readback.summary.truthLayers.find((layer) => layer.layer === "git")?.status ?? "failed"}.`
@@ -593,6 +691,7 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         },
         {
           id: "cmp.git.bootstrap",
+          gate: "truth",
           status: readback.summary?.gitBootstrapStatus ? "ready" : "failed",
           summary: readback.summary?.gitBootstrapStatus
             ? `CMP git bootstrap is ${readback.summary.gitBootstrapStatus}.`
@@ -600,6 +699,7 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         },
         {
           id: "cmp.truth.db",
+          gate: "truth",
           status: readback.summary?.truthLayers.find((layer) => layer.layer === "db")?.status ?? "failed",
           summary: readback.summary
             ? `CMP DB truth is ${readback.summary.truthLayers.find((layer) => layer.layer === "db")?.status ?? "failed"}.`
@@ -607,6 +707,7 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         },
         {
           id: "cmp.db.readback",
+          gate: "truth",
           status: readback.summary?.dbReceiptStatus === "bootstrapped"
             ? "ready"
             : readback.summary?.dbReceiptStatus === "readback_incomplete"
@@ -618,6 +719,7 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         },
         {
           id: "cmp.truth.redis",
+          gate: "truth",
           status: readback.summary?.truthLayers.find((layer) => layer.layer === "redis")?.status ?? "failed",
           summary: readback.summary
             ? `CMP Redis truth is ${readback.summary.truthLayers.find((layer) => layer.layer === "redis")?.status ?? "failed"}.`
@@ -625,6 +727,7 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         },
         {
           id: "cmp.mq.bootstrap.coverage",
+          gate: "delivery",
           status: readback.summary
             ? readback.summary.mqBootstrapCount >= Math.max(1, readback.summary.expectedLineageCount)
               ? "ready"
@@ -638,6 +741,7 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         },
         {
           id: "cmp.lineage.coverage",
+          gate: "lineage",
           status: readback.summary
             ? readback.summary.expectedLineageCount === 0
               ? "degraded"
@@ -651,7 +755,57 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
             ? `CMP hydrated lineages ${readback.summary.hydratedLineageCount}/${readback.summary.expectedLineageCount}.`
             : "CMP lineage coverage is not available.",
         },
+        {
+          id: "cmp.recovery.reconciliation",
+          gate: "recovery",
+          status: !readback.summary?.projectRecovery
+            ? "degraded"
+            : readback.summary.projectRecovery.status === "aligned"
+              ? "ready"
+              : readback.summary.projectRecovery.status === "degraded"
+                ? "degraded"
+                : "failed",
+          summary: readback.summary?.projectRecovery
+            ? `CMP recovery reconciliation is ${readback.summary.projectRecovery.status} with action ${readback.summary.projectRecovery.recommendedAction}.`
+            : "CMP recovery reconciliation summary is not available.",
+        },
+        {
+          id: "cmp.delivery.truth.drift",
+          gate: "delivery",
+          status: !readback.summary?.deliverySummary
+            ? "degraded"
+            : readback.summary.deliverySummary.driftCount === 0 && readback.summary.deliverySummary.expiredCount === 0
+              ? "ready"
+              : readback.summary.deliverySummary.expiredCount > 0
+                ? "failed"
+                : "degraded",
+          summary: readback.summary?.deliverySummary
+            ? `CMP delivery truth has ${readback.summary.deliverySummary.driftCount} drifted and ${readback.summary.deliverySummary.expiredCount} expired dispatches.`
+            : "CMP delivery truth summary is not available.",
+        },
+        {
+          id: "cmp.manual.control.coherence",
+          gate: "manual_control",
+          status:
+            control.truth.readbackPriority === "reconcile" && !readback.summary?.projectRecovery
+              ? "degraded"
+              : control.truth.readbackPriority === "redis_first" && !readback.summary?.deliverySummary
+                ? "degraded"
+                : "ready",
+          summary: `CMP control surface uses ${control.truth.readbackPriority}/${control.truth.fallbackPolicy}/${control.truth.recoveryPreference}.`,
+        },
       ];
+
+      checks.push({
+        id: "cmp.non_five_agent.final_gate",
+        gate: "final_acceptance",
+        status: checks.some((check) => check.status === "failed")
+          ? "failed"
+          : checks.some((check) => check.status === "degraded")
+            ? "degraded"
+            : "ready",
+        summary: "CMP non-five-agent final gate aggregates truth, recovery, delivery and manual-control coherence.",
+      });
 
       const status = checks.some((check) => check.status === "failed")
         ? "failed"

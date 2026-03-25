@@ -6,41 +6,37 @@
 
 - 当前工作分支：`cmp/mp`
 - 当前已推送到远端的最近提交：
-  - `a073959` `完成 CMP infra 第一波总纲与真实 backend 骨架落地`
-- 当前工作区仍有未提交改动，主要集中在：
+  - `05b2ecc`
+  - `完成 CMP 非五-agent 主链收口并接入 section-first 与历史回退`
+- 当前工作区仍有未提交内容，但这次主要不是 `CMP` 主线代码，而是：
   - `docs/master.md`
-  - `docs/ability/35-36`
-  - `docs/ability/cmp-infra-closure-task-pack/**`
-  - `docs/ability/rax-cmp-workflow-task-pack/**`
-  - `src/agent_core/cmp-*`
-  - `src/agent_core/runtime.ts`
-  - `src/rax/**`
-  - `memory/current-context.md`
-- 当前工作区里还有一个需要提交前专门排除的临时目录：
   - `.parallel-worktrees/`
+  - `docs/ability/41-*`
+  - `docs/ability/42-*`
+  - `docs/ability/43-*`
+  - `docs/ability/tap-*`
+- `.parallel-worktrees/` 仍然是多智能体临时目录，提交前必须继续排除。
 
-## 当前阶段结论
+## 当前阶段一句话
 
-当前真正的工作重点已经从：
+`CMP` 非五-agent部分已经从“主干能跑但真相层没收死”，推进到：
 
-- `CMP` 四波基础协议与 runtime 样板
+- `section-first` 已进入主链
+- `DB-first + git rebuild fallback` 已进入 `requestHistory`
+- `MQ delivery truth` 已进入 dispatch/ack 主线
+- recovery reconciliation 已进入恢复链
+- `rax.cmp` 已开始像真正的控制台，而不只是 facade 壳
 
-推进到：
+白话：
 
-- `CMP infra` 收尾
-- `rax.cmp` 工作流接入
-- `Section / StoredSection / Rules` 显式化
+- 现在 `CMP` 的公共底座基本已经收住了
+- 后面主要工作可以开始转向五个 agent 本身
 
-一句白话：
-
-- 现在不再是“CMP 是什么”
-- 而是“CMP 怎样接进当前工作流，并为五个 agent 打地基”
-
-## 已冻结的架构方向
+## 当前已经确定的架构事实
 
 ### 1. `CMP` 与 `MP`
 
-- `CMP` 使用传统数据库：
+- `CMP` 使用：
   - `PostgreSQL`
   - `Redis`
   - shared `git_infra`
@@ -55,261 +51,194 @@
 - 每个 agent 都可以和 shared `git_infra` 沟通
 - 不是每个 agent 自己带一套 `git_infra`
 
-### 3. `rax.cmp`
+### 3. 当前优先级
 
-- `rax.cmp` 已被确认应作为：
-  - facade
-  - runtime shell
-  - configuration layer
-  - workflow integration entry
-- 不是：
-  - 一组测试 helper
-  - 一组散落的 backend contract 包装
+- `CMP` 非五-agent公共底座已基本收口
+- 接下来可以把重点逐步转到：
+  - 五个 agent 的职责细化
+  - 五个 agent 的默认配置
+  - 五个 agent 的联调
 
-### 4. 五个 agent 的顺序
+## 当前代码已经真正落到哪里
 
-- 先做：
-  - `rax.cmp`
-  - workflow integration
-  - `Section / StoredSection / Rules`
-- 后做：
-  - 五个 agent 的细致职责与配置
+### 一、`core_agent -> rax.cmp -> cmp-runtime -> shared infra`
 
-## `CMP` 旧阶段已完成到哪里
+这条主链已经不是样板，而是可运行主链。
 
-下面这些都已经完成并在代码中存在：
+当前已成立：
 
-- `CMP` 四波基础协议与 runtime 样板
-- `AgentCoreRuntime` 的 `CMP` 主链入口：
+- `rax.cmp` 已总装到：
+  - `src/rax/runtime.ts`
+  - `src/rax/index.ts`
+- `AgentCoreRuntime` 已正式提供：
   - `ingestRuntimeContext(...)`
   - `commitContextDelta(...)`
   - `resolveCheckedSnapshot(...)`
   - `materializeContextPackage(...)`
   - `dispatchContextPackage(...)`
   - `requestHistoricalContext(...)`
-- `CMP` 的四部分任务包文档：
-  - `29-33`
-- `CMP infra` 第一波总纲与任务包：
-  - `34`
-  - `cmp-infra-task-pack/**`
-- `CMP infra` 收尾总纲与任务包：
-  - `35`
-  - `cmp-infra-closure-task-pack/**`
+- `cmp_action` 已经进入 kernel / transition / runtime loop
 
-## 当前未提交但已经完成的关键进展
+### 二、`section-first`
 
-### 一、`agent_core/CMP infra`
+当前已经有并且已经接入主链：
 
-当前已经在 `src/agent_core/**` 里新增或扩展了下面这些内容：
-
-#### 1. `cmp-git`
-
-- `project-repo-bootstrap.ts`
-- `branch-runtime.ts`
-- `git-backend.ts`
-- `in-memory-backend.ts`
-- `git-cli-backend.ts`
+- `src/agent_core/cmp-types/cmp-section.ts`
+- `src/agent_core/cmp-runtime/section-ingress.ts`
+- `src/agent_core/cmp-runtime/section-rules.ts`
+- `src/agent_core/cmp-runtime/materialization.ts`
 
 当前状态：
 
-- 已有 contract
-- 已有 in-memory backend
-- 已有真实 `git CLI` live backend
+- ingest 会先生成 exact `Section`
+- 再 lower 到 `StoredSection`
+- `stored section` 已开始参与 `projection/package` 物化
 
-#### 2. `cmp-db`
+### 三、历史真相与回退
 
-- `postgresql-bootstrap.ts`
-- `postgresql-adapter.ts`
-- `postgresql-live-executor.ts`
-- `CmpProjectDbBootstrapReceipt` 等 bootstrap/readback receipt 类型
+当前已经有并且已经接入主链：
 
-当前状态：
-
-- 已有 bootstrap contract
-- 已有 query primitive adapter
-- 已有真实 `psql` live executor
-
-#### 3. `cmp-mq`
-
-- `redis-routing.ts`
-- `redis-bootstrap.ts`
-- `redis-adapter.ts`
-- `redis-cli-adapter.ts`
+- `src/agent_core/cmp-runtime/git-rebuild.ts`
+- `src/agent_core/cmp-runtime/recovery-reconciliation.ts`
+- `src/agent_core/cmp-runtime/runtime-recovery.ts`
 
 当前状态：
 
-- 已有 namespace / lane / topic binding
-- 已有 in-memory adapter
-- 已有真实 `redis-cli` live adapter
+- `requestHistory` 已按：
+  - `DB-first`
+  - projection 缺失时 `git rebuild fallback`
+  工作
+- fallback 结果会显式标记：
+  - `degraded`
+  - `truthSource`
+  - `fallbackReason`
 
-#### 4. `cmp-runtime`
+### 四、MQ delivery truth`
 
-- `backend-contract.ts`
-- `infra-bootstrap.ts`
-- `infra-state.ts`
-- `runtime-snapshot.ts` 已开始承载 `infraState`
-- `runtime-recovery.ts` 已开始恢复 `infraState`
+当前已经有并且已经进入主链：
 
-当前状态：
-
-- 已能做 project-level infra bootstrap plan / receipt
-- 已能把 bootstrap receipt 纳入 runtime infra state
-
-#### 5. `AgentCoreRuntime`
-
-当前新增或扩展了：
-
-- `cmpInfraBackends`
-- `createCmpProjectInfraBootstrapPlan(...)`
-- `bootstrapCmpProjectInfra(...)`
-- `getCmpProjectInfraBootstrapReceipt(...)`
-- `listCmpProjectInfraBootstrapReceipts(...)`
-- `getCmpRuntimeInfraProjectState(...)`
+- `src/agent_core/cmp-runtime/mq-lowering.ts`
+- `src/agent_core/cmp-runtime/mq-delivery-state.ts`
+- `src/agent_core/cmp-runtime/db-lowering.ts`
 
 当前状态：
 
-- 已能持有 git / dbExecutor / mq backend
-- 已能做 project bootstrap
-- 已能把 bootstrap receipt 写入 runtime infra state
+- dispatch 已开始产出：
+  - publish receipt
+  - delivery truth
+  - runtime delivery state
+  - DB projection patch
+- ack 已开始回写：
+  - Redis truth
+  - runtime state
+  - DB delivery registry
+- runtime 现在已经有：
+  - `advanceCmpMqDeliveryTimeouts(...)`
+  用于把 delivery timeout 推进到：
+  - `retry_scheduled`
+  - `expired`
 
-### 二、`rax.cmp`
+### 五、`rax.cmp` 控制面
 
-当前已经在 `src/rax/**` 里新增了：
+当前已经有：
 
-- `cmp-types.ts`
-- `cmp-config.ts`
-- `cmp-facade.ts`
-- `cmp-runtime.ts`
-- `cmp-connectors.ts`
-- `cmp-domain.ts`
+- `src/rax/cmp-types.ts`
+- `src/rax/cmp-config.ts`
+- `src/rax/cmp-facade.ts`
+- `src/rax/cmp-runtime.ts`
 
-并且已经总装到：
+当前 `rax.cmp` 已提供：
 
-- `src/rax/facade.ts`
-- `src/rax/runtime.ts`
-- `src/rax/index.ts`
+- `create`
+- `bootstrap`
+- `readback`
+- `recover`
+- `ingest`
+- `commit`
+- `resolve`
+- `materialize`
+- `dispatch`
+- `requestHistory`
+- `smoke`
 
-当前状态：
+并且已经开始吃：
 
-- `rax` / `raxLocal` 默认已经带 `cmp`
-- `rax.cmp` 已经提供：
-  - `create`
-  - `bootstrap`
-  - `readback`
-  - `recover`
-  - `ingest`
-  - `commit`
-  - `requestHistory`
-  - `smoke`
+- `readbackPriority`
+- `fallbackPolicy`
+- `recoveryPreference`
+- `executionStyle`
+- `dispatch scope`
 
-### 三、`Section / StoredSection / Rules`
+当前收口新增：
 
-当前已经在：
-
-- `src/rax/cmp-domain.ts`
-
-显式定义了一等域模型：
-
-- `CmpSection`
-- `CmpStoredSection`
-- `CmpRule`
-- `CmpRulePack`
-- `CmpRuleEvaluation`
-
-这层已经不再是隐含 helper。
+- `requestHistory` 已尊重 `strict_not_found`
+- `recover` 已支持 `dry_run`
+- `readback / smoke` 已开始带 recovery summary 与 delivery summary
 
 ## 当前验证基线
 
-以下验证已经在当前工作区真实跑过，并通过：
+以下验证已经在当前工作区真实跑过并通过：
 
 - `npm run typecheck`
 - `npm run build`
-- `npx tsx --test src/agent_core/cmp-git/*.test.ts src/agent_core/cmp-db/*.test.ts src/agent_core/cmp-mq/*.test.ts src/agent_core/cmp-runtime/*.test.ts src/agent_core/runtime.test.ts`
-- `npx tsx --test src/rax/*.test.ts src/rax/cmp-*.test.ts src/agent_core/runtime.test.ts src/agent_core/cmp-runtime/*.test.ts`
+- `npx tsx --test src/agent_core/runtime.test.ts`
+- `npx tsx --test src/rax/cmp-facade.test.ts`
+- `npx tsx --test src/agent_core/cmp-runtime/*.test.ts`
 
-最新综合结果：
+当前综合结果：
 
-- `219 pass`
-- `0 fail`
-- `1 skipped`
+- `src/agent_core/runtime.test.ts`
+  - `33 pass / 0 fail`
+- `src/rax/cmp-facade.test.ts`
+  - `7 pass / 0 fail`
+- `src/agent_core/cmp-runtime/*.test.ts`
+  - `60+ pass / 0 fail`
 
-当前这个 `1 skipped` 是显式可选的 live smoke：
+## 当前还剩什么没收死
 
-- `PRAXIS_CMP_INFRA_LIVE=1` 时才会跑：
-  - live `git CLI`
-  - live `psql`
-  - live `redis-cli`
-  - runtime bootstrap 整链 smoke
+如果严格按“除了五个 agent，其他是不是全完了”来问，答案是：
 
-## 当前还没收好的部分
+- `基本收完`
+- 但仍有两类尾巴可以继续打磨
 
-这部分是压缩后最重要的续工目标。
-
-### 1. `Section / StoredSection / Rules` 还没有真正 lowering 到 `cmp-runtime` 主链
-
-也就是说：
-
-- `rax` 域模型已经有了
-- 但 `ingest / commit / materialize / requestHistory / dispatch` 还没有真正消费这层对象
-
-### 2. `active/passive flow` 还没有完全在真实 backend 上收口
+### 1. final acceptance gate 还可以再更产品化
 
 现在已经有：
 
-- live executor
-- bootstrap
-- readback
-- runtime infra state
+- truth summary
+- recovery summary
+- delivery summary
+- smoke checks
 
-但还缺：
+但还可以继续增强成更明确的：
 
-- active ingest -> section -> stored section -> git/db/mq lowering
-- passive historical read -> stored section / rules / package 统一路径
+- five-agent-ready gate
+- live infra evidence gate
+- degraded matrix gate
 
-### 3. `rax.cmp` 还没有形成更厚的 workflow integration
+### 2. `manual control` 还可以继续更深地驱动 runtime 细分行为
 
-现在 `rax.cmp` 已成型，但更像“统一入口已存在”。
+现在已经不只是类型字段了，
+但如果继续深挖，仍可以进一步细化：
 
-还没有完全做完的是：
+- `readbackPriority` 对 summary 裁决顺序的影响
+- `recoveryPreference` 对恢复策略的更深分流
+- `fallbackPolicy` 对 passive/history 的更细粒度治理
 
-- `core_agent -> rax.cmp -> cmp-runtime -> shared infra`
-  这条链上对 section/rules 的显式参与
+白话：
 
-### 4. 五个 agent 还没开始细调
+- 这些已经不是“缺模块”
+- 而是“继续做精做厚”
 
-这是刻意延后的，不是漏做。
+## 现在最推荐的下一步
 
-原因：
+除非用户要先继续打磨 final gate，否则当前最推荐下一步已经是：
 
-- 先稳住：
-  - `rax.cmp`
-  - workflow integration
-  - `Section / StoredSection / Rules`
-- 再细调五个 agent
+- 进入五个 agent 的实现与联调
 
-### 5. 文档层还没提交
+建议顺序：
 
-当前已新增但未提交的文档包括：
+1. 先定义五个 agent 的默认职责边界
+2. 再把它们接进现有 `CMP` 主链
+3. 再做和 `TAP` 的更真实串联
 
-- `35-cmp-infra-closure-outline.md`
-- `36-rax-cmp-workflow-integration-outline.md`
-- `docs/ability/cmp-infra-closure-task-pack/**`
-- `docs/ability/rax-cmp-workflow-task-pack/**`
-
-## 下一步推荐顺序
-
-压缩后恢复工作时，建议严格按这个顺序继续：
-
-1. 把 `Section / StoredSection / Rules` 接进 `cmp-runtime`
-2. 让 `ingest / commit / materialize / requestHistory / dispatch` 真正消费这些对象
-3. 继续强化 `rax.cmp` 的 workflow integration
-4. 做 preflight / gate / observability
-5. 最后才开始五个 agent 的细调
-
-## 当前不要做的事
-
-- 不要先去调五个 agent prompt / config。
-- 不要把 `CMP` 重新写成私有 `git_infra`。
-- 不要把图里的 `DB(RAG)` 带回 `CMP`。
-- 不要把 `.parallel-worktrees/` 误提交。
-- 不要把当前未提交工作当作已经完成并已提交。
