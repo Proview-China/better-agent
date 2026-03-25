@@ -1615,6 +1615,7 @@ test("AgentCoreRuntime records tool reviewer governance sessions from runtime hu
   assert.equal(runtime.toolReviewerRuntime?.listActions().length, 1);
   assert.equal(runtime.toolReviewerRuntime?.listActions()[0]?.governanceKind, "human_gate");
   assert.equal(runtime.toolReviewerRuntime?.listActions().every((action) => action.boundaryMode === "governance_only"), true);
+  assert.equal(runtime.getToolReviewerSession(`tool-review:request:${waiting.accessRequest!.requestId}`)?.status, "waiting_human");
   assert.equal(runtime.listToolReviewerQualityReports()[0]?.verdict, "waiting_human");
 
   const approved = await runtime.submitTaHumanGateDecision({
@@ -1624,6 +1625,12 @@ test("AgentCoreRuntime records tool reviewer governance sessions from runtime hu
   });
   assert.equal(approved.status, "provisioned");
   assert.equal(runtime.toolReviewerRuntime?.listActions().some((action) => action.governanceKind === "replay"), true);
+  assert.equal(runtime.listTmaSessions().length >= 2, true);
+  assert.equal(runtime.getProvisionDeliveryReport(approved.provisionRequest!.provisionId)?.status, "ready");
+  assert.equal(
+    runtime.getProvisionDeliveryReport(approved.provisionRequest!.provisionId)?.recommendedNextStep,
+    "Bundle is ready for tool reviewer quality checks, activation review, and replay planning.",
+  );
 
   runtime.registerTaActivationFactory("factory:computer.use", () => ({
     id: "adapter.computer.use.tool-review-mainline",
@@ -1658,10 +1665,12 @@ test("AgentCoreRuntime records tool reviewer governance sessions from runtime hu
   assert.equal(activation.status, "activated");
   assert.equal(runtime.toolReviewerRuntime?.listActions().some((action) => action.governanceKind === "activation"), true);
   assert.equal(runtime.toolReviewerRuntime?.listActions().every((action) => action.boundaryMode === "governance_only"), true);
-  const governancePlan = runtime.listToolReviewerGovernancePlans()[0];
-  assert.ok(governancePlan);
-  assert.equal(governancePlan?.counts.readyForHandoff >= 1, true);
-  assert.equal(runtime.listToolReviewerQualityReports()[0]?.verdict, "handoff_ready");
+  const governancePlans = runtime.listToolReviewerGovernancePlans();
+  assert.equal(governancePlans.length >= 1, true);
+  assert.equal(governancePlans.some((plan) => plan.counts.readyForHandoff >= 1), true);
+  assert.equal(runtime.hasPendingTapGovernanceWork(), true);
+  assert.equal(runtime.createTapGovernanceSnapshot().blockingCapabilityKeys.includes("computer.use"), true);
+  assert.equal(runtime.listToolReviewerQualityReports().some((report) => report.verdict === "handoff_ready"), true);
 });
 
 test("AgentCoreRuntime records blocked tool-review lifecycle when target binding is missing", async () => {

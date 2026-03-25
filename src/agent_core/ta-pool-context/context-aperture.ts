@@ -26,6 +26,40 @@ export interface ContextSummarySlot {
 
 export type ContextSummarySlotInput = string | ContextSummarySlot | undefined;
 
+export const CONTEXT_SECTION_FRESHNESS_LEVELS = [
+  "placeholder",
+  "stale",
+  "fresh",
+  "live",
+] as const;
+export type ContextSectionFreshnessLevel =
+  (typeof CONTEXT_SECTION_FRESHNESS_LEVELS)[number];
+
+export const CONTEXT_SECTION_TRUST_LEVELS = [
+  "placeholder",
+  "derived",
+  "declared",
+  "verified",
+] as const;
+export type ContextSectionTrustLevel =
+  (typeof CONTEXT_SECTION_TRUST_LEVELS)[number];
+
+export interface ContextSectionRecord {
+  sectionId: string;
+  title: string;
+  summary: string;
+  status: ContextSummaryStatus;
+  source?: string;
+  freshness?: ContextSectionFreshnessLevel;
+  trustLevel?: ContextSectionTrustLevel;
+  metadata?: Record<string, unknown>;
+}
+
+export type ContextSectionRecordInput =
+  | string
+  | ContextSectionRecord
+  | undefined;
+
 export interface ReviewInventorySnapshot {
   totalCapabilities: number;
   availableCapabilityKeys: string[];
@@ -107,6 +141,7 @@ export interface ReviewContextAperture {
   memorySummaryPlaceholder: ContextSummarySlot;
   userIntentSummary: ContextSummarySlot;
   riskSummary: ReviewRiskSummary;
+  sections: ContextSectionRecord[];
   modeSnapshot?: TaPoolMode;
   forbiddenObjects: readonly ContextApertureForbiddenObject[];
   metadata?: Record<string, unknown>;
@@ -127,6 +162,7 @@ export interface ProvisionContextAperture {
   allowedBuildScope: ProvisionAllowedBuildScope;
   allowedSideEffects: ProvisionAllowedSideEffect[];
   reviewerInstructions: ContextSummarySlot;
+  sections: ContextSectionRecord[];
   forbiddenObjects: readonly ContextApertureForbiddenObject[];
   metadata?: Record<string, unknown>;
 }
@@ -142,6 +178,7 @@ export interface CreateReviewContextApertureInput {
   memorySummaryPlaceholder?: ContextSummarySlotInput;
   userIntentSummary?: ContextSummarySlotInput;
   riskSummary?: CreateReviewRiskSummaryInput | ReviewRiskSummary;
+  sections?: ContextSectionRecordInput[];
   modeSnapshot?: TaPoolMode;
   metadata?: Record<string, unknown>;
 }
@@ -161,6 +198,7 @@ export interface CreateProvisionContextApertureInput {
   allowedBuildScope?: ProvisionAllowedBuildScope;
   allowedSideEffects?: ProvisionAllowedSideEffect[];
   reviewerInstructions?: ContextSummarySlotInput;
+  sections?: ContextSectionRecordInput[];
   metadata?: Record<string, unknown>;
 }
 
@@ -210,6 +248,82 @@ function validateSummarySlot(label: string, slot: ContextSummarySlot): void {
 
   if (!CONTEXT_SUMMARY_STATUSES.includes(slot.status)) {
     throw new Error(`${label} contains an unsupported status: ${slot.status}.`);
+  }
+}
+
+function normalizeContextSections(
+  input?: ContextSectionRecordInput[],
+): ContextSectionRecord[] {
+  if (!input || input.length === 0) {
+    return [];
+  }
+
+  const sections: ContextSectionRecord[] = [];
+  for (const [index, entry] of input.entries()) {
+    if (!entry) {
+      continue;
+    }
+
+    if (typeof entry === "string") {
+      const normalized = entry.trim();
+      if (!normalized) {
+        continue;
+      }
+      sections.push({
+        sectionId: `section-${index + 1}`,
+        title: `Section ${index + 1}`,
+        summary: normalized,
+        status: "ready",
+        source: "context-aperture-input",
+        freshness: "fresh",
+        trustLevel: "declared",
+      });
+      continue;
+    }
+
+    sections.push({
+      sectionId: entry.sectionId.trim(),
+      title: entry.title.trim(),
+      summary: entry.summary.trim(),
+      status: entry.status,
+      source: entry.source?.trim() || undefined,
+      freshness: entry.freshness,
+      trustLevel: entry.trustLevel,
+      metadata: entry.metadata,
+    });
+  }
+
+  return sections;
+}
+
+function validateContextSections(
+  label: string,
+  sections: readonly ContextSectionRecord[],
+): void {
+  const seenIds = new Set<string>();
+  for (const section of sections) {
+    if (!section.sectionId.trim()) {
+      throw new Error(`${label} contains a section without sectionId.`);
+    }
+    if (seenIds.has(section.sectionId)) {
+      throw new Error(`${label} contains duplicate sectionId: ${section.sectionId}.`);
+    }
+    seenIds.add(section.sectionId);
+    if (!section.title.trim()) {
+      throw new Error(`${label} section ${section.sectionId} requires a non-empty title.`);
+    }
+    if (!section.summary.trim()) {
+      throw new Error(`${label} section ${section.sectionId} requires a non-empty summary.`);
+    }
+    if (!CONTEXT_SUMMARY_STATUSES.includes(section.status)) {
+      throw new Error(`${label} section ${section.sectionId} contains unsupported status ${section.status}.`);
+    }
+    if (section.freshness && !CONTEXT_SECTION_FRESHNESS_LEVELS.includes(section.freshness)) {
+      throw new Error(`${label} section ${section.sectionId} contains unsupported freshness ${section.freshness}.`);
+    }
+    if (section.trustLevel && !CONTEXT_SECTION_TRUST_LEVELS.includes(section.trustLevel)) {
+      throw new Error(`${label} section ${section.sectionId} contains unsupported trustLevel ${section.trustLevel}.`);
+    }
   }
 }
 
@@ -485,6 +599,7 @@ export function validateReviewContextApertureSnapshot(
   validateSummarySlot("Review context userIntentSummary", input.userIntentSummary);
   validateReviewInventorySnapshot(input.inventorySnapshot);
   validateReviewRiskSummary(input.riskSummary);
+  validateContextSections("Review context sections", input.sections);
 
   if (input.memorySummaryPlaceholder.status !== "placeholder") {
     throw new Error("Review context memorySummaryPlaceholder must stay in placeholder status for Wave 1.");
@@ -502,6 +617,7 @@ export function validateProvisionContextApertureSnapshot(
   validateAllowedBuildScope(input.allowedBuildScope);
   validateAllowedSideEffects(input.allowedSideEffects);
   validateSummarySlot("Provision context reviewerInstructions", input.reviewerInstructions);
+  validateContextSections("Provision context sections", input.sections);
 
   if (!input.requestedCapabilityKey.trim()) {
     throw new Error("Provision context aperture snapshot requires a non-empty requestedCapabilityKey.");
@@ -545,6 +661,7 @@ export function createReviewContextAperture(
       fallbackSource: "wave-1-context-aperture",
     }),
     riskSummary: normalizeReviewRiskSummary(input.riskSummary),
+    sections: normalizeContextSections(input.sections),
     modeSnapshot: input.modeSnapshot,
     forbiddenObjects: CONTEXT_APERTURE_FORBIDDEN_OBJECTS,
     metadata: input.metadata,
@@ -578,6 +695,7 @@ export function createProvisionContextAperture(
       fallbackStatus: "placeholder",
       fallbackSource: "wave-1-context-aperture",
     }),
+    sections: normalizeContextSections(input.sections),
     forbiddenObjects: CONTEXT_APERTURE_FORBIDDEN_OBJECTS,
     metadata: input.metadata,
   };

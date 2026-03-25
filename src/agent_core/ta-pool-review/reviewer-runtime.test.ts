@@ -108,7 +108,8 @@ test("reviewer runtime escalates strict critical requests to human", async () =>
 test("reviewer runtime routes review-required requests through the bootstrap reviewer worker bridge", async () => {
   const runtime = createReviewerRuntime({
     llmReviewerHook: async ({ request, reviewContext, promptPack, workerEnvelope }) => {
-      assert.equal(reviewContext.projectSummary.status, "placeholder");
+      assert.equal(reviewContext.projectSummary.status, "ready");
+      assert.match(reviewContext.projectSummary.summary, /Reviewing mcp\.playwright/u);
       assert.equal(reviewContext.memorySummaryPlaceholder.status, "placeholder");
       assert.equal(reviewContext.userIntentSummary.summary, "Need reviewer runtime decision.");
       assert.equal(reviewContext.riskSummary.requestedAction, "request capability mcp.playwright");

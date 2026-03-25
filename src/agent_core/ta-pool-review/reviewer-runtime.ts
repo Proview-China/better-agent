@@ -78,6 +78,25 @@ function inventoryTracksCapabilityLifecycle(
   ].includes(capabilityKey);
 }
 
+function createDefaultProjectSummary(input: {
+  request: AccessRequest;
+  profile: AgentCapabilityProfile;
+  inventory?: ReviewDecisionEngineInventory;
+}): string {
+  const available = normalizeStringArray([
+    ...(input.inventory?.availableCapabilityKeys ?? []),
+    ...(input.inventory?.readyProvisionAssetKeys ?? []),
+    ...(input.inventory?.activatingProvisionAssetKeys ?? []),
+    ...(input.inventory?.activeProvisionAssetKeys ?? []),
+  ]).length;
+  const pending = normalizeStringArray(input.inventory?.pendingProvisionKeys).length;
+  return [
+    `Reviewing ${input.request.requestedCapabilityKey} for ${input.request.sessionId}/${input.request.runId}.`,
+    `Profile ${input.profile.profileId} is operating in ${input.request.mode} mode.`,
+    `Inventory snapshot has ${available} known capability entries and ${pending} pending provisioning item(s).`,
+  ].join(" ");
+}
+
 export class ReviewerRuntime {
   readonly #llmReviewerHook?: ReviewerRuntimeLlmHook;
   readonly #durableStateHook?: ReviewerRuntimeOptions["durableStateHook"];
@@ -144,8 +163,12 @@ export class ReviewerRuntime {
       });
     const reviewContext = input.reviewContext ?? createReviewContextApertureSnapshot({
       projectSummary: {
-        summary: "Project summary is still placeholder-only in Wave 1 reviewer runtime.",
-        status: "placeholder",
+        summary: createDefaultProjectSummary({
+          request: input.request,
+          profile: input.profile,
+          inventory: input.inventory,
+        }),
+        status: "ready",
         source: "reviewer-runtime-default",
       },
       runSummary: {

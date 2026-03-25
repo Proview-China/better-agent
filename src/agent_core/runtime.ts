@@ -593,6 +593,14 @@ export class AgentCoreRuntime {
     return this.toolReviewerRuntime?.listQualityReports() ?? [];
   }
 
+  getTmaSession(sessionId: string): TmaSessionState | undefined {
+    return this.provisionerRuntime?.getTmaSession(sessionId);
+  }
+
+  listTmaSessions(): readonly TmaSessionState[] {
+    return this.provisionerRuntime?.listTmaSessions() ?? [];
+  }
+
   getTaResumeEnvelope(envelopeId: string) {
     return this.#taResumeEnvelopes.get(envelopeId);
   }
@@ -619,6 +627,14 @@ export class AgentCoreRuntime {
 
   async resumeTmaSession(sessionId: string) {
     return this.provisionerRuntime?.resumeTmaSession(sessionId);
+  }
+
+  getProvisionDeliveryReport(provisionId: string): ProvisionDeliveryReport | undefined {
+    return this.provisionerRuntime?.createDeliveryReport(provisionId);
+  }
+
+  listProvisionDeliveryReports(): readonly ProvisionDeliveryReport[] {
+    return this.provisionerRuntime?.listDeliveryReports() ?? [];
   }
 
   async continueTaProvisioning(provisionId: string): Promise<ContinueTaProvisioningResult> {
@@ -868,6 +884,19 @@ export class AgentCoreRuntime {
       provisionerDurableSnapshot: this.provisionerRuntime?.serializeDurableState(),
       tmaSessions: this.provisionerRuntime?.listTmaSessions(),
     });
+  }
+
+  createTapGovernanceSnapshot(): TapGovernanceSnapshot {
+    return createTapGovernanceSnapshot({
+      ...this.createTapRuntimeSnapshot(),
+      metadata: {
+        source: "agent-core-runtime",
+      },
+    });
+  }
+
+  hasPendingTapGovernanceWork(): boolean {
+    return hasPendingTapGovernanceWork(this.createTapGovernanceSnapshot());
   }
 
   createPoolRuntimeSnapshots(): PoolRuntimeSnapshots {
