@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
+  createRaxWebsearchCapabilityPackage,
+} from "../capability-package/index.js";
 import { createCapabilityLease } from "../capability-invocation/capability-lease.js";
 import { createCapabilityInvocationPlan } from "../capability-invocation/capability-plan.js";
-import { createRaxWebsearchAdapter, type RaxWebsearchAdapterOptions } from "./rax-websearch-adapter.js";
+import {
+  createRaxWebsearchActivationFactory,
+  createRaxWebsearchAdapter,
+  type RaxWebsearchAdapterOptions,
+} from "./rax-websearch-adapter.js";
+import {
+  createActivationFactoryResolver,
+  materializeActivationRegistration,
+} from "../ta-pool-runtime/index.js";
 
 test("rax websearch adapter supports search.ground and prepares direct calls", async () => {
   const facade = {
@@ -156,4 +168,84 @@ test("rax websearch adapter maps blocked status into unified envelope", async ()
   assert.equal(envelope.status, "blocked");
   assert.equal(envelope.error?.code, "rax_search_ground_failed");
   assert.equal(envelope.metadata?.provider, "anthropic");
+});
+
+test("rax websearch activation factory materializes a package-backed adapter", async () => {
+  const facade = {
+    websearch: {
+      async create() {
+        return {
+          status: "success",
+          provider: "openai",
+          model: "gpt-5.4",
+          layer: "api",
+          capability: "search",
+          action: "ground",
+          output: {
+            answer: "package-backed-search-ok",
+            citations: [],
+            sources: [],
+          },
+        };
+      },
+    },
+  } as RaxWebsearchAdapterOptions["facade"];
+
+  const capabilityPackage = createRaxWebsearchCapabilityPackage();
+  const resolver = createActivationFactoryResolver();
+  resolver.register(
+    RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
+    createRaxWebsearchActivationFactory({ facade }),
+  );
+
+  const materialized = await materializeActivationRegistration({
+    capabilityPackage,
+    factoryResolver: resolver,
+    capabilityIdPrefix: "capability",
+  });
+
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent_pkg_001",
+      sessionId: "session_pkg_001",
+      runId: "run_pkg_001",
+      capabilityKey: "search.ground",
+      input: {
+        provider: "openai",
+        model: "gpt-5.4",
+        query: "package-backed grounded search",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan_pkg_001",
+    },
+  );
+
+  const lease = createCapabilityLease(
+    {
+      capabilityId: materialized.manifest.capabilityId,
+      bindingId: "binding_pkg_001",
+      generation: materialized.manifest.generation,
+      plan,
+    },
+    {
+      idFactory: () => "lease_pkg_001",
+      clock: {
+        now: () => new Date("2026-03-25T00:00:00.000Z"),
+      },
+    },
+  );
+
+  const prepared = await materialized.adapter.prepare(plan, lease);
+  const envelope = await materialized.adapter.execute(prepared);
+
+  assert.equal(materialized.manifest.capabilityKey, "search.ground");
+  assert.equal(materialized.targetPool, "ta-capability-pool");
+  assert.equal(materialized.adapter.id, "adapter:search.ground");
+  assert.equal(envelope.status, "success");
+  assert.equal(
+    (envelope.output as { answer: string }).answer,
+    "package-backed-search-ok",
+  );
 });

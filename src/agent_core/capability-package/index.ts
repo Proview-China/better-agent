@@ -28,6 +28,9 @@ export type {
   CreateMcpReadCapabilityPackageInput,
   McpReadFamilyCapabilityKey,
 } from "./mcp-read-family-package.js";
+export type {
+  CreateRaxWebsearchCapabilityPackageOptions,
+} from "./search-ground-capability-package.js";
 export type { TapToolingBaselineCapabilityKey } from "./tap-tooling-baseline.js";
 export {
   CAPABILITY_PACKAGE_TEMPLATE_VERSION,
@@ -55,7 +58,6 @@ export {
   validateCapabilityPackageUsageExample,
   validateCapabilityPackageVerification,
 } from "./capability-package.js";
-
 export {
   TAP_TOOLING_BASELINE_CAPABILITY_KEYS,
   createTapToolingBaselineCapabilityPackages,
@@ -67,3 +69,8 @@ export {
   createMcpReadCapabilityPackage,
   isMcpReadFamilyCapabilityKey,
 } from "./mcp-read-family-package.js";
+export {
+  createRaxWebsearchCapabilityPackage,
+  RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
+  SEARCH_GROUND_CAPABILITY_KEY,
+} from "./search-ground-capability-package.js";

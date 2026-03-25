@@ -7,6 +7,8 @@ import type {
 import { createCapabilityResultEnvelope } from "../capability-result/index.js";
 import { buildCapabilityInvocationFingerprint } from "../capability-invocation/capability-plan.js";
 import { createPreparedCapabilityCall } from "../capability-invocation/capability-execution.js";
+import { SEARCH_GROUND_CAPABILITY_KEY } from "../capability-package/search-ground-capability-package.js";
+import type { ActivationAdapterFactory } from "../ta-pool-runtime/index.js";
 import type {
   ProviderId,
   SdkLayer,
@@ -155,7 +157,7 @@ export class RaxWebsearchAdapter implements CapabilityAdapter {
         create: rax.websearch.create.bind(rax.websearch),
       },
     };
-    this.#capabilityKey = options.capabilityKey ?? "search.ground";
+    this.#capabilityKey = options.capabilityKey ?? SEARCH_GROUND_CAPABILITY_KEY;
     this.id = `adapter:${this.#capabilityKey}`;
   }
 
@@ -276,4 +278,17 @@ export function createRaxWebsearchAdapter(
   options: RaxWebsearchAdapterOptions = {},
 ): RaxWebsearchAdapter {
   return new RaxWebsearchAdapter(options);
+}
+
+export function createRaxWebsearchActivationFactory(
+  options: RaxWebsearchAdapterOptions = {},
+): ActivationAdapterFactory {
+  return (context) =>
+    createRaxWebsearchAdapter({
+      ...options,
+      capabilityKey:
+        typeof context.manifest?.capabilityKey === "string"
+          ? context.manifest.capabilityKey
+          : options.capabilityKey,
+    });
 }

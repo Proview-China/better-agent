@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
+  createMcpReadCapabilityPackage,
+  createRaxWebsearchCapabilityPackage,
+} from "./capability-package/index.js";
 import { createGoalSource } from "./goal/goal-source.js";
 import type { ModelInferenceExecutionResult } from "./integrations/model-inference.js";
 import { createRaxSearchGroundCapabilityDefinition } from "./integrations/rax-port.js";
 import { createRaxMcpCapabilityAdapter } from "./integrations/rax-mcp-adapter.js";
+import { createRaxWebsearchActivationFactory } from "./integrations/rax-websearch-adapter.js";
 import { createAgentCoreRuntime } from "./runtime.js";
-import { createMcpReadCapabilityPackage } from "./capability-package/index.js";
 import type { CapabilityAdapter, CapabilityCallIntent, CapabilityPackage } from "./index.js";
-import { createAgentCapabilityProfile, createProvisionRequest } from "./ta-pool-types/index.js";
+import { createAgentCapabilityProfile, createProvisionArtifactBundle, createProvisionRequest } from "./ta-pool-types/index.js";
 import { createReviewerRuntime } from "./ta-pool-review/index.js";
 import { TA_ENFORCEMENT_METADATA_KEY } from "./ta-pool-runtime/enforcement-guard.js";
 import type { RaxFacade } from "../rax/facade.js";
@@ -531,6 +536,114 @@ test("AgentCoreRuntime dispatches MCP read family capability packages through th
       ["capability.result_received", "state.delta_applied", "intent.queued"],
     );
   }
+});
+
+test("AgentCoreRuntime can dispatch search.ground through TAP after package-backed activation materialization", async () => {
+  const runtime = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.tap.search-ground-package",
+      agentClass: "main-agent",
+      baselineCapabilities: ["search.ground"],
+    }),
+  });
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-search-ground-package",
+      sessionId: session.sessionId,
+      userInput: "Package-backed grounded search should dispatch through TAP.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+
+  const capabilityPackage = createRaxWebsearchCapabilityPackage();
+  runtime.registerTaActivationFactory(
+    RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
+    createRaxWebsearchActivationFactory({
+      facade: createFakeRaxFacade(),
+    }),
+  );
+
+  const provisionRequest = createProvisionRequest({
+    provisionId: "provision-search-ground-package-1",
+    sourceRequestId: "source-search-ground-package-1",
+    requestedCapabilityKey: capabilityPackage.manifest.capabilityKey,
+    requestedTier: "B1",
+    reason: "Activate the package-backed search.ground capability through TAP runtime.",
+    replayPolicy: capabilityPackage.replayPolicy,
+    createdAt: "2026-03-25T00:00:00.000Z",
+  });
+  const provisionBundle = createProvisionArtifactBundle({
+    bundleId: capabilityPackage.metadata?.bundleId as string,
+    provisionId: provisionRequest.provisionId,
+    status: "ready",
+    toolArtifact: capabilityPackage.artifacts?.toolArtifact,
+    bindingArtifact: capabilityPackage.artifacts?.bindingArtifact,
+    verificationArtifact: capabilityPackage.artifacts?.verificationArtifact,
+    usageArtifact: capabilityPackage.artifacts?.usageArtifact,
+    activationSpec: capabilityPackage.activationSpec,
+    replayPolicy: capabilityPackage.replayPolicy,
+    completedAt: "2026-03-25T00:00:00.500Z",
+    metadata: {
+      source: "runtime-test",
+      packageKey: capabilityPackage.manifest.capabilityKey,
+    },
+  });
+  runtime.provisionerRuntime?.registry.registerRequest(provisionRequest);
+  runtime.provisionerRuntime?.registry.attachBundle(provisionBundle);
+  const provisionRecord = runtime.provisionerRuntime?.registry.get(provisionRequest.provisionId);
+  assert.ok(provisionRecord?.bundle);
+  runtime.provisionerRuntime?.assetIndex.ingest(provisionRecord);
+
+  const activation = await runtime.activateTaProvisionAsset(provisionRequest.provisionId);
+  assert.equal(activation.status, "activated");
+  assert.equal(activation.activation?.status, "active");
+  assert.equal(runtime.listTaActivationAttempts().length, 1);
+
+  const intent: CapabilityCallIntent = {
+    intentId: "intent-search-ground-package-1",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    kind: "capability_call",
+    createdAt: "2026-03-25T00:00:01.000Z",
+    priority: "high",
+    request: {
+      requestId: "request-search-ground-package-1",
+      intentId: "intent-search-ground-package-1",
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      capabilityKey: "search.ground",
+      input: {
+        provider: "openai",
+        model: "gpt-5.4",
+        query: "What is Praxis?",
+      },
+      priority: "high",
+    },
+  };
+
+  const dispatched = await runtime.dispatchCapabilityIntentViaTaPool(intent, {
+    agentId: "agent-main",
+    requestedTier: "B1",
+    mode: "standard",
+    reason: "Package-backed search.ground should dispatch as a first-class TAP capability.",
+  });
+
+  assert.equal(capabilityPackage.activationSpec?.targetPool, "ta-capability-pool");
+  assert.equal(dispatched.status, "dispatched");
+  assert.equal(dispatched.grant?.capabilityKey, "search.ground");
+  assert.equal(dispatched.dispatch?.prepared.capabilityKey, "search.ground");
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.ok(
+    runtime.readRunEvents(created.run.runId).some((entry) => {
+      return entry.event.type === "capability.result_received";
+    }),
+  );
 });
 
 test("AgentCoreRuntime surfaces review-required T/A access when capability is not baseline", async () => {
