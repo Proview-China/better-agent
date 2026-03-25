@@ -16,10 +16,16 @@ import { rax } from "../../rax/index.js";
 import { createPreparedCapabilityCall } from "../capability-invocation/index.js";
 import { createCapabilityResultEnvelope } from "../capability-result/index.js";
 
+export const MCP_READ_FAMILY_ACTIONS = [
+  "mcp.listTools",
+  "mcp.readResource",
+] as const;
+
+export type McpReadFamilyAction = (typeof MCP_READ_FAMILY_ACTIONS)[number];
+
 type SupportedMcpAction =
   | "mcp.call"
-  | "mcp.listTools"
-  | "mcp.readResource"
+  | McpReadFamilyAction
   | "mcp.native.execute";
 
 interface McpRouteSelection {
@@ -53,11 +59,14 @@ export interface CreateRaxMcpCapabilityAdapterOptions {
   facade?: Pick<RaxFacade, "mcp">;
 }
 
+export function isMcpReadFamilyAction(action: string): action is McpReadFamilyAction {
+  return MCP_READ_FAMILY_ACTIONS.includes(action as McpReadFamilyAction);
+}
+
 function isSupportedAction(action: string): action is SupportedMcpAction {
   return (
     action === "mcp.call" ||
-    action === "mcp.listTools" ||
-    action === "mcp.readResource" ||
+    isMcpReadFamilyAction(action) ||
     action === "mcp.native.execute"
   );
 }
@@ -199,6 +208,7 @@ function createFailureEnvelope(params: {
 function createExecutionMetadata(action: SupportedMcpAction, route: McpRouteSelection, extra?: Record<string, unknown>): Record<string, unknown> {
   return {
     capability: action,
+    actionFamily: isMcpReadFamilyAction(action) ? "read" : "invoke",
     provider: route.provider,
     model: route.model,
     layer: route.layer,

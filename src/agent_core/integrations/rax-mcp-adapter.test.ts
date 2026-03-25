@@ -3,7 +3,11 @@ import test from "node:test";
 
 import type { RaxFacade } from "../../rax/facade.js";
 import type { CapabilityInvocationPlan, CapabilityLease } from "../capability-types/index.js";
-import { createRaxMcpCapabilityAdapter } from "./rax-mcp-adapter.js";
+import {
+  MCP_READ_FAMILY_ACTIONS,
+  createRaxMcpCapabilityAdapter,
+  isMcpReadFamilyAction,
+} from "./rax-mcp-adapter.js";
 
 function createLease(): CapabilityLease {
   return {
@@ -142,6 +146,13 @@ test("mcp adapter supports the first-wave MCP actions", () => {
   })), false);
 });
 
+test("mcp adapter groups listTools and readResource into the read family", () => {
+  assert.deepEqual(MCP_READ_FAMILY_ACTIONS, ["mcp.listTools", "mcp.readResource"]);
+  assert.equal(isMcpReadFamilyAction("mcp.listTools"), true);
+  assert.equal(isMcpReadFamilyAction("mcp.readResource"), true);
+  assert.equal(isMcpReadFamilyAction("mcp.call"), false);
+});
+
 test("mcp adapter prepares and executes shared-runtime MCP actions", async () => {
   const adapter = createRaxMcpCapabilityAdapter({
     facade: createFacadeDouble(),
@@ -164,6 +175,54 @@ test("mcp adapter prepares and executes shared-runtime MCP actions", async () =>
   assert.equal(result.status, "success");
   assert.equal((result.output as { toolName: string }).toolName, "browser.search");
   assert.equal(result.metadata?.provider, "openai");
+});
+
+test("mcp adapter prepares and executes the MCP read family through the shared runtime", async () => {
+  const adapter = createRaxMcpCapabilityAdapter({
+    facade: createFacadeDouble(),
+  });
+  const lease = createLease();
+
+  const listToolsPrepared = await adapter.prepare(
+    createPlan("mcp.listTools", {
+      route: { provider: "anthropic", model: "claude-opus-4-6-thinking" },
+      input: {
+        connectionId: "conn-read-1",
+      },
+    }),
+    lease,
+  );
+  const listToolsResult = await adapter.execute(listToolsPrepared);
+  assert.equal(listToolsPrepared.executionMode, "direct");
+  assert.equal(listToolsResult.status, "success");
+  assert.equal(
+    (listToolsResult.output as { tools: Array<{ name: string }> }).tools[0]?.name,
+    "browser.search",
+  );
+  assert.equal(listToolsResult.metadata?.capability, "mcp.listTools");
+  assert.equal(listToolsResult.metadata?.actionFamily, "read");
+  assert.equal(listToolsResult.metadata?.toolCount, 1);
+
+  const readResourcePrepared = await adapter.prepare(
+    createPlan("mcp.readResource", {
+      route: { provider: "deepmind", model: "gemini-2.5-flash" },
+      input: {
+        connectionId: "conn-read-2",
+        uri: "memory://resource",
+      },
+    }),
+    lease,
+  );
+  const readResourceResult = await adapter.execute(readResourcePrepared);
+  assert.equal(readResourcePrepared.executionMode, "direct");
+  assert.equal(readResourceResult.status, "success");
+  assert.equal(
+    (readResourceResult.output as { contents: Array<{ text: string }> }).contents[0]?.text,
+    "resource-body",
+  );
+  assert.equal(readResourceResult.metadata?.capability, "mcp.readResource");
+  assert.equal(readResourceResult.metadata?.actionFamily, "read");
+  assert.equal(readResourceResult.metadata?.uri, "memory://resource");
 });
 
 test("mcp adapter prepares and executes native MCP actions through native.build + execute", async () => {
