@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { RaxRoutingError } from "./errors.js";
+import { SkillRuntime } from "./skill-runtime.js";
 import { rax } from "./runtime.js";
 
 async function createSkillPackage(rootDir: string, name: string, version = "1.2.3") {
@@ -117,6 +118,28 @@ test("rax.skill.loadLocal rejects ambiguous parent directories with multiple ski
       return true;
     }
   );
+});
+
+test("SkillRuntime.containerCreateFromReference builds a virtual container for remote skill references", () => {
+  const runtime = new SkillRuntime();
+  const container = runtime.containerCreateFromReference({
+    reference: {
+      id: "pptx",
+      version: "latest",
+      name: "PowerPoint Skill",
+      description: "Official hosted presentation skill",
+      tags: ["slides"],
+      triggers: ["pptx"]
+    }
+  });
+
+  assert.equal(container.source.kind, "virtual");
+  assert.equal(container.source.rootDir, "virtual://skill/pptx");
+  assert.equal(container.descriptor.id, "pptx");
+  assert.equal(container.descriptor.version, "latest");
+  assert.deepEqual(container.descriptor.tags, ["slides"]);
+  assert.deepEqual(container.descriptor.triggers, ["pptx"]);
+  assert.match(container.entry.content, /Virtual skill reference for pptx/u);
 });
 
 test("rax.skill.bind maps the same container to official provider carriers", async () => {

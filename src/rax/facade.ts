@@ -66,6 +66,7 @@ import { SkillRuntime } from "./skill-runtime.js";
 import type {
   SkillActivateInput,
   SkillActivationPlan,
+  SkillBindingMode,
   SkillBindInput,
   SkillContainer,
   SkillContainerCreateInput,
@@ -251,6 +252,56 @@ export function createConfiguredRaxFacade(
     return skill;
   }
 
+  function getSkillComposeContract(
+    skill:
+      | PreparedInvocation<Record<string, unknown>>
+      | SkillMountResult
+      | SkillUseResult
+  ): {
+    strategy: "payload-merge" | "runtime-only";
+    reason?: string;
+  } {
+    if ("activation" in skill) {
+      return {
+        strategy: skill.activation.composeStrategy ?? "runtime-only",
+        reason: skill.activation.composeNotes
+      };
+    }
+
+    if (skill.sdk.packageName === "openai" && skill.sdk.entrypoint === "client.responses.create") {
+      return {
+        strategy: "payload-merge",
+        reason: "Prepared OpenAI shell carriers can currently be merged into Responses requests."
+      };
+    }
+
+    if (skill.sdk.packageName === "@anthropic-ai/sdk" && skill.sdk.entrypoint === "client.messages.create") {
+      return {
+        strategy: "payload-merge",
+        reason: "Prepared Anthropic API-managed carriers can currently be merged into Messages requests."
+      };
+    }
+
+    if (skill.sdk.packageName === "@anthropic-ai/claude-agent-sdk") {
+      return {
+        strategy: "runtime-only",
+        reason: "Anthropic filesystem skill carriers currently require the SDK runtime path instead of payload-merge composition."
+      };
+    }
+
+    if (skill.sdk.packageName === "@google/adk") {
+      return {
+        strategy: "runtime-only",
+        reason: "Google ADK skill carriers currently require an ADK runtime path instead of payload-merge composition."
+      };
+    }
+
+    return {
+      strategy: "runtime-only",
+      reason: "This skill carrier does not currently advertise payload-merge composition."
+    };
+  }
+
   function uniqueValues<T>(values: T[]): T[] {
     return [...new Set(values)];
   }
@@ -262,6 +313,14 @@ export function createConfiguredRaxFacade(
       | SkillMountResult
       | SkillUseResult
   ): PreparedInvocation<TPayload> {
+    const composeContract = getSkillComposeContract(skill);
+    if (composeContract.strategy !== "payload-merge") {
+      throw new RaxRoutingError(
+        "skill_compose_unsupported",
+        composeContract.reason ?? "This skill carrier currently requires a runtime-backed execution path instead of payload-merge composition."
+      );
+    }
+
     const skillInvocation = resolveSkillInvocation(skill);
 
     if (base.provider !== skillInvocation.provider) {
@@ -325,7 +384,7 @@ export function createConfiguredRaxFacade(
       if (skillInvocation.sdk.packageName !== "@anthropic-ai/sdk" || skillInvocation.sdk.entrypoint !== "client.messages.create") {
         throw new RaxRoutingError(
           "skill_compose_unsupported",
-          "Anthropic skill composition currently only supports API-managed skill payloads prepared for Messages API execution."
+          "Anthropic skill composition currently only supports API-managed skill payloads prepared for Messages API execution; filesystem skills still require the SDK runtime path."
         );
       }
 
@@ -382,7 +441,9 @@ export function createConfiguredRaxFacade(
 
     throw new RaxRoutingError(
       "skill_compose_unsupported",
-      `Skill composition is not implemented for provider ${base.provider}.`
+      base.provider === "deepmind"
+        ? "Google ADK skill carriers currently require an ADK runtime path instead of payload-merge composition."
+        : `Skill composition is not implemented for provider ${base.provider}.`
     );
   }
 
@@ -411,6 +472,97 @@ export function createConfiguredRaxFacade(
   ) {
     const request = createCapabilityRequest("skill", action, options);
     return profiles ? applyCompatibilityProfile(request, profiles) : request;
+  }
+
+  function resolveSkillUseMode(
+    provider: FacadeCallOptions["provider"],
+    input: SkillUseInput
+  ): SkillBindingMode | undefined {
+    if ("mode" in input && input.mode !== undefined) {
+      return input.mode;
+    }
+
+    if (!("reference" in input)) {
+      return undefined;
+    }
+
+    switch (provider) {
+      case "openai":
+        return "openai-hosted-shell";
+      case "anthropic":
+        return "anthropic-api-managed";
+      case "deepmind":
+        throw new RaxRoutingError(
+          "skill_reference_mode_required",
+          "DeepMind reference-first skill.use currently requires an explicit mode; hosted registry-style references are not assumed in the current baseline."
+        );
+    }
+  }
+
+  function resolveSkillUseDetails(
+    provider: FacadeCallOptions["provider"],
+    mode: SkillBindingMode | undefined,
+    input: SkillUseInput
+  ): SkillUseInput["details"] {
+    const existingDetails =
+      "details" in input && input.details
+        ? { ...input.details }
+        : undefined;
+
+    if (!("reference" in input)) {
+      return existingDetails;
+    }
+
+    if (mode === undefined) {
+      return existingDetails;
+    }
+
+    switch (mode) {
+      case "openai-hosted-shell":
+        return {
+          skill_id: input.reference.id,
+          ...(input.reference.version === undefined ? {} : { attach_version: input.reference.version }),
+          ...(existingDetails ?? {})
+        };
+      case "anthropic-api-managed":
+        return {
+          skill_id: input.reference.id,
+          ...(input.reference.version === undefined ? {} : { version: input.reference.version }),
+          ...(existingDetails ?? {})
+        };
+      case "openai-local-shell":
+      case "openai-inline-shell":
+      case "anthropic-sdk-filesystem":
+      case "google-adk-local":
+      case "google-adk-code-defined":
+        throw new RaxRoutingError(
+          "skill_reference_mode_unsupported",
+          `skill.use reference input is not supported for mode ${mode}; use source/container input for local carriers or pick a managed/hosted mode.`
+        );
+    }
+  }
+
+  async function resolveSkillUseContainer(
+    input: SkillUseInput
+  ): Promise<SkillContainer> {
+    if ("container" in input) {
+      return input.container;
+    }
+
+    if ("reference" in input) {
+      return skillRuntime.containerCreateFromReference({
+        reference: input.reference,
+        policy: input.policy,
+        loading: input.loading
+      });
+    }
+
+    return skillRuntime.containerCreate({
+      source: input.source,
+      descriptor: input.descriptor,
+      policy: input.policy,
+      loading: input.loading
+    });
   }
 
   function createMcpSessionHandle(
@@ -1315,19 +1467,16 @@ export function createConfiguredRaxFacade(
   ): Promise<SkillUseResult> {
     normalizeSkillRequest("use", options);
 
-    const container = await skillRuntime.containerCreate({
-      source: options.input.source,
-      descriptor: options.input.descriptor,
-      policy: options.input.policy,
-      loading: options.input.loading
-    });
+    const container = await resolveSkillUseContainer(options.input);
+    const mode = resolveSkillUseMode(options.provider, options.input);
+    const details = resolveSkillUseDetails(options.provider, mode, options.input);
 
     const bound = skillRuntime.bind({
       container,
       provider: options.provider,
-      mode: options.input.mode,
+      mode,
       layer: options.input.layer,
-      details: options.input.details
+      details
     });
 
     const activated = skillRuntime.activate({

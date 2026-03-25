@@ -941,11 +941,44 @@ test("default rax skill.use walks source to official carrier activation through 
   assert.equal(payload.tools[0]?.type, "shell");
   assert.equal(payload.tools[0]?.environment.type, "local");
   assert.equal(payload.tools[0]?.environment.skills[0]?.path, rootDir);
+  assert.equal(result.activation.composeStrategy, "payload-merge");
+  assert.match(result.activation.composeNotes ?? "", /Responses generation requests/u);
   assert.equal(result.invocation.adapterId, "skill.openai.openai-local-shell");
   const invocationPayload = result.invocation.payload as {
     model: string;
   };
   assert.equal(invocationPayload.model, "gpt-5.4");
+});
+
+test("default rax skill.use can consume an existing container without recreating it from source", async () => {
+  const rootDir = await createLocalSkillFixture();
+  const container = await rax.skill.containerCreate({
+    source: rootDir
+  });
+
+  const result = await rax.skill.use({
+    provider: "openai",
+    model: "gpt-5.4",
+    input: {
+      container
+    }
+  });
+
+  assert.equal(result.container.descriptor.id, container.descriptor.id);
+  assert.equal(result.activation.officialCarrier, "openai-shell-environment");
+  assert.equal(result.activation.composeStrategy, "payload-merge");
+  const payload = result.invocation.payload as {
+    model: string;
+    tools: Array<{
+      environment: {
+        type: string;
+        skills: Array<{ path: string }>;
+      };
+    }>;
+  };
+  assert.equal(payload.model, "gpt-5.4");
+  assert.equal(payload.tools[0]?.environment.type, "local");
+  assert.equal(payload.tools[0]?.environment.skills[0]?.path, rootDir);
 });
 
 test("default rax skill.use can walk source to an OpenAI inline shell carrier", async () => {
@@ -1110,6 +1143,35 @@ test("default rax skill.compose merges an Anthropic API-managed skill carrier in
   assert.equal(payload.tools[1]?.type, "code_execution_20260120");
 });
 
+test("default rax skill.compose rejects Anthropic filesystem skill carriers until runtime-backed composition exists", async () => {
+  const rootDir = await createLocalSkillFixture();
+  const baseInvocation = rax.generate.create({
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    input: {
+      maxTokens: 256,
+      messages: [{ role: "user", content: "Use the attached skill if needed." }]
+    }
+  });
+  const skillResult = await rax.skill.use({
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    input: {
+      source: rootDir
+    }
+  });
+
+  assert.throws(
+    () => rax.skill.compose(baseInvocation as never, skillResult),
+    (error: unknown) => {
+      assert.ok(error instanceof RaxRoutingError);
+      assert.equal(error.code, "skill_compose_unsupported");
+      assert.match(error.message, /SDK runtime path/u);
+      return true;
+    }
+  );
+});
+
 test("default rax skill.use can walk source to an Anthropic API-managed carrier", async () => {
   const rootDir = await createLocalSkillFixture();
 
@@ -1146,24 +1208,29 @@ test("default rax skill.use can walk source to an Anthropic API-managed carrier"
 });
 
 test("default rax skill.use can walk source to an Anthropic prebuilt managed skill carrier", async () => {
-  const rootDir = await createLocalSkillFixture();
-
   const result = await rax.skill.use({
     provider: "anthropic",
     model: "claude-opus-4-6-thinking",
     input: {
-      source: rootDir,
+      reference: {
+        id: "pptx",
+        version: "latest",
+        name: "PowerPoint Skill",
+        description: "Use the official Anthropic pptx skill."
+      },
       mode: "anthropic-api-managed",
       details: {
         type: "anthropic",
-        skill_id: "pptx",
-        version: "latest",
         code_execution_type: "code_execution_20250825"
       }
     }
   });
 
   assert.equal(result.activation.officialCarrier, "anthropic-api-container-skills");
+  assert.equal(result.container.source.kind, "virtual");
+  assert.equal(result.container.descriptor.id, "pptx");
+  assert.equal(result.activation.composeStrategy, "payload-merge");
+  assert.match(result.activation.composeNotes ?? "", /Messages API requests/u);
   const activationPayload = result.activation.payload as {
     betas: string[];
     container: {

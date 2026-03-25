@@ -145,20 +145,65 @@ function parseRouteContext(input: Record<string, unknown>): RaxSkillRouteContext
 }
 
 function parseSkillUseInput(input: Record<string, unknown>): SkillUseInput {
+  const container = asRecord(input.container) as SkillContainer | undefined;
+  const reference = asRecord(input.reference);
   const source = asString(input.source);
-  if (!source) {
-    throw new Error("skill.use adapter input is missing source.");
+  if (!source && !container && !reference) {
+    throw new Error("skill.use adapter input requires source, container, or reference.");
   }
 
+  if (container) {
+    return {
+      container,
+      mode: asString(input.mode) as SkillUseInput["mode"] | undefined,
+      layer: isSdkLayer(input.layer) && input.layer !== "auto" ? input.layer : undefined,
+      includeResources: asBoolean(input.includeResources),
+      includeHelpers: asBoolean(input.includeHelpers),
+      details: asRecord(input.details) as SkillUseInput["details"] | undefined,
+    };
+  }
+
+  if (reference) {
+    const referenceId = asString(reference.id);
+    if (!referenceId) {
+      throw new Error("skill.use adapter reference input is missing id.");
+    }
+
+    return {
+      reference: {
+        id: referenceId,
+        name: asString(reference.name),
+        description: asString(reference.description),
+        version: asString(reference.version),
+        tags: Array.isArray(reference.tags) ? reference.tags.map(String) : undefined,
+        triggers: Array.isArray(reference.triggers) ? reference.triggers.map(String) : undefined,
+        frontmatter: asRecord(reference.frontmatter),
+      },
+      mode: asString(input.mode) as SkillUseInput["mode"] | undefined,
+      layer: isSdkLayer(input.layer) && input.layer !== "auto" ? input.layer : undefined,
+      includeResources: asBoolean(input.includeResources),
+      includeHelpers: asBoolean(input.includeHelpers),
+      policy: asRecord(input.policy) as Record<string, unknown> | undefined,
+      loading: asRecord(input.loading) as Record<string, unknown> | undefined,
+      details: asRecord(input.details) as SkillUseInput["details"] | undefined,
+    };
+  }
+
+  const sourceInput = input as Record<string, unknown> & {
+    descriptor?: unknown;
+    policy?: unknown;
+    loading?: unknown;
+  };
+
   return {
-    source,
+    source: source!,
     mode: asString(input.mode) as SkillUseInput["mode"] | undefined,
     layer: isSdkLayer(input.layer) && input.layer !== "auto" ? input.layer : undefined,
     includeResources: asBoolean(input.includeResources),
     includeHelpers: asBoolean(input.includeHelpers),
-    descriptor: asRecord(input.descriptor) as SkillUseInput["descriptor"] | undefined,
-    policy: asRecord(input.policy) as SkillUseInput["policy"] | undefined,
-    loading: asRecord(input.loading) as SkillUseInput["loading"] | undefined,
+    descriptor: asRecord(sourceInput.descriptor) as Record<string, unknown> | undefined,
+    policy: asRecord(sourceInput.policy) as Record<string, unknown> | undefined,
+    loading: asRecord(sourceInput.loading) as Record<string, unknown> | undefined,
     details: asRecord(input.details) as SkillUseInput["details"] | undefined,
   };
 }
@@ -214,6 +259,8 @@ function summarizeActivation(activation: SkillActivationPlan) {
     mode: activation.mode,
     layer: activation.layer,
     officialCarrier: activation.officialCarrier,
+    composeStrategy: activation.composeStrategy ?? "runtime-only",
+    composeNotes: activation.composeNotes,
     entryPath: activation.entry.path,
     resourceCount: activation.resources?.length ?? 0,
     helperCount: activation.helpers?.length ?? 0,

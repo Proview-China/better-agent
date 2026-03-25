@@ -54,6 +54,7 @@ import type {
   SkillHelperKind,
   SkillLoadingPolicy,
   SkillLocalPackage,
+  SkillReferenceInput,
   SkillResourceFile,
   SkillResourceKind,
   SkillLoadLocalInput,
@@ -374,6 +375,59 @@ function buildDescriptor(
   };
 }
 
+function buildVirtualSkillContainer(input: {
+  reference: SkillReferenceInput;
+  policy?: Partial<SkillExecutionPolicy>;
+  loading?: Partial<SkillLoadingPolicy>;
+}): SkillContainer {
+  const slug = slugify(input.reference.id) || "virtual-skill";
+  const rootDir = `virtual://skill/${slug}`;
+  const entryPath = `${rootDir}/SKILL.md`;
+  const entry: SkillEntryDocument = {
+    path: entryPath,
+    content: input.reference.description
+      ? `Virtual skill reference for ${input.reference.id}: ${input.reference.description}`
+      : `Virtual skill reference for ${input.reference.id}.`
+  };
+  const source: SkillSourceRef = {
+    kind: "virtual",
+    rootDir,
+    entryPath
+  };
+  const descriptor: SkillDescriptor = {
+    id: input.reference.id,
+    name: input.reference.name ?? input.reference.id,
+    description: input.reference.description ?? `Virtual skill reference for ${input.reference.id}.`,
+    version: input.reference.version,
+    tags: [...(input.reference.tags ?? [])],
+    triggers: [...(input.reference.triggers ?? [])],
+    source,
+    frontmatter: input.reference.frontmatter ? { ...input.reference.frontmatter } : undefined
+  };
+
+  return {
+    descriptor,
+    source,
+    entry,
+    resources: [],
+    helpers: [],
+    bindings: {},
+    policy: {
+      ...DEFAULT_POLICY,
+      ...(input.policy ?? {})
+    },
+    loading: {
+      ...DEFAULT_LOADING,
+      ...(input.loading ?? {})
+    },
+    ledger: {
+      discoverCount: 0,
+      activationCount: 0
+    },
+    frontmatter: input.reference.frontmatter ? { ...input.reference.frontmatter } : undefined
+  };
+}
+
 function cloneContainer(container: SkillContainer): SkillContainer {
   return {
     ...container,
@@ -505,11 +559,13 @@ function toActivationPlan(input: SkillActivateInput, binding: SkillProviderBindi
           type: "local",
           skills: [details]
         });
-        return {
+      return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "openai-shell-environment",
+        composeStrategy: "payload-merge",
+        composeNotes: "OpenAI shell skill carriers can currently be merged into Responses generation requests.",
         payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
@@ -523,11 +579,13 @@ function toActivationPlan(input: SkillActivateInput, binding: SkillProviderBindi
           type: "container_auto",
           skills: [details]
         });
-        return {
+      return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "openai-shell-environment",
+        composeStrategy: "payload-merge",
+        composeNotes: "OpenAI shell skill carriers can currently be merged into Responses generation requests.",
         payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
@@ -542,11 +600,13 @@ function toActivationPlan(input: SkillActivateInput, binding: SkillProviderBindi
           skills: [lifecycle.attachment],
           ...(lifecycle.environment ?? {})
         });
-        return {
+      return {
         provider: input.provider,
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "openai-shell-environment",
+        composeStrategy: "payload-merge",
+        composeNotes: "OpenAI shell skill carriers can currently be merged into Responses generation requests.",
         payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
@@ -562,6 +622,8 @@ function toActivationPlan(input: SkillActivateInput, binding: SkillProviderBindi
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "anthropic-sdk-filesystem-skill",
+        composeStrategy: "runtime-only",
+        composeNotes: "Anthropic filesystem skills currently require the SDK runtime path instead of payload-merge composition.",
         payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
@@ -577,6 +639,8 @@ function toActivationPlan(input: SkillActivateInput, binding: SkillProviderBindi
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "anthropic-api-container-skills",
+        composeStrategy: "payload-merge",
+        composeNotes: "Anthropic API-managed skills can currently be merged into Messages API requests.",
         payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
@@ -592,6 +656,8 @@ function toActivationPlan(input: SkillActivateInput, binding: SkillProviderBindi
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "google-adk-skill-toolset",
+        composeStrategy: "runtime-only",
+        composeNotes: "Google ADK skill carriers currently require an ADK runtime path instead of payload-merge composition.",
         payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
@@ -607,6 +673,8 @@ function toActivationPlan(input: SkillActivateInput, binding: SkillProviderBindi
         mode: binding.mode,
         layer: binding.layer,
         officialCarrier: "google-adk-skill-toolset",
+        composeStrategy: "runtime-only",
+        composeNotes: "Google ADK skill carriers currently require an ADK runtime path instead of payload-merge composition.",
         payload: payload as unknown as Record<string, unknown>,
         entry: { ...input.container.entry },
         resources,
@@ -730,6 +798,14 @@ export class SkillRuntime {
       policy: input.policy,
       loading: input.loading
     });
+  }
+
+  containerCreateFromReference(input: {
+    reference: SkillReferenceInput;
+    policy?: Partial<SkillExecutionPolicy>;
+    loading?: Partial<SkillLoadingPolicy>;
+  }): SkillContainer {
+    return buildVirtualSkillContainer(input);
   }
 
   async discover(input: SkillDiscoverInput): Promise<SkillDescriptor[]> {

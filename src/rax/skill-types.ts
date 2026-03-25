@@ -27,7 +27,7 @@ import type {
   OpenAIShellToolPayload
 } from "../integrations/openai/api/tools/skills/carrier.js";
 
-export type SkillSourceKind = "local";
+export type SkillSourceKind = "local" | "virtual";
 
 export interface SkillSourceRef {
   kind: SkillSourceKind;
@@ -103,6 +103,8 @@ export type SkillBindingMode =
   | "anthropic-api-managed"
   | "google-adk-local"
   | "google-adk-code-defined";
+
+export type SkillComposeStrategy = "payload-merge" | "runtime-only";
 
 type LooseRecord<T> = T | Record<string, unknown>;
 
@@ -202,6 +204,16 @@ export interface SkillLoadLocalInput {
   source: string;
 }
 
+export interface SkillReferenceInput {
+  id: string;
+  name?: string;
+  description?: string;
+  version?: string;
+  tags?: string[];
+  triggers?: string[];
+  frontmatter?: Record<string, unknown>;
+}
+
 export interface SkillContainerCreateInput extends SkillLoadLocalInput {
   descriptor?: Partial<Pick<SkillDescriptor, "id" | "version" | "tags" | "triggers">>;
   policy?: Partial<SkillExecutionPolicy>;
@@ -234,6 +246,8 @@ export interface SkillActivationPlanBase {
   entry: SkillEntryDocument;
   resources?: SkillResourceFile[];
   helpers?: SkillHelperFile[];
+  composeStrategy?: SkillComposeStrategy;
+  composeNotes?: string;
 }
 
 export interface OpenAISkillActivationPlan extends SkillActivationPlanBase {
@@ -309,13 +323,30 @@ export interface SkillActivateInput {
   includeHelpers?: boolean;
 }
 
-export interface SkillUseInput extends SkillContainerCreateInput {
+interface SkillUseInputBase {
   mode?: SkillBindingMode;
   layer?: Exclude<SdkLayer, "auto">;
   details?: SkillBindingDetailsInput;
   includeResources?: boolean;
   includeHelpers?: boolean;
 }
+
+export interface SkillUseFromSourceInput extends SkillContainerCreateInput, SkillUseInputBase {}
+
+export interface SkillUseFromContainerInput extends SkillUseInputBase {
+  container: SkillContainer;
+}
+
+export interface SkillUseFromReferenceInput extends SkillUseInputBase {
+  reference: SkillReferenceInput;
+  policy?: Partial<SkillExecutionPolicy>;
+  loading?: Partial<SkillLoadingPolicy>;
+}
+
+export type SkillUseInput =
+  | SkillUseFromSourceInput
+  | SkillUseFromContainerInput
+  | SkillUseFromReferenceInput;
 
 export interface SkillMountInput {
   container: SkillContainer;
