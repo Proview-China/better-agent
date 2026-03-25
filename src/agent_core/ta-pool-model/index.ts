@@ -58,3 +58,14 @@ export {
   matchBaselineCapability,
   resolveBaselineCapability,
 } from "./profile-baseline.js";
+
+export {
+  TAP_BOOTSTRAP_TMA_BASELINE_CAPABILITY_KEYS,
+  TAP_EXTENDED_TMA_BASELINE_CAPABILITY_KEYS,
+  TAP_EXTENDED_TMA_EXTRA_CAPABILITY_KEYS,
+  TAP_REVIEWER_BASELINE_CAPABILITY_KEYS,
+  TAP_REVIEWER_DENIED_EXECUTION_PATTERNS,
+  createTapBootstrapTmaProfile,
+  createTapExtendedTmaProfile,
+  createTapReviewerProfile,
+} from "./tooling-baseline.js";

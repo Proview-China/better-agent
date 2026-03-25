@@ -148,3 +148,32 @@ test("provisioner runtime rejects worker outputs that try to complete the origin
   assert.equal(bundle.status, "failed");
   assert.match(bundle.error?.message ?? "", /leave the original task to the main agent/i);
 });
+
+test("provisioner runtime emits a formal tooling package for bootstrap B-group capabilities", async () => {
+  let counter = 0;
+  const runtime = createProvisionerRuntime({
+    clock: () => new Date("2026-03-24T08:00:00.000Z"),
+    idFactory: () => `bundle-tooling-${++counter}`,
+  });
+
+  const request = createProvisionRequest({
+    provisionId: "provision-tooling-1",
+    sourceRequestId: "request-tooling-1",
+    requestedCapabilityKey: "repo.write",
+    reason: "Need bootstrap repo write tooling package.",
+    createdAt: "2026-03-24T08:00:00.000Z",
+  });
+
+  const bundle = await runtime.submit(request);
+  const toolMetadata = bundle.toolArtifact?.metadata as {
+    manifest?: { capabilityKey?: string };
+    formalCapabilityPackage?: boolean;
+  } | undefined;
+
+  assert.equal(bundle.status, "ready");
+  assert.equal(bundle.metadata?.packageTemplateStatus, "formal");
+  assert.equal(bundle.metadata?.activationDriverImplemented, true);
+  assert.equal(toolMetadata?.manifest?.capabilityKey, "repo.write");
+  assert.equal(toolMetadata?.formalCapabilityPackage, true);
+  assert.equal(bundle.activationSpec?.adapterFactoryRef, "factory:tap-tooling:repo.write");
+});

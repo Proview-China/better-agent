@@ -5,6 +5,14 @@ import {
   type ProvisionRequest,
   type ReplayPolicy,
 } from "../ta-pool-types/index.js";
+import {
+  TAP_BOOTSTRAP_TMA_BASELINE_CAPABILITY_KEYS,
+  TAP_EXTENDED_TMA_EXTRA_CAPABILITY_KEYS,
+} from "../ta-pool-model/index.js";
+import {
+  createTapToolingCapabilityPackage,
+  isTapToolingBaselineCapabilityKey,
+} from "../capability-package/index.js";
 
 export const PROVISIONER_WORKER_LANES = [
   "bootstrap",
@@ -115,14 +123,7 @@ export type ProvisionerWorkerBridge = (
 const BOOTSTRAP_LANE_SEMANTICS: ProvisionerLaneSemantics = {
   lane: "bootstrap",
   description: "Bootstrap provisioner may build repo-local packages, stage docs, and run bounded verification only.",
-  allowedCapabilities: [
-    "code.read",
-    "docs.read",
-    "repo.write",
-    "shell.restricted",
-    "test.run",
-    "skill.doc.generate",
-  ],
+  allowedCapabilities: [...TAP_BOOTSTRAP_TMA_BASELINE_CAPABILITY_KEYS],
   forbiddenCapabilities: [
     "dependency.install",
     "mcp.configure",
@@ -143,10 +144,7 @@ const EXTENDED_LANE_SEMANTICS: ProvisionerLaneSemantics = {
   description: "Extended provisioner may prepare heavier build plans, including install and system integration recommendations.",
   allowedCapabilities: [
     ...BOOTSTRAP_LANE_SEMANTICS.allowedCapabilities,
-    "dependency.install",
-    "mcp.configure",
-    "network.download",
-    "system.write",
+    ...TAP_EXTENDED_TMA_EXTRA_CAPABILITY_KEYS,
   ],
   forbiddenCapabilities: [
     "original_task.execute",
@@ -412,6 +410,22 @@ export function createProvisionerWorkerBridgeInput(
 }
 
 function createPackageSectionPayload(input: ProvisionerWorkerBridgeInput) {
+  if (isTapToolingBaselineCapabilityKey(input.request.requestedCapabilityKey)) {
+    const capabilityPackage = createTapToolingCapabilityPackage(
+      input.request.requestedCapabilityKey,
+    );
+    return {
+      capabilityPackage,
+      manifest: capabilityPackage.manifest,
+      adapter: capabilityPackage.adapter,
+      policy: capabilityPackage.policy,
+      builder: capabilityPackage.builder,
+      lifecycle: capabilityPackage.lifecycle,
+      verification: capabilityPackage.verification,
+      usage: capabilityPackage.usage,
+    };
+  }
+
   const slug = sanitizeCapabilityKey(input.request.requestedCapabilityKey);
   const runtimeKind = input.request.desiredProviderOrRuntime?.trim() || "unspecified-runtime";
   return {
@@ -507,8 +521,14 @@ export function createDefaultProvisionerWorkerOutput(
 ): ProvisionerWorkerOutput {
   const slug = sanitizeCapabilityKey(input.request.requestedCapabilityKey);
   const sections = createPackageSectionPayload(input);
+  const capabilityPackage = "capabilityPackage" in sections
+    ? sections.capabilityPackage
+    : undefined;
+  const genericAdapterFactoryRef = !capabilityPackage
+    ? (sections as { adapter: { adapterFactoryRef: string } }).adapter.adapterFactoryRef
+    : undefined;
   const replayRecommendation = createProvisionerReplayRecommendation(
-    input.envelope.targetCapabilitySpec.requestedReplayPolicy,
+    capabilityPackage?.replayPolicy ?? input.envelope.targetCapabilitySpec.requestedReplayPolicy,
     input.lane,
   );
   const toolArtifact: ProvisionArtifactRef = {
@@ -527,6 +547,7 @@ export function createDefaultProvisionerWorkerOutput(
       builder: sections.builder,
       lifecycle: sections.lifecycle,
       bridgeLane: input.lane,
+      formalCapabilityPackage: !!capabilityPackage,
     },
   };
   const bindingArtifact: ProvisionArtifactRef = {
@@ -537,7 +558,7 @@ export function createDefaultProvisionerWorkerOutput(
       packageSections: ["adapter"],
       adapter: sections.adapter,
       bridgeLane: input.lane,
-      activationDriverImplemented: false,
+      activationDriverImplemented: !!capabilityPackage,
     },
   };
   const verificationArtifact: ProvisionArtifactRef = {
@@ -548,6 +569,7 @@ export function createDefaultProvisionerWorkerOutput(
       packageSections: ["verification"],
       verification: sections.verification,
       bridgeLane: input.lane,
+      formalCapabilityPackage: !!capabilityPackage,
     },
   };
   const usageArtifact: ProvisionArtifactRef = {
@@ -558,37 +580,61 @@ export function createDefaultProvisionerWorkerOutput(
       packageSections: ["usage"],
       usage: sections.usage,
       bridgeLane: input.lane,
+      formalCapabilityPackage: !!capabilityPackage,
     },
   };
-  const activationPayload: CreatePoolActivationSpecInput = {
-    targetPool: "ta-capability-pool",
-    activationMode: "stage_only",
-    registerOrReplace: "register_or_replace",
-    generationStrategy: "create_next_generation",
-    drainStrategy: "graceful",
-    manifestPayload: {
-      ...sections.manifest,
-      activationDriverImplemented: false,
-    },
-    bindingPayload: {
-      adapterId: sections.adapter.adapterId,
-      runtimeKind: sections.adapter.runtimeKind,
-      bindingArtifactRef: bindingArtifact.ref,
-      verificationArtifactRef: verificationArtifact.ref,
-      usageArtifactRef: usageArtifact.ref,
-      bridgeLane: input.lane,
-    },
-    adapterFactoryRef: sections.adapter.adapterFactoryRef,
-  };
+  const activationPayload: CreatePoolActivationSpecInput = capabilityPackage?.activationSpec
+    ? {
+      ...capabilityPackage.activationSpec,
+      manifestPayload: {
+        ...capabilityPackage.activationSpec.manifestPayload,
+        bridgeLane: input.lane,
+      },
+      bindingPayload: {
+        ...capabilityPackage.activationSpec.bindingPayload,
+        bindingArtifactRef: bindingArtifact.ref,
+        verificationArtifactRef: verificationArtifact.ref,
+        usageArtifactRef: usageArtifact.ref,
+        bridgeLane: input.lane,
+      },
+      metadata: {
+        ...(capabilityPackage.activationSpec.metadata ?? {}),
+        formalCapabilityPackage: true,
+      },
+    }
+    : {
+      targetPool: "ta-capability-pool",
+      activationMode: "stage_only",
+      registerOrReplace: "register_or_replace",
+      generationStrategy: "create_next_generation",
+      drainStrategy: "graceful",
+      manifestPayload: {
+        ...sections.manifest,
+        activationDriverImplemented: false,
+      },
+      bindingPayload: {
+        adapterId: sections.adapter.adapterId,
+        runtimeKind: sections.adapter.runtimeKind,
+        bindingArtifactRef: bindingArtifact.ref,
+        verificationArtifactRef: verificationArtifact.ref,
+        usageArtifactRef: usageArtifact.ref,
+        bridgeLane: input.lane,
+      },
+      adapterFactoryRef: genericAdapterFactoryRef!,
+    };
 
   return {
     workerAction: "build_capability_package",
     originalTaskDisposition: "left_for_main_agent",
     buildSummary: [
-      `Built a staged capability package for ${input.request.requestedCapabilityKey}.`,
+      capabilityPackage
+        ? `Built a formal bootstrap tooling capability package for ${input.request.requestedCapabilityKey}.`
+        : `Built a staged capability package for ${input.request.requestedCapabilityKey}.`,
       `Lane: ${input.lane}.`,
       "This bridge returns package artifacts plus activation/replay guidance only.",
-      "Real builder execution and activation driver remain unimplemented.",
+      capabilityPackage
+        ? "Activation still needs the outer runtime, but the package contract is no longer placeholder-only."
+        : "Real builder execution and activation driver remain unimplemented.",
     ].join(" "),
     toolArtifact,
     bindingArtifact,
@@ -600,9 +646,10 @@ export function createDefaultProvisionerWorkerOutput(
       bridgeImplementation: "default-provisioner-worker-bridge",
       promptPackId: input.promptPack.promptPackId,
       lane: input.lane,
-      packageTemplateStatus: "provisional",
-      realBuilderImplemented: false,
-      activationDriverImplemented: false,
+      packageTemplateStatus: capabilityPackage ? "formal" : "provisional",
+      realBuilderImplemented: !!capabilityPackage,
+      activationDriverImplemented: !!capabilityPackage,
+      formalCapabilityPackage: !!capabilityPackage,
     },
   };
 }
