@@ -8,6 +8,7 @@ import {
   resolveProvisionerWorkerLane,
   validateProvisionerWorkerOutput,
 } from "./provisioner-worker-bridge.js";
+import { createSectionIteratorRuleSet } from "./section-iterator-rules.js";
 
 function createRequest(
   overrides: Partial<ReturnType<typeof createProvisionRequest>> = {},
@@ -78,4 +79,47 @@ test("default provisioner worker output carries package artifacts plus activatio
   assert.equal(output.replayRecommendation.policy, "auto_after_verify");
   assert.equal(output.replayRecommendation.suggestedTrigger, "after_verify");
   assert.match(output.buildSummary, /Real builder execution and activation driver remain unimplemented/i);
+  const policy = output.toolArtifact.metadata?.policy as {
+    iteratorRules?: {
+      slot?: string;
+      rules?: Array<{ action?: string }>;
+      flow?: { sourceStore?: string; returnStore?: string };
+    };
+  } | undefined;
+  assert.equal(policy?.iteratorRules?.slot, "iterator_rules");
+  assert.equal(policy?.iteratorRules?.rules?.length, 5);
+  assert.equal(policy?.iteratorRules?.flow?.sourceStore, "Stored-Agent");
+  assert.equal(policy?.iteratorRules?.flow?.returnStore, "Stored-Agent");
+  const verification = output.verificationArtifact.metadata?.verification as {
+    successCriteria?: string[];
+    failureSignals?: string[];
+  } | undefined;
+  assert.equal(
+    verification?.successCriteria?.includes(
+      "policy section exports iterator rules for granularity and hierarchy checks",
+    ),
+    true,
+  );
+  assert.equal(
+    verification?.failureSignals?.includes(
+      "missing iterator rules for Stored-Agent round-trip decisions",
+    ),
+    true,
+  );
+});
+
+test("section iterator rules freeze the split merge iterate update storage decisions", () => {
+  const ruleSet = createSectionIteratorRuleSet({
+    capabilityKey: "mcp.playwright",
+    lane: "bootstrap",
+  });
+
+  assert.equal(ruleSet.slot, "iterator_rules");
+  assert.equal(ruleSet.version, "cmp-section-iterator.v0");
+  assert.deepEqual(
+    ruleSet.rules.map((rule) => rule.action),
+    ["store", "split", "merge", "update", "iterate"],
+  );
+  assert.equal(ruleSet.flow.runtime, "iterator-agent-loop-runtime");
+  assert.equal(ruleSet.metadata?.capabilityKey, "mcp.playwright");
 });

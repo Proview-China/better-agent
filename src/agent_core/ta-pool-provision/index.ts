@@ -70,3 +70,15 @@ export {
   executeTmaBuildPlan,
   executeTmaPlan,
 } from "./tma-executor.js";
+
+export type {
+  CreateSectionIteratorRuleSetInput,
+  SectionIteratorRule,
+  SectionIteratorRuleAction,
+  SectionIteratorRuleSet,
+  SectionIteratorRuleSetFlow,
+} from "./section-iterator-rules.js";
+export {
+  SECTION_ITERATOR_RULE_ACTIONS,
+  createSectionIteratorRuleSet,
+} from "./section-iterator-rules.js";

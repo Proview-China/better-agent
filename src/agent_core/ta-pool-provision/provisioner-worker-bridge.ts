@@ -5,6 +5,7 @@ import {
   type ProvisionRequest,
   type ReplayPolicy,
 } from "../ta-pool-types/index.js";
+import { createSectionIteratorRuleSet } from "./section-iterator-rules.js";
 
 export const PROVISIONER_WORKER_LANES = [
   "bootstrap",
@@ -414,6 +415,10 @@ export function createProvisionerWorkerBridgeInput(
 function createPackageSectionPayload(input: ProvisionerWorkerBridgeInput) {
   const slug = sanitizeCapabilityKey(input.request.requestedCapabilityKey);
   const runtimeKind = input.request.desiredProviderOrRuntime?.trim() || "unspecified-runtime";
+  const iteratorRules = createSectionIteratorRuleSet({
+    capabilityKey: input.request.requestedCapabilityKey,
+    lane: input.lane,
+  });
   return {
     manifest: {
       capabilityKey: input.request.requestedCapabilityKey,
@@ -450,6 +455,7 @@ function createPackageSectionPayload(input: ProvisionerWorkerBridgeInput) {
       humanGateRequirements: input.lane === "extended"
         ? ["extended-side-effects-require-approval"]
         : ["extended-lane-required-for-install-or-network"],
+      iteratorRules,
     },
     builder: {
       builderId: `builder.${slug}`,
@@ -468,6 +474,7 @@ function createPackageSectionPayload(input: ProvisionerWorkerBridgeInput) {
       deprecateStrategy: "mark_previous_generation_superseded",
       cleanupStrategy: "manual_cleanup_until_driver_exists",
       generationPolicy: "create_next_generation",
+      iteratorFlow: iteratorRules.flow,
     },
     verification: {
       smokeEntry: `smoke:${slug}`,
@@ -476,11 +483,13 @@ function createPackageSectionPayload(input: ProvisionerWorkerBridgeInput) {
         "tool artifact resolves",
         "binding artifact carries activation payload",
         "usage artifact explains invocation path",
+        "policy section exports iterator rules for granularity and hierarchy checks",
       ],
       failureSignals: [
         "missing activation payload",
         "missing replay recommendation",
         "worker output attempts to execute original task",
+        "missing iterator rules for Stored-Agent round-trip decisions",
       ],
       evidenceOutput: `evidence/${slug}.json`,
     },
@@ -490,10 +499,12 @@ function createPackageSectionPayload(input: ProvisionerWorkerBridgeInput) {
       bestPractices: [
         "review before dispatch",
         "verify before activation",
+        "store only sections that remain standalone after iterator granularity and history checks",
       ],
       knownLimits: [
         "real activation driver not implemented yet",
         "builder payload is bridge-generated placeholder",
+        "iterator rules are advisory metadata until CMP runtime consumes them directly",
       ],
       exampleInvocations: [
         `request capability ${input.request.requestedCapabilityKey}`,
