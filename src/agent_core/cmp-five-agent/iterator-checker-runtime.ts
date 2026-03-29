@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { getCmpRoleConfiguration } from "./configuration.js";
 import type {
   CmpCheckerEvaluateInput,
   CmpCheckerRecord,
@@ -23,6 +24,7 @@ export class CmpIteratorCheckerRuntime {
   readonly #promoteRequests = new Map<string, CmpPromoteRequestRecord>();
 
   advanceIterator(input: CmpIteratorAdvanceInput): CmpIteratorRecord {
+    const configuration = getCmpRoleConfiguration("iterator");
     const record: CmpIteratorRecord = {
       loopId: randomUUID(),
       role: "iterator",
@@ -36,16 +38,31 @@ export class CmpIteratorCheckerRuntime {
       commitRef: input.commitRef,
       reviewRef: input.reviewRef,
       metadata: {
-        minimumReviewUnit: "commit",
+        promptPackId: configuration.promptPack.promptPackId,
+        profileId: configuration.profile.profileId,
+        capabilityContractId: configuration.capabilityContract.contractId,
+        reviewDiscipline: {
+          minimumReviewUnit: "commit",
+          reviewRefMode: "stable_review_ref",
+          gitAuthority: "cmp_primary_writer",
+          handoffTarget: "checker",
+        },
+        stageDiscipline: configuration.profile.ownsStages,
         ...(input.metadata ?? {}),
       },
     };
     this.#iterator.set(record.loopId, record);
-    this.#checkpoint(record, input.createdAt, input.candidateId);
+    this.#checkpointStages({
+      record,
+      createdAt: input.createdAt,
+      eventRef: input.candidateId,
+      stages: ["accept_material", "write_candidate_commit", "update_review_ref"],
+    });
     return record;
   }
 
   evaluateChecker(input: CmpCheckerEvaluateInput): CmpCheckerRuntimeResult {
+    const configuration = getCmpRoleConfiguration("checker");
     const checkerRecord: CmpCheckerRecord = {
       loopId: randomUUID(),
       role: "checker",
@@ -56,10 +73,42 @@ export class CmpIteratorCheckerRuntime {
       candidateId: input.candidateId,
       checkedSnapshotId: input.checkedSnapshotId,
       suggestPromote: input.suggestPromote,
-      metadata: input.metadata,
+      metadata: {
+        promptPackId: configuration.promptPack.promptPackId,
+        profileId: configuration.profile.profileId,
+        capabilityContractId: configuration.capabilityContract.contractId,
+        reviewDiscipline: {
+          checkedDetachedFromPromote: true,
+          evidenceRestructureRequired: true,
+          promoteReviewPath: input.parentAgentId
+            ? "parent_checker_assist_then_parent_dbagent"
+            : "local_checked_only",
+        },
+        parentHelperSemantics: input.parentAgentId
+          ? {
+            status: "available",
+            mode: "assist_parent_dbagent",
+            responsibilities: [
+              "evidence_restructure",
+              "history_check",
+              "narrow_for_child_task",
+            ],
+          }
+          : {
+            status: "not_applicable",
+          },
+        ...(input.metadata ?? {}),
+      },
     };
     this.#checker.set(checkerRecord.loopId, checkerRecord);
-    this.#checkpoint(checkerRecord, input.checkedAt, input.checkedSnapshotId);
+    this.#checkpointStages({
+      record: checkerRecord,
+      createdAt: input.checkedAt,
+      eventRef: input.checkedSnapshotId,
+      stages: input.suggestPromote
+        ? ["accept_candidate", "restructure", "checked", "suggest_promote"]
+        : ["accept_candidate", "restructure", "checked"],
+    });
 
     const promoteRequest = input.suggestPromote && input.parentAgentId
       ? {
@@ -73,6 +122,14 @@ export class CmpIteratorCheckerRuntime {
         createdAt: input.checkedAt,
         requestedAt: input.checkedAt,
         reviewRole: "dbagent" as const,
+        metadata: {
+          reviewDiscipline: {
+            checkedDetachedFromPromote: true,
+            parentPrimaryReviewer: "dbagent",
+            parentHelperRequired: true,
+          },
+          promptPackId: configuration.promptPack.promptPackId,
+        },
       }
       : undefined;
     if (promoteRequest) {
@@ -107,17 +164,24 @@ export class CmpIteratorCheckerRuntime {
     for (const record of snapshot.promoteRequests) this.#promoteRequests.set(record.reviewId, record);
   }
 
-  #checkpoint(record: CmpIteratorRecord | CmpCheckerRecord, createdAt: string, eventRef: string): void {
-    const checkpoint = createCmpRoleCheckpointRecord({
-      checkpointId: randomUUID(),
-      role: record.role,
-      agentId: record.agentId,
-      stage: record.stage,
-      createdAt,
-      eventRef,
-      loopId: record.loopId,
-    });
-    this.#checkpoints.set(checkpoint.checkpointId, checkpoint);
+  #checkpointStages(input: {
+    record: CmpIteratorRecord | CmpCheckerRecord;
+    createdAt: string;
+    eventRef: string;
+    stages: string[];
+  }): void {
+    for (const stage of input.stages) {
+      const checkpoint = createCmpRoleCheckpointRecord({
+        checkpointId: randomUUID(),
+        role: input.record.role,
+        agentId: input.record.agentId,
+        stage,
+        createdAt: input.createdAt,
+        eventRef: input.eventRef,
+        loopId: input.record.loopId,
+      });
+      this.#checkpoints.set(checkpoint.checkpointId, checkpoint);
+    }
   }
 }
 

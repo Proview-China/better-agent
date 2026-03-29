@@ -92,6 +92,29 @@ export interface CmpPeerExchangeApprovalRecord {
   packageId: string;
   createdAt: string;
   mode: "explicit_once";
+  status?: "pending_parent_core_approval" | "approved" | "rejected";
+  approvalChain?: "parent_dbagent_then_parent_core_agent";
+  targetIngress?: "child_icma_only" | "peer_exchange";
+  approvedAt?: string;
+  approvedByAgentId?: string;
+  decisionNote?: string;
+  packageMode?: "peer_exchange_slim";
+  currentStateSummary?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpReinterventionRequestRecord {
+  requestId: string;
+  parentAgentId: string;
+  childAgentId: string;
+  requestedByRole: "dbagent";
+  status: "pending_parent_dbagent_review" | "served";
+  gapSummary: string;
+  currentStateSummary: string;
+  currentPackageId?: string;
+  createdAt: string;
+  resolvedAt?: string;
+  servedPackageId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -169,5 +192,24 @@ export function createCmpPeerExchangeApprovalRecord(input: CmpPeerExchangeApprov
     targetAgentId: assertNonEmpty(input.targetAgentId, "CMP peer targetAgentId"),
     packageId: assertNonEmpty(input.packageId, "CMP peer packageId"),
     createdAt: assertNonEmpty(input.createdAt, "CMP peer createdAt"),
+    approvedAt: input.approvedAt?.trim() || undefined,
+    approvedByAgentId: input.approvedByAgentId?.trim() || undefined,
+    decisionNote: input.decisionNote?.trim() || undefined,
+    currentStateSummary: input.currentStateSummary?.trim() || undefined,
+  };
+}
+
+export function createCmpReinterventionRequestRecord(input: CmpReinterventionRequestRecord): CmpReinterventionRequestRecord {
+  return {
+    ...input,
+    requestId: assertNonEmpty(input.requestId, "CMP reintervention requestId"),
+    parentAgentId: assertNonEmpty(input.parentAgentId, "CMP reintervention parentAgentId"),
+    childAgentId: assertNonEmpty(input.childAgentId, "CMP reintervention childAgentId"),
+    gapSummary: assertNonEmpty(input.gapSummary, "CMP reintervention gapSummary"),
+    currentStateSummary: assertNonEmpty(input.currentStateSummary, "CMP reintervention currentStateSummary"),
+    currentPackageId: input.currentPackageId?.trim() || undefined,
+    createdAt: assertNonEmpty(input.createdAt, "CMP reintervention createdAt"),
+    resolvedAt: input.resolvedAt?.trim() || undefined,
+    servedPackageId: input.servedPackageId?.trim() || undefined,
   };
 }

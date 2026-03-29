@@ -38,6 +38,30 @@ test("CmpIcmaRuntime captures by task intent and only keeps allowed fragment kin
   assert.equal(captured.loop.stage, "attach_fragment");
   assert.deepEqual(captured.fragments.map((fragment) => fragment.kind), ["constraint", "risk", "flow"]);
   assert.equal(captured.loop.metadata?.gitWriteAccess, false);
+  assert.deepEqual(captured.loop.metadata?.fragmentPolicy, {
+    systemPolicy: "append_only_fragment",
+    rootSystemMutationAllowed: false,
+    allowedKinds: ["constraint", "risk", "flow"],
+    templateIds: [
+      "cmp-five-agent/icma-prompt-pack/v1:constraint",
+      "cmp-five-agent/icma-prompt-pack/v1:risk",
+      "cmp-five-agent/icma-prompt-pack/v1:flow",
+    ],
+    lifecycle: "task_phase",
+  });
+  assert.deepEqual(captured.loop.metadata?.seedAssembly, {
+    discipline: "child_seed_enters_child_icma_only",
+    target: "child_icma",
+    mode: "controlled_seed",
+    rootSystemMutationAllowed: false,
+  });
+  const chunking = captured.intentChunks[0]?.metadata?.chunking as
+    | { strategy?: string; granularity?: string }
+    | undefined;
+  assert.equal(chunking?.strategy, "task_intent");
+  assert.equal(chunking?.granularity, "medium_semantic");
+  assert.equal(captured.fragments[0]?.metadata?.templateClass, "append_only_system_fragment");
+  assert.equal(captured.fragments[0]?.metadata?.rootSystemMutationAllowed, false);
 
   const emitted = runtime.emit({
     recordId: captured.loop.loopId,
@@ -45,4 +69,13 @@ test("CmpIcmaRuntime captures by task intent and only keeps allowed fragment kin
     emittedAt: "2026-03-25T00:00:01.000Z",
   });
   assert.equal(emitted.stage, "emit");
+  assert.deepEqual(emitted.metadata?.seedAssembly, {
+    discipline: "child_seed_enters_child_icma_only",
+    target: "child_icma",
+    mode: "controlled_seed",
+    rootSystemMutationAllowed: false,
+  });
+  assert.equal(emitted.metadata?.emittedEventCount, 2);
+  const emitContract = emitted.metadata?.emitContract as { target?: string } | undefined;
+  assert.equal(emitContract?.target, "iterator");
 });

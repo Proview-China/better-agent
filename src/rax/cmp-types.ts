@@ -1,5 +1,8 @@
 import type {
   BootstrapCmpProjectInfraInput,
+  CmpFiveAgentCapabilityAccessResolution,
+  CmpFiveAgentRole,
+  CmpPeerExchangeApprovalRecord,
   CmpFiveAgentSummary,
   CmpRuntimeDeliveryTruthSummary,
   CmpRuntimeProjectRecoverySummary,
@@ -19,6 +22,9 @@ import type {
   RequestHistoricalContextResult,
   ResolveCheckedSnapshotInput,
   ResolveCheckedSnapshotResult,
+  TaCapabilityTier,
+  TaPoolMode,
+  AccessRequestScope,
 } from "../agent_core/index.js";
 import type { CreateRaxCmpConfigInput, RaxCmpConfig } from "./cmp-config.js";
 
@@ -326,6 +332,22 @@ export interface RaxCmpRecoverResult {
   metadata?: Record<string, unknown>;
 }
 
+export interface RaxCmpRoleCapabilityAccessInput {
+  session: RaxCmpSession;
+  role: CmpFiveAgentRole;
+  payload: {
+    agentId: string;
+    capabilityKey: string;
+    reason: string;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    taskContext?: Record<string, unknown>;
+    requestedScope?: AccessRequestScope;
+    requestedDurationMs?: number;
+    metadata?: Record<string, unknown>;
+  };
+}
+
 export interface RaxCmpSmokeCheck {
   id: string;
   gate?: "truth" | "recovery" | "manual_control" | "delivery" | "lineage" | "final_acceptance";
@@ -384,6 +406,14 @@ export interface RaxCmpDispatchInput {
   control?: RaxCmpManualControlInput;
 }
 
+export interface RaxCmpPeerApprovalInput {
+  session: RaxCmpSession;
+  approvalId: string;
+  actorAgentId: string;
+  decision: "approved" | "rejected";
+  note?: string;
+}
+
 export interface RaxCmpRuntimeLike {
   bootstrapCmpProjectInfra(
     input: BootstrapCmpProjectInfraInput,
@@ -394,6 +424,26 @@ export interface RaxCmpRuntimeLike {
   getCmpRuntimeProjectRecoverySummary?(projectId: string): CmpRuntimeProjectRecoverySummary | undefined;
   getCmpRuntimeDeliveryTruthSummary?(projectId: string): CmpRuntimeDeliveryTruthSummary;
   getCmpFiveAgentRuntimeSummary?(agentId?: string): CmpFiveAgentSummary;
+  resolveCmpFiveAgentCapabilityAccess?(input: {
+    role: CmpFiveAgentRole;
+    sessionId: string;
+    runId: string;
+    agentId: string;
+    capabilityKey: string;
+    reason: string;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    taskContext?: Record<string, unknown>;
+    requestedScope?: AccessRequestScope;
+    requestedDurationMs?: number;
+    metadata?: Record<string, unknown>;
+  }): Promise<CmpFiveAgentCapabilityAccessResolution> | CmpFiveAgentCapabilityAccessResolution;
+  reviewCmpPeerExchangeApproval?(input: {
+    approvalId: string;
+    actorAgentId: string;
+    decision: "approved" | "rejected";
+    note?: string;
+  }): Promise<CmpPeerExchangeApprovalRecord> | CmpPeerExchangeApprovalRecord;
   advanceCmpMqDeliveryTimeouts?(input?: { projectId?: string; now?: string }): {
     projectId?: string;
     processedCount: number;
@@ -431,6 +481,8 @@ export interface RaxCmpFacade {
   resolve(input: RaxCmpResolveInput): Promise<ResolveCheckedSnapshotResult>;
   materialize(input: RaxCmpMaterializeInput): Promise<MaterializeContextPackageResult>;
   dispatch(input: RaxCmpDispatchInput): Promise<DispatchContextPackageResult>;
+  resolveRoleCapabilityAccess(input: RaxCmpRoleCapabilityAccessInput): Promise<CmpFiveAgentCapabilityAccessResolution>;
+  approvePeerExchange(input: RaxCmpPeerApprovalInput): Promise<CmpPeerExchangeApprovalRecord>;
   requestHistory(input: RaxCmpRequestHistoryInput): Promise<RequestHistoricalContextResult>;
   smoke(input: RaxCmpSmokeInput): Promise<RaxCmpSmokeResult>;
 }

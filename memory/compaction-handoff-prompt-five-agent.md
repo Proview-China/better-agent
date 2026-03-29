@@ -6,72 +6,91 @@
 
 ---
 
-当前唯一目标是继续在 `/home/proview/Desktop/Praxis_series/Praxis` 的 `cmp/mp` 分支上推进 `CMP` 五个 agent 的设计与实施准备。
+当前唯一目标是继续在 `/home/proview/Desktop/Praxis_series/Praxis` 的 `cmp/mp` 分支上推进 `CMP` 五个 agent 的下一阶段工作。
+
+注意：
+
+- 现在不是回去补 `CMP` 非五-agent 底座
+- 也不是开始 `MP`
+- 也不是继续泛泛盘问
+- 当前阶段已经切到：
+  - 五套角色配置
+  - `TAP -> CMP` 基础能力接线
+  - 受控联调准备
 
 请先读取并对齐下面这些文件：
 
 - [memory/current-context.md](/home/proview/Desktop/Praxis_series/Praxis/memory/current-context.md)
 - [docs/ability/44-cmp-five-agent-implementation-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/44-cmp-five-agent-implementation-outline.md)
+- [docs/ability/45-cmp-five-agent-configuration-and-controlled-reintegration-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/45-cmp-five-agent-configuration-and-controlled-reintegration-outline.md)
 - [docs/ability/cmp-five-agent-implementation-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-implementation-task-pack/README.md)
-- [docs/ability/cmp-five-agent-implementation-task-pack/part0-program-control/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-implementation-task-pack/part0-program-control/README.md)
-- [docs/ability/cmp-five-agent-implementation-task-pack/part1-icma-and-ingress-runtime/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-implementation-task-pack/part1-icma-and-ingress-runtime/README.md)
-- [docs/ability/cmp-five-agent-implementation-task-pack/part2-iterator-and-checker-runtime/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-implementation-task-pack/part2-iterator-and-checker-runtime/README.md)
-- [docs/ability/cmp-five-agent-implementation-task-pack/part3-dbagent-and-package-runtime/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-implementation-task-pack/part3-dbagent-and-package-runtime/README.md)
-- [docs/ability/cmp-five-agent-implementation-task-pack/part4-dispatcher-and-lineage-delivery/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-implementation-task-pack/part4-dispatcher-and-lineage-delivery/README.md)
-- [docs/ability/cmp-five-agent-implementation-task-pack/part5-passive-flow-checkpoint-and-override/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-implementation-task-pack/part5-passive-flow-checkpoint-and-override/README.md)
-- [docs/ability/cmp-five-agent-implementation-task-pack/part6-final-integration-and-five-agent-gates/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-implementation-task-pack/part6-final-integration-and-five-agent-gates/README.md)
+- [docs/ability/cmp-five-agent-configuration-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-configuration-task-pack/README.md)
 
-当前已经确认的关键设计结论：
+当前已经确认的关键事实：
 
-1. 五个 agent 为：
+1. 五个 agent 的 runtime 首轮骨架已经真正进主链。
+2. `core_agent -> rax.cmp -> cmp-runtime -> five-agent runtime` 已经能跑。
+3. 已经通过：
+   - `npm run typecheck`
+   - `npm run build`
+   - `npx tsx --test src/agent_core/cmp-five-agent/*.test.ts`
+   - `npx tsx --test src/agent_core/runtime.test.ts src/rax/cmp-facade.test.ts src/rax/cmp-runtime.test.ts`
+4. 五个 agent 名单固定为：
    - `ICMA`
    - `Iterator`
    - `Checker`
    - `DBAgent`
    - `Dispatcher`
-2. 五个 agent 第一版按“强隔离、未来可进程化”路线设计。
-3. 五个 agent 都应有自己的 `Agent_Loop_Runtime`。
-4. 第一条正式主线先做主动链：
-   - `ICMA -> Iterator -> Checker -> DBAgent -> Dispatcher`
-5. `ICMA` 是输入内容管理 agent，默认做中等语义块整理，可挂受控 `system fragment`，走规则生成片段路线。
-6. `Iterator` 负责推进到可审查状态，不负责最终 truth 裁决。
-7. `Checker` 负责增删拆合并裁决，优先看任务相关性；跨层 promote 默认由直属父节点拍板。
-8. `DBAgent` 主产物是 `ContextPackage`，附产物是 `Task` 级 `Skill Snapshot`；二者关系是 package 为主、snapshot 为附属引用。
-9. `Dispatcher` 负责主 agent 回填、子 agent 播种、同父平级受控交换，delivery 回执至少做到：
-   - `delivered`
-   - `acknowledged`
-10. 同父平级可交换，但必须先经直属父节点批准，且走高信噪比可消费通道。
-11. 不同父节点子树默认硬隔离。
-12. active/passive 默认混合常开；被动请求第一版默认由 `DBAgent` 直接接单，再由 `Dispatcher` 送回。
-13. 每个角色都允许 checkpoint / recovery。
-14. 每个角色都允许 human override，但必须强审计。
-15. debug/admin 直达角色时默认允许：
-   - `pause`
-   - `resume`
-   - `retry`
-   - `rebuild`
-16. 五个 agent 的能力面走 `TAP` 角色差异化强控。
+5. 第一成功标准仍然是：
+   - 主动主链稳定
+6. `ICMA` 只能挂受控 fragment，不改根 `system prompt`。
+7. 父 `DBAgent` 是主审和主出包者，但父 `Checker` 仍负责前置重整、证据辅助、历史检查和面向子任务的精裁建议。
+8. 父节点默认先粗裁，子节点再由自己的 `Checker` 精裁。
+9. 子 `CMP` 是独立主链，只继承父节点种子。
+10. 子节点启动后允许中途再次向父节点受控申请补包。
+11. 该再干预请求默认先打到父 `DBAgent`，并带：
+   - 缺口说明
+   - 当前状态
+12. 同父平级交换不只在池内闭环批准，第一版应走：
+   - 父 `DBAgent` 先处理
+   - 父 `core_agent` 最终显式批准
+13. 五套角色 prompt / profile / capability contract 必须明确分开。
+14. `TAP` 第一优先先接：
+   - git
+   - db
+   - mq
+   基础能力，再补工具能力。
+15. 下一波执行顺序固定为：
+   - 先配置面
+   - 再联调
+16. 失败恢复策略现在按：
+   - 同链路回卷恢复
+17. 人工 override 第一版阈值很高，只用于极少数只读排障和异常控制。
+18. 观测面第一优先看：
+   - 每角色阶段
+   - 包流向
 
-当前仓库状态补充：
+当前代码相关状态补充：
 
-- `CMP` 非五-agent 公共底座已经基本收口。
-- `core_agent -> rax.cmp -> cmp-runtime -> shared infra` 主链已经可运行。
-- `section-first`、`DB-first + git rebuild fallback`、`MQ delivery truth`、`recovery reconciliation` 都已进入主链。
-- 当前还有 TAP 侧未提交文档在工作区里，不要误卷入五-agent提交。
-- `.parallel-worktrees/` 是临时目录，提交前必须排除。
+- [runtime.ts](/home/proview/Desktop/Praxis_series/Praxis/src/agent_core/runtime.ts) 已经挂上五-agent runtime 元数据和 snapshot。
+- [cmp-five-agent](/home/proview/Desktop/Praxis_series/Praxis/src/agent_core/cmp-five-agent/index.ts) 是当前五-agent 代码入口。
+- [cmp-types.ts](/home/proview/Desktop/Praxis_series/Praxis/src/rax/cmp-types.ts)、[cmp-runtime.ts](/home/proview/Desktop/Praxis_series/Praxis/src/rax/cmp-runtime.ts)、[cmp-facade.ts](/home/proview/Desktop/Praxis_series/Praxis/src/rax/cmp-facade.ts) 已经开始提供 five-agent summary 的只读可见性。
 
-接下来的工作顺序应当是：
+压缩后回来，直接做下面这些事：
 
-1. 继续问答，把剩余五-agent细节钉死
-2. 持续补 `44-cmp-five-agent-implementation-outline.md`
-3. 基于 task pack 拆细正式任务清单
-4. 再开始五个 agent 的正式代码实现
+1. 按 [45-cmp-five-agent-configuration-and-controlled-reintegration-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/45-cmp-five-agent-configuration-and-controlled-reintegration-outline.md) 对齐目标
+2. 按 [cmp-five-agent-configuration-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-five-agent-configuration-task-pack/README.md) 执行
+3. 第一波先做五套角色配置
+4. 第二波接 `TAP -> CMP` 的 `git/db/mq` 基础能力
+5. 第三波做父子再干预、父主 agent 显式批准 peer exchange
+6. 第四波做同链路回卷恢复和角色阶段/包流向观测
 
 要求：
 
 - 使用中文
 - 不要跳回 `CMP` 非五-agent 公共底座
-- 不要把 TAP 文档脏改动误当成五-agent主线代码
-- 优先维持五个角色的强隔离和未来可进程化边界
+- 不要把 `TAP` 文档脏改动混进当前阶段的 `CMP` 主线判断里
+- 继续保持五个角色的强隔离和未来可进程化边界
+- 先配置，再联调
 
 ---

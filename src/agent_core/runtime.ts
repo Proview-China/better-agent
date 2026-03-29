@@ -119,7 +119,10 @@ import {
 } from "./cmp-runtime/index.js";
 import {
   createCmpFiveAgentRuntime,
+  createCmpRoleTapProfile,
   createCheckerCheckedSnapshotMetadata,
+  type CmpFiveAgentCapabilityAccessResolution,
+  type CmpFiveAgentRole,
   type CmpFiveAgentRuntime,
   type CmpFiveAgentRuntimeSnapshot,
   type CmpFiveAgentSummary,
@@ -146,6 +149,7 @@ import {
   type TaHumanGateEvent,
   type TaHumanGateState,
   type TaPendingReplay,
+  type ResolveCapabilityAccessResult,
   materializeProvisionAssetActivation,
 } from "./ta-pool-runtime/index.js";
 import { createReviewerRuntime, ReviewerRuntime } from "./ta-pool-review/index.js";
@@ -1182,6 +1186,78 @@ export class AgentCoreRuntime {
 
   getCmpFiveAgentRuntimeSummary(agentId?: string): CmpFiveAgentSummary {
     return this.#cmpFiveAgentRuntime.createSummary(agentId);
+  }
+
+  resolveCmpFiveAgentCapabilityAccess(input: {
+    role: CmpFiveAgentRole;
+    sessionId: string;
+    runId: string;
+    agentId: string;
+    capabilityKey: string;
+    reason: string;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    taskContext?: Record<string, unknown>;
+    requestedScope?: AccessRequestScope;
+    requestedDurationMs?: number;
+    metadata?: Record<string, unknown>;
+  }): CmpFiveAgentCapabilityAccessResolution {
+    const profile = createCmpRoleTapProfile(input.role);
+    const gateway = new TaControlPlaneGateway({ profile });
+    const resolution: ResolveCapabilityAccessResult = gateway.resolveCapabilityAccess({
+      sessionId: input.sessionId,
+      runId: input.runId,
+      agentId: input.agentId,
+      capabilityKey: input.capabilityKey,
+      reason: input.reason,
+      requestedTier: input.requestedTier,
+      mode: input.mode,
+      taskContext: input.taskContext,
+      requestedScope: input.requestedScope,
+      requestedDurationMs: input.requestedDurationMs,
+      metadata: {
+        cmpRole: input.role,
+        ...(input.metadata ?? {}),
+      },
+    });
+    return {
+      role: input.role,
+      profile,
+      resolution,
+    };
+  }
+
+  reviewCmpPeerExchangeApproval(input: {
+    approvalId: string;
+    actorAgentId: string;
+    decision: "approved" | "rejected";
+    note?: string;
+    decidedAt?: string;
+  }) {
+    const approval = this.#cmpFiveAgentRuntime.dispatcher.approvePeerExchange({
+      approvalId: input.approvalId,
+      actorAgentId: input.actorAgentId,
+      decision: input.decision,
+      note: input.note,
+      decidedAt: input.decidedAt ?? new Date().toISOString(),
+    });
+
+    for (const [dispatchId, receipt] of this.#cmpDispatchReceipts.entries()) {
+      if (receipt.metadata?.cmpPeerExchangeApprovalId !== approval.approvalId) {
+        continue;
+      }
+      this.#cmpDispatchReceipts.set(dispatchId, createDispatchReceipt({
+        ...receipt,
+        metadata: {
+          ...(receipt.metadata ?? {}),
+          cmpPeerExchangeApprovalStatus: approval.status,
+          cmpPeerExchangeApprovedAt: approval.approvedAt,
+          cmpPeerExchangeApprovedBy: approval.approvedByAgentId,
+        },
+      }));
+    }
+
+    return approval;
   }
 
   createCmpProjectInfraBootstrapPlan(
@@ -2396,6 +2472,7 @@ export class AgentCoreRuntime {
         cmpDispatcherRecordId: dispatcherRecorded.loop.loopId,
         cmpDispatcherPackageMode: dispatcherRecorded.loop.packageMode,
         cmpPeerExchangeApprovalId: dispatcherRecorded.peerApproval?.approvalId,
+        cmpPeerExchangeApprovalStatus: dispatcherRecorded.peerApproval?.status,
       },
     });
     this.#cmpDispatchReceipts.set(enrichedReceipt.dispatchId, enrichedReceipt);
@@ -2570,6 +2647,29 @@ export class AgentCoreRuntime {
       });
     }
 
+    const approvalDecision = normalized.targetKind === "peer"
+      ? normalized.metadata?.cmpPeerExchangeDecision
+      : undefined;
+    const approvalActorId = normalized.targetKind === "peer"
+      ? normalized.metadata?.cmpPeerExchangeActorAgentId
+      : undefined;
+    if (
+      dispatcherRecorded.peerApproval
+      && (approvalDecision === "approved" || approvalDecision === "rejected")
+      && typeof approvalActorId === "string"
+      && approvalActorId.trim()
+    ) {
+      this.reviewCmpPeerExchangeApproval({
+        approvalId: dispatcherRecorded.peerApproval.approvalId,
+        actorAgentId: approvalActorId,
+        decision: approvalDecision,
+        note: typeof normalized.metadata?.cmpPeerExchangeDecisionNote === "string"
+          ? normalized.metadata.cmpPeerExchangeDecisionNote
+          : undefined,
+        decidedAt: createdAt,
+      });
+    }
+
     return {
       status: "dispatched",
       receipt: enrichedReceipt,
@@ -2602,6 +2702,29 @@ export class AgentCoreRuntime {
       hasGitCheckedSnapshot: true,
     });
     const requesterLineage = this.#requireCmpLineage(normalized.requesterAgentId);
+    const reinterventionGapSummary = typeof normalized.metadata?.cmpReinterventionGapSummary === "string"
+      ? normalized.metadata.cmpReinterventionGapSummary.trim()
+      : "";
+    const reinterventionCurrentStateSummary = typeof normalized.metadata?.cmpCurrentStateSummary === "string"
+      ? normalized.metadata.cmpCurrentStateSummary.trim()
+      : "";
+    const reinterventionRequest = requesterLineage.parentAgentId && reinterventionGapSummary && reinterventionCurrentStateSummary
+      ? this.#cmpFiveAgentRuntime.dbagent.requestReintervention({
+        requestId: randomUUID(),
+        childAgentId: normalized.requesterAgentId,
+        parentAgentId: requesterLineage.parentAgentId,
+        gapSummary: reinterventionGapSummary,
+        currentStateSummary: reinterventionCurrentStateSummary,
+        currentPackageId: typeof normalized.metadata?.cmpCurrentPackageId === "string"
+          ? normalized.metadata.cmpCurrentPackageId
+          : undefined,
+        createdAt: new Date().toISOString(),
+        metadata: {
+          source: "cmp-runtime-passive-reintervention",
+          reason: normalized.reason,
+        },
+      })
+      : undefined;
     const runtimeProjection = this.#requireCmpRuntimeProjectionForSnapshot({
       projection,
       snapshot,
@@ -2721,6 +2844,16 @@ export class AgentCoreRuntime {
       contextPackage,
       createdAt: contextPackage.createdAt,
     });
+    const servedReintervention = reinterventionRequest
+      ? this.#cmpFiveAgentRuntime.dbagent.serveReintervention({
+        requestId: reinterventionRequest.requestId,
+        servedPackageId: contextPackage.packageId,
+        resolvedAt: contextPackage.createdAt,
+        metadata: {
+          packageFamilyId: dbagentPassive.family.familyId,
+        },
+      })
+      : undefined;
     const dispatcherPassive = this.#cmpFiveAgentRuntime.dispatcher.deliverPassiveReturn({
       loopId: randomUUID(),
       request: normalized,
@@ -2802,6 +2935,7 @@ export class AgentCoreRuntime {
         cmpFiveAgent: {
           dbAgentRecordId: dbagentPassive.loop.loopId,
           dispatcherRecordId: dispatcherPassive.loopId,
+          reinterventionRequestId: servedReintervention?.requestId,
         },
       },
     };

@@ -92,4 +92,6 @@ test("createRaxCmpRuntime exposes full cmp workflow surface through agent_core r
   assert.equal(typeof runtime.resolveCheckedSnapshot, "function");
   assert.equal(typeof runtime.materializeContextPackage, "function");
   assert.equal(typeof runtime.dispatchContextPackage, "function");
+  assert.equal(typeof runtime.getCmpFiveAgentRuntimeSummary, "function");
+  assert.equal(typeof runtime.resolveCmpFiveAgentCapabilityAccess, "function");
 });

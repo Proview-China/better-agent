@@ -1,3 +1,4 @@
+import { getCmpRoleConfiguration } from "./configuration.js";
 import {
   createCmpFiveAgentLoopRecord,
   createCmpRoleCheckpointRecord,
@@ -43,6 +44,7 @@ export class CmpIcmaRuntime {
   readonly #checkpoints = new Map<string, CmpRoleCheckpointRecord>();
 
   capture(input: CmpIcmaIngestInput): CmpIcmaRuntimeResult {
+    const configuration = getCmpRoleConfiguration("icma");
     const fragmentKinds = normalizeFragmentKinds(input.ingest.metadata?.cmpSystemFragmentKinds);
     const chunkId = `${input.loopId}:chunk:0`;
     const fragmentIds = fragmentKinds.map((_, index) => `${input.loopId}:fragment:${index}`);
@@ -53,7 +55,26 @@ export class CmpIcmaRuntime {
       materialRefs: input.ingest.materials.map((material) => material.ref),
       createdAt: input.createdAt,
       metadata: {
-        chunking: "task_intent",
+        chunking: {
+          strategy: "task_intent",
+          granularity: "medium_semantic",
+          preserveHighSignal: true,
+        },
+        fragmentPolicy: {
+          systemPolicy: configuration.promptPack.systemPolicy,
+          rootSystemMutationAllowed: false,
+          allowedKinds: fragmentKinds,
+        },
+        seedAssembly: {
+          discipline: "child_seed_enters_child_icma_only",
+          target: "child_icma",
+          mode: "controlled_seed",
+          rootSystemMutationAllowed: false,
+        },
+        promptPackId: configuration.promptPack.promptPackId,
+        profileId: configuration.profile.profileId,
+        capabilityContractId: configuration.capabilityContract.contractId,
+        handoffContract: configuration.promptPack.handoffContract,
       },
     };
     const fragments = fragmentKinds.map((kind, index) => ({
@@ -63,6 +84,12 @@ export class CmpIcmaRuntime {
       content: `${kind}:${input.ingest.taskSummary}`,
       lifecycle: "task_phase" as const,
       createdAt: input.createdAt,
+      metadata: {
+        templateId: `${configuration.promptPack.promptPackId}:${kind}`,
+        templateClass: "append_only_system_fragment",
+        rootSystemMutationAllowed: false,
+        systemPolicy: configuration.promptPack.systemPolicy,
+      },
     }));
     const loop: CmpIcmaRecord = {
       ...createCmpFiveAgentLoopRecord({
@@ -75,6 +102,22 @@ export class CmpIcmaRuntime {
         updatedAt: input.createdAt,
         metadata: {
           gitWriteAccess: false,
+          promptPackId: configuration.promptPack.promptPackId,
+          profileId: configuration.profile.profileId,
+          capabilityContractId: configuration.capabilityContract.contractId,
+          fragmentPolicy: {
+            systemPolicy: configuration.promptPack.systemPolicy,
+            rootSystemMutationAllowed: false,
+            allowedKinds: fragmentKinds,
+            templateIds: fragments.map((fragment) => fragment.metadata?.templateId),
+            lifecycle: "task_phase",
+          },
+          seedAssembly: {
+            discipline: "child_seed_enters_child_icma_only",
+            target: "child_icma",
+            mode: "controlled_seed",
+            rootSystemMutationAllowed: false,
+          },
         },
       }),
       chunkIds: [chunkId],
@@ -124,6 +167,15 @@ export class CmpIcmaRuntime {
       metadata: {
         ...(current.metadata ?? {}),
         emittedEventIds: uniqueStrings(input.eventIds),
+        handoffContract: getCmpRoleConfiguration("icma").promptPack.handoffContract,
+        emittedEventCount: uniqueStrings(input.eventIds).length,
+        fragmentPolicy: current.metadata?.fragmentPolicy,
+        seedAssembly: current.metadata?.seedAssembly,
+        emitContract: {
+          target: "iterator",
+          preservesFragmentPolicy: true,
+          preservesSeedAssembly: true,
+        },
       },
     };
     this.#records.set(next.loopId, next);

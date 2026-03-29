@@ -25,6 +25,58 @@ function inferPackageMode(input: CmpDispatcherDispatchInput): CmpDispatcherRecor
   return "lineage_delivery";
 }
 
+function createRoutePolicyMetadata(input: {
+  targetKind: CmpDispatcherDispatchInput["dispatch"]["targetKind"] | "core_agent_return";
+  packageMode: CmpDispatcherRecord["packageMode"];
+  peerApproval?: CmpPeerExchangeApprovalRecord;
+}): Record<string, unknown> {
+  if (input.targetKind === "child") {
+    return {
+      routePolicy: {
+        targetKind: input.targetKind,
+        packageMode: input.packageMode,
+        targetIngress: "child_icma_only",
+        childSeedPolicy: {
+          enforced: true,
+          requiredIngress: "child_icma_only",
+        },
+      },
+    };
+  }
+
+  if (input.targetKind === "peer" && input.peerApproval) {
+    return {
+      routePolicy: {
+        targetKind: input.targetKind,
+        packageMode: input.packageMode,
+        targetIngress: "peer_exchange",
+        peerApprovalRequired: true,
+        approvalId: input.peerApproval.approvalId,
+        approvalStatus: input.peerApproval.status,
+        approvalChain: input.peerApproval.approvalChain,
+      },
+    };
+  }
+
+  if (input.targetKind === "core_agent" || input.targetKind === "core_agent_return") {
+    return {
+      routePolicy: {
+        targetKind: "core_agent",
+        packageMode: input.packageMode,
+        targetIngress: "core_agent_return",
+      },
+    };
+  }
+
+  return {
+    routePolicy: {
+      targetKind: input.targetKind,
+      packageMode: input.packageMode,
+      targetIngress: "lineage_delivery",
+    },
+  };
+}
+
 export interface CmpDispatcherRuntimeResult {
   loop: CmpDispatcherRecord;
   peerApproval?: CmpPeerExchangeApprovalRecord;
@@ -34,6 +86,10 @@ export class CmpDispatcherRuntime {
   readonly #records = new Map<string, CmpDispatcherRecord>();
   readonly #checkpoints = new Map<string, CmpRoleCheckpointRecord>();
   readonly #peerApprovals = new Map<string, CmpPeerExchangeApprovalRecord>();
+
+  get peerApprovals(): CmpPeerExchangeApprovalRecord[] {
+    return [...this.#peerApprovals.values()];
+  }
 
   dispatch(input: CmpDispatcherDispatchInput): CmpDispatcherRuntimeResult {
     const packageMode = inferPackageMode(input);
@@ -46,8 +102,26 @@ export class CmpDispatcherRuntime {
         packageId: input.contextPackage.packageId,
         createdAt: input.createdAt,
         mode: "explicit_once",
+        status: "pending_parent_core_approval",
+        approvalChain: "parent_dbagent_then_parent_core_agent",
+        targetIngress: "peer_exchange",
+        packageMode: "peer_exchange_slim",
+        currentStateSummary: String(input.dispatch.metadata?.currentStateSummary ?? "pending peer exchange approval"),
         metadata: {
-          approvalStatus: "pending",
+          approval: {
+            explicit: true,
+            status: "pending_parent_core_approval",
+            approvalChain: "parent_dbagent_then_parent_core_agent",
+            mode: "explicit_once",
+          },
+          target: {
+            ingress: "peer_exchange",
+            packageMode: "peer_exchange_slim",
+            targetAgentId: input.dispatch.targetAgentId,
+          },
+          currentState: {
+            summary: String(input.dispatch.metadata?.currentStateSummary ?? "pending peer exchange approval"),
+          },
         },
       })
       : undefined;
@@ -62,6 +136,13 @@ export class CmpDispatcherRuntime {
         metadata: {
           approvalStatus: peerApproval ? "pending" : undefined,
           childSeedsEnterIcmaOnly: input.dispatch.targetKind === "child",
+          targetIngress: input.dispatch.targetKind === "child" ? "child_icma_only" : input.dispatch.targetKind === "peer" ? "peer_exchange" : undefined,
+          peerApprovalRequired: input.dispatch.targetKind === "peer",
+          ...createRoutePolicyMetadata({
+            targetKind: input.dispatch.targetKind,
+            packageMode,
+            peerApproval,
+          }),
         },
       }),
       dispatchId: input.receipt.dispatchId,
@@ -106,6 +187,11 @@ export class CmpDispatcherRuntime {
         updatedAt: input.createdAt,
         metadata: {
           passiveReturned: true,
+          targetIngress: "core_agent_return",
+          ...createRoutePolicyMetadata({
+            targetKind: "core_agent_return",
+            packageMode: "historical_reply_return",
+          }),
         },
       }),
       dispatchId: `${input.loopId}:passive`,
@@ -129,6 +215,73 @@ export class CmpDispatcherRuntime {
     });
     this.#checkpoints.set(checkpoint.checkpointId, checkpoint);
     return loop;
+  }
+
+  approvePeerExchange(input: {
+    approvalId: string;
+    actorAgentId: string;
+    decision: "approved" | "rejected";
+    decidedAt: string;
+    note?: string;
+  }): CmpPeerExchangeApprovalRecord {
+    const current = this.#peerApprovals.get(input.approvalId);
+    if (!current) {
+      throw new Error(`CMP peer approval ${input.approvalId} was not found.`);
+    }
+    const next = createCmpPeerExchangeApprovalRecord({
+      ...current,
+      status: input.decision,
+      approvedAt: input.decidedAt,
+      approvedByAgentId: input.actorAgentId,
+      decisionNote: input.note,
+      metadata: {
+        ...(current.metadata ?? {}),
+        approval: {
+          explicit: true,
+          status: input.decision,
+          approvalChain: current.approvalChain,
+          mode: current.mode,
+          decidedAt: input.decidedAt,
+          decidedByAgentId: input.actorAgentId,
+          decisionNote: input.note,
+        },
+      },
+    });
+    this.#peerApprovals.set(next.approvalId, next);
+    for (const [loopId, record] of this.#records.entries()) {
+      if (record.packageId !== current.packageId || record.packageMode !== "peer_exchange_slim") {
+        continue;
+      }
+      this.#records.set(loopId, {
+        ...record,
+        updatedAt: input.decidedAt,
+        metadata: {
+          ...(record.metadata ?? {}),
+          approvalStatus: input.decision,
+          ...createRoutePolicyMetadata({
+            targetKind: "peer",
+            packageMode: record.packageMode,
+            peerApproval: next,
+          }),
+        },
+      });
+    }
+    const checkpoint = createCmpRoleCheckpointRecord({
+      checkpointId: `${input.approvalId}:cp:${input.decision}`,
+      role: "dispatcher",
+      agentId: current.sourceAgentId,
+      stage: "collect_receipt",
+      createdAt: input.decidedAt,
+      eventRef: current.packageId,
+      loopId: undefined,
+      metadata: {
+        source: "cmp-five-agent-dispatcher-peer-approval",
+        decision: input.decision,
+        actorAgentId: input.actorAgentId,
+      },
+    });
+    this.#checkpoints.set(checkpoint.checkpointId, checkpoint);
+    return next;
   }
 
   createSnapshot(agentId?: string): CmpDispatcherRuntimeSnapshot {

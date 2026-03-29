@@ -100,6 +100,12 @@ export function createRaxCmpRuntime(input: CreateRaxCmpRuntimeInput): RaxCmpRunt
     getCmpFiveAgentRuntimeSummary(agentId) {
       return agentCoreRuntime.getCmpFiveAgentRuntimeSummary(agentId);
     },
+    resolveCmpFiveAgentCapabilityAccess(input) {
+      return agentCoreRuntime.resolveCmpFiveAgentCapabilityAccess(input);
+    },
+    reviewCmpPeerExchangeApproval(input) {
+      return agentCoreRuntime.reviewCmpPeerExchangeApproval(input);
+    },
     advanceCmpMqDeliveryTimeouts(input) {
       return agentCoreRuntime.advanceCmpMqDeliveryTimeouts(input);
     },

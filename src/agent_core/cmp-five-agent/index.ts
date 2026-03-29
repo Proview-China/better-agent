@@ -1,5 +1,7 @@
 export * from "./types.js";
 export * from "./shared.js";
+export * from "./configuration.js";
+export * from "./observability.js";
 export * from "./icma-runtime.js";
 export * from "./iterator-checker-runtime.js";
 export * from "./dbagent-runtime.js";

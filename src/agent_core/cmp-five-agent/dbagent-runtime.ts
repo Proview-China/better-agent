@@ -1,4 +1,5 @@
 import {
+  createCmpReinterventionRequestRecord,
   createCmpFiveAgentLoopRecord,
   createCmpPackageFamilyRecord,
   createCmpPromoteReviewRecord,
@@ -11,6 +12,7 @@ import type {
   CmpDbAgentPassiveInput,
   CmpDbAgentRecord,
   CmpDbAgentRuntimeSnapshot,
+  CmpReinterventionRequestRecord,
   CmpParentPromoteReviewRecord,
   CmpRoleCheckpointRecord,
   CmpTaskSkillSnapshot,
@@ -20,12 +22,32 @@ export function createCmpTimelinePackageRef(contextPackageRef: string): string {
   return `${contextPackageRef}:timeline`;
 }
 
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function normalizeCurrentStateRefs(input: {
+  currentPackageId?: string;
+  metadata?: Record<string, unknown>;
+}): string[] {
+  const fromMetadata = Array.isArray(input.metadata?.currentStateRefs)
+    ? input.metadata.currentStateRefs.filter((value): value is string => typeof value === "string")
+    : [];
+  const refs = input.currentPackageId ? [input.currentPackageId, ...fromMetadata] : fromMetadata;
+  return uniqueStrings(refs);
+}
+
 export class CmpDbAgentRuntime {
   readonly #records = new Map<string, CmpDbAgentRecord>();
   readonly #checkpoints = new Map<string, CmpRoleCheckpointRecord>();
   readonly #packageFamilies = new Map<string, ReturnType<typeof createCmpPackageFamilyRecord>>();
   readonly #taskSnapshots = new Map<string, CmpTaskSkillSnapshot>();
   readonly #parentPromoteReviews = new Map<string, CmpParentPromoteReviewRecord>();
+  readonly #reinterventionRequests = new Map<string, CmpReinterventionRequestRecord>();
+
+  get reinterventionRequests(): CmpReinterventionRequestRecord[] {
+    return [...this.#reinterventionRequests.values()];
+  }
 
   materialize(input: CmpDbAgentMaterializeInput): CmpDbAgentMaterializeResult {
     const taskSnapshot: CmpTaskSkillSnapshot = createCmpSkillSnapshotRecord({
@@ -60,6 +82,13 @@ export class CmpDbAgentRuntime {
         updatedAt: input.createdAt,
         metadata: {
           dbWriteAuthority: "dbagent_only",
+          packageAuthority: "dbagent_primary_packer",
+          packageBundle: {
+            topology: "active_plus_timeline_plus_task_snapshots",
+            primaryPackageId: input.contextPackage.packageId,
+            timelinePackageId: family.timelinePackageId,
+            taskSnapshotIds: family.taskSnapshotIds,
+          },
         },
       }),
       projectionId: input.projectionId,
@@ -126,6 +155,14 @@ export class CmpDbAgentRuntime {
         updatedAt: input.createdAt,
         metadata: {
           passiveDefaultPayload: "ContextPackage",
+          packageAuthority: "dbagent_primary_packer",
+          packageBundle: {
+            topology: "passive_reply_plus_timeline_plus_task_snapshots",
+            primaryPackageId: input.contextPackage.packageId,
+            timelinePackageId: family.timelinePackageId,
+            taskSnapshotIds: family.taskSnapshotIds,
+            passiveReplyPackageId: input.contextPackage.packageId,
+          },
         },
       }),
       projectionId: input.contextPackage.sourceProjectionId,
@@ -178,6 +215,12 @@ export class CmpDbAgentRuntime {
         createdAt: input.createdAt,
         metadata: {
           source: "cmp-five-agent-dbagent-parent-review",
+          parentPrimaryReviewer: true,
+          reviewPolicy: {
+            primaryReviewer: "dbagent",
+            parentReviewEntry: true,
+            reviewChain: "child_checker_then_parent_dbagent",
+          },
         },
       }),
       reviewedAt: input.createdAt,
@@ -191,6 +234,110 @@ export class CmpDbAgentRuntime {
     return review;
   }
 
+  requestReintervention(input: {
+    requestId: string;
+    childAgentId: string;
+    parentAgentId: string;
+    gapSummary: string;
+    currentStateSummary: string;
+    currentPackageId?: string;
+    createdAt: string;
+    metadata?: Record<string, unknown>;
+  }): CmpReinterventionRequestRecord {
+    const currentStateRefs = normalizeCurrentStateRefs({
+      currentPackageId: input.currentPackageId,
+      metadata: input.metadata,
+    });
+    const request = createCmpReinterventionRequestRecord({
+      requestId: input.requestId,
+      parentAgentId: input.parentAgentId,
+      childAgentId: input.childAgentId,
+      requestedByRole: "dbagent",
+      status: "pending_parent_dbagent_review",
+      gapSummary: input.gapSummary,
+      currentStateSummary: input.currentStateSummary,
+      currentPackageId: input.currentPackageId,
+      createdAt: input.createdAt,
+      metadata: {
+        source: "cmp-five-agent-dbagent-reintervention",
+        reinterventionPayload: {
+          gapSummary: input.gapSummary,
+          currentStateSummary: input.currentStateSummary,
+          currentPackageId: input.currentPackageId,
+          currentStateRefs,
+          requestStatus: "pending_parent_dbagent_review",
+        },
+        ...(input.metadata ?? {}),
+      },
+    });
+    this.#reinterventionRequests.set(request.requestId, request);
+    const checkpoint = createCmpRoleCheckpointRecord({
+      checkpointId: `${input.requestId}:cp:reintervention:pending`,
+      role: "dbagent",
+      agentId: input.parentAgentId,
+      stage: "project",
+      createdAt: input.createdAt,
+      eventRef: input.requestId,
+      loopId: undefined,
+      metadata: {
+        source: "cmp-five-agent-dbagent-reintervention",
+        requestStatus: request.status,
+      },
+    });
+    this.#checkpoints.set(checkpoint.checkpointId, checkpoint);
+    return request;
+  }
+
+  serveReintervention(input: {
+    requestId: string;
+    servedPackageId: string;
+    resolvedAt: string;
+    metadata?: Record<string, unknown>;
+  }): CmpReinterventionRequestRecord {
+    const current = this.#reinterventionRequests.get(input.requestId);
+    if (!current) {
+      throw new Error(`CMP DBAgent reintervention request ${input.requestId} was not found.`);
+    }
+    const next = createCmpReinterventionRequestRecord({
+      ...current,
+      status: "served",
+      resolvedAt: input.resolvedAt,
+      servedPackageId: input.servedPackageId,
+      metadata: {
+        ...(current.metadata ?? {}),
+        reinterventionPayload: {
+          gapSummary: current.gapSummary,
+          currentStateSummary: current.currentStateSummary,
+          currentPackageId: current.currentPackageId,
+          currentStateRefs: normalizeCurrentStateRefs({
+            currentPackageId: current.currentPackageId,
+            metadata: current.metadata,
+          }),
+          requestStatus: "served",
+          servedPackageId: input.servedPackageId,
+          resolvedAt: input.resolvedAt,
+        },
+        ...(input.metadata ?? {}),
+      },
+    });
+    this.#reinterventionRequests.set(next.requestId, next);
+    const checkpoint = createCmpRoleCheckpointRecord({
+      checkpointId: `${input.requestId}:cp:reintervention:served`,
+      role: "dbagent",
+      agentId: current.parentAgentId,
+      stage: "materialize_package",
+      createdAt: input.resolvedAt,
+      eventRef: input.servedPackageId,
+      loopId: undefined,
+      metadata: {
+        source: "cmp-five-agent-dbagent-reintervention",
+        requestStatus: next.status,
+      },
+    });
+    this.#checkpoints.set(checkpoint.checkpointId, checkpoint);
+    return next;
+  }
+
   createSnapshot(agentId?: string): CmpDbAgentRuntimeSnapshot {
     return {
       records: [...this.#records.values()].filter((record) => !agentId || record.agentId === agentId),
@@ -198,6 +345,7 @@ export class CmpDbAgentRuntime {
       packageFamilies: [...this.#packageFamilies.values()],
       taskSnapshots: [...this.#taskSnapshots.values()],
       parentPromoteReviews: [...this.#parentPromoteReviews.values()].filter((record) => !agentId || record.sourceAgentId === agentId || record.targetParentAgentId === agentId),
+      reinterventionRequests: [...this.#reinterventionRequests.values()].filter((record) => !agentId || record.childAgentId === agentId || record.parentAgentId === agentId),
     };
   }
 
@@ -207,12 +355,14 @@ export class CmpDbAgentRuntime {
     this.#packageFamilies.clear();
     this.#taskSnapshots.clear();
     this.#parentPromoteReviews.clear();
+    this.#reinterventionRequests.clear();
     if (!snapshot) return;
     for (const record of snapshot.records) this.#records.set(record.loopId, record);
     for (const record of snapshot.checkpoints) this.#checkpoints.set(record.checkpointId, record);
     for (const record of snapshot.packageFamilies) this.#packageFamilies.set(record.familyId, record);
     for (const record of snapshot.taskSnapshots) this.#taskSnapshots.set(record.snapshotId, record);
     for (const record of snapshot.parentPromoteReviews) this.#parentPromoteReviews.set(record.reviewId, record);
+    for (const record of snapshot.reinterventionRequests) this.#reinterventionRequests.set(record.requestId, record);
   }
 }
 

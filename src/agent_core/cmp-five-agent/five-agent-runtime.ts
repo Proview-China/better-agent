@@ -1,11 +1,12 @@
+import { createCmpFiveAgentConfiguration, type CmpFiveAgentConfiguration } from "./configuration.js";
 import { createCmpDbAgentRuntime, type CmpDbAgentRuntime } from "./dbagent-runtime.js";
 import { createCmpDispatcherRuntime, type CmpDispatcherRuntime } from "./dispatcher-runtime.js";
 import { createCmpIcmaRuntime, type CmpIcmaRuntime } from "./icma-runtime.js";
 import { createCmpIteratorCheckerRuntime, type CmpIteratorCheckerRuntime } from "./iterator-checker-runtime.js";
+import { createCmpFiveAgentSummary } from "./observability.js";
 import type {
   CmpFiveAgentRuntimeSnapshot,
   CmpFiveAgentSummary,
-  CmpFiveAgentRole,
 } from "./types.js";
 
 export interface CmpFiveAgentRuntimeOptions {
@@ -13,6 +14,7 @@ export interface CmpFiveAgentRuntimeOptions {
   iteratorChecker?: CmpIteratorCheckerRuntime;
   dbagent?: CmpDbAgentRuntime;
   dispatcher?: CmpDispatcherRuntime;
+  configuration?: CmpFiveAgentConfiguration;
 }
 
 export class CmpFiveAgentRuntime {
@@ -20,12 +22,14 @@ export class CmpFiveAgentRuntime {
   readonly iteratorChecker: CmpIteratorCheckerRuntime;
   readonly dbagent: CmpDbAgentRuntime;
   readonly dispatcher: CmpDispatcherRuntime;
+  readonly configuration: CmpFiveAgentConfiguration;
 
   constructor(options: CmpFiveAgentRuntimeOptions = {}) {
     this.icma = options.icma ?? createCmpIcmaRuntime();
     this.iteratorChecker = options.iteratorChecker ?? createCmpIteratorCheckerRuntime();
     this.dbagent = options.dbagent ?? createCmpDbAgentRuntime();
     this.dispatcher = options.dispatcher ?? createCmpDispatcherRuntime();
+    this.configuration = options.configuration ?? createCmpFiveAgentConfiguration();
   }
 
   createSnapshot(agentId?: string): CmpFiveAgentRuntimeSnapshot {
@@ -52,6 +56,8 @@ export class CmpFiveAgentRuntime {
       taskSnapshots: dbagent.taskSnapshots,
       promoteRequests: iteratorChecker.promoteRequests,
       parentPromoteReviews: dbagent.parentPromoteReviews,
+      peerApprovals: dispatcher.peerApprovals,
+      reinterventionRequests: dbagent.reinterventionRequests,
     };
   }
 
@@ -74,38 +80,21 @@ export class CmpFiveAgentRuntime {
       packageFamilies: snapshot.packageFamilies,
       taskSnapshots: snapshot.taskSnapshots,
       parentPromoteReviews: snapshot.parentPromoteReviews,
+      reinterventionRequests: snapshot.reinterventionRequests,
     } : undefined);
     this.dispatcher.recover(snapshot ? {
       records: snapshot.dispatcherRecords,
       checkpoints: snapshot.checkpoints.filter((item) => item.role === "dispatcher"),
-      peerApprovals: [],
+      peerApprovals: snapshot.peerApprovals,
     } : undefined);
   }
 
   createSummary(agentId?: string): CmpFiveAgentSummary {
-    const snapshot = this.createSnapshot(agentId);
-    const roleCounts: Record<CmpFiveAgentRole, number> = {
-      icma: snapshot.icmaRecords.length,
-      iterator: snapshot.iteratorRecords.length,
-      checker: snapshot.checkerRecords.length,
-      dbagent: snapshot.dbAgentRecords.length,
-      dispatcher: snapshot.dispatcherRecords.length,
-    };
-    return {
+    return createCmpFiveAgentSummary({
       agentId,
-      roleCounts,
-      latestStages: {
-        icma: snapshot.icmaRecords.at(-1)?.stage,
-        iterator: snapshot.iteratorRecords.at(-1)?.stage,
-        checker: snapshot.checkerRecords.at(-1)?.stage,
-        dbagent: snapshot.dbAgentRecords.at(-1)?.stage,
-        dispatcher: snapshot.dispatcherRecords.at(-1)?.stage,
-      },
-      checkpointCount: snapshot.checkpoints.length,
-      overrideCount: snapshot.overrides.length,
-      peerExchangePendingApprovalCount: snapshot.dispatcherRecords.filter((record) => record.metadata?.approvalStatus === "pending").length,
-      parentPromoteReviewCount: snapshot.parentPromoteReviews.length,
-    };
+      snapshot: this.createSnapshot(agentId),
+      configuration: this.configuration,
+    });
   }
 }
 

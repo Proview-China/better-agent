@@ -11,16 +11,27 @@ import type {
   SnapshotCandidate,
 } from "../cmp-types/index.js";
 import type {
+  AgentCapabilityProfile,
+} from "../ta-pool-types/index.js";
+import type {
+  ResolveCapabilityAccessResult,
+} from "../ta-pool-runtime/index.js";
+import type {
   CmpFiveAgentCheckpointRecord,
   CmpFiveAgentLoopRecord,
   CmpFiveAgentRole,
   CmpOverrideAuditRecord,
   CmpPackageFamilyRecord,
+  CmpReinterventionRequestRecord,
   CmpPeerExchangeApprovalRecord,
   CmpPromoteReviewRecord,
   CmpSkillSnapshotRecord,
 } from "./shared.js";
-export type { CmpFiveAgentRole, CmpPeerExchangeApprovalRecord } from "./shared.js";
+export type {
+  CmpFiveAgentRole,
+  CmpPeerExchangeApprovalRecord,
+  CmpReinterventionRequestRecord,
+} from "./shared.js";
 
 export const CMP_SYSTEM_FRAGMENT_KINDS = ["constraint", "risk", "flow"] as const;
 export type CmpSystemFragmentKind = (typeof CMP_SYSTEM_FRAGMENT_KINDS)[number];
@@ -35,6 +46,81 @@ export type CmpIteratorStage = (typeof CMP_ITERATOR_STAGES)[number];
 export type CmpCheckerStage = (typeof CMP_CHECKER_STAGES)[number];
 export type CmpDbAgentStage = (typeof CMP_DBAGENT_STAGES)[number];
 export type CmpDispatcherStage = (typeof CMP_DISPATCHER_STAGES)[number];
+
+export interface CmpRolePromptPack {
+  role: CmpFiveAgentRole;
+  promptPackId: string;
+  lane: "active_ingress" | "git_progression" | "checked_review" | "db_projection" | "delivery_routing";
+  systemPrompt: string;
+  systemPurpose: string;
+  systemPolicy:
+    | "append_only_fragment"
+    | "decision_separated"
+    | "package_authority"
+    | "routing_only";
+  mission: string;
+  inputContract: string[];
+  guardrails: string[];
+  outputContract: string[];
+  handoffContract: string;
+}
+
+export interface CmpRoleProfile {
+  role: CmpFiveAgentRole;
+  profileId: string;
+  displayName: string;
+  missionLabel: string;
+  responsibilities: string[];
+  hardBoundaries: string[];
+  parentInteraction: string;
+  childInteraction: string;
+  peerInteraction: string;
+  defaultStageOrder: string[];
+  ownsStages: string[];
+}
+
+export interface CmpRoleCapabilitySurface {
+  access:
+    | "none"
+    | "read"
+    | "candidate_only"
+    | "write"
+    | "limited_write"
+    | "primary_write"
+    | "publish_only"
+    | "route_only";
+  allowedOperations: string[];
+  forbiddenOperations: string[];
+  rationale: string;
+}
+
+export interface CmpRoleCapabilityContract {
+  role: CmpFiveAgentRole;
+  contractId: string;
+  systemPromptMutation:
+    | "fragments_only"
+    | "forbidden"
+    | "decision_separated"
+    | "package_authority"
+    | "routing_only";
+  git: CmpRoleCapabilitySurface;
+  db: CmpRoleCapabilitySurface;
+  mq: CmpRoleCapabilitySurface;
+  tapIntegrationMode: "contract_ready";
+}
+
+export interface CmpRoleConfiguration {
+  role: CmpFiveAgentRole;
+  promptPack: CmpRolePromptPack;
+  profile: CmpRoleProfile;
+  capability: CmpRoleCapabilityContract;
+  capabilityContract: CmpRoleCapabilityContract;
+}
+
+export interface CmpFiveAgentConfiguration {
+  version: string;
+  roles: Record<CmpFiveAgentRole, CmpRoleConfiguration>;
+}
 
 export interface CmpRoleCheckpointRecord extends CmpFiveAgentCheckpointRecord {}
 export interface CmpRoleOverrideRecord extends CmpOverrideAuditRecord {}
@@ -173,6 +259,7 @@ export interface CmpDbAgentRuntimeSnapshot {
   packageFamilies: CmpPackageFamilyRecord[];
   taskSnapshots: CmpTaskSkillSnapshot[];
   parentPromoteReviews: CmpParentPromoteReviewRecord[];
+  reinterventionRequests: CmpReinterventionRequestRecord[];
 }
 
 export interface CmpDispatcherRecord extends CmpFiveAgentLoopRecord<CmpDispatcherStage> {
@@ -182,6 +269,8 @@ export interface CmpDispatcherRecord extends CmpFiveAgentLoopRecord<CmpDispatche
   targetKind: DispatchContextPackageInput["targetKind"];
   packageMode: "core_return" | "child_seed_via_icma" | "peer_exchange_slim" | "historical_reply_return" | "lineage_delivery";
 }
+
+export type CmpDispatcherPackageMode = CmpDispatcherRecord["packageMode"];
 
 export interface CmpDispatcherDispatchInput {
   contextPackage: ContextPackage;
@@ -218,16 +307,71 @@ export interface CmpFiveAgentRuntimeSnapshot {
   taskSnapshots: CmpTaskSkillSnapshot[];
   promoteRequests: CmpPromoteRequestRecord[];
   parentPromoteReviews: CmpParentPromoteReviewRecord[];
+  peerApprovals: CmpPeerExchangeApprovalRecord[];
+  reinterventionRequests: CmpReinterventionRequestRecord[];
+}
+
+export interface CmpFiveAgentCapabilityMatrixSummary {
+  gitWriters: CmpFiveAgentRole[];
+  dbWriters: CmpFiveAgentRole[];
+  mqPublishers: CmpFiveAgentRole[];
+}
+
+export interface CmpFiveAgentFlowSummary {
+  packageModeCounts: Partial<Record<CmpDispatcherRecord["packageMode"], number>>;
+  childSeedToIcmaCount: number;
+  passiveReturnCount: number;
+  pendingPeerApprovalCount: number;
+  approvedPeerApprovalCount: number;
+  rejectedPeerApprovalCount: number;
+  reinterventionPendingCount: number;
+  reinterventionServedCount: number;
+}
+
+export interface CmpFiveAgentRecoverySummary {
+  checkpointCoverage: Record<CmpFiveAgentRole, number>;
+  resumableRoles: CmpFiveAgentRole[];
+  missingCheckpointRoles: CmpFiveAgentRole[];
+}
+
+export interface CmpFiveAgentTapProfileSummary {
+  role: CmpFiveAgentRole;
+  profileId: string;
+  agentClass: string;
+  defaultMode: string;
+  baselineTier: string;
+  baselineCapabilities: string[];
+  allowedCapabilityPatterns: string[];
+  deniedCapabilityPatterns: string[];
+}
+
+export interface CmpFiveAgentCapabilityAccessResolution {
+  role: CmpFiveAgentRole;
+  profile: AgentCapabilityProfile;
+  resolution: ResolveCapabilityAccessResult;
 }
 
 export interface CmpFiveAgentSummary {
   agentId?: string;
+  configurationVersion: string;
   roleCounts: Record<CmpFiveAgentRole, number>;
   latestStages: Record<CmpFiveAgentRole, string | undefined>;
+  latestRoleMetadata: Record<CmpFiveAgentRole, Record<string, unknown> | undefined>;
   checkpointCount: number;
   overrideCount: number;
   peerExchangePendingApprovalCount: number;
+  peerExchangeApprovedCount: number;
   parentPromoteReviewCount: number;
+  configuredRoles: Record<CmpFiveAgentRole, {
+    promptPackId: string;
+    profileId: string;
+    capabilityContractId: string;
+    tapProfileId: string;
+  }>;
+  capabilityMatrix: CmpFiveAgentCapabilityMatrixSummary;
+  tapProfiles: Record<CmpFiveAgentRole, CmpFiveAgentTapProfileSummary>;
+  flow: CmpFiveAgentFlowSummary;
+  recovery: CmpFiveAgentRecoverySummary;
 }
 
 export function createCheckerCheckedSnapshotMetadata(input: { snapshot: CheckedSnapshot; result: { checkerRecord: CmpCheckerRecord; promoteRequest?: CmpPromoteRequestRecord } }): Record<string, unknown> {

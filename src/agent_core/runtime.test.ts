@@ -1669,6 +1669,48 @@ test("AgentCoreRuntime can run the first CMP active path through ingest, delta, 
   assert.equal(runtime.listCmpDeltas().length, 1);
   assert.equal(runtime.listCmpSyncEvents("main").length >= 2, true);
   assert.ok(runtime.getCmpDispatchReceipt(dispatched.receipt.dispatchId));
+  const fiveAgentSummary = runtime.getCmpFiveAgentRuntimeSummary("main");
+  assert.equal(fiveAgentSummary.configurationVersion, "cmp-five-agent-role-catalog/v1");
+  assert.equal(fiveAgentSummary.configuredRoles.icma.promptPackId, "cmp-five-agent/icma-prompt-pack/v1");
+  assert.deepEqual(fiveAgentSummary.capabilityMatrix.dbWriters, ["dbagent"]);
+  assert.equal(fiveAgentSummary.flow.childSeedToIcmaCount, 1);
+});
+
+test("AgentCoreRuntime can resolve CMP five-agent TAP capability access by role profile", () => {
+  const runtime = createAgentCoreRuntime();
+
+  const iteratorResolution = runtime.resolveCmpFiveAgentCapabilityAccess({
+    role: "iterator",
+    sessionId: "session-role-capability",
+    runId: "run-role-capability",
+    agentId: "iterator-agent",
+    capabilityKey: "cmp.git.write",
+    reason: "iterator advances candidate commit",
+  });
+  assert.equal(iteratorResolution.profile.profileId, "cmp-five-agent/iterator-tap-profile/v1");
+  assert.equal(iteratorResolution.resolution.status, "review_required");
+
+  const dbagentResolution = runtime.resolveCmpFiveAgentCapabilityAccess({
+    role: "dbagent",
+    sessionId: "session-role-capability",
+    runId: "run-role-capability",
+    agentId: "dbagent-agent",
+    capabilityKey: "cmp.db.write",
+    reason: "dbagent writes projection",
+  });
+  assert.equal(dbagentResolution.profile.profileId, "cmp-five-agent/dbagent-tap-profile/v1");
+  assert.equal(dbagentResolution.resolution.status, "review_required");
+
+  const icmaResolution = runtime.resolveCmpFiveAgentCapabilityAccess({
+    role: "icma",
+    sessionId: "session-role-capability",
+    runId: "run-role-capability",
+    agentId: "icma-agent",
+    capabilityKey: "cmp.git.write",
+    reason: "icma should not write git",
+  });
+  assert.equal(icmaResolution.profile.profileId, "cmp-five-agent/icma-tap-profile/v1");
+  assert.equal(icmaResolution.resolution.status, "review_required");
 });
 
 test("AgentCoreRuntime can dispatch a cmp_action intent through the kernel loop", async () => {
@@ -1791,6 +1833,79 @@ test("AgentCoreRuntime can serve the first CMP passive historical reply", () => 
   assert.ok(historical.snapshot);
   assert.ok(historical.contextPackage);
   assert.equal(historical.contextPackage?.packageKind, "historical_reply");
+});
+
+test("AgentCoreRuntime records and serves CMP reintervention requests through DBAgent during passive history flow", () => {
+  const runtime = createAgentCoreRuntime();
+  const parentLineage = createAgentLineage({
+    agentId: "parent-reint",
+    depth: 0,
+    projectId: "cmp-project-reintervention",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/parent-reint",
+      cmpBranch: "cmp/parent-reint",
+      mpBranch: "mp/parent-reint",
+      tapBranch: "tap/parent-reint",
+    }),
+    childAgentIds: ["child-reint"],
+  });
+  const childLineage = createAgentLineage({
+    agentId: "child-reint",
+    parentAgentId: "parent-reint",
+    depth: 1,
+    projectId: "cmp-project-reintervention",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/child-reint",
+      cmpBranch: "cmp/child-reint",
+      mpBranch: "mp/child-reint",
+      tapBranch: "tap/child-reint",
+    }),
+  });
+
+  runtime.ingestRuntimeContext({
+    agentId: "parent-reint",
+    sessionId: "session-parent-reint",
+    runId: "run-parent-reint",
+    lineage: parentLineage,
+    taskSummary: "seed parent lineage for reintervention",
+    materials: [{ kind: "state_marker", ref: "payload:parent-reint" }],
+    requiresActiveSync: false,
+  });
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "child-reint",
+    sessionId: "session-child-reint",
+    runId: "run-child-reint",
+    lineage: childLineage,
+    taskSummary: "child prepares local checked snapshot before passive request",
+    materials: [{ kind: "assistant_output", ref: "payload:child-reint" }],
+  });
+  runtime.commitContextDelta({
+    agentId: "child-reint",
+    sessionId: "session-child-reint",
+    runId: "run-child-reint",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "prepare child history for reintervention path",
+    syncIntent: "submit_to_parent",
+  });
+
+  const historical = runtime.requestHistoricalContext({
+    requesterAgentId: "child-reint",
+    projectId: "cmp-project-reintervention",
+    reason: "child requests parent coarse package for missing context",
+    query: {},
+    metadata: {
+      cmpReinterventionGapSummary: "missing parent coarse package for dependency context",
+      cmpCurrentStateSummary: "child only has local checked snapshot and no parent-served package",
+      cmpCurrentPackageId: "pkg-child-current",
+    },
+  });
+
+  assert.equal(historical.status, "materialized");
+  const historicalFiveAgent = historical.metadata?.cmpFiveAgent as { reinterventionRequestId?: string } | undefined;
+  assert.equal(historicalFiveAgent?.reinterventionRequestId !== undefined, true);
+  const summary = runtime.getCmpFiveAgentRuntimeSummary("child-reint");
+  assert.equal(summary.flow.reinterventionPendingCount, 0);
+  assert.equal(summary.flow.reinterventionServedCount, 1);
 });
 
 test("AgentCoreRuntime second wave promotes submit_to_parent deltas through cmp-git governance", () => {

@@ -21,6 +21,7 @@ import type {
   RaxCmpFacade,
   RaxCmpIngestInput,
   RaxCmpMaterializeInput,
+  RaxCmpPeerApprovalInput,
   RaxCmpReadbackInput,
   RaxCmpReadbackResult,
   RaxCmpReadbackSummary,
@@ -319,6 +320,12 @@ function createReadbackSummary(input: {
   }
   if (input.fiveAgentSummary && Object.values(input.fiveAgentSummary.roleCounts).some((count) => count === 0)) {
     issues.push("CMP five-agent runtime has roles without observed activity yet.");
+  }
+  if ((input.fiveAgentSummary?.flow.pendingPeerApprovalCount ?? 0) > 0) {
+    issues.push(`CMP five-agent has ${input.fiveAgentSummary?.flow.pendingPeerApprovalCount ?? 0} pending peer exchange approval(s).`);
+  }
+  if ((input.fiveAgentSummary?.flow.reinterventionPendingCount ?? 0) > 0) {
+    issues.push(`CMP five-agent has ${input.fiveAgentSummary?.flow.reinterventionPendingCount ?? 0} pending reintervention request(s).`);
   }
 
   const status = !input.receipt
@@ -630,6 +637,42 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
       return dispatchInput.session.runtime.dispatchContextPackage(dispatchInput.payload);
     },
 
+    async resolveRoleCapabilityAccess(roleInput) {
+      const runtime = roleInput.session.runtime;
+      if (!runtime.resolveCmpFiveAgentCapabilityAccess) {
+        throw new Error("CMP five-agent TAP capability resolution is not available on this runtime.");
+      }
+      return runtime.resolveCmpFiveAgentCapabilityAccess({
+        role: roleInput.role,
+        sessionId: roleInput.session.sessionId,
+        runId: roleInput.payload.metadata?.runId as string ?? `${roleInput.session.sessionId}:cmp-five-agent`,
+        agentId: roleInput.payload.agentId,
+        capabilityKey: roleInput.payload.capabilityKey,
+        reason: roleInput.payload.reason,
+        requestedTier: roleInput.payload.requestedTier,
+        mode: roleInput.payload.mode,
+        taskContext: roleInput.payload.taskContext,
+        requestedScope: roleInput.payload.requestedScope,
+        requestedDurationMs: roleInput.payload.requestedDurationMs,
+        metadata: roleInput.payload.metadata,
+      });
+    },
+
+    async approvePeerExchange(
+      approvalInput: RaxCmpPeerApprovalInput,
+    ) {
+      const runtime = approvalInput.session.runtime;
+      if (!runtime.reviewCmpPeerExchangeApproval) {
+        throw new Error("CMP peer exchange approval is not available on this runtime.");
+      }
+      return runtime.reviewCmpPeerExchangeApproval({
+        approvalId: approvalInput.approvalId,
+        actorAgentId: approvalInput.actorAgentId,
+        decision: approvalInput.decision,
+        note: approvalInput.note,
+      });
+    },
+
     async requestHistory(
       historyInput: RaxCmpRequestHistoryInput,
     ): Promise<RequestHistoricalContextResult> {
@@ -809,6 +852,35 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
             ? "ready"
             : "degraded",
           summary: `CMP five-agent roles observed counts: ${Object.entries(readback.summary.fiveAgentSummary.roleCounts).map(([role, count]) => `${role}:${count}`).join(", ")}.`,
+        });
+        checks.push({
+          id: "cmp.five_agent.configuration",
+          gate: "lineage",
+          status: Object.values(readback.summary.fiveAgentSummary.configuredRoles).every((entry) =>
+            Boolean(entry.promptPackId && entry.profileId && entry.capabilityContractId),
+          )
+            ? "ready"
+            : "failed",
+          summary: `CMP five-agent configuration version ${readback.summary.fiveAgentSummary.configurationVersion} is attached to all roles.`,
+        });
+        checks.push({
+          id: "cmp.five_agent.tap_profiles",
+          gate: "lineage",
+          status: Object.values(readback.summary.fiveAgentSummary.tapProfiles).every((entry) =>
+            Boolean(entry.profileId && entry.agentClass && entry.baselineTier),
+          )
+            ? "ready"
+            : "degraded",
+          summary: `CMP five-agent TAP profiles attached: ${Object.values(readback.summary.fiveAgentSummary.tapProfiles).map((entry) => `${entry.role}:${entry.profileId}`).join(", ")}.`,
+        });
+        checks.push({
+          id: "cmp.five_agent.flow",
+          gate: "delivery",
+          status: readback.summary.fiveAgentSummary.flow.pendingPeerApprovalCount === 0
+            && readback.summary.fiveAgentSummary.flow.reinterventionPendingCount === 0
+            ? "ready"
+            : "degraded",
+          summary: `CMP five-agent flow summary: peer pending ${readback.summary.fiveAgentSummary.flow.pendingPeerApprovalCount}, reintervention pending ${readback.summary.fiveAgentSummary.flow.reinterventionPendingCount}, passive returns ${readback.summary.fiveAgentSummary.flow.passiveReturnCount}.`,
         });
       }
 

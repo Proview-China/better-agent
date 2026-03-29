@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type {
+  CmpFiveAgentCapabilityAccessResolution,
+  CmpFiveAgentSummary,
   CommitContextDeltaInput,
   CommitContextDeltaResult,
   CmpProjectInfraBootstrapReceipt,
@@ -253,6 +255,147 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
         issues: [],
       };
     },
+    getCmpFiveAgentRuntimeSummary() {
+      return {
+        configurationVersion: "cmp-five-agent-role-catalog/v1",
+        roleCounts: {
+          icma: 1,
+          iterator: 1,
+          checker: 1,
+          dbagent: 1,
+          dispatcher: 1,
+        },
+        latestStages: {
+          icma: "emit",
+          iterator: "update_review_ref",
+          checker: "checked",
+          dbagent: "attach_snapshots",
+          dispatcher: "collect_receipt",
+        },
+        latestRoleMetadata: {
+          icma: { ingressDiscipline: "append_only_fragment_control" },
+          iterator: { reviewDiscipline: { minimumReviewUnit: "commit" } },
+          checker: { reviewDiscipline: { checkedDetachedFromPromote: true } },
+          dbagent: { packageAuthority: "dbagent_primary_packer" },
+          dispatcher: { routePolicy: { targetIngress: "child_icma_only" } },
+        },
+        checkpointCount: 5,
+        overrideCount: 0,
+        peerExchangePendingApprovalCount: 0,
+        peerExchangeApprovedCount: 0,
+        parentPromoteReviewCount: 1,
+        configuredRoles: {
+          icma: {
+            promptPackId: "cmp-five-agent/icma-prompt-pack/v1",
+            profileId: "cmp-five-agent/icma-profile/v1",
+            capabilityContractId: "cmp-five-agent/icma-capability-contract/v1",
+            tapProfileId: "cmp-five-agent/icma-tap-profile/v1",
+          },
+          iterator: {
+            promptPackId: "cmp-five-agent/iterator-prompt-pack/v1",
+            profileId: "cmp-five-agent/iterator-profile/v1",
+            capabilityContractId: "cmp-five-agent/iterator-capability-contract/v1",
+            tapProfileId: "cmp-five-agent/iterator-tap-profile/v1",
+          },
+          checker: {
+            promptPackId: "cmp-five-agent/checker-prompt-pack/v1",
+            profileId: "cmp-five-agent/checker-profile/v1",
+            capabilityContractId: "cmp-five-agent/checker-capability-contract/v1",
+            tapProfileId: "cmp-five-agent/checker-tap-profile/v1",
+          },
+          dbagent: {
+            promptPackId: "cmp-five-agent/dbagent-prompt-pack/v1",
+            profileId: "cmp-five-agent/dbagent-profile/v1",
+            capabilityContractId: "cmp-five-agent/dbagent-capability-contract/v1",
+            tapProfileId: "cmp-five-agent/dbagent-tap-profile/v1",
+          },
+          dispatcher: {
+            promptPackId: "cmp-five-agent/dispatcher-prompt-pack/v1",
+            profileId: "cmp-five-agent/dispatcher-profile/v1",
+            capabilityContractId: "cmp-five-agent/dispatcher-capability-contract/v1",
+            tapProfileId: "cmp-five-agent/dispatcher-tap-profile/v1",
+          },
+        },
+        capabilityMatrix: {
+          gitWriters: ["iterator", "checker"],
+          dbWriters: ["dbagent"],
+          mqPublishers: ["icma", "dispatcher"],
+        },
+        tapProfiles: {
+          icma: {
+            role: "icma",
+            profileId: "cmp-five-agent/icma-tap-profile/v1",
+            agentClass: "cmp-five-agent:icma",
+            defaultMode: "balanced",
+            baselineTier: "B0",
+            baselineCapabilities: ["docs.read", "cmp.db.read", "cmp.mq.publish.ingress_hint"],
+            allowedCapabilityPatterns: ["cmp.db.read", "cmp.mq.publish.ingress_hint"],
+            deniedCapabilityPatterns: ["cmp.git.*"],
+          },
+          iterator: {
+            role: "iterator",
+            profileId: "cmp-five-agent/iterator-tap-profile/v1",
+            agentClass: "cmp-five-agent:iterator",
+            defaultMode: "strict",
+            baselineTier: "B1",
+            baselineCapabilities: ["docs.read", "cmp.git.write", "cmp.git.review_ref.write", "cmp.db.read"],
+            allowedCapabilityPatterns: ["cmp.git.write", "cmp.git.review_ref.*", "cmp.db.read"],
+            deniedCapabilityPatterns: ["cmp.db.write*", "cmp.mq.*"],
+          },
+          checker: {
+            role: "checker",
+            profileId: "cmp-five-agent/checker-tap-profile/v1",
+            agentClass: "cmp-five-agent:checker",
+            defaultMode: "standard",
+            baselineTier: "B1",
+            baselineCapabilities: ["docs.read", "cmp.git.review_ref.read", "cmp.git.review_ref.annotate", "cmp.db.read"],
+            allowedCapabilityPatterns: ["cmp.git.review_ref.*", "cmp.db.read"],
+            deniedCapabilityPatterns: ["cmp.db.write*", "cmp.mq.*", "cmp.git.write"],
+          },
+          dbagent: {
+            role: "dbagent",
+            profileId: "cmp-five-agent/dbagent-tap-profile/v1",
+            agentClass: "cmp-five-agent:dbagent",
+            defaultMode: "strict",
+            baselineTier: "B1",
+            baselineCapabilities: ["docs.read", "cmp.git.read", "cmp.db.write", "cmp.db.package.write", "cmp.db.snapshot.write", "cmp.mq.delivery.read"],
+            allowedCapabilityPatterns: ["cmp.git.read", "cmp.db.*", "cmp.mq.delivery.read"],
+            deniedCapabilityPatterns: ["cmp.git.write*", "cmp.mq.publish.*"],
+          },
+          dispatcher: {
+            role: "dispatcher",
+            profileId: "cmp-five-agent/dispatcher-tap-profile/v1",
+            agentClass: "cmp-five-agent:dispatcher",
+            defaultMode: "strict",
+            baselineTier: "B1",
+            baselineCapabilities: ["docs.read", "cmp.db.read", "cmp.mq.publish.delivery", "cmp.mq.publish.child_seed", "cmp.mq.publish.peer_exchange"],
+            allowedCapabilityPatterns: ["cmp.db.read", "cmp.mq.publish.*"],
+            deniedCapabilityPatterns: ["cmp.git.*", "cmp.db.write*"],
+          },
+        },
+        flow: {
+          packageModeCounts: { child_seed_via_icma: 1 },
+          childSeedToIcmaCount: 1,
+          passiveReturnCount: 0,
+          pendingPeerApprovalCount: 0,
+          approvedPeerApprovalCount: 0,
+          rejectedPeerApprovalCount: 0,
+          reinterventionPendingCount: 0,
+          reinterventionServedCount: 0,
+        },
+        recovery: {
+          checkpointCoverage: {
+            icma: 1,
+            iterator: 1,
+            checker: 1,
+            dbagent: 1,
+            dispatcher: 1,
+          },
+          resumableRoles: ["icma", "iterator", "checker", "dbagent", "dispatcher"],
+          missingCheckpointRoles: [],
+        },
+      } satisfies CmpFiveAgentSummary;
+    },
     async recoverCmpRuntimeSnapshot(_snapshot: CmpRuntimeSnapshot) {
       return undefined;
     },
@@ -358,8 +501,11 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
   assert.equal(readback.summary?.truthLayers.length, 3);
   assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "git")?.status, "ready");
   assert.equal(readback.summary?.fallbacks.gitHistoryRebuild, "not_needed");
+  assert.equal(readback.summary?.fiveAgentSummary?.configurationVersion, "cmp-five-agent-role-catalog/v1");
+  assert.deepEqual(readback.summary?.fiveAgentSummary?.capabilityMatrix.mqPublishers, ["icma", "dispatcher"]);
+  assert.equal(readback.summary?.fiveAgentSummary?.tapProfiles.dispatcher.profileId, "cmp-five-agent/dispatcher-tap-profile/v1");
   assert.equal(smoke.status, "ready");
-  assert.equal(smoke.checks.length, 13);
+  assert.equal(smoke.checks.length, 17);
 });
 
 test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime", async () => {
@@ -1006,6 +1152,198 @@ test("createRaxCmpFacade requestHistory respects strict_not_found fallback polic
   assert.equal(result.status, "not_found");
   assert.equal(result.found, false);
   assert.equal(result.metadata?.blockedByFallbackPolicy, "strict_not_found");
+});
+
+test("createRaxCmpFacade can forward explicit peer approval to runtime", async () => {
+  const cmp = createRaxCmpFacade();
+  const calls: Array<Record<string, unknown>> = [];
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      throw new Error("not used");
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return undefined;
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() {
+      throw new Error("not used");
+    },
+    async commitContextDelta() {
+      throw new Error("not used");
+    },
+    async resolveCheckedSnapshot() {
+      throw new Error("not used");
+    },
+    async materializeContextPackage() {
+      throw new Error("not used");
+    },
+    async dispatchContextPackage() {
+      throw new Error("not used");
+    },
+    async requestHistoricalContext() {
+      throw new Error("not used");
+    },
+    reviewCmpPeerExchangeApproval(input: Record<string, unknown>) {
+      calls.push(input);
+      return {
+        approvalId: String(input.approvalId),
+        parentAgentId: "parent-a",
+        sourceAgentId: "child-a",
+        targetAgentId: "child-b",
+        packageId: "pkg-peer-1",
+        createdAt: "2026-03-28T00:00:00.000Z",
+        mode: "explicit_once" as const,
+        status: "approved" as const,
+        approvalChain: "parent_dbagent_then_parent_core_agent" as const,
+        approvedAt: "2026-03-28T00:00:01.000Z",
+        approvedByAgentId: input.actorAgentId as string,
+      };
+    },
+  };
+
+  const session = cmp.create({
+    config: {
+      projectId: "proj-peer-approval",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-peer-approval",
+        repoRootPath: "/tmp/praxis/proj-peer-approval",
+        defaultBranchName: "main",
+      },
+    },
+    runtime,
+  });
+
+  const approval = await cmp.approvePeerExchange({
+    session,
+    approvalId: "approval-1",
+    actorAgentId: "parent-a",
+    decision: "approved",
+    note: "allow sibling exchange once",
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    approvalId: "approval-1",
+    actorAgentId: "parent-a",
+    decision: "approved",
+    note: "allow sibling exchange once",
+  });
+  assert.equal(approval.status, "approved");
+  assert.equal(approval.approvedByAgentId, "parent-a");
+});
+
+test("createRaxCmpFacade can resolve five-agent TAP capability access through runtime", async () => {
+  const cmp = createRaxCmpFacade();
+  const calls: Record<string, unknown>[] = [];
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      throw new Error("not used");
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return undefined;
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() {
+      throw new Error("not used");
+    },
+    async commitContextDelta() {
+      throw new Error("not used");
+    },
+    async resolveCheckedSnapshot() {
+      throw new Error("not used");
+    },
+    async materializeContextPackage() {
+      throw new Error("not used");
+    },
+    async dispatchContextPackage() {
+      throw new Error("not used");
+    },
+    async requestHistoricalContext() {
+      throw new Error("not used");
+    },
+    resolveCmpFiveAgentCapabilityAccess(input: Record<string, unknown>) {
+      calls.push(input);
+      return {
+        role: "iterator" as const,
+        profile: {
+          profileId: "cmp-five-agent/iterator-tap-profile/v1",
+          agentClass: "cmp-five-agent.iterator",
+          defaultMode: "restricted" as const,
+          canonicalDefaultMode: "standard" as const,
+          baselineTier: "B2" as const,
+          baselineCapabilities: ["docs.read", "code.read", "cmp.git.read"],
+          allowedCapabilityPatterns: ["cmp.git.write", "cmp.git.review_ref.*", "cmp.db.read"],
+          deniedCapabilityPatterns: ["cmp.db.write*", "cmp.mq.*"],
+        },
+        resolution: {
+          status: "review_required" as const,
+          request: {
+            requestId: "cmp-access-request-1",
+            sessionId: String(input.sessionId),
+            runId: String(input.runId),
+            agentId: String(input.agentId),
+            requestedCapabilityKey: String(input.capabilityKey),
+            requestedTier: "B1" as const,
+            reason: String(input.reason),
+            mode: "restricted" as const,
+            canonicalMode: "standard" as const,
+            createdAt: "2026-03-28T00:00:00.000Z",
+          },
+        },
+      } satisfies CmpFiveAgentCapabilityAccessResolution;
+    },
+  };
+
+  const session = cmp.create({
+    config: {
+      projectId: "proj-role-capability",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-role-capability",
+        repoRootPath: "/tmp/praxis/proj-role-capability",
+        defaultBranchName: "main",
+      },
+    },
+    runtime,
+  });
+
+  const result = await cmp.resolveRoleCapabilityAccess({
+    session,
+    role: "iterator",
+    payload: {
+      agentId: "iterator-agent",
+      capabilityKey: "cmp.git.write",
+      reason: "iterator wants to advance candidate commit",
+      metadata: {
+        runId: "run-role-capability",
+      },
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    role: "iterator",
+    sessionId: session.sessionId,
+    runId: "run-role-capability",
+    agentId: "iterator-agent",
+    capabilityKey: "cmp.git.write",
+    reason: "iterator wants to advance candidate commit",
+    requestedTier: undefined,
+    mode: undefined,
+    taskContext: undefined,
+    requestedScope: undefined,
+    requestedDurationMs: undefined,
+    metadata: {
+      runId: "run-role-capability",
+    },
+  });
+  assert.equal(result.profile.profileId, "cmp-five-agent/iterator-tap-profile/v1");
+  assert.equal(result.resolution.status, "review_required");
 });
 
 test("createRaxCmpFacade recover respects dry_run recovery preference", async () => {

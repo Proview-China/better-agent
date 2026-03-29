@@ -31,4 +31,9 @@ test("CmpFiveAgentRuntime creates per-role summaries", () => {
 
   const summary = runtime.createSummary("main");
   assert.equal(summary.roleCounts.icma, 1);
+  assert.equal(summary.configurationVersion, "cmp-five-agent-role-catalog/v1");
+  assert.equal(summary.configuredRoles.icma.promptPackId, "cmp-five-agent/icma-prompt-pack/v1");
+  assert.deepEqual(summary.capabilityMatrix.gitWriters, ["iterator", "checker"]);
+  assert.deepEqual(summary.capabilityMatrix.dbWriters, ["dbagent"]);
+  assert.equal(summary.tapProfiles.icma.profileId, "cmp-five-agent/icma-tap-profile/v1");
 });
