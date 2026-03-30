@@ -27,7 +27,19 @@
       "health": {
         "readbackStatus": "ready",
         "deliveryDriftCount": 0,
-        "expiredDeliveryCount": 0
+        "expiredDeliveryCount": 0,
+        "liveInfraReady": true,
+        "recoveryStatus": "ready",
+        "finalAcceptanceStatus": "ready"
+      },
+      "readiness": {
+        "objectModel": "ready",
+        "fiveAgentLoop": "ready",
+        "bundleSchema": "ready",
+        "tapExecutionBridge": "ready",
+        "liveInfra": "ready",
+        "recovery": "ready",
+        "finalAcceptance": "ready"
       }
     }
   }

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type {
   BootstrapCmpProjectInfraInput,
   CommitContextDeltaResult,
+  CmpRuntimeSnapshot,
   DispatchContextPackageInput,
   DispatchContextPackageResult,
   IngestRuntimeContextResult,
@@ -19,14 +20,17 @@ import type {
   RaxCmpCreateInput,
   RaxCmpDispatchInput,
   RaxCmpFacade,
+  RaxCmpAcceptanceReadiness,
   RaxCmpIngestInput,
   RaxCmpMaterializeInput,
   RaxCmpPeerApprovalInput,
   RaxCmpReadbackInput,
   RaxCmpReadbackResult,
+  RaxCmpReadinessCheck,
   RaxCmpReadbackSummary,
   RaxCmpManualControlInput,
   RaxCmpManualControlSurface,
+  RaxCmpObjectModelReadinessSummary,
   RaxCmpRecoverInput,
   RaxCmpRecoverResult,
   RaxCmpRequestHistoryInput,
@@ -73,6 +77,281 @@ function resolveBootstrapPayload(input: RaxCmpBootstrapInput): BootstrapCmpProje
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function countBy<T extends string>(values: readonly T[]): Partial<Record<T, number>> {
+  return values.reduce<Partial<Record<T, number>>>((accumulator, value) => {
+    accumulator[value] = (accumulator[value] ?? 0) + 1;
+    return accumulator;
+  }, {});
+}
+
+function createReadinessCheck(
+  status: RaxCmpReadinessCheck["status"],
+  summary: string,
+  details?: Record<string, unknown>,
+): RaxCmpReadinessCheck {
+  return { status, summary, details };
+}
+
+function createObjectModelSummary(
+  snapshot?: CmpRuntimeSnapshot,
+): RaxCmpObjectModelReadinessSummary | undefined {
+  if (!snapshot) {
+    return undefined;
+  }
+
+  return {
+    requestCount: snapshot.requests.length,
+    sectionCount: snapshot.sectionRecords.length,
+    snapshotCount: snapshot.snapshotRecords.length,
+    packageCount: snapshot.packageRecords.length,
+    requestStatuses: countBy(snapshot.requests.map((record) => record.status)),
+    sectionLifecycleCounts: countBy(snapshot.sectionRecords.map((record) => record.lifecycle)),
+    snapshotStageCounts: countBy(snapshot.snapshotRecords.map((record) => record.stage)),
+    packageStatusCounts: countBy(snapshot.packageRecords.map((record) => record.status)),
+  };
+}
+
+function createAcceptanceReadiness(input: {
+  objectModel?: RaxCmpObjectModelReadinessSummary;
+  fiveAgentSummary?: RaxCmpReadbackSummary["fiveAgentSummary"];
+  truthLayers: RaxCmpReadbackSummary["truthLayers"];
+  receiptAvailable: boolean;
+  infraStateAvailable: boolean;
+  recoverySummary?: RaxCmpReadbackSummary["recoverySummary"];
+  projectRecovery?: RaxCmpReadbackSummary["projectRecovery"];
+  fallbacks: RaxCmpReadbackSummary["fallbacks"];
+  roleCapabilityExecutionBridgeAvailable: boolean;
+}): RaxCmpAcceptanceReadiness {
+  const objectModel = (() => {
+    if (!input.objectModel) {
+      return createReadinessCheck(
+        "degraded",
+        "CMP object model summary is unavailable because runtime snapshot surface is missing.",
+      );
+    }
+
+    const hasAllObjectFamilies =
+      input.objectModel.requestCount > 0
+      && input.objectModel.sectionCount > 0
+      && input.objectModel.snapshotCount > 0
+      && input.objectModel.packageCount > 0;
+    const hasSectionLifecycleCoverage = ["raw", "pre", "checked", "persisted"].every((state) =>
+      (input.objectModel?.sectionLifecycleCounts[state as keyof typeof input.objectModel.sectionLifecycleCounts] ?? 0) > 0,
+    );
+    const hasSnapshotStageCoverage = ["pre", "checked", "persisted"].every((stage) =>
+      (input.objectModel?.snapshotStageCounts[stage as keyof typeof input.objectModel.snapshotStageCounts] ?? 0) > 0,
+    );
+    const hasPackageCoverage =
+      (input.objectModel.packageStatusCounts.materialized ?? 0) > 0
+      && ((input.objectModel.packageStatusCounts.dispatched ?? 0) > 0
+        || (input.objectModel.packageStatusCounts.served ?? 0) > 0);
+    const hasRequestCoverage =
+      (input.objectModel.requestStatuses.received ?? 0) > 0
+      && (
+        (input.objectModel.requestStatuses.reviewed ?? 0) > 0
+        || (input.objectModel.requestStatuses.accepted ?? 0) > 0
+        || (input.objectModel.requestStatuses.served ?? 0) > 0
+      );
+
+    const status = !hasAllObjectFamilies
+      ? (input.objectModel.requestCount === 0
+        && input.objectModel.sectionCount === 0
+        && input.objectModel.snapshotCount === 0
+        && input.objectModel.packageCount === 0
+          ? "failed"
+          : "degraded")
+      : hasSectionLifecycleCoverage && hasSnapshotStageCoverage && hasPackageCoverage && hasRequestCoverage
+        ? "ready"
+        : "degraded";
+
+    return createReadinessCheck(
+      status,
+      `CMP object model has request=${input.objectModel.requestCount}, section=${input.objectModel.sectionCount}, snapshot=${input.objectModel.snapshotCount}, package=${input.objectModel.packageCount}.`,
+      {
+        requestStatuses: input.objectModel.requestStatuses,
+        sectionLifecycleCounts: input.objectModel.sectionLifecycleCounts,
+        snapshotStageCounts: input.objectModel.snapshotStageCounts,
+        packageStatusCounts: input.objectModel.packageStatusCounts,
+      },
+    );
+  })();
+
+  const fiveAgentLoop = (() => {
+    if (!input.fiveAgentSummary) {
+      return createReadinessCheck(
+        "degraded",
+        "CMP five-agent summary is unavailable, so loop readiness cannot be fully verified.",
+      );
+    }
+
+    const roleCountsReady = Object.values(input.fiveAgentSummary.roleCounts).every((count) => count > 0);
+    const latestStagesReady = Object.values(input.fiveAgentSummary.latestStages).every((stage) => Boolean(stage));
+    const icmaOutput = input.fiveAgentSummary.latestRoleMetadata.icma?.structuredOutput as
+      | { intent?: string; sourceAnchorRefs?: string[] }
+      | undefined;
+    const iteratorOutput = input.fiveAgentSummary.latestRoleMetadata.iterator?.reviewOutput as
+      | { minimumReviewUnit?: string }
+      | undefined;
+    const checkerOutput = input.fiveAgentSummary.latestRoleMetadata.checker?.reviewOutput as
+      | { trimSummary?: string; sourceSectionIds?: string[] }
+      | undefined;
+    const dbagentOutput = input.fiveAgentSummary.latestRoleMetadata.dbagent?.materializationOutput as
+      | { bundleSchemaVersion?: string; sourceRequestId?: string }
+      | undefined;
+    const dispatcherBundle = input.fiveAgentSummary.latestRoleMetadata.dispatcher?.bundle as
+      | { target?: { targetIngress?: string }; body?: { primaryRef?: string } }
+      | undefined;
+
+    const ioReady = Boolean(
+      icmaOutput?.intent
+      && (icmaOutput.sourceAnchorRefs?.length ?? 0) > 0
+      && iteratorOutput?.minimumReviewUnit
+      && checkerOutput?.trimSummary
+      && (checkerOutput.sourceSectionIds?.length ?? 0) > 0
+      && dbagentOutput?.bundleSchemaVersion
+      && dispatcherBundle?.target?.targetIngress
+      && dispatcherBundle?.body?.primaryRef,
+    );
+
+    const status = roleCountsReady && latestStagesReady && ioReady
+      ? "ready"
+      : Object.values(input.fiveAgentSummary.roleCounts).every((count) => count === 0)
+        ? "failed"
+        : "degraded";
+
+    return createReadinessCheck(
+      status,
+      `CMP five-agent loop role counts are ${Object.entries(input.fiveAgentSummary.roleCounts).map(([role, count]) => `${role}:${count}`).join(", ")}.`,
+      {
+        latestStages: input.fiveAgentSummary.latestStages,
+        checkpointCoverage: input.fiveAgentSummary.recovery.checkpointCoverage,
+      },
+    );
+  })();
+
+  const bundleSchema = (() => {
+    if (!input.fiveAgentSummary) {
+      return createReadinessCheck(
+        "degraded",
+        "CMP bundle schema readiness cannot be verified because five-agent summary is unavailable.",
+      );
+    }
+
+    const dispatcherBundle = input.fiveAgentSummary.latestRoleMetadata.dispatcher?.bundle as
+      | { target?: { targetIngress?: string }; body?: { primaryRef?: string } }
+      | undefined;
+    const dbagentOutput = input.fiveAgentSummary.latestRoleMetadata.dbagent?.materializationOutput as
+      | { bundleSchemaVersion?: string; sourceRequestId?: string }
+      | undefined;
+    const status = dispatcherBundle?.target?.targetIngress
+      && dispatcherBundle?.body?.primaryRef
+      && dbagentOutput?.bundleSchemaVersion
+        ? "ready"
+        : "degraded";
+
+    return createReadinessCheck(
+      status,
+      "CMP bundle schema checks dispatcher target/body fields and DBAgent bundle schema version together.",
+      {
+        targetIngress: dispatcherBundle?.target?.targetIngress,
+        primaryRef: dispatcherBundle?.body?.primaryRef,
+        bundleSchemaVersion: dbagentOutput?.bundleSchemaVersion,
+      },
+    );
+  })();
+
+  const tapExecutionBridge = (() => {
+    const tapProfilesReady = input.fiveAgentSummary
+      ? Object.values(input.fiveAgentSummary.tapProfiles).every((entry) =>
+        Boolean(entry.profileId && entry.agentClass && entry.baselineTier),
+      )
+      : false;
+    const status = input.roleCapabilityExecutionBridgeAvailable
+      ? tapProfilesReady
+        ? "ready"
+        : "degraded"
+      : "degraded";
+
+    return createReadinessCheck(
+      status,
+      input.roleCapabilityExecutionBridgeAvailable
+        ? "CMP TAP execution bridge is wired and TAP profiles are available for five-agent roles."
+        : "CMP TAP execution bridge is not available on the current runtime.",
+      input.fiveAgentSummary
+        ? {
+          tapProfiles: Object.fromEntries(
+            Object.entries(input.fiveAgentSummary.tapProfiles).map(([role, entry]) => [role, entry.profileId]),
+          ),
+        }
+        : undefined,
+    );
+  })();
+
+  const liveInfra = (() => {
+    const status = !input.receiptAvailable
+      ? "failed"
+      : input.receiptAvailable && input.infraStateAvailable && input.truthLayers.every((layer) => layer.status === "ready")
+        ? "ready"
+        : "degraded";
+
+    return createReadinessCheck(
+      status,
+      `CMP live infra uses git/db/redis truth layers with statuses ${input.truthLayers.map((layer) => `${layer.layer}:${layer.status}`).join(", ")}.`,
+    );
+  })();
+
+  const recovery = (() => {
+    const checkpointReady = input.fiveAgentSummary
+      ? input.fiveAgentSummary.recovery.missingCheckpointRoles.length === 0
+      : false;
+    const status = input.projectRecovery?.status === "aligned"
+      && input.recoverySummary
+      && input.fallbacks.recoveryReconciliation !== "unavailable"
+      && checkpointReady
+        ? "ready"
+        : "degraded";
+
+    return createReadinessCheck(
+      status,
+      input.projectRecovery
+        ? `CMP recovery reconciliation is ${input.projectRecovery.status} with action ${input.projectRecovery.recommendedAction}.`
+        : "CMP recovery reconciliation has not been attached yet.",
+      {
+        recoverySummary: input.recoverySummary,
+        projectRecovery: input.projectRecovery,
+        missingCheckpointRoles: input.fiveAgentSummary?.recovery.missingCheckpointRoles ?? [],
+      },
+    );
+  })();
+
+  const readinessStatuses = [
+    objectModel.status,
+    fiveAgentLoop.status,
+    bundleSchema.status,
+    tapExecutionBridge.status,
+    liveInfra.status,
+    recovery.status,
+  ];
+  const finalAcceptance = createReadinessCheck(
+    readinessStatuses.includes("failed")
+      ? "failed"
+      : readinessStatuses.includes("degraded")
+        ? "degraded"
+        : "ready",
+    "CMP final acceptance gate aggregates object model, five-agent loop, bundle schema, TAP execution bridge, live infra, and recovery readiness.",
+  );
+
+  return {
+    objectModel,
+    fiveAgentLoop,
+    bundleSchema,
+    tapExecutionBridge,
+    liveInfra,
+    recovery,
+    finalAcceptance,
+  };
 }
 
 function createDefaultControlSurface(projectId: string): RaxCmpManualControlSurface {
@@ -272,6 +551,7 @@ function createReadbackSummary(input: {
   control: RaxCmpManualControlSurface;
   receipt?: RaxCmpReadbackResult["receipt"];
   infraState?: RaxCmpReadbackResult["infraState"];
+  snapshot?: CmpRuntimeSnapshot;
   recoverySummary?: RaxCmpReadbackSummary["recoverySummary"];
   projectRecovery?: RaxCmpReadbackSummary["projectRecovery"];
   deliverySummary?: RaxCmpReadbackSummary["deliverySummary"];
@@ -433,54 +713,76 @@ function createReadbackSummary(input: {
       : "unavailable",
   };
 
-  const statusPanel: RaxCmpReadbackSummary["statusPanel"] = input.fiveAgentSummary
-    ? {
-      roles: {
-        icma: {
-          count: input.fiveAgentSummary.roleCounts.icma,
-          latestStage: input.fiveAgentSummary.latestStages.icma,
-        },
-        iterator: {
-          count: input.fiveAgentSummary.roleCounts.iterator,
-          latestStage: input.fiveAgentSummary.latestStages.iterator,
-        },
-        checker: {
-          count: input.fiveAgentSummary.roleCounts.checker,
-          latestStage: input.fiveAgentSummary.latestStages.checker,
-        },
-        dbagent: {
-          count: input.fiveAgentSummary.roleCounts.dbagent,
-          latestStage: input.fiveAgentSummary.latestStages.dbagent,
-        },
-        dispatcher: {
-          count: input.fiveAgentSummary.roleCounts.dispatcher,
-          latestStage: input.fiveAgentSummary.latestStages.dispatcher,
-        },
+  const objectModel = createObjectModelSummary(input.snapshot);
+  const acceptance = createAcceptanceReadiness({
+    objectModel,
+    fiveAgentSummary: input.fiveAgentSummary,
+    truthLayers,
+    receiptAvailable: Boolean(input.receipt),
+    infraStateAvailable: Boolean(input.infraState),
+    recoverySummary: input.recoverySummary,
+    projectRecovery: input.projectRecovery,
+    fallbacks,
+    roleCapabilityExecutionBridgeAvailable: input.roleCapabilityExecutionBridgeAvailable !== false,
+  });
+
+  const statusPanel: RaxCmpReadbackSummary["statusPanel"] = {
+    roles: {
+      icma: {
+        count: input.fiveAgentSummary?.roleCounts.icma ?? 0,
+        latestStage: input.fiveAgentSummary?.latestStages.icma,
       },
-      packageFlow: {
-        modeCounts: input.fiveAgentSummary.flow.packageModeCounts,
-        latestTargetIngress: latestDispatcherBundle?.target?.targetIngress,
-        latestPrimaryRef: latestDispatcherBundle?.body?.primaryRef,
+      iterator: {
+        count: input.fiveAgentSummary?.roleCounts.iterator ?? 0,
+        latestStage: input.fiveAgentSummary?.latestStages.iterator,
       },
-      requests: {
-        parentPromoteReviewCount: input.fiveAgentSummary.parentPromoteReviewCount,
-        pendingPeerApprovalCount: input.fiveAgentSummary.flow.pendingPeerApprovalCount,
-        approvedPeerApprovalCount: input.fiveAgentSummary.flow.approvedPeerApprovalCount,
-        reinterventionPendingCount: input.fiveAgentSummary.flow.reinterventionPendingCount,
-        reinterventionServedCount: input.fiveAgentSummary.flow.reinterventionServedCount,
+      checker: {
+        count: input.fiveAgentSummary?.roleCounts.checker ?? 0,
+        latestStage: input.fiveAgentSummary?.latestStages.checker,
       },
-      health: {
-        readbackStatus: status,
-        deliveryDriftCount: input.deliverySummary?.driftCount ?? 0,
-        expiredDeliveryCount: input.deliverySummary?.expiredCount ?? 0,
-        liveInfraReady: truthLayers.every((layer) => layer.status === "ready"),
+      dbagent: {
+        count: input.fiveAgentSummary?.roleCounts.dbagent ?? 0,
+        latestStage: input.fiveAgentSummary?.latestStages.dbagent,
       },
-    }
-    : undefined;
+      dispatcher: {
+        count: input.fiveAgentSummary?.roleCounts.dispatcher ?? 0,
+        latestStage: input.fiveAgentSummary?.latestStages.dispatcher,
+      },
+    },
+    packageFlow: {
+      modeCounts: input.fiveAgentSummary?.flow.packageModeCounts ?? {},
+      latestTargetIngress: latestDispatcherBundle?.target?.targetIngress,
+      latestPrimaryRef: latestDispatcherBundle?.body?.primaryRef,
+    },
+    requests: {
+      parentPromoteReviewCount: input.fiveAgentSummary?.parentPromoteReviewCount ?? 0,
+      pendingPeerApprovalCount: input.fiveAgentSummary?.flow.pendingPeerApprovalCount ?? 0,
+      approvedPeerApprovalCount: input.fiveAgentSummary?.flow.approvedPeerApprovalCount ?? 0,
+      reinterventionPendingCount: input.fiveAgentSummary?.flow.reinterventionPendingCount ?? 0,
+      reinterventionServedCount: input.fiveAgentSummary?.flow.reinterventionServedCount ?? 0,
+    },
+    health: {
+      readbackStatus: acceptance.finalAcceptance.status,
+      deliveryDriftCount: input.deliverySummary?.driftCount ?? 0,
+      expiredDeliveryCount: input.deliverySummary?.expiredCount ?? 0,
+      liveInfraReady: truthLayers.every((layer) => layer.status === "ready"),
+      recoveryStatus: acceptance.recovery.status,
+      finalAcceptanceStatus: acceptance.finalAcceptance.status,
+    },
+    readiness: {
+      objectModel: acceptance.objectModel.status,
+      fiveAgentLoop: acceptance.fiveAgentLoop.status,
+      bundleSchema: acceptance.bundleSchema.status,
+      tapExecutionBridge: acceptance.tapExecutionBridge.status,
+      liveInfra: acceptance.liveInfra.status,
+      recovery: acceptance.recovery.status,
+      finalAcceptance: acceptance.finalAcceptance.status,
+    },
+  };
 
   return {
     projectId: input.projectId,
-    status,
+    status: acceptance.finalAcceptance.status,
     receiptAvailable: !!input.receipt,
     infraStateAvailable: !!input.infraState,
     gitBootstrapStatus: input.receipt?.git.status ?? input.infraState?.git?.status,
@@ -496,10 +798,12 @@ function createReadbackSummary(input: {
     appliedRecoveryPreference: input.control.truth.recoveryPreference,
     truthLayers,
     fallbacks,
+    objectModel,
     recoverySummary: input.recoverySummary,
     projectRecovery: input.projectRecovery,
     deliverySummary: input.deliverySummary,
     fiveAgentSummary: input.fiveAgentSummary,
+    acceptance,
     statusPanel,
     issues,
   };
@@ -574,6 +878,7 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         control,
         receipt,
         infraState,
+        snapshot: readbackInput.session.runtime.getCmpRuntimeSnapshot?.(),
         recoverySummary: readbackInput.session.runtime.getCmpRuntimeRecoverySummary?.(),
         projectRecovery: readbackInput.session.runtime.getCmpRuntimeProjectRecoverySummary?.(projectId),
         deliverySummary: readbackInput.session.runtime.getCmpRuntimeDeliveryTruthSummary?.(projectId),
@@ -932,6 +1237,50 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
           summary: `CMP control surface uses ${control.truth.readbackPriority}/${control.truth.fallbackPolicy}/${control.truth.recoveryPreference}.`,
         },
       ];
+      if (readback.summary?.acceptance) {
+        checks.push({
+          id: "cmp.object_model.readiness",
+          gate: "object_model",
+          status: readback.summary.acceptance.objectModel.status,
+          summary: readback.summary.acceptance.objectModel.summary,
+          metadata: readback.summary.acceptance.objectModel.details,
+        });
+        checks.push({
+          id: "cmp.five_agent.loop",
+          gate: "five_agent",
+          status: readback.summary.acceptance.fiveAgentLoop.status,
+          summary: readback.summary.acceptance.fiveAgentLoop.summary,
+          metadata: readback.summary.acceptance.fiveAgentLoop.details,
+        });
+        checks.push({
+          id: "cmp.bundle_schema.readiness",
+          gate: "bundle_schema",
+          status: readback.summary.acceptance.bundleSchema.status,
+          summary: readback.summary.acceptance.bundleSchema.summary,
+          metadata: readback.summary.acceptance.bundleSchema.details,
+        });
+        checks.push({
+          id: "cmp.tap_execution_bridge.readiness",
+          gate: "tap_bridge",
+          status: readback.summary.acceptance.tapExecutionBridge.status,
+          summary: readback.summary.acceptance.tapExecutionBridge.summary,
+          metadata: readback.summary.acceptance.tapExecutionBridge.details,
+        });
+        checks.push({
+          id: "cmp.live_infra.readiness",
+          gate: "live_infra",
+          status: readback.summary.acceptance.liveInfra.status,
+          summary: readback.summary.acceptance.liveInfra.summary,
+          metadata: readback.summary.acceptance.liveInfra.details,
+        });
+        checks.push({
+          id: "cmp.recovery.readiness",
+          gate: "recovery",
+          status: readback.summary.acceptance.recovery.status,
+          summary: readback.summary.acceptance.recovery.summary,
+          metadata: readback.summary.acceptance.recovery.details,
+        });
+      }
       if (readback.summary?.fiveAgentSummary) {
         checks.push({
           id: "cmp.five_agent.summary",
@@ -962,48 +1311,12 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
           summary: `CMP five-agent TAP profiles attached: ${Object.values(readback.summary.fiveAgentSummary.tapProfiles).map((entry) => `${entry.role}:${entry.profileId}`).join(", ")}.`,
         });
         checks.push({
-          id: "cmp.five_agent.bundle_schema",
-          gate: "delivery",
-          status: (() => {
-            const dispatcherBundle = readback.summary?.fiveAgentSummary?.latestRoleMetadata.dispatcher?.bundle as
-              | { target?: { targetIngress?: string }; body?: { primaryRef?: string } }
-              | undefined;
-            const dbagentOutput = readback.summary?.fiveAgentSummary?.latestRoleMetadata.dbagent?.materializationOutput as
-              | { bundleSchemaVersion?: string }
-              | undefined;
-            return dispatcherBundle?.target?.targetIngress && dispatcherBundle?.body?.primaryRef && dbagentOutput?.bundleSchemaVersion
-              ? "ready"
-              : "degraded";
-          })(),
-          summary: "CMP five-agent bundle schema checks dispatcher bundle target/body fields and DBAgent bundle schema version.",
-        });
-        checks.push({
-          id: "cmp.five_agent.tap_execution_bridge",
-          gate: "final_acceptance",
-          status: smokeInput.session.runtime.dispatchCmpFiveAgentCapability ? "ready" : "failed",
-          summary: smokeInput.session.runtime.dispatchCmpFiveAgentCapability
-            ? "CMP five-agent TAP execution bridge is available."
-            : "CMP five-agent TAP execution bridge is not available.",
-        });
-        checks.push({
           id: "cmp.status.panel.surface",
           gate: "final_acceptance",
           status: readback.summary?.statusPanel ? "ready" : "degraded",
           summary: readback.summary?.statusPanel
             ? "CMP status panel surface is available from readback summary."
             : "CMP status panel surface is not attached to readback summary yet.",
-        });
-        checks.push({
-          id: "cmp.live.infra.readiness",
-          gate: "final_acceptance",
-          status: readback.summary?.statusPanel?.health.liveInfraReady
-            ? "ready"
-            : readback.summary?.truthLayers.some((layer) => layer.status === "failed")
-              ? "failed"
-              : "degraded",
-          summary: readback.summary?.statusPanel
-            ? `CMP live infra readiness is ${readback.summary.statusPanel.health.liveInfraReady ? "ready" : "degraded"} across git/db/redis truth layers.`
-            : "CMP live infra readiness could not be derived because status panel is unavailable.",
         });
         checks.push({
           id: "cmp.five_agent.flow",
@@ -1019,19 +1332,20 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
       checks.push({
         id: "cmp.final_acceptance",
         gate: "final_acceptance",
-        status: checks.some((check) => check.status === "failed")
+        status: readback.summary?.acceptance.finalAcceptance.status ?? "failed",
+        summary: readback.summary?.acceptance.finalAcceptance.summary
+          ?? "CMP final acceptance gate is unavailable because readback summary is missing.",
+        metadata: {
+          issues: readback.summary?.issues ?? [],
+        },
+      });
+
+      const status = readback.summary?.acceptance.finalAcceptance.status
+        ?? (checks.some((check) => check.status === "failed")
           ? "failed"
           : checks.some((check) => check.status === "degraded")
             ? "degraded"
-            : "ready",
-        summary: "CMP final acceptance gate aggregates truth, recovery, delivery, five-agent bridge, and manual-control coherence.",
-      });
-
-      const status = checks.some((check) => check.status === "failed")
-        ? "failed"
-        : checks.some((check) => check.status === "degraded")
-          ? "degraded"
-          : "ready";
+            : "ready");
 
       return {
         status,

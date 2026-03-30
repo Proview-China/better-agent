@@ -24,6 +24,9 @@ function renderPanel(payload) {
   lines.push(`[requests] promote=${panel.requests?.parentPromoteReviewCount ?? 0}, peer_pending=${panel.requests?.pendingPeerApprovalCount ?? 0}, peer_approved=${panel.requests?.approvedPeerApprovalCount ?? 0}`);
   lines.push(`[requests] reintervention_pending=${panel.requests?.reinterventionPendingCount ?? 0}, reintervention_served=${panel.requests?.reinterventionServedCount ?? 0}`);
   lines.push(`[health] readback=${panel.health?.readbackStatus || "unknown"}, drift=${panel.health?.deliveryDriftCount ?? 0}, expired=${panel.health?.expiredDeliveryCount ?? 0}`);
+  lines.push(`[health] live_infra=${panel.health?.liveInfraReady ?? false}, recovery=${panel.health?.recoveryStatus || "unknown"}, final_acceptance=${panel.health?.finalAcceptanceStatus || "unknown"}`);
+  lines.push(`[readiness] object_model=${panel.readiness?.objectModel || "unknown"}, five_agent_loop=${panel.readiness?.fiveAgentLoop || "unknown"}, bundle_schema=${panel.readiness?.bundleSchema || "unknown"}`);
+  lines.push(`[readiness] tap_execution_bridge=${panel.readiness?.tapExecutionBridge || "unknown"}, live_infra=${panel.readiness?.liveInfra || "unknown"}, recovery=${panel.readiness?.recovery || "unknown"}, final_acceptance=${panel.readiness?.finalAcceptance || "unknown"}`);
   return `${lines.join("\n")}\n`;
 }
 

@@ -75,6 +75,193 @@ function createCmpBranchRuntimeFixture(projectId: string, agentId: string) {
   });
 }
 
+function createCmpRuntimeSnapshotFixture(projectId: string, agentId: string): CmpRuntimeSnapshot {
+  return {
+    projectRepos: [],
+    lineages: [],
+    events: [],
+    deltas: [],
+    activeLines: [],
+    snapshotCandidates: [],
+    checkedSnapshots: [],
+    requests: [
+      {
+        requestId: "request-1",
+        projectId,
+        requesterAgentId: agentId,
+        requestKind: "active_ingest",
+        status: "received",
+        sourceAnchors: ["msg:1"],
+        createdAt: "2026-03-30T00:00:00.000Z",
+        updatedAt: "2026-03-30T00:00:00.000Z",
+      },
+      {
+        requestId: "request-2",
+        projectId,
+        requesterAgentId: agentId,
+        requestKind: "materialize_package",
+        status: "reviewed",
+        sourceAnchors: ["snapshot:1"],
+        createdAt: "2026-03-30T00:00:01.000Z",
+        updatedAt: "2026-03-30T00:00:01.000Z",
+      },
+      {
+        requestId: "request-3",
+        projectId,
+        requesterAgentId: agentId,
+        requestKind: "dispatch_package",
+        status: "served",
+        sourceAnchors: ["pkg:1"],
+        createdAt: "2026-03-30T00:00:02.000Z",
+        updatedAt: "2026-03-30T00:00:02.000Z",
+      },
+    ],
+    sectionRecords: [
+      {
+        sectionId: "section-raw",
+        projectId,
+        agentId,
+        lifecycle: "raw",
+        version: 1,
+        source: "core_agent",
+        kind: "runtime_context",
+        fidelity: "exact",
+        lineagePath: [agentId],
+        payloadRefs: ["msg:1"],
+        sourceAnchors: ["msg:1"],
+        ancestorSectionIds: [],
+        createdAt: "2026-03-30T00:00:00.000Z",
+        updatedAt: "2026-03-30T00:00:00.000Z",
+      },
+      {
+        sectionId: "section-pre",
+        projectId,
+        agentId,
+        lifecycle: "pre",
+        version: 1,
+        source: "core_agent",
+        kind: "runtime_context",
+        fidelity: "exact",
+        lineagePath: [agentId],
+        payloadRefs: ["msg:1"],
+        sourceAnchors: ["msg:1"],
+        parentSectionId: "section-raw",
+        ancestorSectionIds: ["section-raw"],
+        createdAt: "2026-03-30T00:00:01.000Z",
+        updatedAt: "2026-03-30T00:00:01.000Z",
+      },
+      {
+        sectionId: "section-checked",
+        projectId,
+        agentId,
+        lifecycle: "checked",
+        version: 1,
+        source: "system",
+        kind: "runtime_context",
+        fidelity: "checked",
+        lineagePath: [agentId],
+        payloadRefs: ["checked:1"],
+        sourceAnchors: ["msg:1"],
+        parentSectionId: "section-pre",
+        ancestorSectionIds: ["section-raw", "section-pre"],
+        createdAt: "2026-03-30T00:00:02.000Z",
+        updatedAt: "2026-03-30T00:00:02.000Z",
+      },
+      {
+        sectionId: "section-persisted",
+        projectId,
+        agentId,
+        lifecycle: "persisted",
+        version: 1,
+        source: "system",
+        kind: "runtime_context",
+        fidelity: "checked",
+        lineagePath: [agentId],
+        payloadRefs: ["persisted:1"],
+        sourceAnchors: ["msg:1"],
+        parentSectionId: "section-checked",
+        ancestorSectionIds: ["section-raw", "section-pre", "section-checked"],
+        createdAt: "2026-03-30T00:00:03.000Z",
+        updatedAt: "2026-03-30T00:00:03.000Z",
+      },
+    ],
+    snapshotRecords: [
+      {
+        snapshotId: "snapshot-pre",
+        projectId,
+        agentId,
+        stage: "pre",
+        sourceSectionIds: ["section-pre"],
+        sourceAnchors: ["msg:1"],
+        branchRef: "refs/heads/cmp/main",
+        createdAt: "2026-03-30T00:00:01.500Z",
+        updatedAt: "2026-03-30T00:00:01.500Z",
+      },
+      {
+        snapshotId: "snapshot-checked",
+        projectId,
+        agentId,
+        stage: "checked",
+        sourceSectionIds: ["section-checked"],
+        sourceAnchors: ["msg:1"],
+        branchRef: "refs/heads/cmp/main",
+        commitRef: "cmp-commit-checked",
+        createdAt: "2026-03-30T00:00:02.500Z",
+        updatedAt: "2026-03-30T00:00:02.500Z",
+      },
+      {
+        snapshotId: "snapshot-persisted",
+        projectId,
+        agentId,
+        stage: "persisted",
+        sourceSectionIds: ["section-persisted"],
+        sourceAnchors: ["msg:1"],
+        branchRef: "refs/heads/cmp/main",
+        commitRef: "cmp-commit-persisted",
+        createdAt: "2026-03-30T00:00:03.500Z",
+        updatedAt: "2026-03-30T00:00:03.500Z",
+      },
+    ],
+    promotedProjections: [],
+    packageRecords: [
+      {
+        packageId: "pkg-materialized",
+        projectId,
+        sourceProjectionId: "projection-1",
+        targetAgentId: "child-1",
+        packageKind: "child_seed",
+        packageRef: "cmp-package:pkg-materialized",
+        fidelityLabel: "checked_high_fidelity",
+        status: "materialized",
+        sourceSnapshotId: "snapshot-persisted",
+        sourceSectionIds: ["section-persisted"],
+        sourceAnchors: ["msg:1"],
+        createdAt: "2026-03-30T00:00:04.000Z",
+        updatedAt: "2026-03-30T00:00:04.000Z",
+      },
+      {
+        packageId: "pkg-dispatched",
+        projectId,
+        sourceProjectionId: "projection-1",
+        targetAgentId: "child-1",
+        packageKind: "child_seed",
+        packageRef: "cmp-package:pkg-dispatched",
+        fidelityLabel: "checked_high_fidelity",
+        status: "dispatched",
+        sourceSnapshotId: "snapshot-persisted",
+        sourceSectionIds: ["section-persisted"],
+        sourceAnchors: ["msg:1"],
+        createdAt: "2026-03-30T00:00:05.000Z",
+        updatedAt: "2026-03-30T00:00:05.000Z",
+      },
+    ],
+    contextPackages: [],
+    dispatchReceipts: [],
+    syncEvents: [],
+    infraState: undefined,
+  };
+}
+
 test("createRaxCmpFacade creates a session and delegates bootstrap/readback/recover/smoke", async () => {
   const bootstrapCalls: unknown[] = [];
   const runtime = {
@@ -274,9 +461,24 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
           dispatcher: "collect_receipt",
         },
         latestRoleMetadata: {
-          icma: { ingressDiscipline: "append_only_fragment_control" },
-          iterator: { reviewDiscipline: { minimumReviewUnit: "commit" } },
-          checker: { reviewDiscipline: { checkedDetachedFromPromote: true } },
+          icma: {
+            ingressDiscipline: "append_only_fragment_control",
+            structuredOutput: {
+              intent: "整理当前主线",
+              sourceAnchorRefs: ["msg:1"],
+            },
+          },
+          iterator: {
+            reviewDiscipline: { minimumReviewUnit: "commit" },
+            reviewOutput: { minimumReviewUnit: "commit" },
+          },
+          checker: {
+            reviewDiscipline: { checkedDetachedFromPromote: true },
+            reviewOutput: {
+              trimSummary: "checker trims to section-level high-signal content",
+              sourceSectionIds: ["section-pre"],
+            },
+          },
           dbagent: {
             packageAuthority: "dbagent_primary_packer",
             materializationOutput: {
@@ -407,6 +609,9 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
           missingCheckpointRoles: [],
         },
       } satisfies CmpFiveAgentSummary;
+    },
+    getCmpRuntimeSnapshot() {
+      return createCmpRuntimeSnapshotFixture("proj-facade", "main");
     },
     async recoverCmpRuntimeSnapshot(_snapshot: CmpRuntimeSnapshot) {
       return undefined;
@@ -558,8 +763,12 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
   assert.equal(readback.summary?.statusPanel?.packageFlow.latestTargetIngress, "child_icma_only");
   assert.equal(readback.summary?.statusPanel?.requests.pendingPeerApprovalCount, 0);
   assert.equal(readback.summary?.statusPanel?.health.readbackStatus, "ready");
+  assert.equal(readback.summary?.acceptance.objectModel.status, "ready");
+  assert.equal(readback.summary?.acceptance.finalAcceptance.status, "ready");
   assert.equal(smoke.status, "ready");
-  assert.equal(smoke.checks.length, 21);
+  assert.equal(smoke.checks.find((check) => check.id === "cmp.object_model.readiness")?.status, "ready");
+  assert.equal(smoke.checks.find((check) => check.id === "cmp.live_infra.readiness")?.status, "ready");
+  assert.equal(smoke.checks.find((check) => check.id === "cmp.final_acceptance")?.status, "ready");
 });
 
 test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime", async () => {
@@ -921,7 +1130,8 @@ test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage 
   assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "db")?.status, "degraded");
   assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "redis")?.status, "degraded");
   assert.equal(readback.summary?.fallbacks.gitHistoryRebuild, "available");
-  assert.equal(readback.summary?.statusPanel, undefined);
+  assert.equal(readback.summary?.statusPanel?.health.readbackStatus, "degraded");
+  assert.equal(readback.summary?.statusPanel?.readiness.liveInfra, "degraded");
   assert.equal(smoke.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.truth.git")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.db.readback")?.status, "degraded");

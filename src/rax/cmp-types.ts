@@ -5,9 +5,13 @@ import type {
   CmpFiveAgentRole,
   CmpPeerExchangeApprovalRecord,
   CmpFiveAgentSummary,
+  CmpPackageRecord,
+  CmpRequestRecord,
   CmpRuntimeDeliveryTruthSummary,
   CmpRuntimeProjectRecoverySummary,
   CmpRuntimeRecoverySummary,
+  CmpSectionRecord,
+  CmpSnapshotRecord,
   CommitContextDeltaInput,
   CommitContextDeltaResult,
   CmpProjectInfraBootstrapReceipt,
@@ -287,6 +291,35 @@ export interface RaxCmpFallbackReadiness {
   redisDeliveryRecovery: "available" | "partial" | "unavailable";
 }
 
+export type RaxCmpReadinessStatus = "ready" | "degraded" | "failed";
+
+export interface RaxCmpReadinessCheck {
+  status: RaxCmpReadinessStatus;
+  summary: string;
+  details?: Record<string, unknown>;
+}
+
+export interface RaxCmpObjectModelReadinessSummary {
+  requestCount: number;
+  sectionCount: number;
+  snapshotCount: number;
+  packageCount: number;
+  requestStatuses: Partial<Record<CmpRequestRecord["status"], number>>;
+  sectionLifecycleCounts: Partial<Record<CmpSectionRecord["lifecycle"], number>>;
+  snapshotStageCounts: Partial<Record<CmpSnapshotRecord["stage"], number>>;
+  packageStatusCounts: Partial<Record<CmpPackageRecord["status"], number>>;
+}
+
+export interface RaxCmpAcceptanceReadiness {
+  objectModel: RaxCmpReadinessCheck;
+  fiveAgentLoop: RaxCmpReadinessCheck;
+  bundleSchema: RaxCmpReadinessCheck;
+  tapExecutionBridge: RaxCmpReadinessCheck;
+  liveInfra: RaxCmpReadinessCheck;
+  recovery: RaxCmpReadinessCheck;
+  finalAcceptance: RaxCmpReadinessCheck;
+}
+
 export interface RaxCmpStatusPanel {
   roles: Record<CmpFiveAgentRole, {
     count: number;
@@ -309,6 +342,17 @@ export interface RaxCmpStatusPanel {
     deliveryDriftCount: number;
     expiredDeliveryCount: number;
     liveInfraReady: boolean;
+    recoveryStatus: RaxCmpReadinessStatus;
+    finalAcceptanceStatus: RaxCmpReadinessStatus;
+  };
+  readiness: {
+    objectModel: RaxCmpReadinessStatus;
+    fiveAgentLoop: RaxCmpReadinessStatus;
+    bundleSchema: RaxCmpReadinessStatus;
+    tapExecutionBridge: RaxCmpReadinessStatus;
+    liveInfra: RaxCmpReadinessStatus;
+    recovery: RaxCmpReadinessStatus;
+    finalAcceptance: RaxCmpReadinessStatus;
   };
 }
 
@@ -330,10 +374,12 @@ export interface RaxCmpReadbackSummary {
   appliedRecoveryPreference: RaxCmpRecoveryPreference;
   truthLayers: RaxCmpTruthLayerSummary[];
   fallbacks: RaxCmpFallbackReadiness;
+  objectModel?: RaxCmpObjectModelReadinessSummary;
   recoverySummary?: CmpRuntimeRecoverySummary;
   projectRecovery?: CmpRuntimeProjectRecoverySummary;
   deliverySummary?: CmpRuntimeDeliveryTruthSummary;
   fiveAgentSummary?: CmpFiveAgentSummary;
+  acceptance: RaxCmpAcceptanceReadiness;
   statusPanel?: RaxCmpStatusPanel;
   issues: string[];
 }
@@ -398,7 +444,18 @@ export interface RaxCmpRoleCapabilityDispatchInput {
 
 export interface RaxCmpSmokeCheck {
   id: string;
-  gate?: "truth" | "recovery" | "manual_control" | "delivery" | "lineage" | "final_acceptance";
+  gate?:
+    | "truth"
+    | "recovery"
+    | "manual_control"
+    | "delivery"
+    | "lineage"
+    | "object_model"
+    | "five_agent"
+    | "bundle_schema"
+    | "tap_bridge"
+    | "live_infra"
+    | "final_acceptance";
   status: "ready" | "degraded" | "failed";
   summary: string;
   metadata?: Record<string, unknown>;
@@ -472,6 +529,7 @@ export interface RaxCmpRuntimeLike {
   getCmpRuntimeProjectRecoverySummary?(projectId: string): CmpRuntimeProjectRecoverySummary | undefined;
   getCmpRuntimeDeliveryTruthSummary?(projectId: string): CmpRuntimeDeliveryTruthSummary;
   getCmpFiveAgentRuntimeSummary?(agentId?: string): CmpFiveAgentSummary;
+  getCmpRuntimeSnapshot?(): CmpRuntimeSnapshot;
   resolveCmpFiveAgentCapabilityAccess?(input: {
     role: CmpFiveAgentRole;
     sessionId: string;

@@ -1,6 +1,7 @@
 export type {
   RaxCmpBootstrapInput,
   RaxCmpBootstrapResult,
+  RaxCmpAcceptanceReadiness,
   RaxCmpCreateInput,
   RaxCmpDatabaseConfig,
   RaxCmpFacade,
@@ -10,6 +11,8 @@ export type {
   RaxCmpMqConfig,
   RaxCmpReadbackInput,
   RaxCmpReadbackResult,
+  RaxCmpReadinessCheck,
+  RaxCmpReadinessStatus,
   RaxCmpRecoverInput,
   RaxCmpRecoverResult,
   RaxCmpRequestHistoryInput,
@@ -18,6 +21,7 @@ export type {
   RaxCmpSmokeInput,
   RaxCmpSmokeResult,
   RaxCmpSmokeCheck,
+  RaxCmpObjectModelReadinessSummary,
   RaxCmpStatusPanel,
   RaxCmpTruthLayerSummary,
 } from "./cmp-types.js";
