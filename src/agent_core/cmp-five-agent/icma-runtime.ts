@@ -122,6 +122,23 @@ export class CmpIcmaRuntime {
       }),
       chunkIds: [chunkId],
       fragmentIds,
+      structuredOutput: {
+        requestId: typeof input.ingest.metadata?.cmpRequestId === "string"
+          ? input.ingest.metadata.cmpRequestId
+          : undefined,
+        intent: input.ingest.taskSummary,
+        sourceAnchorRefs: input.ingest.materials.map((material) => material.ref),
+        candidateBodyRefs: input.ingest.materials.map((material) => material.ref),
+        boundary: "preserve_root_system_and_emit_controlled_fragments_only",
+        explicitFragmentIds: fragmentIds,
+        preSectionIds: Array.isArray(input.ingest.metadata?.cmpPreSectionRecordIds)
+          ? input.ingest.metadata.cmpPreSectionRecordIds.filter((value): value is string => typeof value === "string")
+          : [],
+        guide: {
+          operatorGuide: "Preserve high-signal input and emit controlled pre-sections only.",
+          childGuide: "Any child seed must enter child ICMA only.",
+        },
+      },
     };
 
     this.#records.set(loop.loopId, loop);
@@ -171,10 +188,12 @@ export class CmpIcmaRuntime {
         emittedEventCount: uniqueStrings(input.eventIds).length,
         fragmentPolicy: current.metadata?.fragmentPolicy,
         seedAssembly: current.metadata?.seedAssembly,
+        structuredOutput: current.structuredOutput,
         emitContract: {
           target: "iterator",
           preservesFragmentPolicy: true,
           preservesSeedAssembly: true,
+          preservesStructuredOutput: true,
         },
       },
     };

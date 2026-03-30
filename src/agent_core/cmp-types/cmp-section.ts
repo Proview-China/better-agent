@@ -24,6 +24,14 @@ export const CMP_SECTION_FIDELITY = [
 ] as const;
 export type CmpSectionFidelity = (typeof CMP_SECTION_FIDELITY)[number];
 
+export const CMP_SECTION_STAGES = [
+  "raw",
+  "pre",
+  "checked",
+  "persisted",
+] as const;
+export type CmpSectionStage = (typeof CMP_SECTION_STAGES)[number];
+
 export const CMP_STORED_SECTION_PLANES = [
   "git",
   "postgresql",
@@ -50,6 +58,20 @@ export const CMP_RULE_ACTIONS = [
 ] as const;
 export type CmpRuleAction = (typeof CMP_RULE_ACTIONS)[number];
 
+export interface CmpSectionSourceAnchor {
+  anchorId: string;
+  ref: string;
+  kind: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpSectionAncestry {
+  parentSectionId?: string;
+  derivedFromSectionIds?: string[];
+  splitFromSectionIds?: string[];
+  mergedFromSectionIds?: string[];
+}
+
 export interface CmpSection {
   id: string;
   projectId: string;
@@ -61,6 +83,12 @@ export interface CmpSection {
   payloadRefs: string[];
   tags: string[];
   createdAt: string;
+  stage?: CmpSectionStage;
+  version?: number;
+  sourceAnchors?: CmpSectionSourceAnchor[];
+  bodyRef?: string;
+  guideRefs?: string[];
+  ancestry?: CmpSectionAncestry;
   metadata?: Record<string, unknown>;
 }
 
@@ -133,6 +161,50 @@ function fidelityIndex(value: CmpSectionFidelity): number {
   return CMP_SECTION_FIDELITY.indexOf(value);
 }
 
+function normalizeOptionalStrings(values?: string[]): string[] | undefined {
+  if (!values) {
+    return undefined;
+  }
+  const normalized = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function defaultSectionStage(fidelity: CmpSectionFidelity): CmpSectionStage {
+  switch (fidelity) {
+    case "exact":
+      return "raw";
+    case "checked":
+      return "checked";
+    case "projected":
+      return "persisted";
+  }
+}
+
+export function createCmpSectionSourceAnchor(input: CmpSectionSourceAnchor): CmpSectionSourceAnchor {
+  return {
+    anchorId: assertNonEmpty(input.anchorId, "CMP section source anchor anchorId"),
+    ref: assertNonEmpty(input.ref, "CMP section source anchor ref"),
+    kind: assertNonEmpty(input.kind, "CMP section source anchor kind"),
+    metadata: input.metadata,
+  };
+}
+
+export function createCmpSectionAncestry(input: CmpSectionAncestry = {}): CmpSectionAncestry | undefined {
+  const ancestry: CmpSectionAncestry = {
+    parentSectionId: input.parentSectionId?.trim() || undefined,
+    derivedFromSectionIds: normalizeOptionalStrings(input.derivedFromSectionIds),
+    splitFromSectionIds: normalizeOptionalStrings(input.splitFromSectionIds),
+    mergedFromSectionIds: normalizeOptionalStrings(input.mergedFromSectionIds),
+  };
+
+  return ancestry.parentSectionId
+    || ancestry.derivedFromSectionIds
+    || ancestry.splitFromSectionIds
+    || ancestry.mergedFromSectionIds
+    ? ancestry
+    : undefined;
+}
+
 export function createCmpSection(input: CmpSection): CmpSection {
   return {
     id: assertNonEmpty(input.id, "CMP section id"),
@@ -145,8 +217,56 @@ export function createCmpSection(input: CmpSection): CmpSection {
     payloadRefs: uniqueStrings(input.payloadRefs, "CMP section payloadRefs"),
     tags: [...new Set((input.tags ?? []).map((value) => value.trim()).filter(Boolean))],
     createdAt: assertNonEmpty(input.createdAt, "CMP section createdAt"),
+    stage: input.stage ?? defaultSectionStage(input.fidelity),
+    version: input.version ?? 1,
+    sourceAnchors: (input.sourceAnchors ?? []).map(createCmpSectionSourceAnchor),
+    bodyRef: input.bodyRef?.trim() || undefined,
+    guideRefs: normalizeOptionalStrings(input.guideRefs),
+    ancestry: createCmpSectionAncestry(input.ancestry),
     metadata: input.metadata,
   };
+}
+
+export function createCmpDerivedSection(input: {
+  sectionId: string;
+  fromSection: CmpSection;
+  stage: CmpSectionStage;
+  createdAt: string;
+  fidelity?: CmpSectionFidelity;
+  payloadRefs?: string[];
+  tags?: string[];
+  sourceAnchors?: CmpSectionSourceAnchor[];
+  bodyRef?: string;
+  guideRefs?: string[];
+  metadata?: Record<string, unknown>;
+}): CmpSection {
+  const source = createCmpSection(input.fromSection);
+  return createCmpSection({
+    ...source,
+    id: input.sectionId,
+    fidelity: input.fidelity ?? source.fidelity,
+    payloadRefs: input.payloadRefs ?? source.payloadRefs,
+    tags: [...new Set([...(source.tags ?? []), ...(input.tags ?? [])])],
+    createdAt: assertNonEmpty(input.createdAt, "CMP derived section createdAt"),
+    stage: input.stage,
+    version: (source.version ?? 1) + 1,
+    sourceAnchors: [
+      ...(source.sourceAnchors ?? []),
+      ...(input.sourceAnchors ?? []),
+    ],
+    bodyRef: input.bodyRef ?? source.bodyRef,
+    guideRefs: input.guideRefs ?? source.guideRefs,
+    ancestry: {
+      parentSectionId: source.id,
+      derivedFromSectionIds: [...new Set([source.id, ...(source.ancestry?.derivedFromSectionIds ?? [])])],
+      splitFromSectionIds: source.ancestry?.splitFromSectionIds,
+      mergedFromSectionIds: source.ancestry?.mergedFromSectionIds,
+    },
+    metadata: {
+      ...(source.metadata ?? {}),
+      ...(input.metadata ?? {}),
+    },
+  });
 }
 
 export function createCmpStoredSection(input: CmpStoredSection): CmpStoredSection {

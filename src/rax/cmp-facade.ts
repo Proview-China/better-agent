@@ -276,6 +276,7 @@ function createReadbackSummary(input: {
   projectRecovery?: RaxCmpReadbackSummary["projectRecovery"];
   deliverySummary?: RaxCmpReadbackSummary["deliverySummary"];
   fiveAgentSummary?: RaxCmpReadbackSummary["fiveAgentSummary"];
+  roleCapabilityExecutionBridgeAvailable?: boolean;
 }): RaxCmpReadbackSummary {
   const expectedLineageCount = input.receipt?.lineages.length ?? 0;
   const infraSummary = input.infraState
@@ -326,6 +327,21 @@ function createReadbackSummary(input: {
   }
   if ((input.fiveAgentSummary?.flow.reinterventionPendingCount ?? 0) > 0) {
     issues.push(`CMP five-agent has ${input.fiveAgentSummary?.flow.reinterventionPendingCount ?? 0} pending reintervention request(s).`);
+  }
+  if (input.roleCapabilityExecutionBridgeAvailable === false) {
+    issues.push("CMP five-agent TAP execution bridge is not available on this runtime.");
+  }
+  const latestDispatcherBundle = input.fiveAgentSummary?.latestRoleMetadata.dispatcher?.bundle as
+    | { target?: { targetIngress?: string }; body?: { primaryRef?: string } }
+    | undefined;
+  if (input.fiveAgentSummary && !latestDispatcherBundle?.target?.targetIngress) {
+    issues.push("CMP five-agent dispatcher bundle is missing target ingress metadata.");
+  }
+  const latestDbAgentMaterialization = input.fiveAgentSummary?.latestRoleMetadata.dbagent?.materializationOutput as
+    | { bundleSchemaVersion?: string }
+    | undefined;
+  if (input.fiveAgentSummary && !latestDbAgentMaterialization?.bundleSchemaVersion) {
+    issues.push("CMP five-agent DBAgent materialization output is missing bundle schema version.");
   }
 
   const status = !input.receipt
@@ -417,6 +433,51 @@ function createReadbackSummary(input: {
       : "unavailable",
   };
 
+  const statusPanel: RaxCmpReadbackSummary["statusPanel"] = input.fiveAgentSummary
+    ? {
+      roles: {
+        icma: {
+          count: input.fiveAgentSummary.roleCounts.icma,
+          latestStage: input.fiveAgentSummary.latestStages.icma,
+        },
+        iterator: {
+          count: input.fiveAgentSummary.roleCounts.iterator,
+          latestStage: input.fiveAgentSummary.latestStages.iterator,
+        },
+        checker: {
+          count: input.fiveAgentSummary.roleCounts.checker,
+          latestStage: input.fiveAgentSummary.latestStages.checker,
+        },
+        dbagent: {
+          count: input.fiveAgentSummary.roleCounts.dbagent,
+          latestStage: input.fiveAgentSummary.latestStages.dbagent,
+        },
+        dispatcher: {
+          count: input.fiveAgentSummary.roleCounts.dispatcher,
+          latestStage: input.fiveAgentSummary.latestStages.dispatcher,
+        },
+      },
+      packageFlow: {
+        modeCounts: input.fiveAgentSummary.flow.packageModeCounts,
+        latestTargetIngress: latestDispatcherBundle?.target?.targetIngress,
+        latestPrimaryRef: latestDispatcherBundle?.body?.primaryRef,
+      },
+      requests: {
+        parentPromoteReviewCount: input.fiveAgentSummary.parentPromoteReviewCount,
+        pendingPeerApprovalCount: input.fiveAgentSummary.flow.pendingPeerApprovalCount,
+        approvedPeerApprovalCount: input.fiveAgentSummary.flow.approvedPeerApprovalCount,
+        reinterventionPendingCount: input.fiveAgentSummary.flow.reinterventionPendingCount,
+        reinterventionServedCount: input.fiveAgentSummary.flow.reinterventionServedCount,
+      },
+      health: {
+        readbackStatus: status,
+        deliveryDriftCount: input.deliverySummary?.driftCount ?? 0,
+        expiredDeliveryCount: input.deliverySummary?.expiredCount ?? 0,
+        liveInfraReady: truthLayers.every((layer) => layer.status === "ready"),
+      },
+    }
+    : undefined;
+
   return {
     projectId: input.projectId,
     status,
@@ -439,6 +500,7 @@ function createReadbackSummary(input: {
     projectRecovery: input.projectRecovery,
     deliverySummary: input.deliverySummary,
     fiveAgentSummary: input.fiveAgentSummary,
+    statusPanel,
     issues,
   };
 }
@@ -516,6 +578,7 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         projectRecovery: readbackInput.session.runtime.getCmpRuntimeProjectRecoverySummary?.(projectId),
         deliverySummary: readbackInput.session.runtime.getCmpRuntimeDeliveryTruthSummary?.(projectId),
         fiveAgentSummary: readbackInput.session.runtime.getCmpFiveAgentRuntimeSummary?.(control.scope.lineage.agentIds[0]),
+        roleCapabilityExecutionBridgeAvailable: Boolean(readbackInput.session.runtime.dispatchCmpFiveAgentCapability),
       });
       return {
         status: "found",
@@ -654,6 +717,31 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         taskContext: roleInput.payload.taskContext,
         requestedScope: roleInput.payload.requestedScope,
         requestedDurationMs: roleInput.payload.requestedDurationMs,
+        metadata: roleInput.payload.metadata,
+      });
+    },
+
+    async dispatchRoleCapability(roleInput) {
+      const runtime = roleInput.session.runtime;
+      if (!runtime.dispatchCmpFiveAgentCapability) {
+        throw new Error("CMP five-agent TAP execution bridge is not available on this runtime.");
+      }
+      return runtime.dispatchCmpFiveAgentCapability({
+        role: roleInput.role,
+        sessionId: roleInput.session.sessionId,
+        runId: roleInput.payload.metadata?.runId as string ?? `${roleInput.session.sessionId}:cmp-five-agent`,
+        agentId: roleInput.payload.agentId,
+        capabilityKey: roleInput.payload.capabilityKey,
+        reason: roleInput.payload.reason,
+        capabilityInput: roleInput.payload.capabilityInput,
+        priority: roleInput.payload.priority,
+        timeoutMs: roleInput.payload.timeoutMs,
+        requestedTier: roleInput.payload.requestedTier,
+        mode: roleInput.payload.mode,
+        taskContext: roleInput.payload.taskContext,
+        requestedScope: roleInput.payload.requestedScope,
+        requestedDurationMs: roleInput.payload.requestedDurationMs,
+        cmpContext: roleInput.payload.cmpContext,
         metadata: roleInput.payload.metadata,
       });
     },
@@ -874,6 +962,50 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
           summary: `CMP five-agent TAP profiles attached: ${Object.values(readback.summary.fiveAgentSummary.tapProfiles).map((entry) => `${entry.role}:${entry.profileId}`).join(", ")}.`,
         });
         checks.push({
+          id: "cmp.five_agent.bundle_schema",
+          gate: "delivery",
+          status: (() => {
+            const dispatcherBundle = readback.summary?.fiveAgentSummary?.latestRoleMetadata.dispatcher?.bundle as
+              | { target?: { targetIngress?: string }; body?: { primaryRef?: string } }
+              | undefined;
+            const dbagentOutput = readback.summary?.fiveAgentSummary?.latestRoleMetadata.dbagent?.materializationOutput as
+              | { bundleSchemaVersion?: string }
+              | undefined;
+            return dispatcherBundle?.target?.targetIngress && dispatcherBundle?.body?.primaryRef && dbagentOutput?.bundleSchemaVersion
+              ? "ready"
+              : "degraded";
+          })(),
+          summary: "CMP five-agent bundle schema checks dispatcher bundle target/body fields and DBAgent bundle schema version.",
+        });
+        checks.push({
+          id: "cmp.five_agent.tap_execution_bridge",
+          gate: "final_acceptance",
+          status: smokeInput.session.runtime.dispatchCmpFiveAgentCapability ? "ready" : "failed",
+          summary: smokeInput.session.runtime.dispatchCmpFiveAgentCapability
+            ? "CMP five-agent TAP execution bridge is available."
+            : "CMP five-agent TAP execution bridge is not available.",
+        });
+        checks.push({
+          id: "cmp.status.panel.surface",
+          gate: "final_acceptance",
+          status: readback.summary?.statusPanel ? "ready" : "degraded",
+          summary: readback.summary?.statusPanel
+            ? "CMP status panel surface is available from readback summary."
+            : "CMP status panel surface is not attached to readback summary yet.",
+        });
+        checks.push({
+          id: "cmp.live.infra.readiness",
+          gate: "final_acceptance",
+          status: readback.summary?.statusPanel?.health.liveInfraReady
+            ? "ready"
+            : readback.summary?.truthLayers.some((layer) => layer.status === "failed")
+              ? "failed"
+              : "degraded",
+          summary: readback.summary?.statusPanel
+            ? `CMP live infra readiness is ${readback.summary.statusPanel.health.liveInfraReady ? "ready" : "degraded"} across git/db/redis truth layers.`
+            : "CMP live infra readiness could not be derived because status panel is unavailable.",
+        });
+        checks.push({
           id: "cmp.five_agent.flow",
           gate: "delivery",
           status: readback.summary.fiveAgentSummary.flow.pendingPeerApprovalCount === 0
@@ -885,14 +1017,14 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
       }
 
       checks.push({
-        id: "cmp.non_five_agent.final_gate",
+        id: "cmp.final_acceptance",
         gate: "final_acceptance",
         status: checks.some((check) => check.status === "failed")
           ? "failed"
           : checks.some((check) => check.status === "degraded")
             ? "degraded"
             : "ready",
-        summary: "CMP non-five-agent final gate aggregates truth, recovery, delivery and manual-control coherence.",
+        summary: "CMP final acceptance gate aggregates truth, recovery, delivery, five-agent bridge, and manual-control coherence.",
       });
 
       const status = checks.some((check) => check.status === "failed")

@@ -1,5 +1,19 @@
 import type { CmpGitProjectRepo } from "../cmp-git/index.js";
-import type { AgentLineage, CheckedSnapshot, ContextDelta, ContextEvent, ContextPackage, DispatchReceipt, PromotedProjection, SnapshotCandidate, SyncEvent } from "../cmp-types/index.js";
+import type {
+  AgentLineage,
+  CheckedSnapshot,
+  CmpPackageRecord,
+  CmpRequestRecord,
+  CmpSectionRecord,
+  CmpSnapshotRecord,
+  ContextDelta,
+  ContextEvent,
+  ContextPackage,
+  DispatchReceipt,
+  PromotedProjection,
+  SnapshotCandidate,
+  SyncEvent,
+} from "../cmp-types/index.js";
 import type { CmpActiveLineRecord } from "./active-line.js";
 import type { CmpRuntimeInfraProjectState } from "./infra-state.js";
 import {
@@ -20,7 +34,11 @@ export interface CmpRuntimeHydratedState {
   activeLines: Map<string, CmpActiveLineRecord>;
   snapshotCandidates: Map<string, SnapshotCandidate>;
   checkedSnapshots: Map<string, CheckedSnapshot>;
+  requests: Map<string, CmpRequestRecord>;
+  sectionRecords: Map<string, CmpSectionRecord>;
+  snapshotRecords: Map<string, CmpSnapshotRecord>;
   promotedProjections: Map<string, PromotedProjection>;
+  packageRecords: Map<string, CmpPackageRecord>;
   contextPackages: Map<string, ContextPackage>;
   dispatchReceipts: Map<string, DispatchReceipt>;
   syncEvents: Map<string, SyncEvent>;
@@ -51,7 +69,11 @@ export function hydrateCmpRuntimeSnapshot(
   const activeLines = new Map<string, CmpActiveLineRecord>();
   const snapshotCandidates = new Map<string, SnapshotCandidate>();
   const checkedSnapshots = new Map<string, CheckedSnapshot>();
+  const requests = new Map<string, CmpRequestRecord>();
+  const sectionRecords = new Map<string, CmpSectionRecord>();
+  const snapshotRecords = new Map<string, CmpSnapshotRecord>();
   const promotedProjections = new Map<string, PromotedProjection>();
+  const packageRecords = new Map<string, CmpPackageRecord>();
   const contextPackages = new Map<string, ContextPackage>();
   const dispatchReceipts = new Map<string, DispatchReceipt>();
   const syncEvents = new Map<string, SyncEvent>();
@@ -98,6 +120,24 @@ export function hydrateCmpRuntimeSnapshot(
     checkedSnapshots.set(snapshotRecord.snapshotId, snapshotRecord);
   }
 
+  const seenRequests = new Set<string>();
+  for (const request of normalized.requests) {
+    assertUniqueKey("cmp request", request.requestId, seenRequests);
+    requests.set(request.requestId, request);
+  }
+
+  const seenSectionRecords = new Set<string>();
+  for (const sectionRecord of normalized.sectionRecords) {
+    assertUniqueKey("cmp section record", sectionRecord.sectionId, seenSectionRecords);
+    sectionRecords.set(sectionRecord.sectionId, sectionRecord);
+  }
+
+  const seenSnapshotRecords = new Set<string>();
+  for (const snapshotRecord of normalized.snapshotRecords) {
+    assertUniqueKey("cmp object snapshot", snapshotRecord.snapshotId, seenSnapshotRecords);
+    snapshotRecords.set(snapshotRecord.snapshotId, snapshotRecord);
+  }
+
   const seenProjections = new Set<string>();
   for (const projection of normalized.promotedProjections) {
     assertUniqueKey("cmp promoted projection", projection.projectionId, seenProjections);
@@ -108,6 +148,12 @@ export function hydrateCmpRuntimeSnapshot(
   for (const contextPackage of normalized.contextPackages) {
     assertUniqueKey("cmp context package", contextPackage.packageId, seenPackages);
     contextPackages.set(contextPackage.packageId, contextPackage);
+  }
+
+  const seenPackageRecords = new Set<string>();
+  for (const packageRecord of normalized.packageRecords) {
+    assertUniqueKey("cmp package record", packageRecord.packageId, seenPackageRecords);
+    packageRecords.set(packageRecord.packageId, packageRecord);
   }
 
   const seenReceipts = new Set<string>();
@@ -130,7 +176,11 @@ export function hydrateCmpRuntimeSnapshot(
     activeLines,
     snapshotCandidates,
     checkedSnapshots,
+    requests,
+    sectionRecords,
+    snapshotRecords,
     promotedProjections,
+    packageRecords,
     contextPackages,
     dispatchReceipts,
     syncEvents,

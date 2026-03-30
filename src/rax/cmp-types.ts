@@ -1,5 +1,6 @@
 import type {
   BootstrapCmpProjectInfraInput,
+  DispatchCmpFiveAgentCapabilityResult,
   CmpFiveAgentCapabilityAccessResolution,
   CmpFiveAgentRole,
   CmpPeerExchangeApprovalRecord,
@@ -25,6 +26,7 @@ import type {
   TaCapabilityTier,
   TaPoolMode,
   AccessRequestScope,
+  IntentPriority,
 } from "../agent_core/index.js";
 import type { CreateRaxCmpConfigInput, RaxCmpConfig } from "./cmp-config.js";
 
@@ -285,6 +287,31 @@ export interface RaxCmpFallbackReadiness {
   redisDeliveryRecovery: "available" | "partial" | "unavailable";
 }
 
+export interface RaxCmpStatusPanel {
+  roles: Record<CmpFiveAgentRole, {
+    count: number;
+    latestStage?: string;
+  }>;
+  packageFlow: {
+    modeCounts: Partial<Record<string, number>>;
+    latestTargetIngress?: string;
+    latestPrimaryRef?: string;
+  };
+  requests: {
+    parentPromoteReviewCount: number;
+    pendingPeerApprovalCount: number;
+    approvedPeerApprovalCount: number;
+    reinterventionPendingCount: number;
+    reinterventionServedCount: number;
+  };
+  health: {
+    readbackStatus: "ready" | "degraded" | "failed";
+    deliveryDriftCount: number;
+    expiredDeliveryCount: number;
+    liveInfraReady: boolean;
+  };
+}
+
 export interface RaxCmpReadbackSummary {
   projectId: string;
   status: "ready" | "degraded" | "failed";
@@ -307,6 +334,7 @@ export interface RaxCmpReadbackSummary {
   projectRecovery?: CmpRuntimeProjectRecoverySummary;
   deliverySummary?: CmpRuntimeDeliveryTruthSummary;
   fiveAgentSummary?: CmpFiveAgentSummary;
+  statusPanel?: RaxCmpStatusPanel;
   issues: string[];
 }
 
@@ -344,6 +372,26 @@ export interface RaxCmpRoleCapabilityAccessInput {
     taskContext?: Record<string, unknown>;
     requestedScope?: AccessRequestScope;
     requestedDurationMs?: number;
+    metadata?: Record<string, unknown>;
+  };
+}
+
+export interface RaxCmpRoleCapabilityDispatchInput {
+  session: RaxCmpSession;
+  role: CmpFiveAgentRole;
+  payload: {
+    agentId: string;
+    capabilityKey: string;
+    reason: string;
+    capabilityInput: Record<string, unknown>;
+    priority?: IntentPriority;
+    timeoutMs?: number;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    taskContext?: Record<string, unknown>;
+    requestedScope?: AccessRequestScope;
+    requestedDurationMs?: number;
+    cmpContext?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   };
 }
@@ -438,6 +486,24 @@ export interface RaxCmpRuntimeLike {
     requestedDurationMs?: number;
     metadata?: Record<string, unknown>;
   }): Promise<CmpFiveAgentCapabilityAccessResolution> | CmpFiveAgentCapabilityAccessResolution;
+  dispatchCmpFiveAgentCapability?(input: {
+    role: CmpFiveAgentRole;
+    sessionId: string;
+    runId: string;
+    agentId: string;
+    capabilityKey: string;
+    reason: string;
+    capabilityInput: Record<string, unknown>;
+    priority?: IntentPriority;
+    timeoutMs?: number;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    taskContext?: Record<string, unknown>;
+    requestedScope?: AccessRequestScope;
+    requestedDurationMs?: number;
+    cmpContext?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }): Promise<DispatchCmpFiveAgentCapabilityResult> | DispatchCmpFiveAgentCapabilityResult;
   reviewCmpPeerExchangeApproval?(input: {
     approvalId: string;
     actorAgentId: string;
@@ -482,6 +548,7 @@ export interface RaxCmpFacade {
   materialize(input: RaxCmpMaterializeInput): Promise<MaterializeContextPackageResult>;
   dispatch(input: RaxCmpDispatchInput): Promise<DispatchContextPackageResult>;
   resolveRoleCapabilityAccess(input: RaxCmpRoleCapabilityAccessInput): Promise<CmpFiveAgentCapabilityAccessResolution>;
+  dispatchRoleCapability(input: RaxCmpRoleCapabilityDispatchInput): Promise<DispatchCmpFiveAgentCapabilityResult>;
   approvePeerExchange(input: RaxCmpPeerApprovalInput): Promise<CmpPeerExchangeApprovalRecord>;
   requestHistory(input: RaxCmpRequestHistoryInput): Promise<RequestHistoricalContextResult>;
   smoke(input: RaxCmpSmokeInput): Promise<RaxCmpSmokeResult>;

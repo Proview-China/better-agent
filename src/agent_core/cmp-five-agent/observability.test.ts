@@ -22,6 +22,18 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
         updatedAt: "2026-03-25T00:00:04.000Z",
         chunkIds: ["chunk-1"],
         fragmentIds: ["fragment-1"],
+        structuredOutput: {
+          intent: "整理当前主线",
+          sourceAnchorRefs: ["msg:1"],
+          candidateBodyRefs: ["msg:1"],
+          boundary: "preserve_root_system_and_emit_controlled_fragments_only",
+          explicitFragmentIds: ["fragment-1"],
+          preSectionIds: ["section-pre-1"],
+          guide: {
+            operatorGuide: "keep high-signal context only",
+            childGuide: "child seed enters child icma only",
+          },
+        },
       },
     ],
     iteratorRecords: [
@@ -37,6 +49,12 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
         branchRef: "refs/heads/cmp/main",
         commitRef: "commit-1",
         reviewRef: "refs/review/candidate-1",
+        reviewOutput: {
+          sourceSectionIds: ["section-pre-1"],
+          minimumReviewUnit: "commit",
+          reviewRefMode: "stable_review_ref",
+          handoffTarget: "checker",
+        },
       },
     ],
     checkerRecords: [
@@ -50,6 +68,15 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
         candidateId: "candidate-1",
         checkedSnapshotId: "checked-1",
         suggestPromote: true,
+        reviewOutput: {
+          sourceSectionIds: ["section-pre-1"],
+          checkedSectionIds: ["section-checked-1"],
+          splitDecisionRefs: ["checked-1:split"],
+          mergeDecisionRefs: ["checked-1:merge"],
+          trimSummary: "trimmed to high-signal sections",
+          shortReason: "checked",
+          detailedReason: "checker restructured evidence for promote-ready handoff",
+        },
       },
     ],
     dbAgentRecords: [
@@ -65,6 +92,12 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
         primaryPackageId: "pkg-main",
         timelinePackageId: "pkg-main:timeline",
         taskSnapshotIds: ["task-1"],
+        materializationOutput: {
+          sourceSectionIds: ["section-checked-1"],
+          sourceSnapshotId: "checked-1",
+          packageTopology: "active_plus_timeline_plus_task_snapshots",
+          bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+        },
       },
     ],
     dispatcherRecords: [
@@ -80,6 +113,27 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
         targetAgentId: "child-a",
         targetKind: "child",
         packageMode: "child_seed_via_icma",
+        bundle: {
+          target: {
+            targetAgentId: "child-a",
+            targetKind: "child",
+            packageMode: "child_seed_via_icma",
+            targetIngress: "child_icma_only",
+          },
+          body: {
+            packageId: "pkg-main",
+            packageKind: "child_seed",
+            primaryRef: "cmp-package:pkg-main",
+            taskSnapshotRefs: ["task-1"],
+          },
+          governance: {
+            sourceAgentId: "main",
+            approvalRequired: false,
+            confidenceLabel: "high",
+            signalLabel: "checked_high_fidelity",
+          },
+          sourceAnchorRefs: ["cmp-package:pkg-main"],
+        },
         metadata: {
           childSeedsEnterIcmaOnly: true,
         },
@@ -96,6 +150,28 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
         targetAgentId: "peer-a",
         targetKind: "peer",
         packageMode: "peer_exchange_slim",
+        bundle: {
+          target: {
+            targetAgentId: "peer-a",
+            targetKind: "peer",
+            packageMode: "peer_exchange_slim",
+            targetIngress: "peer_exchange",
+          },
+          body: {
+            packageId: "pkg-peer",
+            packageKind: "peer_exchange",
+            primaryRef: "cmp-package:pkg-peer",
+            taskSnapshotRefs: [],
+          },
+          governance: {
+            sourceAgentId: "main",
+            approvalRequired: true,
+            approvalStatus: "pending_parent_core_approval",
+            confidenceLabel: "medium",
+            signalLabel: "checked_high_fidelity",
+          },
+          sourceAnchorRefs: ["cmp-package:pkg-peer"],
+        },
       },
       {
         loopId: "dispatcher-passive",
@@ -109,6 +185,27 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
         targetAgentId: "main",
         targetKind: "core_agent",
         packageMode: "historical_reply_return",
+        bundle: {
+          target: {
+            targetAgentId: "main",
+            targetKind: "core_agent_return",
+            packageMode: "historical_reply_return",
+            targetIngress: "core_agent_return",
+          },
+          body: {
+            packageId: "pkg-passive",
+            packageKind: "historical_reply",
+            primaryRef: "cmp-package:pkg-passive",
+            taskSnapshotRefs: [],
+          },
+          governance: {
+            sourceAgentId: "main",
+            approvalRequired: false,
+            confidenceLabel: "high",
+            signalLabel: "checked_high_fidelity",
+          },
+          sourceAnchorRefs: ["cmp-package:pkg-passive"],
+        },
       },
     ],
     checkpoints: [
@@ -308,4 +405,8 @@ test("observability composes richer fiveAgentSummary without adding new facade a
   assert.equal(summary.tapProfiles.iterator.profileId, "cmp-five-agent/iterator-tap-profile/v1");
   assert.equal(summary.tapProfiles.dbagent.allowedCapabilityPatterns.includes("cmp.db.write"), true);
   assert.deepEqual(summary.recovery.missingCheckpointRoles, []);
+  assert.equal((summary.latestRoleMetadata.icma?.structuredOutput as { intent?: string } | undefined)?.intent, "整理当前主线");
+  assert.equal((summary.latestRoleMetadata.iterator?.reviewOutput as { minimumReviewUnit?: string } | undefined)?.minimumReviewUnit, "commit");
+  assert.equal((summary.latestRoleMetadata.dbagent?.materializationOutput as { bundleSchemaVersion?: string } | undefined)?.bundleSchemaVersion, "cmp-dispatch-bundle/v1");
+  assert.equal((summary.latestRoleMetadata.dispatcher?.bundle as { target?: { targetIngress?: string } } | undefined)?.target?.targetIngress, "core_agent_return");
 });

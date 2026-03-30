@@ -1,0 +1,34 @@
+{
+  "projectId": "cmp-project-sample",
+  "summary": {
+    "status": "ready",
+    "statusPanel": {
+      "roles": {
+        "icma": { "count": 1, "latestStage": "emit" },
+        "iterator": { "count": 1, "latestStage": "update_review_ref" },
+        "checker": { "count": 1, "latestStage": "checked" },
+        "dbagent": { "count": 1, "latestStage": "attach_snapshots" },
+        "dispatcher": { "count": 1, "latestStage": "collect_receipt" }
+      },
+      "packageFlow": {
+        "modeCounts": {
+          "child_seed_via_icma": 1
+        },
+        "latestTargetIngress": "child_icma_only",
+        "latestPrimaryRef": "cmp-package:pkg-sample"
+      },
+      "requests": {
+        "parentPromoteReviewCount": 0,
+        "pendingPeerApprovalCount": 0,
+        "approvedPeerApprovalCount": 1,
+        "reinterventionPendingCount": 0,
+        "reinterventionServedCount": 1
+      },
+      "health": {
+        "readbackStatus": "ready",
+        "deliveryDriftCount": 0,
+        "expiredDeliveryCount": 0
+      }
+    }
+  }
+}

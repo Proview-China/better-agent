@@ -43,6 +43,13 @@ export const CMP_CHECKED_SNAPSHOT_QUALITY_LABELS = [
 ] as const;
 export type CmpCheckedSnapshotQualityLabel = (typeof CMP_CHECKED_SNAPSHOT_QUALITY_LABELS)[number];
 
+export const CMP_SNAPSHOT_STAGES = [
+  "raw_capture",
+  "checked",
+  "package_attached",
+] as const;
+export type CmpSnapshotStage = (typeof CMP_SNAPSHOT_STAGES)[number];
+
 export interface ContextEvent {
   eventId: string;
   agentId: string;
@@ -118,8 +125,13 @@ export interface CheckedSnapshot {
   branchRef: string;
   commitRef: string;
   checkedAt: string;
+  updatedAt?: string;
   qualityLabel: CmpCheckedSnapshotQualityLabel;
   promotable: boolean;
+  stage?: CmpSnapshotStage;
+  sourceSectionIds?: string[];
+  packageIds?: string[];
+  requestId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -130,8 +142,13 @@ export interface CreateCheckedSnapshotInput {
   branchRef: string;
   commitRef: string;
   checkedAt: string;
+  updatedAt?: string;
   qualityLabel?: CmpCheckedSnapshotQualityLabel;
   promotable?: boolean;
+  stage?: CmpSnapshotStage;
+  sourceSectionIds?: string[];
+  packageIds?: string[];
+  requestId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -169,6 +186,10 @@ export function isCmpSnapshotCandidateStatus(value: string): value is CmpSnapsho
 
 export function isCmpCheckedSnapshotQualityLabel(value: string): value is CmpCheckedSnapshotQualityLabel {
   return CMP_CHECKED_SNAPSHOT_QUALITY_LABELS.includes(value as CmpCheckedSnapshotQualityLabel);
+}
+
+export function isCmpSnapshotStage(value: string): value is CmpSnapshotStage {
+  return CMP_SNAPSHOT_STAGES.includes(value as CmpSnapshotStage);
 }
 
 export function validateContextEvent(event: ContextEvent): void {
@@ -259,8 +280,14 @@ export function validateCheckedSnapshot(snapshot: CheckedSnapshot): void {
   assertNonEmpty(snapshot.lineageRef, "CMP CheckedSnapshot lineageRef");
   assertNonEmpty(snapshot.branchRef, "CMP CheckedSnapshot branchRef");
   assertNonEmpty(snapshot.commitRef, "CMP CheckedSnapshot commitRef");
+  if (snapshot.updatedAt) {
+    assertNonEmpty(snapshot.updatedAt, "CMP CheckedSnapshot updatedAt");
+  }
   if (!isCmpCheckedSnapshotQualityLabel(snapshot.qualityLabel)) {
     throw new Error(`Unsupported CMP CheckedSnapshot qualityLabel: ${snapshot.qualityLabel}.`);
+  }
+  if (snapshot.stage && !isCmpSnapshotStage(snapshot.stage)) {
+    throw new Error(`Unsupported CMP CheckedSnapshot stage: ${snapshot.stage}.`);
   }
 }
 
@@ -272,8 +299,13 @@ export function createCheckedSnapshot(input: CreateCheckedSnapshotInput): Checke
     branchRef: assertNonEmpty(input.branchRef, "CMP CheckedSnapshot branchRef"),
     commitRef: assertNonEmpty(input.commitRef, "CMP CheckedSnapshot commitRef"),
     checkedAt: input.checkedAt,
+    updatedAt: assertNonEmpty(input.updatedAt ?? input.checkedAt, "CMP CheckedSnapshot updatedAt"),
     qualityLabel: input.qualityLabel ?? "usable",
     promotable: input.promotable ?? true,
+    stage: input.stage ?? "checked",
+    sourceSectionIds: [...new Set((input.sourceSectionIds ?? []).map((value) => value.trim()).filter(Boolean))],
+    packageIds: [...new Set((input.packageIds ?? []).map((value) => value.trim()).filter(Boolean))],
+    requestId: input.requestId?.trim() || undefined,
     metadata: input.metadata,
   };
 

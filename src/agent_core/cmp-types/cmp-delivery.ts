@@ -33,6 +33,13 @@ export const CMP_CONTEXT_PACKAGE_FIDELITY_LABELS = [
 ] as const;
 export type CmpContextPackageFidelityLabel = (typeof CMP_CONTEXT_PACKAGE_FIDELITY_LABELS)[number];
 
+export const CMP_CONTEXT_PACKAGE_STATUSES = [
+  "materialized",
+  "dispatched",
+  "served",
+] as const;
+export type CmpContextPackageStatus = (typeof CMP_CONTEXT_PACKAGE_STATUSES)[number];
+
 export const CMP_DISPATCH_STATUSES = [
   "queued",
   "delivered",
@@ -94,6 +101,11 @@ export interface ContextPackage {
   packageRef: string;
   fidelityLabel: CmpContextPackageFidelityLabel;
   createdAt: string;
+  updatedAt?: string;
+  packageStatus?: CmpContextPackageStatus;
+  sourceSnapshotId?: string;
+  sourceSectionIds?: string[];
+  requestId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -105,6 +117,11 @@ export interface CreateContextPackageInput {
   packageRef: string;
   fidelityLabel?: CmpContextPackageFidelityLabel;
   createdAt: string;
+  updatedAt?: string;
+  packageStatus?: CmpContextPackageStatus;
+  sourceSnapshotId?: string;
+  sourceSectionIds?: string[];
+  requestId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -204,6 +221,10 @@ export function isCmpContextPackageFidelityLabel(value: string): value is CmpCon
   return CMP_CONTEXT_PACKAGE_FIDELITY_LABELS.includes(value as CmpContextPackageFidelityLabel);
 }
 
+export function isCmpContextPackageStatus(value: string): value is CmpContextPackageStatus {
+  return CMP_CONTEXT_PACKAGE_STATUSES.includes(value as CmpContextPackageStatus);
+}
+
 export function isCmpDispatchStatus(value: string): value is CmpDispatchStatus {
   return CMP_DISPATCH_STATUSES.includes(value as CmpDispatchStatus);
 }
@@ -254,11 +275,17 @@ export function validateContextPackage(contextPackage: ContextPackage): void {
   assertNonEmpty(contextPackage.sourceProjectionId, "CMP ContextPackage sourceProjectionId");
   assertNonEmpty(contextPackage.targetAgentId, "CMP ContextPackage targetAgentId");
   assertNonEmpty(contextPackage.packageRef, "CMP ContextPackage packageRef");
+  if (contextPackage.updatedAt) {
+    assertNonEmpty(contextPackage.updatedAt, "CMP ContextPackage updatedAt");
+  }
   if (!isCmpContextPackageKind(contextPackage.packageKind)) {
     throw new Error(`Unsupported CMP ContextPackage packageKind: ${contextPackage.packageKind}.`);
   }
   if (!isCmpContextPackageFidelityLabel(contextPackage.fidelityLabel)) {
     throw new Error(`Unsupported CMP ContextPackage fidelityLabel: ${contextPackage.fidelityLabel}.`);
+  }
+  if (contextPackage.packageStatus && !isCmpContextPackageStatus(contextPackage.packageStatus)) {
+    throw new Error(`Unsupported CMP ContextPackage packageStatus: ${contextPackage.packageStatus}.`);
   }
 }
 
@@ -271,6 +298,11 @@ export function createContextPackage(input: CreateContextPackageInput): ContextP
     packageRef: assertNonEmpty(input.packageRef, "CMP ContextPackage packageRef"),
     fidelityLabel: input.fidelityLabel ?? "checked_high_fidelity",
     createdAt: input.createdAt,
+    updatedAt: assertNonEmpty(input.updatedAt ?? input.createdAt, "CMP ContextPackage updatedAt"),
+    packageStatus: input.packageStatus ?? "materialized",
+    sourceSnapshotId: input.sourceSnapshotId?.trim() || undefined,
+    sourceSectionIds: [...new Set((input.sourceSectionIds ?? []).map((value) => value.trim()).filter(Boolean))],
+    requestId: input.requestId?.trim() || undefined,
     metadata: input.metadata,
   };
 

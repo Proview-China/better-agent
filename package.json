@@ -14,6 +14,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck && npm run build",
     "test": "npm run build && node --test dist/**/*.test.js",
+    "cmp:infra:up": "docker compose -f infra/cmp/compose.yaml --env-file infra/cmp/.env up -d",
+    "cmp:infra:down": "docker compose -f infra/cmp/compose.yaml --env-file infra/cmp/.env down",
+    "cmp:infra:ps": "docker compose -f infra/cmp/compose.yaml --env-file infra/cmp/.env ps",
+    "cmp:infra:status": "node -e \"fetch('http://127.0.0.1:' + (process.env.CMP_STATUS_PORT || '57480') + '/status').then(r=>r.text()).then(t=>process.stdout.write(t + '\\n'))\"",
     "smoke:thin:live": "tsx src/rax/live-smoke.ts",
     "smoke:websearch:live": "tsx src/rax/websearch-live-smoke.ts",
     "smoke:skill:live": "tsx src/rax/skill-live-smoke.ts",
@@ -22,6 +26,7 @@
     "smoke:mcp:playwright": "tsx src/rax/mcp-playwright-smoke.ts",
     "smoke:mcp:models": "tsx src/rax/mcp-model-live-smoke.ts",
     "smoke:mcp:native:live": "tsx src/rax/mcp-native-live-smoke.ts",
+    "cmp:status:serve": "node scripts/cmp-status-panel-server.mjs",
     "start": "node dist/index.js"
   },
   "devDependencies": {

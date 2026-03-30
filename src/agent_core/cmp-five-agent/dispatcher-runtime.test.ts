@@ -62,6 +62,8 @@ test("CmpDispatcherRuntime records child seed via child ICMA and peer approval s
       metadata: {
         parentAgentId: "parent-a",
         currentStateSummary: "peer exchange needs parent approval before delivery",
+        sourceRequestId: "request-peer-1",
+        sourceSnapshotId: "snapshot-peer-1",
       },
     },
     receipt: createDispatchReceipt({
@@ -76,6 +78,10 @@ test("CmpDispatcherRuntime records child seed via child ICMA and peer approval s
     loopId: "dispatcher-peer-1",
   });
   assert.equal(peer.peerApproval?.status, "pending_parent_core_approval");
+  assert.equal(peer.loop.bundle.governance.sourceRequestId, "request-peer-1");
+  assert.equal(peer.loop.bundle.governance.sourceSnapshotId, "snapshot-peer-1");
+  assert.equal(peer.loop.bundle.target.targetIngress, "peer_exchange");
+  assert.equal(peer.loop.bundle.body.primaryRef, "cmp-package:peer");
   assert.deepEqual(peer.peerApproval?.metadata?.approval, {
     explicit: true,
     status: "pending_parent_core_approval",
@@ -157,4 +163,5 @@ test("CmpDispatcherRuntime persists explicit peer approval decisions in stable f
     approvalStatus: "approved",
     approvalChain: "parent_dbagent_then_parent_core_agent",
   });
+  assert.equal(updatedLoop?.bundle.governance.approvalStatus, "approved");
 });

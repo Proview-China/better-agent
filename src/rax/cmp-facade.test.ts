@@ -7,6 +7,7 @@ import type {
   CommitContextDeltaInput,
   CommitContextDeltaResult,
   CmpProjectInfraBootstrapReceipt,
+  DispatchCmpFiveAgentCapabilityResult,
   CmpRuntimeInfraProjectState,
   CmpRuntimeSnapshot,
   DispatchContextPackageInput,
@@ -276,8 +277,19 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
           icma: { ingressDiscipline: "append_only_fragment_control" },
           iterator: { reviewDiscipline: { minimumReviewUnit: "commit" } },
           checker: { reviewDiscipline: { checkedDetachedFromPromote: true } },
-          dbagent: { packageAuthority: "dbagent_primary_packer" },
-          dispatcher: { routePolicy: { targetIngress: "child_icma_only" } },
+          dbagent: {
+            packageAuthority: "dbagent_primary_packer",
+            materializationOutput: {
+              bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+            },
+          },
+          dispatcher: {
+            routePolicy: { targetIngress: "child_icma_only" },
+            bundle: {
+              target: { targetIngress: "child_icma_only" },
+              body: { primaryRef: "cmp-package:pkg-main" },
+            },
+          },
         },
         checkpointCount: 5,
         overrideCount: 0,
@@ -468,6 +480,44 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
         found: false,
       } satisfies RequestHistoricalContextResult;
     },
+    async dispatchCmpFiveAgentCapability() {
+      return {
+        role: "dispatcher" as const,
+        profile: {
+          profileId: "cmp-five-agent/dispatcher-tap-profile/v1",
+          agentClass: "cmp-five-agent:dispatcher",
+          defaultMode: "strict" as const,
+          canonicalDefaultMode: "standard" as const,
+          baselineTier: "B1" as const,
+          baselineCapabilities: ["cmp.mq.publish.delivery"],
+          allowedCapabilityPatterns: ["cmp.mq.publish.*"],
+          deniedCapabilityPatterns: ["cmp.git.*"],
+        },
+        intent: {
+          intentId: "intent-dispatch-role-capability-ready",
+          sessionId: "session-ready-dispatch-role-capability",
+          runId: "run-dispatch-role-capability-ready",
+          kind: "capability_call" as const,
+          createdAt: "2026-03-30T00:00:00.000Z",
+          priority: "high" as const,
+          request: {
+            requestId: "request-dispatch-role-capability-ready",
+            intentId: "intent-dispatch-role-capability-ready",
+            sessionId: "session-ready-dispatch-role-capability",
+            runId: "run-dispatch-role-capability-ready",
+            capabilityKey: "cmp.mq.publish.delivery",
+            input: {},
+            priority: "high" as const,
+          },
+        },
+        bridgeMetadata: {
+          cmpRole: "dispatcher",
+        },
+        dispatch: {
+          status: "review_required" as const,
+        },
+      } satisfies DispatchCmpFiveAgentCapabilityResult;
+    },
   };
 
   const cmp = createRaxCmpFacade();
@@ -504,8 +554,12 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
   assert.equal(readback.summary?.fiveAgentSummary?.configurationVersion, "cmp-five-agent-role-catalog/v1");
   assert.deepEqual(readback.summary?.fiveAgentSummary?.capabilityMatrix.mqPublishers, ["icma", "dispatcher"]);
   assert.equal(readback.summary?.fiveAgentSummary?.tapProfiles.dispatcher.profileId, "cmp-five-agent/dispatcher-tap-profile/v1");
+  assert.equal(readback.summary?.statusPanel?.roles.dispatcher.latestStage, "collect_receipt");
+  assert.equal(readback.summary?.statusPanel?.packageFlow.latestTargetIngress, "child_icma_only");
+  assert.equal(readback.summary?.statusPanel?.requests.pendingPeerApprovalCount, 0);
+  assert.equal(readback.summary?.statusPanel?.health.readbackStatus, "ready");
   assert.equal(smoke.status, "ready");
-  assert.equal(smoke.checks.length, 17);
+  assert.equal(smoke.checks.length, 21);
 });
 
 test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime", async () => {
@@ -833,6 +887,9 @@ test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage 
     async requestHistoricalContext() {
       throw new Error("not used");
     },
+    async dispatchCmpFiveAgentCapability() {
+      throw new Error("not used");
+    },
   };
 
   const cmp = createRaxCmpFacade();
@@ -864,6 +921,7 @@ test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage 
   assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "db")?.status, "degraded");
   assert.equal(readback.summary?.truthLayers.find((layer) => layer.layer === "redis")?.status, "degraded");
   assert.equal(readback.summary?.fallbacks.gitHistoryRebuild, "available");
+  assert.equal(readback.summary?.statusPanel, undefined);
   assert.equal(smoke.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.truth.git")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.db.readback")?.status, "degraded");
@@ -1346,6 +1404,140 @@ test("createRaxCmpFacade can resolve five-agent TAP capability access through ru
   assert.equal(result.resolution.status, "review_required");
 });
 
+test("createRaxCmpFacade can dispatch five-agent TAP capability through runtime bridge", async () => {
+  const cmp = createRaxCmpFacade();
+  const calls: Record<string, unknown>[] = [];
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      throw new Error("not used");
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return undefined;
+    },
+    recoverCmpRuntimeSnapshot() {},
+    async ingestRuntimeContext() {
+      throw new Error("not used");
+    },
+    async commitContextDelta() {
+      throw new Error("not used");
+    },
+    async resolveCheckedSnapshot() {
+      throw new Error("not used");
+    },
+    async materializeContextPackage() {
+      throw new Error("not used");
+    },
+    async dispatchContextPackage() {
+      throw new Error("not used");
+    },
+    async requestHistoricalContext() {
+      throw new Error("not used");
+    },
+    async dispatchCmpFiveAgentCapability(input: Record<string, unknown>) {
+      calls.push(input);
+      return {
+        role: "dispatcher" as const,
+        profile: {
+          profileId: "cmp-five-agent/dispatcher-tap-profile/v1",
+          agentClass: "cmp-five-agent.dispatcher",
+          defaultMode: "balanced" as const,
+          canonicalDefaultMode: "standard" as const,
+          baselineTier: "B1" as const,
+          baselineCapabilities: [],
+          allowedCapabilityPatterns: [],
+          deniedCapabilityPatterns: [],
+        },
+        intent: {
+          intentId: "intent-dispatch-role-capability",
+          sessionId: "session-dispatch-role-capability",
+          runId: "run-dispatch-role-capability",
+          kind: "capability_call" as const,
+          createdAt: "2026-03-30T00:00:00.000Z",
+          priority: "high" as const,
+          request: {
+            requestId: "request-dispatch-role-capability",
+            intentId: "intent-dispatch-role-capability",
+            sessionId: "session-dispatch-role-capability",
+            runId: "run-dispatch-role-capability",
+            capabilityKey: "cmp.mq.publish.delivery",
+            input: {
+              packageId: "pkg-1",
+            },
+            priority: "high" as const,
+          },
+        },
+        bridgeMetadata: {
+          cmpRole: "dispatcher",
+        },
+        dispatch: {
+          status: "review_required" as const,
+        },
+      } satisfies DispatchCmpFiveAgentCapabilityResult;
+    },
+  };
+  const session = cmp.create({
+    config: {
+      projectId: "proj-dispatch-role-capability",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-dispatch-role-capability",
+        repoRootPath: "/tmp/praxis/proj-dispatch-role-capability",
+        defaultBranchName: "main",
+      },
+    },
+    runtime,
+  });
+
+  const result = await cmp.dispatchRoleCapability({
+    session,
+    role: "dispatcher",
+    payload: {
+      agentId: "dispatcher-agent",
+      capabilityKey: "cmp.mq.publish.delivery",
+      reason: "dispatcher wants to publish child seed delivery",
+      capabilityInput: {
+        packageId: "pkg-1",
+      },
+      metadata: {
+        runId: "run-dispatch-role-capability",
+      },
+      cmpContext: {
+        requestId: "request-1",
+        packageId: "pkg-1",
+      },
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    role: "dispatcher",
+    sessionId: session.sessionId,
+    runId: "run-dispatch-role-capability",
+    agentId: "dispatcher-agent",
+    capabilityKey: "cmp.mq.publish.delivery",
+    reason: "dispatcher wants to publish child seed delivery",
+    capabilityInput: {
+      packageId: "pkg-1",
+    },
+    priority: undefined,
+    timeoutMs: undefined,
+    requestedTier: undefined,
+    mode: undefined,
+    taskContext: undefined,
+    requestedScope: undefined,
+    requestedDurationMs: undefined,
+    cmpContext: {
+      requestId: "request-1",
+      packageId: "pkg-1",
+    },
+    metadata: {
+      runId: "run-dispatch-role-capability",
+    },
+  });
+  assert.equal(result.profile.profileId, "cmp-five-agent/dispatcher-tap-profile/v1");
+  assert.equal(result.dispatch.status, "review_required");
+});
+
 test("createRaxCmpFacade recover respects dry_run recovery preference", async () => {
   const cmp = createRaxCmpFacade();
   let recovered = false;
@@ -1419,7 +1611,11 @@ test("createRaxCmpFacade recover respects dry_run recovery preference", async ()
       activeLines: [],
       snapshotCandidates: [],
       checkedSnapshots: [],
+      requests: [],
+      sectionRecords: [],
+      snapshotRecords: [],
       promotedProjections: [],
+      packageRecords: [],
       contextPackages: [],
       dispatchReceipts: [],
       syncEvents: [],

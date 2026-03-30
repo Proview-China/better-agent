@@ -25,9 +25,16 @@ test("CmpDbAgentRuntime materializes primary package plus timeline attachment an
     }),
     createdAt: "2026-03-25T00:00:00.000Z",
     loopId: "dbagent-loop-1",
+    metadata: {
+      sourceRequestId: "request-1",
+      sourceSectionIds: ["section-checked-1"],
+    },
   });
 
   assert.equal(materialized.loop.stage, "attach_snapshots");
+  assert.equal(materialized.loop.materializationOutput.requestId, "request-1");
+  assert.deepEqual(materialized.loop.materializationOutput.sourceSectionIds, ["section-checked-1"]);
+  assert.equal(materialized.loop.materializationOutput.bundleSchemaVersion, "cmp-dispatch-bundle/v1");
   assert.equal(materialized.family.timelinePackageRef, createCmpTimelinePackageRef("cmp-package:snapshot-1:main:active"));
   assert.equal(materialized.taskSnapshots.length, 1);
   assert.deepEqual(materialized.loop.metadata?.packageBundle, {

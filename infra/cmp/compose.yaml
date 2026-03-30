@@ -1,0 +1,79 @@
+services:
+  cmp-postgres:
+    image: postgres:16-alpine
+    container_name: praxis-cmp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${CMP_POSTGRES_DB:-praxis_cmp}
+      POSTGRES_USER: ${CMP_POSTGRES_USER:-praxis}
+      POSTGRES_PASSWORD: ${CMP_POSTGRES_PASSWORD:-praxis}
+    ports:
+      - "${CMP_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - cmp-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CMP_POSTGRES_USER:-praxis} -d ${CMP_POSTGRES_DB:-praxis_cmp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cmp-redis:
+    image: redis:7-alpine
+    container_name: praxis-cmp-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${CMP_REDIS_PORT:-6379}:6379"
+    volumes:
+      - cmp-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cmp-git-infra:
+    image: alpine/git:2.47.2
+    container_name: praxis-cmp-git-infra
+    restart: unless-stopped
+    working_dir: /repos
+    command: ["sh", "-lc", "mkdir -p /repos && tail -f /dev/null"]
+    volumes:
+      - cmp-git-repos:/repos
+    healthcheck:
+      test: ["CMD", "git", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  cmp-status-panel:
+    image: node:22-alpine
+    container_name: praxis-cmp-status-panel
+    restart: unless-stopped
+    working_dir: /workspace
+    command: ["node", "scripts/cmp-status-panel-server.mjs"]
+    environment:
+      PORT: ${CMP_STATUS_PANEL_PORT:-4180}
+      CMP_STATUS_PANEL_FILE: /data/status-panel.json
+    ports:
+      - "${CMP_STATUS_PANEL_PORT:-4180}:4180"
+    volumes:
+      - ../../:/workspace:ro
+      - ./status-panel.sample.json:/data/status-panel.json:ro
+    depends_on:
+      cmp-postgres:
+        condition: service_healthy
+      cmp-redis:
+        condition: service_healthy
+      cmp-git-infra:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4180/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cmp-postgres-data:
+  cmp-redis-data:
+  cmp-git-repos:

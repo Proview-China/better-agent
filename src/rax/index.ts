@@ -18,6 +18,8 @@ export type {
   RaxCmpSmokeInput,
   RaxCmpSmokeResult,
   RaxCmpSmokeCheck,
+  RaxCmpStatusPanel,
+  RaxCmpTruthLayerSummary,
 } from "./cmp-types.js";
 export type {
   CreateRaxCmpConfigInput,
@@ -50,6 +52,10 @@ export type {
   CreateRaxCmpRuntimeInput,
   RaxCmpRuntime,
 } from "./cmp-runtime.js";
+export {
+  createCmpStatusPanelRows,
+  renderCmpStatusPanel,
+} from "./cmp-status-panel.js";
 export type {
   CapabilityAction,
   CapabilityDefinition,

@@ -150,10 +150,25 @@ export interface CmpIntentChunkRecord {
   metadata?: Record<string, unknown>;
 }
 
+export interface CmpIcmaStructuredOutput {
+  requestId?: string;
+  intent: string;
+  sourceAnchorRefs: string[];
+  candidateBodyRefs: string[];
+  boundary: string;
+  explicitFragmentIds: string[];
+  preSectionIds: string[];
+  guide: {
+    operatorGuide: string;
+    childGuide: string;
+  };
+}
+
 export interface CmpIcmaRecord extends CmpFiveAgentLoopRecord<CmpIcmaStage> {
   chunkIds: string[];
   fragmentIds: string[];
   eventIds?: string[];
+  structuredOutput: CmpIcmaStructuredOutput;
 }
 
 export interface CmpIcmaIngestInput {
@@ -181,6 +196,13 @@ export interface CmpIteratorRecord extends CmpFiveAgentLoopRecord<CmpIteratorSta
   branchRef: string;
   commitRef: string;
   reviewRef: string;
+  reviewOutput: {
+    sourceRequestId?: string;
+    sourceSectionIds: string[];
+    minimumReviewUnit: "commit" | "section";
+    reviewRefMode: "stable_review_ref";
+    handoffTarget: "checker";
+  };
 }
 
 export interface CmpIteratorAdvanceInput {
@@ -198,6 +220,15 @@ export interface CmpCheckerRecord extends CmpFiveAgentLoopRecord<CmpCheckerStage
   candidateId: string;
   checkedSnapshotId: string;
   suggestPromote: boolean;
+  reviewOutput: {
+    sourceSectionIds: string[];
+    checkedSectionIds: string[];
+    splitDecisionRefs: string[];
+    mergeDecisionRefs: string[];
+    trimSummary: string;
+    shortReason: string;
+    detailedReason: string;
+  };
 }
 
 export interface CmpPromoteRequestRecord extends CmpPromoteReviewRecord {
@@ -229,6 +260,13 @@ export interface CmpDbAgentRecord extends CmpFiveAgentLoopRecord<CmpDbAgentStage
   timelinePackageId?: string;
   taskSnapshotIds: string[];
   passiveReplyPackageId?: string;
+  materializationOutput: {
+    requestId?: string;
+    sourceSnapshotId?: string;
+    sourceSectionIds: string[];
+    packageTopology: string;
+    bundleSchemaVersion: "cmp-dispatch-bundle/v1";
+  };
 }
 
 export interface CmpDbAgentMaterializeInput {
@@ -237,6 +275,7 @@ export interface CmpDbAgentMaterializeInput {
   contextPackage: ContextPackage;
   createdAt: string;
   loopId: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CmpDbAgentMaterializeResult {
@@ -251,6 +290,7 @@ export interface CmpDbAgentPassiveInput {
   contextPackage: ContextPackage;
   createdAt: string;
   loopId: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CmpDbAgentRuntimeSnapshot {
@@ -262,12 +302,42 @@ export interface CmpDbAgentRuntimeSnapshot {
   reinterventionRequests: CmpReinterventionRequestRecord[];
 }
 
+export interface CmpDispatcherBundleEnvelope {
+  target: {
+    targetAgentId: string;
+    targetKind: DispatchContextPackageInput["targetKind"] | "core_agent_return";
+    packageMode: "core_return" | "child_seed_via_icma" | "peer_exchange_slim" | "historical_reply_return" | "lineage_delivery";
+    targetIngress: "core_agent_return" | "child_icma_only" | "peer_exchange" | "lineage_delivery";
+  };
+  body: {
+    packageId: string;
+    packageKind: ContextPackage["packageKind"];
+    primaryRef: string;
+    timelineRef?: string;
+    guideRef?: string;
+    backgroundRef?: string;
+    taskSnapshotRefs: string[];
+  };
+  governance: {
+    sourceAgentId: string;
+    sourceRequestId?: string;
+    sourceSnapshotId?: string;
+    approvalRequired: boolean;
+    approvalId?: string;
+    approvalStatus?: string;
+    confidenceLabel: "high" | "medium";
+    signalLabel: ContextPackage["fidelityLabel"];
+  };
+  sourceAnchorRefs: string[];
+}
+
 export interface CmpDispatcherRecord extends CmpFiveAgentLoopRecord<CmpDispatcherStage> {
   dispatchId: string;
   packageId: string;
   targetAgentId: string;
   targetKind: DispatchContextPackageInput["targetKind"];
   packageMode: "core_return" | "child_seed_via_icma" | "peer_exchange_slim" | "historical_reply_return" | "lineage_delivery";
+  bundle: CmpDispatcherBundleEnvelope;
 }
 
 export type CmpDispatcherPackageMode = CmpDispatcherRecord["packageMode"];

@@ -96,6 +96,15 @@ export class CmpDbAgentRuntime {
       primaryPackageId: input.contextPackage.packageId,
       timelinePackageId: family.timelinePackageId,
       taskSnapshotIds: family.taskSnapshotIds,
+      materializationOutput: {
+        requestId: typeof input.metadata?.sourceRequestId === "string" ? input.metadata.sourceRequestId : undefined,
+        sourceSnapshotId: input.checkedSnapshot.snapshotId,
+        sourceSectionIds: Array.isArray(input.metadata?.sourceSectionIds)
+          ? input.metadata.sourceSectionIds.filter((value): value is string => typeof value === "string")
+          : [],
+        packageTopology: "active_plus_timeline_plus_task_snapshots",
+        bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+      },
     };
     this.#records.set(loop.loopId, loop);
     this.#packageFamilies.set(family.familyId, family);
@@ -171,6 +180,15 @@ export class CmpDbAgentRuntime {
       timelinePackageId: family.timelinePackageId,
       taskSnapshotIds: family.taskSnapshotIds,
       passiveReplyPackageId: input.contextPackage.packageId,
+      materializationOutput: {
+        requestId: typeof input.metadata?.sourceRequestId === "string" ? input.metadata.sourceRequestId : undefined,
+        sourceSnapshotId: input.snapshot.snapshotId,
+        sourceSectionIds: Array.isArray(input.metadata?.sourceSectionIds)
+          ? input.metadata.sourceSectionIds.filter((value): value is string => typeof value === "string")
+          : [],
+        packageTopology: "passive_reply_plus_timeline_plus_task_snapshots",
+        bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+      },
     };
     this.#records.set(loop.loopId, loop);
     this.#packageFamilies.set(family.familyId, family);

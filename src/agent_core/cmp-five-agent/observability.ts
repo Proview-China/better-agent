@@ -33,6 +33,41 @@ function countCheckpointCoverage(snapshot: CmpFiveAgentRuntimeSnapshot): Record<
   });
 }
 
+function createLatestRoleMetadata(snapshot: CmpFiveAgentRuntimeSnapshot): CmpFiveAgentSummary["latestRoleMetadata"] {
+  return {
+    icma: snapshot.icmaRecords.at(-1)
+      ? {
+        ...(snapshot.icmaRecords.at(-1)?.metadata ?? {}),
+        structuredOutput: snapshot.icmaRecords.at(-1)?.structuredOutput,
+      }
+      : undefined,
+    iterator: snapshot.iteratorRecords.at(-1)
+      ? {
+        ...(snapshot.iteratorRecords.at(-1)?.metadata ?? {}),
+        reviewOutput: snapshot.iteratorRecords.at(-1)?.reviewOutput,
+      }
+      : undefined,
+    checker: snapshot.checkerRecords.at(-1)
+      ? {
+        ...(snapshot.checkerRecords.at(-1)?.metadata ?? {}),
+        reviewOutput: snapshot.checkerRecords.at(-1)?.reviewOutput,
+      }
+      : undefined,
+    dbagent: snapshot.dbAgentRecords.at(-1)
+      ? {
+        ...(snapshot.dbAgentRecords.at(-1)?.metadata ?? {}),
+        materializationOutput: snapshot.dbAgentRecords.at(-1)?.materializationOutput,
+      }
+      : undefined,
+    dispatcher: snapshot.dispatcherRecords.at(-1)
+      ? {
+        ...(snapshot.dispatcherRecords.at(-1)?.metadata ?? {}),
+        bundle: snapshot.dispatcherRecords.at(-1)?.bundle,
+      }
+      : undefined,
+  };
+}
+
 export function createCmpFiveAgentRoleStageSummary(input: {
   snapshot: CmpFiveAgentRuntimeSnapshot;
   configuration?: CmpFiveAgentConfiguration;
@@ -141,13 +176,7 @@ export function createCmpFiveAgentSummary(input: {
     configurationVersion: configuration.version,
     roleCounts: stageSummary.roleCounts,
     latestStages: stageSummary.latestStages,
-    latestRoleMetadata: {
-      icma: input.snapshot.icmaRecords.at(-1)?.metadata,
-      iterator: input.snapshot.iteratorRecords.at(-1)?.metadata,
-      checker: input.snapshot.checkerRecords.at(-1)?.metadata,
-      dbagent: input.snapshot.dbAgentRecords.at(-1)?.metadata,
-      dispatcher: input.snapshot.dispatcherRecords.at(-1)?.metadata,
-    },
+    latestRoleMetadata: createLatestRoleMetadata(input.snapshot),
     checkpointCount: input.snapshot.checkpoints.length,
     overrideCount: input.snapshot.overrides.length,
     peerExchangePendingApprovalCount: flow.pendingPeerApprovalCount,

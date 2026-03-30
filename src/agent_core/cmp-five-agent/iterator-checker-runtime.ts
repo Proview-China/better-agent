@@ -37,6 +37,17 @@ export class CmpIteratorCheckerRuntime {
       branchRef: input.branchRef,
       commitRef: input.commitRef,
       reviewRef: input.reviewRef,
+      reviewOutput: {
+        sourceRequestId: typeof input.metadata?.sourceRequestId === "string"
+          ? input.metadata.sourceRequestId
+          : undefined,
+        sourceSectionIds: Array.isArray(input.metadata?.sourceSectionIds)
+          ? input.metadata.sourceSectionIds.filter((value): value is string => typeof value === "string")
+          : [],
+        minimumReviewUnit: "commit",
+        reviewRefMode: "stable_review_ref",
+        handoffTarget: "checker",
+      },
       metadata: {
         promptPackId: configuration.promptPack.promptPackId,
         profileId: configuration.profile.profileId,
@@ -73,6 +84,21 @@ export class CmpIteratorCheckerRuntime {
       candidateId: input.candidateId,
       checkedSnapshotId: input.checkedSnapshotId,
       suggestPromote: input.suggestPromote,
+      reviewOutput: {
+        sourceSectionIds: Array.isArray(input.metadata?.sourceSectionIds)
+          ? input.metadata.sourceSectionIds.filter((value): value is string => typeof value === "string")
+          : [],
+        checkedSectionIds: Array.isArray(input.metadata?.checkedSectionIds)
+          ? input.metadata.checkedSectionIds.filter((value): value is string => typeof value === "string")
+          : [],
+        splitDecisionRefs: [`${input.checkedSnapshotId}:split`],
+        mergeDecisionRefs: [`${input.checkedSnapshotId}:merge`],
+        trimSummary: "checker trims to section-level high-signal content",
+        shortReason: "section-level review completed",
+        detailedReason: input.parentAgentId
+          ? "checker restructured evidence and prepared a promote-ready handoff for parent DBAgent review"
+          : "checker restructured evidence and finalized a local checked snapshot",
+      },
       metadata: {
         promptPackId: configuration.promptPack.promptPackId,
         profileId: configuration.profile.profileId,

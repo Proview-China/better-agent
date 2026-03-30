@@ -4,6 +4,7 @@ import {
   createCmpRoleCheckpointRecord,
 } from "./shared.js";
 import type {
+  CmpDispatcherBundleEnvelope,
   CmpDispatcherDispatchInput,
   CmpDispatcherPassiveReturnInput,
   CmpDispatcherRecord,
@@ -74,6 +75,61 @@ function createRoutePolicyMetadata(input: {
       packageMode: input.packageMode,
       targetIngress: "lineage_delivery",
     },
+  };
+}
+
+function createBundleEnvelope(input: {
+  contextPackage: CmpDispatcherDispatchInput["contextPackage"];
+  dispatch: CmpDispatcherDispatchInput["dispatch"];
+  packageMode: CmpDispatcherRecord["packageMode"];
+  targetKind: CmpDispatcherDispatchInput["dispatch"]["targetKind"] | "core_agent_return";
+  targetIngress: "core_agent_return" | "child_icma_only" | "peer_exchange" | "lineage_delivery";
+  peerApproval?: CmpPeerExchangeApprovalRecord;
+}): CmpDispatcherBundleEnvelope {
+  return {
+    target: {
+      targetAgentId: input.dispatch.targetAgentId,
+      targetKind: input.targetKind,
+      packageMode: input.packageMode,
+      targetIngress: input.targetIngress,
+    },
+    body: {
+      packageId: input.contextPackage.packageId,
+      packageKind: input.contextPackage.packageKind,
+      primaryRef: input.contextPackage.packageRef,
+      timelineRef: typeof input.contextPackage.metadata?.cmpTimelinePackageId === "string"
+        ? input.contextPackage.metadata.cmpTimelinePackageId
+        : undefined,
+      guideRef: typeof input.contextPackage.metadata?.cmpGuideRef === "string"
+        ? input.contextPackage.metadata.cmpGuideRef
+        : undefined,
+      backgroundRef: typeof input.contextPackage.metadata?.cmpBackgroundRef === "string"
+        ? input.contextPackage.metadata.cmpBackgroundRef
+        : undefined,
+      taskSnapshotRefs: Array.isArray(input.contextPackage.metadata?.cmpTaskSnapshotIds)
+        ? input.contextPackage.metadata.cmpTaskSnapshotIds.filter((value): value is string => typeof value === "string")
+        : [],
+    },
+    governance: {
+      sourceAgentId: input.dispatch.sourceAgentId,
+      sourceRequestId: typeof input.dispatch.metadata?.sourceRequestId === "string"
+        ? input.dispatch.metadata.sourceRequestId
+        : undefined,
+      sourceSnapshotId: typeof input.dispatch.metadata?.sourceSnapshotId === "string"
+        ? input.dispatch.metadata.sourceSnapshotId
+        : typeof input.contextPackage.metadata?.snapshotId === "string"
+          ? input.contextPackage.metadata.snapshotId
+          : undefined,
+      approvalRequired: input.targetKind === "peer",
+      approvalId: input.peerApproval?.approvalId,
+      approvalStatus: input.peerApproval?.status,
+      confidenceLabel: input.targetKind === "peer" ? "medium" : "high",
+      signalLabel: input.contextPackage.fidelityLabel,
+    },
+    sourceAnchorRefs: [
+      input.contextPackage.packageRef,
+      ...(typeof input.contextPackage.metadata?.snapshotId === "string" ? [input.contextPackage.metadata.snapshotId] : []),
+    ],
   };
 }
 
@@ -150,6 +206,20 @@ export class CmpDispatcherRuntime {
       targetAgentId: input.dispatch.targetAgentId,
       targetKind: input.dispatch.targetKind,
       packageMode,
+      bundle: createBundleEnvelope({
+        contextPackage: input.contextPackage,
+        dispatch: input.dispatch,
+        packageMode,
+        targetKind: input.dispatch.targetKind,
+        targetIngress: input.dispatch.targetKind === "child"
+          ? "child_icma_only"
+          : input.dispatch.targetKind === "peer"
+            ? "peer_exchange"
+            : input.dispatch.targetKind === "core_agent"
+              ? "core_agent_return"
+              : "lineage_delivery",
+        peerApproval,
+      }),
     };
     this.#records.set(loop.loopId, loop);
     for (const [index, stage] of ["route", "deliver", "collect_receipt"].entries()) {
@@ -177,6 +247,24 @@ export class CmpDispatcherRuntime {
   }
 
   deliverPassiveReturn(input: CmpDispatcherPassiveReturnInput): CmpDispatcherRecord {
+    const bundle = createBundleEnvelope({
+      contextPackage: input.contextPackage,
+      dispatch: {
+        agentId: input.request.requesterAgentId,
+        packageId: input.contextPackage.packageId,
+        sourceAgentId: input.request.requesterAgentId,
+        targetAgentId: input.request.requesterAgentId,
+        targetKind: "core_agent",
+        metadata: {
+          sourceRequestId: typeof input.contextPackage.metadata?.sourceRequestId === "string"
+            ? input.contextPackage.metadata.sourceRequestId
+            : undefined,
+        },
+      },
+      packageMode: "historical_reply_return",
+      targetKind: "core_agent_return",
+      targetIngress: "core_agent_return",
+    });
     const loop: CmpDispatcherRecord = {
       ...createCmpFiveAgentLoopRecord({
         loopId: input.loopId,
@@ -199,6 +287,7 @@ export class CmpDispatcherRuntime {
       targetAgentId: input.request.requesterAgentId,
       targetKind: "core_agent",
       packageMode: "historical_reply_return",
+      bundle,
     };
     this.#records.set(loop.loopId, loop);
     const checkpoint = createCmpRoleCheckpointRecord({
@@ -255,6 +344,13 @@ export class CmpDispatcherRuntime {
       this.#records.set(loopId, {
         ...record,
         updatedAt: input.decidedAt,
+        bundle: {
+          ...record.bundle,
+          governance: {
+            ...record.bundle.governance,
+            approvalStatus: input.decision,
+          },
+        },
         metadata: {
           ...(record.metadata ?? {}),
           approvalStatus: input.decision,

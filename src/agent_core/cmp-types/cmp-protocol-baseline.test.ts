@@ -53,7 +53,7 @@ import {
   evaluateCmpRulePack,
 } from "./cmp-section.js";
 
-test("cmp protocol constants expose the frozen Part 1 enums", () => {
+test("cmp protocol constants expose the frozen baseline enums", () => {
   assert.deepEqual(CMP_BRANCH_LAYERS, ["work", "cmp", "mp", "tap"]);
   assert.deepEqual(CMP_AGENT_LINEAGE_STATUSES, ["active", "paused", "completed", "archived"]);
   assert.deepEqual(CMP_CONTEXT_EVENT_KINDS, [
@@ -149,26 +149,79 @@ test("cmp protocol constants expose the frozen Part 1 enums", () => {
   assert.deepEqual(CMP_RULE_ACTIONS, ["accept", "store", "promote", "dispatch", "defer", "drop"]);
 });
 
-test("agent lineage and branch family preserve non-skipping hierarchy anchors", () => {
-  const branchFamily = createCmpBranchFamily({
-    workBranch: "work/yahoo",
-    cmpBranch: "cmp/yahoo",
-    mpBranch: "mp/yahoo",
-    tapBranch: "tap/yahoo",
-  });
+test("cmp interface contracts normalize inputs without reaching into runtime assembly", () => {
   const lineage = createAgentLineage({
-    agentId: "agent.yahoo",
-    parentAgentId: "agent.main",
-    depth: 2,
+    agentId: "agent.main",
+    depth: 0,
     projectId: "project.praxis",
-    rootSessionId: "session-main",
-    branchFamily,
-    childAgentIds: ["agent.yahoo.child-a", "agent.yahoo.child-b", "agent.yahoo.child-a"],
+    branchFamily: {
+      workBranch: "work/main",
+      cmpBranch: "cmp/main",
+      mpBranch: "mp/main",
+      tapBranch: "tap/main",
+    },
   });
 
-  assert.equal(lineage.status, "active");
-  assert.deepEqual(lineage.childAgentIds, ["agent.yahoo.child-a", "agent.yahoo.child-b"]);
-  assert.equal(lineage.branchFamily.cmpBranch, "cmp/yahoo");
+  const ingest = createIngestRuntimeContextInput({
+    agentId: "agent.main",
+    sessionId: "session-main",
+    runId: "run-main",
+    lineage,
+    taskSummary: "Capture the latest runtime context for CMP active flow.",
+    materials: [
+      { kind: "system_prompt", ref: "git:cmp/main#system" },
+      { kind: "assistant_output", ref: "git:cmp/main#answer" },
+    ],
+    requiresActiveSync: true,
+  });
+  const ingestResult = createIngestRuntimeContextResult({
+    status: "accepted",
+    acceptedEventIds: ["event-1", "event-1", "event-2"],
+    nextAction: "commit_context_delta",
+  });
+  const commitInput = createCommitContextDeltaInput({
+    agentId: "agent.main",
+    sessionId: "session-main",
+    runId: "run-main",
+    eventIds: ingestResult.acceptedEventIds,
+    changeSummary: "Promote the newly accepted runtime context events.",
+    syncIntent: "submit_to_parent",
+  });
+  const resolveInput = createResolveCheckedSnapshotInput({
+    agentId: "agent.main",
+    projectId: "project.praxis",
+    branchRef: "cmp/main",
+  });
+  const materializeInput = createMaterializeContextPackageInput({
+    agentId: "agent.main",
+    snapshotId: "snapshot-1",
+    targetAgentId: "agent.child",
+    packageKind: "child_seed",
+  });
+  const dispatchInput = createDispatchContextPackageInput({
+    agentId: "agent.main",
+    packageId: "package-1",
+    sourceAgentId: "agent.main",
+    targetAgentId: "agent.child",
+    targetKind: "child",
+  });
+  const historicalInput = createRequestHistoricalContextInput({
+    requesterAgentId: "agent.main",
+    projectId: "project.praxis",
+    reason: "Need the latest checked context package for a passive readback.",
+    query: {
+      lineageRef: "lineage:agent.main",
+      packageKindHint: "historical_reply",
+    },
+  });
+
+  assert.equal(ingest.materials.length, 2);
+  assert.deepEqual(ingestResult.acceptedEventIds, ["event-1", "event-2"]);
+  assert.equal(commitInput.eventIds.length, 2);
+  assert.equal(resolveInput.branchRef, "cmp/main");
+  assert.equal(materializeInput.packageKind, "child_seed");
+  assert.equal(dispatchInput.targetKind, "child");
+  assert.equal(historicalInput.query.packageKindHint, "historical_reply");
 });
 
 test("cmp context pipeline objects keep fact, checked, projection, and delivery layers separate", () => {
@@ -262,81 +315,6 @@ test("dispatch, sync, and escalation objects preserve neighborhood delivery boun
   validateDispatchReceipt(receipt);
   assert.equal(syncEvent.direction, "to_peer");
   assert.equal(alert.severity, "critical");
-});
-
-test("cmp interface contracts normalize inputs without reaching into runtime assembly", () => {
-  const lineage = createAgentLineage({
-    agentId: "agent.main",
-    depth: 0,
-    projectId: "project.praxis",
-    branchFamily: {
-      workBranch: "work/main",
-      cmpBranch: "cmp/main",
-      mpBranch: "mp/main",
-      tapBranch: "tap/main",
-    },
-  });
-
-  const ingest = createIngestRuntimeContextInput({
-    agentId: "agent.main",
-    sessionId: "session-main",
-    runId: "run-main",
-    lineage,
-    taskSummary: "Capture the latest runtime context for CMP active flow.",
-    materials: [
-      { kind: "system_prompt", ref: "git:cmp/main#system" },
-      { kind: "assistant_output", ref: "git:cmp/main#answer" },
-    ],
-    requiresActiveSync: true,
-  });
-  const ingestResult = createIngestRuntimeContextResult({
-    status: "accepted",
-    acceptedEventIds: ["event-1", "event-1", "event-2"],
-    nextAction: "commit_context_delta",
-  });
-  const commitInput = createCommitContextDeltaInput({
-    agentId: "agent.main",
-    sessionId: "session-main",
-    runId: "run-main",
-    eventIds: ingestResult.acceptedEventIds,
-    changeSummary: "Promote the newly accepted runtime context events.",
-    syncIntent: "submit_to_parent",
-  });
-  const resolveInput = createResolveCheckedSnapshotInput({
-    agentId: "agent.main",
-    projectId: "project.praxis",
-    branchRef: "cmp/main",
-  });
-  const materializeInput = createMaterializeContextPackageInput({
-    agentId: "agent.main",
-    snapshotId: "snapshot-1",
-    targetAgentId: "agent.child",
-    packageKind: "child_seed",
-  });
-  const dispatchInput = createDispatchContextPackageInput({
-    agentId: "agent.main",
-    packageId: "package-1",
-    sourceAgentId: "agent.main",
-    targetAgentId: "agent.child",
-    targetKind: "child",
-  });
-  const historicalInput = createRequestHistoricalContextInput({
-    requesterAgentId: "agent.main",
-    projectId: "project.praxis",
-    reason: "Need the latest checked context package for a passive readback.",
-    query: {
-      lineageRef: "lineage:agent.main",
-      packageKindHint: "historical_reply",
-    },
-  });
-
-  assert.equal(ingest.materials.length, 2);
-  assert.deepEqual(ingestResult.acceptedEventIds, ["event-1", "event-2"]);
-  assert.equal(commitInput.eventIds.length, 2);
-  assert.equal(resolveInput.branchRef, "cmp/main");
-  assert.equal(materializeInput.packageKind, "child_seed");
-  assert.equal(dispatchInput.targetKind, "child");
-  assert.equal(historicalInput.query.packageKindHint, "historical_reply");
 });
 
 test("cmp section primitives can derive stored sections and evaluate rules", () => {

@@ -120,8 +120,10 @@ import {
 import {
   createCmpFiveAgentRuntime,
   createCmpRoleTapProfile,
+  createCmpFiveAgentTapBridgeCompiled,
   createCheckerCheckedSnapshotMetadata,
   type CmpFiveAgentCapabilityAccessResolution,
+  type CmpFiveAgentTapBridgeContext,
   type CmpFiveAgentRole,
   type CmpFiveAgentRuntime,
   type CmpFiveAgentRuntimeSnapshot,
@@ -165,6 +167,7 @@ import type {
   CapabilityPortResponse,
   GoalFrameCompiled,
   GoalFrameSource,
+  IntentPriority,
   KernelEvent,
   CheckpointReason,
   SessionHeader,
@@ -197,8 +200,20 @@ import {
 } from "./ta-pool-types/index.js";
 import {
   createAgentLineage,
+  advanceCmpPackageRecordStatus,
+  advanceCmpRequestRecordStatus,
   createCmpBranchFamily,
   createCheckedSnapshot,
+  createCmpPackageRecord,
+  createCmpPackageRecordFromContextPackage,
+  createCmpRequestRecord,
+  createCmpRequestRecordFromHistoricalRequest,
+  createCmpRequestRecordFromIngest,
+  createCmpSectionRecord,
+  createCmpSectionRecordFromSection,
+  createCmpSectionRecordFromStoredSection,
+  createCmpSnapshotRecord,
+  createCmpSnapshotRecordFromCheckedSnapshot,
   createCommitContextDeltaInput,
   createContextDelta,
   createContextEvent,
@@ -215,7 +230,11 @@ import {
   createSyncEvent,
   type AgentLineage,
   type CheckedSnapshot,
+  type CmpPackageRecord,
+  type CmpRequestRecord,
   type CmpRulePack,
+  type CmpSectionRecord,
+  type CmpSnapshotRecord,
   type CmpStoredSection,
   type CommitContextDeltaInput,
   type CommitContextDeltaResult,
@@ -376,6 +395,8 @@ export interface DispatchCapabilityIntentViaTaPoolOptions {
   requestedDurationMs?: number;
   taskContext?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  controlPlaneGatewayOverride?: TaControlPlaneGateway;
+  profileOverride?: AgentCapabilityProfile;
 }
 
 export type TaCapabilityAssemblyStatus =
@@ -405,6 +426,14 @@ export interface DispatchCapabilityIntentViaTaPoolResult {
   dispatch?: DispatchCapabilityPlanResult;
   safety?: ReturnType<typeof evaluateSafetyInterception>;
   runOutcome?: RunTransitionOutcome;
+}
+
+export interface DispatchCmpFiveAgentCapabilityResult {
+  role: CmpFiveAgentRole;
+  profile: AgentCapabilityProfile;
+  intent: CapabilityCallIntent;
+  bridgeMetadata: Record<string, unknown>;
+  dispatch: DispatchCapabilityIntentViaTaPoolResult;
 }
 
 export interface TaCapabilityActivationHandoff {
@@ -617,6 +646,19 @@ export interface ResolveTaCapabilityAccessInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface DispatchCmpFiveAgentCapabilityInput
+  extends ResolveTaCapabilityAccessInput {
+  role: CmpFiveAgentRole;
+  input: Record<string, unknown>;
+  priority: CapabilityInvocationPlan["priority"];
+  timeoutMs?: number;
+  requestId?: string;
+  intentId?: string;
+  correlationId?: string;
+  createdAt?: string;
+  operation?: string;
+}
+
 export interface DispatchTaCapabilityGrantInput {
   grant: CapabilityGrant;
   decisionToken?: DecisionToken;
@@ -676,6 +718,10 @@ export class AgentCoreRuntime {
   readonly #cmpPromotedProjections = new Map<string, PromotedProjection>();
   readonly #cmpRuntimeProjections = new Map<string, CmpRuntimeProjectionRecord>();
   readonly #cmpPackages = new Map<string, ContextPackage>();
+  readonly #cmpRequests = new Map<string, CmpRequestRecord>();
+  readonly #cmpSectionRecords = new Map<string, CmpSectionRecord>();
+  readonly #cmpSnapshotRecords = new Map<string, CmpSnapshotRecord>();
+  readonly #cmpPackageRecords = new Map<string, CmpPackageRecord>();
   readonly #cmpDispatchReceipts = new Map<string, DispatchReceipt>();
   readonly #cmpRuntimeDispatchReceipts = new Map<string, CmpDispatchReceipt>();
   readonly #cmpSyncEvents = new Map<string, SyncEvent>();
@@ -1156,6 +1202,22 @@ export class AgentCoreRuntime {
     return [...this.#cmpCheckedSnapshots.values()];
   }
 
+  listCmpRequestRecords(): readonly CmpRequestRecord[] {
+    return [...this.#cmpRequests.values()];
+  }
+
+  listCmpSectionRecords(): readonly CmpSectionRecord[] {
+    return [...this.#cmpSectionRecords.values()];
+  }
+
+  listCmpSnapshotRecords(): readonly CmpSnapshotRecord[] {
+    return [...this.#cmpSnapshotRecords.values()];
+  }
+
+  listCmpPackageRecords(): readonly CmpPackageRecord[] {
+    return [...this.#cmpPackageRecords.values()];
+  }
+
   listCmpGitPullRequests(): readonly CmpGitPullRequestRecord[] {
     return this.#cmpGitOrchestrator.listPullRequests();
   }
@@ -1224,6 +1286,79 @@ export class AgentCoreRuntime {
       role: input.role,
       profile,
       resolution,
+    };
+  }
+
+  async dispatchCmpFiveAgentCapability(input: {
+    role: CmpFiveAgentRole;
+    sessionId: string;
+    runId: string;
+    agentId: string;
+    capabilityKey: string;
+    reason: string;
+    capabilityInput: Record<string, unknown>;
+    priority?: IntentPriority;
+    timeoutMs?: number;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    taskContext?: Record<string, unknown>;
+    requestedScope?: AccessRequestScope;
+    requestedDurationMs?: number;
+    cmpContext?: CmpFiveAgentTapBridgeContext;
+    metadata?: Record<string, unknown>;
+  }): Promise<DispatchCmpFiveAgentCapabilityResult> {
+    const compiled = createCmpFiveAgentTapBridgeCompiled({
+      role: input.role,
+      sessionId: input.sessionId,
+      runId: input.runId,
+      agentId: input.agentId,
+      capabilityKey: input.capabilityKey,
+      reason: input.reason,
+      capabilityInput: input.capabilityInput,
+      priority: input.priority,
+      timeoutMs: input.timeoutMs,
+      requestedTier: input.requestedTier,
+      mode: input.mode,
+      taskContext: input.taskContext,
+      requestedScope: input.requestedScope,
+      requestedDurationMs: input.requestedDurationMs,
+      cmpContext: input.cmpContext,
+      metadata: input.metadata,
+    });
+    const dispatch = await this.dispatchCapabilityIntentViaTaPool(
+      compiled.intent,
+      compiled.dispatchOptions,
+    );
+    const lineage = this.#cmpLineages.get(input.agentId);
+    if (lineage) {
+      this.#recordCmpSyncEvent(createSyncEvent({
+        syncEventId: randomUUID(),
+        agentId: input.agentId,
+        channel: "db",
+        direction: "local",
+        objectRef: dispatch.accessRequest?.requestId
+          ?? dispatch.reviewDecision?.requestId
+          ?? compiled.intent.request.requestId,
+        createdAt: new Date().toISOString(),
+        metadata: {
+          source: "cmp-five-agent-tap-bridge",
+          cmpRole: input.role,
+          capabilityKey: input.capabilityKey,
+          tapProfileId: compiled.profile.profileId,
+          dispatchStatus: dispatch.status,
+          grantId: dispatch.grant?.grantId,
+          reviewDecisionId: dispatch.reviewDecision?.decisionId,
+          provisionId: dispatch.provisionRequest?.provisionId,
+          bridgeMetadata: compiled.bridgeMetadata,
+        },
+      }));
+    }
+    return {
+      role: input.role,
+      profile: compiled.profile,
+      intent: compiled.intent,
+      bridgeMetadata: compiled.bridgeMetadata,
+      dispatch,
     };
   }
 
@@ -1691,7 +1826,11 @@ export class AgentCoreRuntime {
       activeLines: [...this.#cmpActiveLines.values()],
       snapshotCandidates: [...this.#cmpSnapshotCandidates.values()],
       checkedSnapshots: [...this.#cmpCheckedSnapshots.values()],
+      requests: [...this.#cmpRequests.values()],
+      sectionRecords: [...this.#cmpSectionRecords.values()],
+      snapshotRecords: [...this.#cmpSnapshotRecords.values()],
       promotedProjections: [...this.#cmpPromotedProjections.values()],
+      packageRecords: [...this.#cmpPackageRecords.values()],
       contextPackages: [...this.#cmpPackages.values()],
       dispatchReceipts: [...this.#cmpDispatchReceipts.values()],
       syncEvents: [...this.#cmpSyncEvents.values()],
@@ -1714,6 +1853,10 @@ export class AgentCoreRuntime {
     this.#cmpPromotedProjections.clear();
     this.#cmpRuntimeProjections.clear();
     this.#cmpPackages.clear();
+    this.#cmpRequests.clear();
+    this.#cmpSectionRecords.clear();
+    this.#cmpSnapshotRecords.clear();
+    this.#cmpPackageRecords.clear();
     this.#cmpDispatchReceipts.clear();
     this.#cmpSyncEvents.clear();
     this.#cmpProjectInfraBootstrapReceipts.clear();
@@ -1789,6 +1932,18 @@ export class AgentCoreRuntime {
         });
       }
     }
+    for (const request of hydrated.requests.values()) {
+      this.#cmpRequests.set(request.requestId, request);
+    }
+    for (const sectionRecord of hydrated.sectionRecords.values()) {
+      this.#cmpSectionRecords.set(sectionRecord.sectionId, sectionRecord);
+    }
+    for (const snapshotRecord of hydrated.snapshotRecords.values()) {
+      this.#cmpSnapshotRecords.set(snapshotRecord.snapshotId, snapshotRecord);
+    }
+    for (const packageRecord of hydrated.packageRecords.values()) {
+      this.#cmpPackageRecords.set(packageRecord.packageId, packageRecord);
+    }
     for (const receipt of hydrated.dispatchReceipts.values()) {
       this.#cmpDispatchReceipts.set(receipt.dispatchId, receipt);
       syncCmpDbDeliveryFromDispatchReceipt({
@@ -1853,13 +2008,21 @@ export class AgentCoreRuntime {
     this.#ensureCmpProjectRepo(lineage);
 
     const createdAt = new Date().toISOString();
+    const ingestRequestId = `${lineage.agentId}:ingest:${createdAt}`;
+    const enrichedIngest: IngestRuntimeContextInput = {
+      ...normalized,
+      metadata: {
+        ...(normalized.metadata ?? {}),
+        cmpRequestId: ingestRequestId,
+      },
+    };
     const icmaCapture = this.#cmpFiveAgentRuntime.icma.capture({
-      ingest: normalized,
+      ingest: enrichedIngest,
       createdAt,
       loopId: randomUUID(),
     });
     const sectionIngress = createCmpSectionIngressRecordFromIngress({
-      ingest: normalized,
+      ingest: enrichedIngest,
       ingressId: randomUUID(),
       createdAt,
       metadata: {
@@ -1877,6 +2040,72 @@ export class AgentCoreRuntime {
     });
     const ingress = createCmpIngressRecord(sectionIngress.ingress);
     this.#cmpIngressRecords.set(ingress.ingressId, ingress);
+    this.#cmpRequests.set(ingestRequestId, createCmpRequestRecordFromIngest({
+      requestId: ingestRequestId,
+      ingest: enrichedIngest,
+      createdAt,
+      metadata: {
+        ingressId: ingress.ingressId,
+        source: "cmp-runtime-object-model-ingest",
+      },
+    }));
+    const rawSectionRecordIdsBySectionId = new Map<string, string>();
+    const preSectionRecordIdsBySectionId = new Map<string, string>();
+    for (const section of sectionIngress.sections) {
+      const rawRecordId = `${section.id}:raw`;
+      const preRecordId = `${section.id}:pre`;
+      rawSectionRecordIdsBySectionId.set(section.id, rawRecordId);
+      preSectionRecordIdsBySectionId.set(section.id, preRecordId);
+      this.#cmpSectionRecords.set(rawRecordId, createCmpSectionRecordFromSection({
+        section,
+        lifecycle: "raw",
+        version: 1,
+        sourceAnchors: section.payloadRefs,
+        metadata: {
+          source: "cmp-runtime-object-model-ingest",
+          ingressId: ingress.ingressId,
+        },
+      }));
+      this.#cmpSectionRecords.set(preRecordId, createCmpSectionRecord({
+        ...createCmpSectionRecordFromSection({
+          section,
+          lifecycle: "pre",
+          version: 2,
+          parentSectionId: rawRecordId,
+          ancestorSectionIds: [rawRecordId],
+          sourceAnchors: section.payloadRefs,
+        }),
+        sectionId: preRecordId,
+        metadata: {
+          source: "cmp-runtime-object-model-ingest",
+          ingressId: ingress.ingressId,
+          cmpIcmaRecordId: icmaCapture.loop.loopId,
+          cmpIntentChunkIds: icmaCapture.loop.chunkIds,
+          cmpFragmentIds: icmaCapture.loop.fragmentIds,
+        },
+      }));
+    }
+
+    for (const loweredRecord of sectionLowering.lowered) {
+      if (!loweredRecord.storedSection) {
+        continue;
+      }
+      const preRecordId = preSectionRecordIdsBySectionId.get(loweredRecord.section.id);
+      const persistedRecord = createCmpSectionRecordFromStoredSection({
+        storedSection: loweredRecord.storedSection,
+        sourceSection: loweredRecord.section,
+        lifecycle: "persisted",
+        version: 3,
+        parentSectionId: preRecordId,
+        ancestorSectionIds: preRecordId ? [preRecordId] : [],
+        metadata: {
+          source: "cmp-runtime-object-model-ingest",
+          ingressId: ingress.ingressId,
+          ruleEvaluation: loweredRecord.evaluation,
+        },
+      });
+      this.#cmpSectionRecords.set(persistedRecord.sectionId, persistedRecord);
+    }
 
     const acceptedEvents: ContextEvent[] = normalized.materials.map((material) => {
       const loweredSection = sectionLowering.lowered.find((record) => record.section.payloadRefs.includes(material.ref));
@@ -1896,6 +2125,12 @@ export class AgentCoreRuntime {
           cmpIcmaChunkIds: icmaCapture.loop.chunkIds,
           cmpIcmaFragmentIds: icmaCapture.loop.fragmentIds,
           cmpSectionId: loweredSection?.section.id,
+          cmpRawSectionRecordId: loweredSection?.section.id
+            ? rawSectionRecordIdsBySectionId.get(loweredSection.section.id)
+            : undefined,
+          cmpPreSectionRecordId: loweredSection?.section.id
+            ? preSectionRecordIdsBySectionId.get(loweredSection.section.id)
+            : undefined,
           cmpStoredSectionId: loweredSection?.storedSection?.id,
           cmpStoredSections: loweredSection?.storedSection ? [loweredSection.storedSection] : [],
           cmpSectionRuleEvaluation: loweredSection?.evaluation,
@@ -1941,6 +2176,11 @@ export class AgentCoreRuntime {
     const lineage = this.#requireCmpLineage(normalized.agentId);
     const createdAt = new Date().toISOString();
     const storedSections = this.#collectCmpStoredSectionsFromEventIds(normalized.eventIds);
+    const preSectionRecordIds = [...new Set(
+      normalized.eventIds
+        .map((eventId) => this.#cmpEvents.get(eventId)?.metadata?.cmpPreSectionRecordId)
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+    )];
     const delta = createContextDelta({
       deltaId: randomUUID(),
       agentId: normalized.agentId,
@@ -1951,6 +2191,7 @@ export class AgentCoreRuntime {
       syncIntent: normalized.syncIntent,
       metadata: {
         ...(normalized.metadata ?? {}),
+        ...(preSectionRecordIds.length > 0 ? { cmpPreSectionRecordIds: preSectionRecordIds } : {}),
         ...(storedSections.length > 0 ? { cmpStoredSections: storedSections } : {}),
       },
     });
@@ -1980,6 +2221,7 @@ export class AgentCoreRuntime {
       createdAt: gitSync.candidate.createdAt,
       metadata: {
         gitSyncIntent: gitSync.binding.syncIntent,
+        sourceSectionIds: preSectionRecordIds,
       },
     });
     const candidate = createSnapshotCandidate({
@@ -2015,6 +2257,9 @@ export class AgentCoreRuntime {
       parentAgentId: lineage.parentAgentId,
       checkedAt: candidate.createdAt,
       suggestPromote: Boolean(lineage.parentAgentId && delta.syncIntent === "submit_to_parent"),
+      metadata: {
+        sourceSectionIds: preSectionRecordIds,
+      },
     });
     let promotionRecord: CmpGitPromotionRecord | undefined;
     if (delta.syncIntent === "submit_to_parent" && lineage.parentAgentId) {
@@ -2062,7 +2307,7 @@ export class AgentCoreRuntime {
       snapshotCandidateRef: candidate.candidateId,
     });
 
-    const checked = createCheckedSnapshot({
+    let checked = createCheckedSnapshot({
       snapshotId: `${candidate.candidateId}:checked`,
       agentId: delta.agentId,
       lineageRef: this.#createCmpLineageRef(lineage),
@@ -2078,6 +2323,40 @@ export class AgentCoreRuntime {
         checkedRefId: checkedRef.refId,
         promotionId: promotionRecord?.promotionId,
         source: "cmp-runtime-default-checker",
+      },
+    });
+    const checkedSectionRecordIds: string[] = [];
+    for (const preSectionRecordId of preSectionRecordIds) {
+      const preSection = this.#cmpSectionRecords.get(preSectionRecordId);
+      if (!preSection) {
+        continue;
+      }
+      const checkedSectionRecord = createCmpSectionRecord({
+        ...preSection,
+        sectionId: `${preSection.sectionId}:checked:${checked.snapshotId}`,
+        version: Math.max(preSection.version + 1, 3),
+        lifecycle: "checked",
+        fidelity: "checked",
+        updatedAt: checked.checkedAt,
+        parentSectionId: preSection.sectionId,
+        ancestorSectionIds: [...new Set([preSection.sectionId, ...preSection.ancestorSectionIds])],
+        metadata: {
+          ...(preSection.metadata ?? {}),
+          source: "cmp-runtime-object-model-checked",
+          candidateId: candidate.candidateId,
+          checkedSnapshotId: checked.snapshotId,
+          cmpCheckerLoopId: checkerRecord.checkerRecord.loopId,
+          reviewRef: iteratorRecord.reviewRef,
+        },
+      });
+      this.#cmpSectionRecords.set(checkedSectionRecord.sectionId, checkedSectionRecord);
+      checkedSectionRecordIds.push(checkedSectionRecord.sectionId);
+    }
+    checked = createCheckedSnapshot({
+      ...checked,
+      metadata: {
+        ...(checked.metadata ?? {}),
+        cmpCheckedSectionRecordIds: checkedSectionRecordIds,
         ...createCheckerCheckedSnapshotMetadata({
           snapshot: {
             snapshotId: `${candidate.candidateId}:checked`,
@@ -2094,6 +2373,16 @@ export class AgentCoreRuntime {
       },
     });
     this.#cmpCheckedSnapshots.set(checked.snapshotId, checked);
+    this.#cmpSnapshotRecords.set(checked.snapshotId, createCmpSnapshotRecordFromCheckedSnapshot({
+      snapshot: checked,
+      projectId: lineage.projectId,
+      sourceSectionIds: checkedSectionRecordIds,
+      stage: "checked",
+      metadata: {
+        source: "cmp-runtime-object-model-checked",
+        candidateId: candidate.candidateId,
+      },
+    }));
     const dbProjection = syncCmpDbProjectionFromCheckedSnapshot({
       state: this.#cmpDbRuntimeSync,
       snapshot: checked,
@@ -2257,6 +2546,26 @@ export class AgentCoreRuntime {
     if (!snapshot) {
       throw new Error(`CMP checked snapshot ${normalized.snapshotId} was not found.`);
     }
+    const projectId = String(snapshot.metadata?.projectId ?? "unknown-project");
+    const materializeRequestId = randomUUID();
+    const checkedSnapshotRecord = this.#cmpSnapshotRecords.get(snapshot.snapshotId);
+    const sourceSectionRecordIds = checkedSnapshotRecord?.sourceSectionIds ?? [];
+    this.#cmpRequests.set(materializeRequestId, createCmpRequestRecord({
+      requestId: materializeRequestId,
+      projectId,
+      requesterAgentId: normalized.agentId,
+      requestKind: "materialize_package",
+      status: "received",
+      sourceAnchors: [snapshot.snapshotId, normalized.targetAgentId, normalized.packageKind],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        targetAgentId: normalized.targetAgentId,
+        requestedPackageKind: normalized.packageKind,
+        sourceSnapshotId: snapshot.snapshotId,
+        sourceSectionRecordIds,
+      },
+    }));
 
     const projection = normalized.projectionId
       ? this.#requireCmpProjection(normalized.projectionId)
@@ -2329,6 +2638,10 @@ export class AgentCoreRuntime {
       contextPackage,
       createdAt: contextPackage.createdAt,
       loopId: randomUUID(),
+      metadata: {
+        sourceRequestId: materializeRequestId,
+        sourceSectionIds: sourceSectionRecordIds,
+      },
     });
     const enrichedContextPackage = createContextPackage({
       ...contextPackage,
@@ -2338,9 +2651,91 @@ export class AgentCoreRuntime {
         cmpPackageFamilyId: dbagentMaterialized.family.familyId,
         cmpTimelinePackageId: dbagentMaterialized.family.timelinePackageId,
         cmpTaskSnapshotIds: dbagentMaterialized.taskSnapshots.map((taskSnapshot) => taskSnapshot.snapshotId),
+        sourceRequestId: materializeRequestId,
       },
     });
     this.#cmpPackages.set(enrichedContextPackage.packageId, enrichedContextPackage);
+    const persistedSectionRecordIds: string[] = [];
+    for (const sourceSectionRecordId of sourceSectionRecordIds) {
+      const sourceSectionRecord = this.#cmpSectionRecords.get(sourceSectionRecordId);
+      if (!sourceSectionRecord) {
+        continue;
+      }
+      const persistedSectionRecordId = `${sourceSectionRecord.sectionId}:persisted:${enrichedContextPackage.packageId}`;
+      const persistedSectionRecord = createCmpSectionRecord({
+        ...sourceSectionRecord,
+        sectionId: persistedSectionRecordId,
+        version: sourceSectionRecord.version + 1,
+        lifecycle: "persisted",
+        updatedAt: enrichedContextPackage.createdAt,
+        parentSectionId: sourceSectionRecord.sectionId,
+        ancestorSectionIds: [...new Set([sourceSectionRecord.sectionId, ...sourceSectionRecord.ancestorSectionIds])],
+        metadata: {
+          ...(sourceSectionRecord.metadata ?? {}),
+          source: "cmp-runtime-object-model-persisted",
+          packageId: enrichedContextPackage.packageId,
+          cmpDbAgentRecordId: dbagentMaterialized.loop.loopId,
+          packageRef: enrichedContextPackage.packageRef,
+          persistedStorageRef: storedSection?.storageRef,
+        },
+      });
+      this.#cmpSectionRecords.set(persistedSectionRecordId, persistedSectionRecord);
+      persistedSectionRecordIds.push(persistedSectionRecordId);
+    }
+    this.#cmpSnapshotRecords.set(
+      `${snapshot.snapshotId}:persisted:${enrichedContextPackage.packageId}`,
+      createCmpSnapshotRecord({
+        snapshotId: `${snapshot.snapshotId}:persisted:${enrichedContextPackage.packageId}`,
+        projectId,
+        agentId: normalized.agentId,
+        stage: "persisted",
+        sourceSectionIds: persistedSectionRecordIds.length > 0 ? persistedSectionRecordIds : sourceSectionRecordIds,
+        sourceAnchors: [snapshot.snapshotId, enrichedContextPackage.packageId, enrichedContextPackage.packageRef],
+        branchRef: snapshot.branchRef,
+        commitRef: snapshot.commitRef,
+        createdAt: enrichedContextPackage.createdAt,
+        updatedAt: enrichedContextPackage.createdAt,
+        metadata: {
+          source: "cmp-runtime-object-model-materialize",
+          sourceRequestId: materializeRequestId,
+        },
+      }),
+    );
+    this.#cmpPackageRecords.set(
+      enrichedContextPackage.packageId,
+      createCmpPackageRecordFromContextPackage({
+        contextPackage: enrichedContextPackage,
+        projectId,
+        sourceSnapshotId: snapshot.snapshotId,
+        sourceSectionIds: persistedSectionRecordIds.length > 0 ? persistedSectionRecordIds : sourceSectionRecordIds,
+        sourceAnchors: [enrichedContextPackage.packageRef, snapshot.snapshotId],
+        status: "materialized",
+        metadata: {
+          cmpPackageFamilyId: dbagentMaterialized.family.familyId,
+          sourceRequestId: materializeRequestId,
+        },
+      }),
+    );
+    const materializeRequest = this.#cmpRequests.get(materializeRequestId);
+    if (materializeRequest) {
+      this.#cmpRequests.set(
+        materializeRequestId,
+        advanceCmpRequestRecordStatus({
+          record: materializeRequest,
+          nextStatus: "served",
+          updatedAt: enrichedContextPackage.createdAt,
+          metadata: {
+            ...(materializeRequest.metadata ?? {}),
+            source: "cmp-runtime-object-model-materialize",
+            targetAgentId: normalized.targetAgentId,
+            requestedPackageKind: normalized.packageKind,
+            sourceSnapshotId: snapshot.snapshotId,
+            sourceSectionRecordIds: persistedSectionRecordIds.length > 0 ? persistedSectionRecordIds : sourceSectionRecordIds,
+            servedPackageId: enrichedContextPackage.packageId,
+          },
+        }),
+      );
+    }
     syncCmpDbPackageFromContextPackage({
       state: this.#cmpDbRuntimeSync,
       contextPackage: enrichedContextPackage,
@@ -2431,6 +2826,26 @@ export class AgentCoreRuntime {
     if (!contextPackage) {
       throw new Error(`CMP context package ${normalized.packageId} was not found.`);
     }
+    const projectId = String(this.#requireCmpLineage(normalized.sourceAgentId).projectId);
+    const dispatchRequestId = randomUUID();
+    const sourcePackageRecord = this.#cmpPackageRecords.get(contextPackage.packageId);
+    this.#cmpRequests.set(dispatchRequestId, createCmpRequestRecord({
+      requestId: dispatchRequestId,
+      projectId,
+      requesterAgentId: normalized.sourceAgentId,
+      requestKind: "dispatch_package",
+      status: "received",
+      sourceAnchors: [contextPackage.packageId, normalized.targetAgentId, normalized.targetKind],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        targetAgentId: normalized.targetAgentId,
+        targetKind: normalized.targetKind,
+        requestedPackageKind: contextPackage.packageKind,
+        sourceSnapshotId: sourcePackageRecord?.sourceSnapshotId,
+        sourceSectionRecordIds: sourcePackageRecord?.sourceSectionIds,
+      },
+    }));
 
     const createdAt = new Date().toISOString();
     const coreReceipt = normalized.targetKind === "core_agent"
@@ -2460,7 +2875,14 @@ export class AgentCoreRuntime {
       });
     const dispatcherRecorded = this.#cmpFiveAgentRuntime.dispatcher.dispatch({
       contextPackage,
-      dispatch: normalized,
+      dispatch: {
+        ...normalized,
+        metadata: {
+          ...(normalized.metadata ?? {}),
+          sourceRequestId: dispatchRequestId,
+          sourceSnapshotId: sourcePackageRecord?.sourceSnapshotId,
+        },
+      },
       receipt,
       createdAt,
       loopId: randomUUID(),
@@ -2471,6 +2893,7 @@ export class AgentCoreRuntime {
         ...(receipt.metadata ?? {}),
         cmpDispatcherRecordId: dispatcherRecorded.loop.loopId,
         cmpDispatcherPackageMode: dispatcherRecorded.loop.packageMode,
+        cmpDispatcherBundle: dispatcherRecorded.loop.bundle,
         cmpPeerExchangeApprovalId: dispatcherRecorded.peerApproval?.approvalId,
         cmpPeerExchangeApprovalStatus: dispatcherRecorded.peerApproval?.status,
       },
@@ -2670,6 +3093,38 @@ export class AgentCoreRuntime {
       });
     }
 
+    if (sourcePackageRecord) {
+      this.#cmpPackageRecords.set(
+        contextPackage.packageId,
+        advanceCmpPackageRecordStatus({
+          record: sourcePackageRecord,
+          nextStatus: "dispatched",
+          updatedAt: createdAt,
+          metadata: {
+            ...(sourcePackageRecord.metadata ?? {}),
+            dispatchId: enrichedReceipt.dispatchId,
+            dispatchTargetKind: normalized.targetKind,
+          },
+        }),
+      );
+    }
+    const dispatchRequest = this.#cmpRequests.get(dispatchRequestId);
+    if (dispatchRequest) {
+      this.#cmpRequests.set(
+        dispatchRequestId,
+        advanceCmpRequestRecordStatus({
+          record: dispatchRequest,
+          nextStatus: "served",
+          updatedAt: createdAt,
+          metadata: {
+            ...(dispatchRequest.metadata ?? {}),
+            dispatchId: enrichedReceipt.dispatchId,
+            servedPackageId: contextPackage.packageId,
+          },
+        }),
+      );
+    }
+
     return {
       status: "dispatched",
       receipt: enrichedReceipt,
@@ -2678,8 +3133,38 @@ export class AgentCoreRuntime {
 
   requestHistoricalContext(input: RequestHistoricalContextInput): RequestHistoricalContextResult {
     const normalized = createRequestHistoricalContextInput(input);
+    const historyRequestId = randomUUID();
+    this.#cmpRequests.set(historyRequestId, createCmpRequestRecord({
+      requestId: historyRequestId,
+      projectId: normalized.projectId,
+      requesterAgentId: normalized.requesterAgentId,
+      requestKind: "historical_context",
+      status: "received",
+      sourceAnchors: [
+        normalized.reason,
+        normalized.query.snapshotId ?? normalized.query.lineageRef ?? normalized.query.branchRef ?? normalized.projectId,
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        reason: normalized.reason,
+        query: normalized.query,
+      },
+    }));
     const snapshot = this.#selectCmpHistoricalSnapshot(normalized);
     if (!snapshot) {
+      const request = this.#cmpRequests.get(historyRequestId);
+      if (request) {
+        this.#cmpRequests.set(historyRequestId, advanceCmpRequestRecordStatus({
+          record: request,
+          nextStatus: "denied",
+          updatedAt: new Date().toISOString(),
+          metadata: {
+            ...(request.metadata ?? {}),
+            denialReason: "snapshot_not_found",
+          },
+        }));
+      }
       return {
         status: "not_found",
         found: false,
@@ -2843,6 +3328,10 @@ export class AgentCoreRuntime {
       snapshot,
       contextPackage,
       createdAt: contextPackage.createdAt,
+      metadata: {
+        sourceRequestId: historyRequestId,
+        sourceSectionIds: this.#cmpSnapshotRecords.get(snapshot.snapshotId)?.sourceSectionIds ?? [],
+      },
     });
     const servedReintervention = reinterventionRequest
       ? this.#cmpFiveAgentRuntime.dbagent.serveReintervention({
@@ -2866,13 +3355,68 @@ export class AgentCoreRuntime {
         ...(contextPackage.metadata ?? {}),
         cmpDbAgentRecordId: dbagentPassive.loop.loopId,
         cmpDispatcherRecordId: dispatcherPassive.loopId,
+        cmpDispatcherBundle: dispatcherPassive.bundle,
         cmpPackageFamilyId: dbagentPassive.family.familyId,
         cmpTimelinePackageId: dbagentPassive.family.timelinePackageId,
         cmpTaskSnapshotIds: dbagentPassive.taskSnapshots.map((taskSnapshot) => taskSnapshot.snapshotId),
         cmpPassiveDefaultPayload: "ContextPackage",
+        sourceRequestId: historyRequestId,
       },
     });
     this.#cmpPackages.set(enrichedContextPackage.packageId, enrichedContextPackage);
+    const checkedSnapshotRecord = this.#cmpSnapshotRecords.get(snapshot.snapshotId);
+    const sourceSectionRecordIds = checkedSnapshotRecord?.sourceSectionIds ?? [];
+    this.#cmpSnapshotRecords.set(
+      `${snapshot.snapshotId}:served:${enrichedContextPackage.packageId}`,
+      createCmpSnapshotRecord({
+        snapshotId: `${snapshot.snapshotId}:served:${enrichedContextPackage.packageId}`,
+        projectId: normalized.projectId,
+        agentId: normalized.requesterAgentId,
+        stage: "persisted",
+        sourceSectionIds: sourceSectionRecordIds,
+        sourceAnchors: [snapshot.snapshotId, enrichedContextPackage.packageId, enrichedContextPackage.packageRef],
+        branchRef: snapshot.branchRef,
+        commitRef: snapshot.commitRef,
+        createdAt: enrichedContextPackage.createdAt,
+        updatedAt: enrichedContextPackage.createdAt,
+        metadata: {
+          source: "cmp-runtime-object-model-passive",
+          truthSource: fallbackDecision.resolvedSource,
+          sourceRequestId: historyRequestId,
+        },
+      }),
+    );
+    this.#cmpPackageRecords.set(
+      enrichedContextPackage.packageId,
+      createCmpPackageRecordFromContextPackage({
+        contextPackage: enrichedContextPackage,
+        projectId: normalized.projectId,
+        sourceSnapshotId: snapshot.snapshotId,
+        sourceSectionIds: sourceSectionRecordIds,
+        sourceAnchors: [enrichedContextPackage.packageRef, snapshot.snapshotId],
+        status: "served",
+        metadata: {
+          source: "cmp-runtime-object-model-passive",
+          truthSource: fallbackDecision.resolvedSource,
+          sourceRequestId: historyRequestId,
+        },
+      }),
+    );
+    const historyRequest = this.#cmpRequests.get(historyRequestId);
+    if (historyRequest) {
+      this.#cmpRequests.set(historyRequestId, advanceCmpRequestRecordStatus({
+        record: historyRequest,
+        nextStatus: "served",
+        updatedAt: enrichedContextPackage.createdAt,
+        metadata: {
+          ...(historyRequest.metadata ?? {}),
+          truthSource: fallbackDecision.resolvedSource,
+          sourceSnapshotId: snapshot.snapshotId,
+          sourceSectionRecordIds,
+          servedPackageId: enrichedContextPackage.packageId,
+        },
+      }));
+    }
     if (projectReceipt?.db && this.cmpInfraBackends.dbExecutor) {
       const adapter = createCmpDbPostgresAdapter({
         topology: projectReceipt.db.topology,
@@ -3138,7 +3682,9 @@ export class AgentCoreRuntime {
     intent: CapabilityCallIntent,
     options: DispatchCapabilityIntentViaTaPoolOptions,
   ): Promise<DispatchCapabilityIntentViaTaPoolResult> {
-    if (!this.taControlPlaneGateway) {
+    const gateway = options.controlPlaneGatewayOverride ?? this.taControlPlaneGateway;
+    const profile = options.profileOverride ?? gateway?.profile;
+    if (!gateway || !profile) {
       throw new Error("T/A control-plane gateway is not configured on this runtime.");
     }
     if (!this.reviewerRuntime) {
@@ -3149,7 +3695,7 @@ export class AgentCoreRuntime {
     }
 
     const requestedTier = options.requestedTier ?? "B1";
-    const mode = options.mode ?? this.taControlPlaneGateway.profile.defaultMode;
+    const mode = options.mode ?? profile.defaultMode;
     const reason = options.reason ?? `Capability ${intent.request.capabilityKey} requested by runtime.`;
     const safety = evaluateSafetyInterception({
       mode,
@@ -3172,7 +3718,7 @@ export class AgentCoreRuntime {
       };
     }
     if (safety.outcome === "escalate_to_human") {
-      const accessRequest = this.taControlPlaneGateway.submitAccessRequest({
+      const accessRequest = gateway.submitAccessRequest({
         sessionId: intent.sessionId,
         runId: intent.runId,
         agentId: options.agentId,
@@ -3211,7 +3757,7 @@ export class AgentCoreRuntime {
           ...(safety.metadata ?? {}),
         },
       });
-      this.taControlPlaneGateway.consumeReviewDecision(reviewDecision);
+      gateway.consumeReviewDecision(reviewDecision);
       return {
         status: "waiting_human",
         safety,
@@ -3230,7 +3776,7 @@ export class AgentCoreRuntime {
       ? safety.downgradedTier
       : requestedTier;
 
-    const resolved = this.resolveTaCapabilityAccess({
+    const resolved = gateway.resolveCapabilityAccess({
       sessionId: intent.sessionId,
       runId: intent.runId,
       agentId: options.agentId,
@@ -3280,10 +3826,10 @@ export class AgentCoreRuntime {
     const inventory = this.#buildTaReviewInventory();
     const reviewDecision = await this.reviewerRuntime.submit({
       request: accessRequest,
-      profile: this.taControlPlaneGateway.profile,
+      profile,
       inventory,
     });
-    const consumed = this.taControlPlaneGateway.consumeReviewDecision(reviewDecision);
+    const consumed = gateway.consumeReviewDecision(reviewDecision);
 
     if (consumed.grant) {
       const executionRequestId = consumed.decisionToken?.requestId ?? intent.request.requestId;

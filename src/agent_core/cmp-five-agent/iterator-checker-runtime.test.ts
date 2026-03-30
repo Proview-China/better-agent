@@ -14,8 +14,15 @@ test("CmpIteratorCheckerRuntime keeps commit as minimum review unit and separate
     commitRef: "commit-1",
     reviewRef: "refs/review/candidate-1",
     createdAt: "2026-03-25T00:00:00.000Z",
+    metadata: {
+      sourceRequestId: "request-1",
+      sourceSectionIds: ["section-pre-1", "section-pre-2"],
+    },
   });
   assert.equal(iterator.stage, "update_review_ref");
+  assert.equal(iterator.reviewOutput.sourceRequestId, "request-1");
+  assert.deepEqual(iterator.reviewOutput.sourceSectionIds, ["section-pre-1", "section-pre-2"]);
+  assert.equal(iterator.reviewOutput.minimumReviewUnit, "commit");
   assert.deepEqual(iterator.metadata?.reviewDiscipline, {
     minimumReviewUnit: "commit",
     reviewRefMode: "stable_review_ref",
@@ -30,9 +37,16 @@ test("CmpIteratorCheckerRuntime keeps commit as minimum review unit and separate
     checkedAt: "2026-03-25T00:00:01.000Z",
     suggestPromote: true,
     parentAgentId: "parent-a",
+    metadata: {
+      sourceSectionIds: ["section-pre-1", "section-pre-2"],
+      checkedSectionIds: ["section-checked-1"],
+    },
   });
   assert.equal(checked.checkerRecord.stage, "suggest_promote");
   assert.equal(checked.promoteRequest?.reviewerRole, "dbagent");
+  assert.deepEqual(checked.checkerRecord.reviewOutput.sourceSectionIds, ["section-pre-1", "section-pre-2"]);
+  assert.deepEqual(checked.checkerRecord.reviewOutput.checkedSectionIds, ["section-checked-1"]);
+  assert.equal(checked.checkerRecord.reviewOutput.trimSummary, "checker trims to section-level high-signal content");
   const reviewDiscipline = checked.checkerRecord.metadata?.reviewDiscipline as
     | { checkedDetachedFromPromote?: boolean }
     | undefined;

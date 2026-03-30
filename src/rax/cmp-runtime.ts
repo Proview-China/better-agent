@@ -103,6 +103,9 @@ export function createRaxCmpRuntime(input: CreateRaxCmpRuntimeInput): RaxCmpRunt
     resolveCmpFiveAgentCapabilityAccess(input) {
       return agentCoreRuntime.resolveCmpFiveAgentCapabilityAccess(input);
     },
+    dispatchCmpFiveAgentCapability(input) {
+      return agentCoreRuntime.dispatchCmpFiveAgentCapability(input);
+    },
     reviewCmpPeerExchangeApproval(input) {
       return agentCoreRuntime.reviewCmpPeerExchangeApproval(input);
     },

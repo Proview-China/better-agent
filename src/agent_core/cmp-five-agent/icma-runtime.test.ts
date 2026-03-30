@@ -38,6 +38,11 @@ test("CmpIcmaRuntime captures by task intent and only keeps allowed fragment kin
   assert.equal(captured.loop.stage, "attach_fragment");
   assert.deepEqual(captured.fragments.map((fragment) => fragment.kind), ["constraint", "risk", "flow"]);
   assert.equal(captured.loop.metadata?.gitWriteAccess, false);
+  assert.equal(captured.loop.structuredOutput.intent, "整理当前任务上下文");
+  assert.deepEqual(captured.loop.structuredOutput.sourceAnchorRefs, ["msg:1", "tool:1"]);
+  assert.equal(captured.loop.structuredOutput.boundary, "preserve_root_system_and_emit_controlled_fragments_only");
+  assert.deepEqual(captured.loop.structuredOutput.explicitFragmentIds, captured.loop.fragmentIds);
+  assert.equal(captured.loop.structuredOutput.guide.childGuide, "Any child seed must enter child ICMA only.");
   assert.deepEqual(captured.loop.metadata?.fragmentPolicy, {
     systemPolicy: "append_only_fragment",
     rootSystemMutationAllowed: false,
@@ -69,6 +74,7 @@ test("CmpIcmaRuntime captures by task intent and only keeps allowed fragment kin
     emittedAt: "2026-03-25T00:00:01.000Z",
   });
   assert.equal(emitted.stage, "emit");
+  assert.equal(emitted.structuredOutput.intent, "整理当前任务上下文");
   assert.deepEqual(emitted.metadata?.seedAssembly, {
     discipline: "child_seed_enters_child_icma_only",
     target: "child_icma",
@@ -78,4 +84,5 @@ test("CmpIcmaRuntime captures by task intent and only keeps allowed fragment kin
   assert.equal(emitted.metadata?.emittedEventCount, 2);
   const emitContract = emitted.metadata?.emitContract as { target?: string } | undefined;
   assert.equal(emitContract?.target, "iterator");
+  assert.equal((emitted.metadata?.emitContract as { preservesStructuredOutput?: boolean } | undefined)?.preservesStructuredOutput, true);
 });

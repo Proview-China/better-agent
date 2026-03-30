@@ -1676,6 +1676,87 @@ test("AgentCoreRuntime can run the first CMP active path through ingest, delta, 
   assert.equal(fiveAgentSummary.flow.childSeedToIcmaCount, 1);
 });
 
+test("AgentCoreRuntime records CMP formal request, section, snapshot, and package objects along the active path", () => {
+  const runtime = createAgentCoreRuntime();
+  const lineage = createAgentLineage({
+    agentId: "main-objects",
+    depth: 0,
+    projectId: "cmp-project-objects",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/main-objects",
+      cmpBranch: "cmp/main-objects",
+      mpBranch: "mp/main-objects",
+      tapBranch: "tap/main-objects",
+    }),
+    childAgentIds: ["child-objects"],
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "main-objects",
+    sessionId: "session-cmp-objects",
+    runId: "run-cmp-objects",
+    lineage,
+    taskSummary: "ingest cmp object model path",
+    materials: [
+      { kind: "user_input", ref: "payload:objects:user" },
+      { kind: "tool_result", ref: "payload:objects:tool" },
+    ],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "main-objects",
+    sessionId: "session-cmp-objects",
+    runId: "run-cmp-objects",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "commit cmp object model path",
+    syncIntent: "local_record",
+  });
+  assert.equal(committed.status, "accepted");
+
+  const resolved = runtime.resolveCheckedSnapshot({
+    agentId: "main-objects",
+    projectId: "cmp-project-objects",
+  });
+  assert.equal(resolved.found, true);
+  const snapshotId = resolved.snapshot!.snapshotId;
+
+  const materialized = runtime.materializeContextPackage({
+    agentId: "main-objects",
+    snapshotId,
+    targetAgentId: "child-objects",
+    packageKind: "child_seed",
+  });
+  const dispatched = runtime.dispatchContextPackage({
+    agentId: "main-objects",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "main-objects",
+    targetAgentId: "child-objects",
+    targetKind: "child",
+  });
+
+  const requests = runtime.listCmpRequestRecords().filter((record) => record.projectId === "cmp-project-objects");
+  const sections = runtime.listCmpSectionRecords().filter((record) => record.projectId === "cmp-project-objects");
+  const snapshots = runtime.listCmpSnapshotRecords().filter((record) => record.projectId === "cmp-project-objects");
+  const packages = runtime.listCmpPackageRecords().filter((record) => record.projectId === "cmp-project-objects");
+  const fiveAgent = runtime.getCmpFiveAgentRuntimeSnapshot("main-objects");
+
+  assert.equal(requests.some((record) => record.requestKind === "active_ingest"), true);
+  assert.equal(requests.some((record) => record.requestKind === "materialize_package" && record.status === "served"), true);
+  assert.equal(requests.some((record) => record.requestKind === "dispatch_package" && record.status === "served"), true);
+  assert.equal(sections.some((record) => record.lifecycle === "raw"), true);
+  assert.equal(sections.some((record) => record.lifecycle === "pre"), true);
+  assert.equal(sections.some((record) => record.lifecycle === "checked"), true);
+  assert.equal(sections.some((record) => record.lifecycle === "persisted"), true);
+  assert.equal(snapshots.some((record) => record.snapshotId === snapshotId && record.stage === "checked"), true);
+  assert.equal(packages.some((record) => record.packageId === materialized.contextPackage.packageId && record.status === "dispatched"), true);
+  assert.equal(fiveAgent.icmaRecords[0]?.structuredOutput.intent, "ingest cmp object model path");
+  assert.equal(fiveAgent.iteratorRecords[0]?.reviewOutput.minimumReviewUnit, "commit");
+  assert.deepEqual(fiveAgent.iteratorRecords[0]?.reviewOutput.sourceSectionIds.length! > 0, true);
+  assert.equal(fiveAgent.checkerRecords[0]?.reviewOutput.trimSummary, "checker trims to section-level high-signal content");
+  assert.equal(fiveAgent.dbAgentRecords[0]?.materializationOutput.bundleSchemaVersion, "cmp-dispatch-bundle/v1");
+  assert.equal(fiveAgent.dispatcherRecords[0]?.bundle.target.targetIngress, "child_icma_only");
+  assert.equal((dispatched.receipt.metadata?.cmpDispatcherBundle as { target?: { targetIngress?: string } } | undefined)?.target?.targetIngress, "child_icma_only");
+});
+
 test("AgentCoreRuntime can resolve CMP five-agent TAP capability access by role profile", () => {
   const runtime = createAgentCoreRuntime();
 
@@ -1711,6 +1792,91 @@ test("AgentCoreRuntime can resolve CMP five-agent TAP capability access by role 
   });
   assert.equal(icmaResolution.profile.profileId, "cmp-five-agent/icma-tap-profile/v1");
   assert.equal(icmaResolution.resolution.status, "review_required");
+});
+
+test("AgentCoreRuntime can dispatch CMP five-agent capability through TAP review and execution bridge", async () => {
+  const runtime = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.cmp-five-agent-bridge",
+      agentClass: "main-agent",
+      baselineCapabilities: ["docs.read"],
+      allowedCapabilityPatterns: ["cmp.git.*"],
+    }),
+  });
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-cmp-five-agent-bridge",
+      sessionId: session.sessionId,
+      userInput: "Bridge CMP iterator capability into TAP execution.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+  const adapter: CapabilityAdapter = {
+    id: "adapter.cmp.git.write.bridge",
+    runtimeKind: "tool",
+    supports(plan) {
+      return plan.capabilityKey === "cmp.git.write";
+    },
+    async prepare(plan, lease) {
+      return {
+        preparedId: `${plan.planId}:prepared`,
+        leaseId: lease.leaseId,
+        capabilityKey: plan.capabilityKey,
+        bindingId: lease.bindingId,
+        generation: lease.generation,
+        executionMode: "direct",
+      };
+    },
+    async execute(prepared) {
+      return {
+        executionId: `${prepared.preparedId}:execution`,
+        resultId: `${prepared.preparedId}:result`,
+        status: "success",
+        output: {
+          branch: "cmp/main",
+        },
+        completedAt: new Date("2026-03-30T12:00:03.000Z").toISOString(),
+      };
+    },
+  };
+  runtime.registerCapabilityAdapter({
+    capabilityId: "cap-cmp-git-write-bridge",
+    capabilityKey: "cmp.git.write",
+    kind: "tool",
+    version: "1.0.0",
+    generation: 1,
+    description: "CMP git write through TAP bridge.",
+  }, adapter);
+
+  const result = await runtime.dispatchCmpFiveAgentCapability({
+    role: "iterator",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    agentId: "cmp-iterator-main",
+    capabilityKey: "cmp.git.write",
+    reason: "iterator commits checked section candidate",
+    capabilityInput: {
+      branchRef: "cmp/main",
+      candidateId: "candidate-1",
+    },
+    requestedTier: "B1",
+    mode: "balanced",
+    cmpContext: {
+      requestId: "cmp-request-1",
+      sourceSnapshotId: "snapshot-1",
+      sourceSectionIds: ["section-1"],
+    },
+  });
+
+  assert.equal(result.role, "iterator");
+  assert.equal(result.profile.profileId, "cmp-five-agent/iterator-tap-profile/v1");
+  assert.equal(result.dispatch.status, "dispatched");
+  assert.equal(result.dispatch.grant?.capabilityKey, "cmp.git.write");
+  assert.equal((result.bridgeMetadata.cmpTapBridge as { sourceSnapshotId?: string } | undefined)?.sourceSnapshotId, "snapshot-1");
 });
 
 test("AgentCoreRuntime can dispatch a cmp_action intent through the kernel loop", async () => {
@@ -1904,8 +2070,12 @@ test("AgentCoreRuntime records and serves CMP reintervention requests through DB
   const historicalFiveAgent = historical.metadata?.cmpFiveAgent as { reinterventionRequestId?: string } | undefined;
   assert.equal(historicalFiveAgent?.reinterventionRequestId !== undefined, true);
   const summary = runtime.getCmpFiveAgentRuntimeSummary("child-reint");
+  const snapshot = runtime.getCmpFiveAgentRuntimeSnapshot("child-reint");
   assert.equal(summary.flow.reinterventionPendingCount, 0);
   assert.equal(summary.flow.reinterventionServedCount, 1);
+  assert.equal(snapshot.dbAgentRecords.at(-1)?.materializationOutput.bundleSchemaVersion, "cmp-dispatch-bundle/v1");
+  assert.equal(snapshot.dispatcherRecords.at(-1)?.bundle.target.targetIngress, "core_agent_return");
+  assert.equal((historical.contextPackage?.metadata?.cmpDispatcherBundle as { target?: { targetIngress?: string } } | undefined)?.target?.targetIngress, "core_agent_return");
 });
 
 test("AgentCoreRuntime second wave promotes submit_to_parent deltas through cmp-git governance", () => {

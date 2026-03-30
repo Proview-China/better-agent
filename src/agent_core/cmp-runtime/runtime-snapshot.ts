@@ -1,5 +1,19 @@
 import type { CmpGitProjectRepo } from "../cmp-git/index.js";
-import type { AgentLineage, CheckedSnapshot, ContextDelta, ContextEvent, ContextPackage, DispatchReceipt, PromotedProjection, SnapshotCandidate, SyncEvent } from "../cmp-types/index.js";
+import type {
+  AgentLineage,
+  CheckedSnapshot,
+  CmpPackageRecord,
+  CmpRequestRecord,
+  CmpSectionRecord,
+  CmpSnapshotRecord,
+  ContextDelta,
+  ContextEvent,
+  ContextPackage,
+  DispatchReceipt,
+  PromotedProjection,
+  SnapshotCandidate,
+  SyncEvent,
+} from "../cmp-types/index.js";
 import type { CmpActiveLineRecord } from "./active-line.js";
 import { createCmpRuntimeInfraState, type CmpRuntimeInfraState } from "./infra-state.js";
 
@@ -11,7 +25,11 @@ export interface CmpRuntimeSnapshot {
   activeLines: CmpActiveLineRecord[];
   snapshotCandidates: SnapshotCandidate[];
   checkedSnapshots: CheckedSnapshot[];
+  requests: CmpRequestRecord[];
+  sectionRecords: CmpSectionRecord[];
+  snapshotRecords: CmpSnapshotRecord[];
   promotedProjections: PromotedProjection[];
+  packageRecords: CmpPackageRecord[];
   contextPackages: ContextPackage[];
   dispatchReceipts: DispatchReceipt[];
   syncEvents: SyncEvent[];
@@ -27,7 +45,11 @@ export interface CreateCmpRuntimeSnapshotInput {
   activeLines?: readonly CmpActiveLineRecord[];
   snapshotCandidates?: readonly SnapshotCandidate[];
   checkedSnapshots?: readonly CheckedSnapshot[];
+  requests?: readonly CmpRequestRecord[];
+  sectionRecords?: readonly CmpSectionRecord[];
+  snapshotRecords?: readonly CmpSnapshotRecord[];
   promotedProjections?: readonly PromotedProjection[];
+  packageRecords?: readonly CmpPackageRecord[];
   contextPackages?: readonly ContextPackage[];
   dispatchReceipts?: readonly DispatchReceipt[];
   syncEvents?: readonly SyncEvent[];
@@ -46,7 +68,11 @@ export function createCmpRuntimeSnapshot(
     activeLines: [...(input.activeLines ?? [])],
     snapshotCandidates: [...(input.snapshotCandidates ?? [])],
     checkedSnapshots: [...(input.checkedSnapshots ?? [])],
+    requests: [...(input.requests ?? [])],
+    sectionRecords: [...(input.sectionRecords ?? [])],
+    snapshotRecords: [...(input.snapshotRecords ?? [])],
     promotedProjections: [...(input.promotedProjections ?? [])],
+    packageRecords: [...(input.packageRecords ?? [])],
     contextPackages: [...(input.contextPackages ?? [])],
     dispatchReceipts: [...(input.dispatchReceipts ?? [])],
     syncEvents: [...(input.syncEvents ?? [])],

@@ -171,3 +171,7 @@
   - [tap-usable-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-usable-task-pack/README.md)
 - Agent Core 并行编码任务包：
   - [agent-core-runtime-kernel-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/agent-core-runtime-kernel-task-pack/README.md)
+- CMP 最终收尾总纲：
+  - [46-cmp-final-closure-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/46-cmp-final-closure-outline.md)
+- CMP 最终收尾任务包：
+  - [cmp-final-closure-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-final-closure-task-pack/README.md)
