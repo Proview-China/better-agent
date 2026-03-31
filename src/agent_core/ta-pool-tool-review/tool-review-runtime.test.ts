@@ -147,6 +147,49 @@ test("tool reviewer runtime stages activation and lifecycle shells as handoff-re
   assert.equal(workOrder?.sourceGovernanceKind, "lifecycle");
 });
 
+test("tool reviewer runtime can stage a pre-TMA provision request into a concrete work order", async () => {
+  const runtime = createToolReviewerRuntime();
+
+  const result = await runtime.submit({
+    sessionId: "tool-review:provision:prov-request-1",
+    governanceAction: {
+      kind: "provision_request",
+      trace: createToolReviewGovernanceTrace({
+        actionId: "action-provision-request-1",
+        actorId: "tool-reviewer",
+        reason: "Reviewer redirected the missing capability into provisioning.",
+        createdAt: "2026-03-31T09:00:00.000Z",
+        sourceDecision: {
+          decisionId: "decision-provision-request-1",
+          decision: "redirected_to_provisioning",
+          vote: "redirect_to_provisioning",
+          reason: "Need a concrete TMA work order before building.",
+          createdAt: "2026-03-31T08:59:59.000Z",
+        },
+      }),
+      provisionId: "prov-request-1",
+      capabilityKey: "computer.use",
+      requestedLane: "bootstrap",
+      requestedTier: "B2",
+      metadata: {
+        origin: "runtime-review-redirect",
+      },
+    },
+  });
+
+  assert.equal(result.runtimeStatus, "ready_for_handoff");
+  assert.equal(result.output.kind, "provision_request");
+  assert.equal(result.output.status, "ready_for_tma_handoff");
+  assert.match(result.output.summary, /staged for TMA lane bootstrap/i);
+  const report = runtime.createQualityReport("tool-review:provision:prov-request-1");
+  assert.equal(report?.verdict, "handoff_ready");
+  const workOrder = runtime.createTmaWorkOrder("tool-review:provision:prov-request-1");
+  assert.ok(workOrder);
+  assert.equal(workOrder?.sourceGovernanceKind, "provision_request");
+  assert.equal(workOrder?.requestedLane, "bootstrap");
+  assert.match(workOrder?.objective ?? "", /computer\.use/i);
+});
+
 test("tool reviewer runtime records ready bundle delivery as a handoff-ready governance action", async () => {
   const runtime = createToolReviewerRuntime();
 

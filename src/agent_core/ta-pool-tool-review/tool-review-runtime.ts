@@ -1,6 +1,8 @@
 import type {
   TaToolReviewActionStatus,
   TaToolReviewQualityVerdict,
+  ToolReviewProvisionRequestInputShell,
+  ToolReviewProvisionRequestOutputShell,
   ToolReviewActivationInputShell,
   ToolReviewActivationOutputShell,
   ToolReviewActionLedgerEntry,
@@ -60,6 +62,7 @@ export interface ToolReviewerRuntimeResult {
   sessionId: string;
   placeholder: false;
   governanceKind: ToolReviewGovernanceInputShell["kind"];
+  input: ToolReviewGovernanceInputShell;
   runtimeStatus: TaToolReviewRuntimeStatus;
   output: ToolReviewGovernanceOutputShell;
   recordedAt: string;
@@ -422,6 +425,22 @@ function createActivationOutput(
   };
 }
 
+function createProvisionRequestOutput(
+  input: ToolReviewProvisionRequestInputShell,
+): ToolReviewProvisionRequestOutputShell {
+  return {
+    kind: "provision_request",
+    actionId: input.trace.actionId,
+    status: "ready_for_tma_handoff",
+    capabilityKey: input.capabilityKey,
+    provisionId: input.provisionId,
+    requestedLane: input.requestedLane,
+    requestedTier: input.requestedTier,
+    summary: `Provision request for ${input.capabilityKey} is staged for TMA lane ${input.requestedLane}.`,
+    metadata: input.metadata,
+  };
+}
+
 function createDeliveryOutput(
   input: ToolReviewDeliveryInputShell,
 ): ToolReviewDeliveryOutputShell {
@@ -521,6 +540,8 @@ function toRuntimeStatus(
   output: ToolReviewGovernanceOutputShell,
 ): TaToolReviewRuntimeStatus {
   switch (output.kind) {
+    case "provision_request":
+      return "ready_for_handoff";
     case "activation":
       return output.status === "activation_failed" ? "blocked" : "ready_for_handoff";
     case "delivery":
@@ -631,6 +652,7 @@ export class ToolReviewerRuntime {
       sessionId,
       placeholder: false,
       governanceKind: input.governanceAction.kind,
+      input: input.governanceAction,
       runtimeStatus,
       output,
       recordedAt: input.governanceAction.trace.createdAt,
@@ -650,6 +672,8 @@ export class ToolReviewerRuntime {
     input: ToolReviewGovernanceInputShell,
   ): ToolReviewGovernanceOutputShell {
     switch (input.kind) {
+      case "provision_request":
+        return createProvisionRequestOutput(input);
       case "activation":
         return createActivationOutput(input);
       case "delivery":

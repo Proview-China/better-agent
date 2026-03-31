@@ -25,6 +25,7 @@ import type {
 } from "../ta-pool-runtime/replay-policy.js";
 
 export const TA_TOOL_REVIEW_GOVERNANCE_KINDS = [
+  "provision_request",
   "activation",
   "delivery",
   "lifecycle",
@@ -45,6 +46,7 @@ export type TaToolReviewLifecycleAction =
   (typeof TA_TOOL_REVIEW_LIFECYCLE_ACTIONS)[number];
 
 export const TA_TOOL_REVIEW_OUTPUT_STATUSES = [
+  "ready_for_tma_handoff",
   "ready_for_activation_handoff",
   "ready_for_delivery_handoff",
   "activation_failed",
@@ -165,6 +167,16 @@ export interface CreateToolReviewGovernanceTraceInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface ToolReviewProvisionRequestInputShell {
+  kind: "provision_request";
+  trace: ToolReviewGovernanceTrace;
+  provisionId: string;
+  capabilityKey: string;
+  requestedLane: TmaExecutionLane;
+  requestedTier?: AccessRequest["requestedTier"];
+  metadata?: Record<string, unknown>;
+}
+
 export interface ToolReviewActivationInputShell {
   kind: "activation";
   trace: ToolReviewGovernanceTrace;
@@ -233,11 +245,24 @@ export interface ToolReviewReplayInputShell {
 }
 
 export type ToolReviewGovernanceInputShell =
+  | ToolReviewProvisionRequestInputShell
   | ToolReviewActivationInputShell
   | ToolReviewDeliveryInputShell
   | ToolReviewLifecycleInputShell
   | ToolReviewHumanGateInputShell
   | ToolReviewReplayInputShell;
+
+export interface ToolReviewProvisionRequestOutputShell {
+  kind: "provision_request";
+  actionId: string;
+  status: "ready_for_tma_handoff";
+  capabilityKey: string;
+  provisionId: string;
+  requestedLane: TmaExecutionLane;
+  requestedTier?: AccessRequest["requestedTier"];
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
 
 export interface ToolReviewActivationOutputShell {
   kind: "activation";
@@ -306,6 +331,7 @@ export interface ToolReviewReplayOutputShell {
 }
 
 export type ToolReviewGovernanceOutputShell =
+  | ToolReviewProvisionRequestOutputShell
   | ToolReviewActivationOutputShell
   | ToolReviewDeliveryOutputShell
   | ToolReviewLifecycleOutputShell
@@ -515,7 +541,11 @@ export function createToolReviewTmaWorkOrder(input: {
 }): ToolReviewTmaWorkOrder {
   const isBlocked = input.sourceAction.status === "blocked";
   const isActivationLike = input.sourceAction.governanceKind === "activation";
-  const requestedLane: TmaExecutionLane = isBlocked && isActivationLike ? "extended" : "bootstrap";
+  const requestedLane: TmaExecutionLane = input.sourceAction.output.kind === "provision_request"
+    ? input.sourceAction.output.requestedLane
+    : isBlocked && isActivationLike
+      ? "extended"
+      : "bootstrap";
 
   return {
     workOrderId: `tma-work-order:${input.sourceAction.reviewId}`,

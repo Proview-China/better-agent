@@ -48,6 +48,8 @@ import {
 import {
   activateProvisionAsset,
   createTapGovernanceSnapshot,
+  createTapAgentRecord,
+  createTapThreeAgentUsageReport,
   applyTaHumanGateEvent,
   createActivationFactoryResolver,
   createPoolRuntimeSnapshots,
@@ -65,6 +67,9 @@ import {
   type ActivationDriverResult,
   type PoolRuntimeSnapshots,
   type TapGovernanceSnapshot,
+  type TapAgentRecord,
+  type TapAgentRecordActor,
+  type TapThreeAgentUsageReport,
   type TapPoolRuntimeSnapshot,
   type TaActivationFailure,
   type TaActivationReceipt,
@@ -95,6 +100,7 @@ import type {
   ToolReviewActionLedgerEntry,
   ToolReviewGovernancePlan,
   ToolReviewQualityReport,
+  ToolReviewerRuntimeResult,
   ToolReviewSessionState,
   ToolReviewTmaWorkOrder,
 } from "./ta-pool-tool-review/index.js";
@@ -138,6 +144,7 @@ import type {
   ReplayPolicy,
   ReviewDecision,
   TaCapabilityTier,
+  TmaExecutionLane,
   TaPoolMode,
 } from "./ta-pool-types/index.js";
 import {
@@ -257,6 +264,7 @@ export interface DispatchCapabilityIntentViaTaPoolResult {
   dispatch?: DispatchCapabilityPlanResult;
   safety?: ReturnType<typeof evaluateSafetyInterception>;
   runOutcome?: RunTransitionOutcome;
+  continueResult?: ContinueTaProvisioningResult;
 }
 
 export interface TaCapabilityActivationHandoff {
@@ -398,6 +406,7 @@ export interface ActivateTaProvisionAssetResult {
   receipt?: TaActivationReceipt;
   failure?: TaActivationFailure;
   activation?: TaCapabilityActivationHandoff;
+  continueResult?: ContinueTaProvisioningResult;
 }
 
 export interface ApplyTaCapabilityLifecycleInput {
@@ -464,6 +473,15 @@ export interface ContinueRecoveredTapProvisionResult {
 export interface ContinueRecoveredTapRuntimeResult {
   runId: string;
   provisionResults: ContinueRecoveredTapProvisionResult[];
+}
+
+export interface PickupToolReviewerReadyHandoffResult {
+  sessionId: string;
+  provisionId?: string;
+  capabilityKey?: string;
+  status: "continued" | "skipped";
+  continueResult?: ContinueTaProvisioningResult;
+  skippedReason?: "non_provision_session" | "no_follow_up_state";
 }
 
 interface TaHumanGateContext {
@@ -539,6 +557,7 @@ export class AgentCoreRuntime {
   readonly #taActivationAttempts = new Map<string, TaActivationAttemptRecord>();
   readonly #taResumeEnvelopes = new Map<string, ReturnType<typeof createTaResumeEnvelope>>();
   readonly #taActivationFactoryResolver = createActivationFactoryResolver();
+  readonly #tapAgentRecords = new Map<string, TapAgentRecord>();
 
   constructor(options: AgentCoreRuntimeOptions = {}) {
     this.journal = options.journal ?? new AppendOnlyEventJournal();
@@ -765,6 +784,175 @@ export class AgentCoreRuntime {
     return this.toolReviewerRuntime?.listTmaWorkOrders() ?? [];
   }
 
+  listTapAgentRecords(filter: {
+    actor?: TapAgentRecordActor;
+    sessionId?: string;
+    runId?: string;
+  } = {}): readonly TapAgentRecord[] {
+    return [...this.#tapAgentRecords.values()]
+      .filter((record) => !filter.actor || record.actor === filter.actor)
+      .filter((record) => !filter.sessionId || record.sessionId === filter.sessionId)
+      .filter((record) => !filter.runId || record.runId === filter.runId)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+
+  createTapThreeAgentUsageReport(input: {
+    sessionId?: string;
+    runId?: string;
+  } = {}): TapThreeAgentUsageReport {
+    return createTapThreeAgentUsageReport({
+      records: this.listTapAgentRecords(),
+      sessionId: input.sessionId,
+      runId: input.runId,
+    });
+  }
+
+  #recordTapAgentRecord(record: TapAgentRecord): void {
+    this.#tapAgentRecords.set(record.recordId, record);
+  }
+
+  #recordReviewerAgentRecord(params: {
+    accessRequest: AccessRequest;
+    reviewDecision: ReviewDecision;
+    metadata?: Record<string, unknown>;
+  }): void {
+    this.#recordTapAgentRecord(createTapAgentRecord({
+      recordId: `reviewer:${params.reviewDecision.decisionId}`,
+      actor: "reviewer",
+      sessionId: params.accessRequest.sessionId,
+      runId: params.accessRequest.runId,
+      requestId: params.accessRequest.requestId,
+      capabilityKey: params.accessRequest.requestedCapabilityKey,
+      status: params.reviewDecision.decision,
+      summary: params.reviewDecision.reason,
+      createdAt: params.reviewDecision.createdAt,
+      metadata: {
+        decisionId: params.reviewDecision.decisionId,
+        vote: params.reviewDecision.vote,
+        reviewerId: params.reviewDecision.reviewerId,
+        escalationTarget: params.reviewDecision.escalationTarget,
+        ...params.metadata,
+      },
+    }));
+  }
+
+  #recordToolReviewerAgentRecord(result: ToolReviewerRuntimeResult): void {
+    const sessionId = result.input.trace.request?.sessionId ?? result.sessionId;
+    const runId = result.input.trace.request?.runId ?? `${result.sessionId}:tool-review`;
+    const requestId = result.input.trace.request?.requestId;
+    const provisionId = typeof result.input.metadata?.provisionId === "string"
+      ? result.input.metadata.provisionId
+      : "provisionId" in result.output
+        ? result.output.provisionId
+        : undefined;
+
+    this.#recordTapAgentRecord(createTapAgentRecord({
+      recordId: `tool-reviewer:${result.reviewId}`,
+      actor: "tool_reviewer",
+      sessionId,
+      runId,
+      requestId,
+      provisionId,
+      capabilityKey: result.action.capabilityKey,
+      status: result.runtimeStatus,
+      summary: result.output.summary,
+      createdAt: result.recordedAt,
+      metadata: {
+        governanceKind: result.governanceKind,
+        outputKind: result.output.kind,
+        outputStatus: result.output.status,
+        ...(result.output.metadata ?? {}),
+        ...(result.metadata ?? {}),
+      },
+    }));
+  }
+
+  #recordTmaAgentRecord(params: {
+    request: ProvisionRequest;
+    bundle: ProvisionArtifactBundle;
+    summary?: string;
+    metadata?: Record<string, unknown>;
+  }): void {
+    const runtimeAssembly = isRecord(params.request.metadata?.runtimeAssembly)
+      ? params.request.metadata.runtimeAssembly as Record<string, unknown>
+      : undefined;
+    const sessionId = typeof runtimeAssembly?.sourceSessionId === "string"
+      ? runtimeAssembly.sourceSessionId
+      : `provision:${params.request.provisionId}`;
+    const runId = typeof runtimeAssembly?.sourceRunId === "string"
+      ? runtimeAssembly.sourceRunId
+      : `provision:${params.request.provisionId}`;
+    const buildSummary = typeof params.bundle.metadata?.buildSummary === "string"
+      ? params.bundle.metadata.buildSummary
+      : undefined;
+
+    this.#recordTapAgentRecord(createTapAgentRecord({
+      recordId: `tma:${params.bundle.bundleId}`,
+      actor: "tma",
+      sessionId,
+      runId,
+      requestId: params.request.sourceRequestId,
+      provisionId: params.request.provisionId,
+      capabilityKey: params.request.requestedCapabilityKey,
+      status: params.bundle.status,
+      summary: params.summary ?? buildSummary ?? `TMA produced a ${params.bundle.status} bundle for ${params.request.requestedCapabilityKey}.`,
+      createdAt: params.bundle.completedAt ?? params.request.createdAt,
+      metadata: {
+        bundleId: params.bundle.bundleId,
+        replayPolicy: params.bundle.replayPolicy,
+        activationMode: params.bundle.activationSpec?.activationMode,
+        ...params.metadata,
+      },
+    }));
+  }
+
+  #resolveRequestedTmaLane(request: ProvisionRequest): TmaExecutionLane {
+    const approvedLane = request.metadata?.approvedProvisionerLane;
+    if (approvedLane === "bootstrap" || approvedLane === "extended") {
+      return approvedLane;
+    }
+
+    return request.requestedTier === "B3" ? "extended" : "bootstrap";
+  }
+
+  async #recordToolReviewProvisionRequest(params: {
+    provisionRequest: ProvisionRequest;
+    accessRequest: AccessRequest;
+    reviewDecision: ReviewDecision;
+    reason: string;
+  }): Promise<void> {
+    if (!this.toolReviewerRuntime) {
+      return;
+    }
+
+    const result = await this.toolReviewerRuntime.submit({
+      sessionId: `tool-review:provision:${params.provisionRequest.provisionId}`,
+      governanceAction: {
+        kind: "provision_request",
+        trace: createToolReviewGovernanceTrace({
+          actionId: `tool-review:provision-request:${params.provisionRequest.provisionId}:${params.reviewDecision.decisionId}`,
+          actorId: "tool-reviewer",
+          reason: params.reason,
+          createdAt: params.provisionRequest.createdAt,
+          request: this.#createToolReviewRequestRef(params.accessRequest),
+          sourceDecision: this.#createToolReviewSourceDecisionRef(params.reviewDecision),
+          metadata: {
+            provisionId: params.provisionRequest.provisionId,
+          },
+        }),
+        provisionId: params.provisionRequest.provisionId,
+        capabilityKey: params.provisionRequest.requestedCapabilityKey,
+        requestedLane: this.#resolveRequestedTmaLane(params.provisionRequest),
+        requestedTier: params.provisionRequest.requestedTier,
+        metadata: {
+          sourceRequestId: params.provisionRequest.sourceRequestId,
+          desiredProviderOrRuntime: params.provisionRequest.desiredProviderOrRuntime,
+        },
+      },
+    });
+    this.#recordToolReviewerAgentRecord(result);
+  }
+
   getTmaSession(sessionId: string): TmaSessionState | undefined {
     return this.provisionerRuntime?.getTmaSession(sessionId);
   }
@@ -801,6 +989,14 @@ export class AgentCoreRuntime {
     const bundle = await this.provisionerRuntime?.resumeTmaSession(sessionId);
     if (bundle?.status === "ready") {
       await this.#recordToolReviewDeliveryFromBundle(bundle, "tma-resume");
+      const request = this.provisionerRuntime?.registry.get(bundle.provisionId)?.request;
+      if (request) {
+        this.#recordTmaAgentRecord({
+          request,
+          bundle,
+          summary: "TMA resumed a stored session and returned a ready bundle.",
+        });
+      }
     }
     return bundle;
   }
@@ -811,6 +1007,49 @@ export class AgentCoreRuntime {
 
   listProvisionDeliveryReports(): readonly ProvisionDeliveryReport[] {
     return this.provisionerRuntime?.listDeliveryReports() ?? [];
+  }
+
+  async pickupToolReviewerReadyHandoffs(): Promise<PickupToolReviewerReadyHandoffResult[]> {
+    const results: PickupToolReviewerReadyHandoffResult[] = [];
+    for (const report of this.listToolReviewerQualityReports()) {
+      if (report.verdict !== "handoff_ready") {
+        continue;
+      }
+      if (!report.sessionId.startsWith("tool-review:provision:")) {
+        results.push({
+          sessionId: report.sessionId,
+          status: "skipped",
+          skippedReason: "non_provision_session",
+        });
+        continue;
+      }
+
+      const provisionId = report.sessionId.slice("tool-review:provision:".length);
+      const asset = this.provisionerRuntime?.assetIndex.getCurrent(provisionId);
+      const pendingReplay = this.#findPendingReplayByProvisionId(provisionId);
+      const replayEnvelope = this.#findReplayEnvelopeByProvisionId(provisionId);
+      const capabilityKey = asset?.capabilityKey ?? pendingReplay?.capabilityKey;
+      if (!asset && !pendingReplay && !replayEnvelope) {
+        results.push({
+          sessionId: report.sessionId,
+          provisionId,
+          capabilityKey,
+          status: "skipped",
+          skippedReason: "no_follow_up_state",
+        });
+        continue;
+      }
+
+      results.push({
+        sessionId: report.sessionId,
+        provisionId,
+        capabilityKey,
+        status: "continued",
+        continueResult: await this.continueTaProvisioning(provisionId),
+      });
+    }
+
+    return results;
   }
 
   #readProvisionContinuationGate(provisionId: string): "waiting_human" | "blocked" | undefined {
@@ -887,6 +1126,85 @@ export class AgentCoreRuntime {
       activation: resumed.activation,
       activationResult: resumed.activationResult ?? activationResult,
       dispatchResult: resumed.dispatchResult,
+    };
+  }
+
+  #canAutoContinueProvisioning(provisionId: string): boolean {
+    const asset = this.provisionerRuntime?.assetIndex.getCurrent(provisionId);
+    if (!asset) {
+      return false;
+    }
+
+    if (asset.status === "active") {
+      return true;
+    }
+
+    const adapterFactoryRef = asset.activation?.spec?.adapterFactoryRef
+      ?? asset.activation?.adapterFactoryRef;
+    return typeof adapterFactoryRef === "string" && this.#taActivationFactoryResolver.has(adapterFactoryRef);
+  }
+
+  async #maybeAutoContinueProvisioning(
+    params: string | { provisionId: string; accessRequest?: AccessRequest },
+  ): Promise<ContinueTaProvisioningResult | undefined> {
+    const provisionId = typeof params === "string" ? params : params.provisionId;
+    if (!this.#canAutoContinueProvisioning(provisionId)) {
+      return undefined;
+    }
+
+    return this.continueTaProvisioning(provisionId);
+  }
+
+  async #recordReadyBundleAndStageReplay(params: {
+    accessRequest: AccessRequest;
+    provisionRequest: ProvisionRequest;
+    provisionBundle: ProvisionArtifactBundle;
+    intent: CapabilityCallIntent;
+    source: string;
+    reason: string;
+    options?: DispatchCapabilityIntentViaTaPoolOptions;
+    reviewDecision?: ReviewDecision;
+    metadata?: Record<string, unknown>;
+  }): Promise<{
+    provisionAsset?: ProvisionAssetRecord;
+    activation?: TaCapabilityActivationHandoff;
+    replay: TaCapabilityReplayHandoff;
+    autoContinue?: ContinueTaProvisioningResult;
+  }> {
+    const provisionAsset = this.provisionerRuntime?.assetIndex.getCurrent(params.provisionRequest.provisionId);
+    await this.#recordToolReviewDeliveryFromBundle(
+      params.provisionBundle,
+      params.reason,
+      {
+        requestId: params.accessRequest.requestId,
+        sessionId: params.accessRequest.sessionId,
+        runId: params.accessRequest.runId,
+      },
+    );
+    const replay = await this.#stageProvisionReplay({
+      accessRequest: params.accessRequest,
+      provisionBundle: params.provisionBundle,
+      intent: params.intent,
+      source: params.source,
+      options: params.options,
+      reviewDecision: params.reviewDecision,
+      metadata: params.metadata,
+    });
+    const autoContinue = await this.#maybeAutoContinueProvisioning(
+      params.provisionRequest.provisionId,
+    );
+
+    return {
+      provisionAsset,
+      activation: provisionAsset
+        ? this.#createActivationHandoff({
+          source: "provision_bundle",
+          bundle: params.provisionBundle,
+          asset: provisionAsset,
+        })
+        : undefined,
+      replay,
+      autoContinue,
     };
   }
 
@@ -1112,6 +1430,10 @@ export class AgentCoreRuntime {
     if (hydrated.provisionerDurableSnapshot) {
       this.provisionerRuntime?.restoreDurableState(hydrated.provisionerDurableSnapshot);
     }
+    this.#tapAgentRecords.clear();
+    for (const [recordId, record] of hydrated.agentRecords) {
+      this.#tapAgentRecords.set(recordId, record);
+    }
   }
 
   createTapRuntimeSnapshot(): TapPoolRuntimeSnapshot {
@@ -1132,6 +1454,7 @@ export class AgentCoreRuntime {
       toolReviewerSessions: this.toolReviewerRuntime?.createSnapshots(),
       provisionerDurableSnapshot: this.provisionerRuntime?.serializeDurableState(),
       tmaSessions: this.provisionerRuntime?.listTmaSessions(),
+      agentRecords: this.listTapAgentRecords(),
     });
   }
 
@@ -1605,6 +1928,10 @@ export class AgentCoreRuntime {
         decision: deniedDecision,
         source: "human_gate_resolution",
       });
+      this.#recordReviewerAgentRecord({
+        accessRequest: context.accessRequest,
+        reviewDecision: deniedDecision,
+      });
       return {
         status: "denied",
         accessRequest: context.accessRequest,
@@ -1653,6 +1980,10 @@ export class AgentCoreRuntime {
       decision: approvalDecision,
       source: "human_gate_resolution",
     });
+    this.#recordReviewerAgentRecord({
+      accessRequest: context.accessRequest,
+      reviewDecision: approvalDecision,
+    });
     if (!capabilityAvailable && (capabilityTracked || existingProvisionAsset)) {
       this.#writeTapControlPlaneCheckpoint({
         sessionId: context.accessRequest.sessionId,
@@ -1687,22 +2018,29 @@ export class AgentCoreRuntime {
       };
     }
     if (!capabilityAvailable) {
+      const baseProvisionRequest = createProvisionRequest({
+        provisionId: `${context.accessRequest.requestId}:human-gate-provision`,
+        sourceRequestId: context.accessRequest.requestId,
+        requestedCapabilityKey: context.accessRequest.requestedCapabilityKey,
+        requestedTier: context.accessRequest.requestedTier,
+        reason: context.accessRequest.reason,
+        replayPolicy: "re_review_then_dispatch",
+        createdAt,
+        metadata: {
+          ...(context.accessRequest.metadata ?? {}),
+          source: "human-gate-approval",
+          gateId: updatedGate.gateId,
+          eventId: humanGateEvent.eventId,
+        },
+      });
+      await this.#recordToolReviewProvisionRequest({
+        provisionRequest: baseProvisionRequest,
+        accessRequest: context.accessRequest,
+        reviewDecision: approvalDecision,
+        reason: "Human approval reopened the request and asked tool reviewer to issue a concrete TMA work order.",
+      });
       const provisionRequest = this.#assembleProvisionRequestForRuntime({
-        request: createProvisionRequest({
-          provisionId: `${context.accessRequest.requestId}:human-gate-provision`,
-          sourceRequestId: context.accessRequest.requestId,
-          requestedCapabilityKey: context.accessRequest.requestedCapabilityKey,
-          requestedTier: context.accessRequest.requestedTier,
-          reason: context.accessRequest.reason,
-          replayPolicy: "re_review_then_dispatch",
-          createdAt,
-          metadata: {
-            ...(context.accessRequest.metadata ?? {}),
-            source: "human-gate-approval",
-            gateId: updatedGate.gateId,
-            eventId: humanGateEvent.eventId,
-          },
-        }),
+        request: baseProvisionRequest,
         accessRequest: context.accessRequest,
         reviewDecision: approvalDecision,
         inventory,
@@ -1711,6 +2049,59 @@ export class AgentCoreRuntime {
       const provisionAsset = provisionBundle.status === "ready"
         ? this.provisionerRuntime.assetIndex.getCurrent(provisionRequest.provisionId)
         : undefined;
+      this.#recordTmaAgentRecord({
+        request: provisionRequest,
+        bundle: provisionBundle,
+      });
+      let activation: TaCapabilityActivationHandoff | undefined;
+      let replay: TaCapabilityReplayHandoff | undefined;
+      let continueResult: ContinueTaProvisioningResult | undefined;
+      if (provisionBundle.status === "ready") {
+        const staged = await this.#recordReadyBundleAndStageReplay({
+          accessRequest: context.accessRequest,
+          provisionRequest,
+          provisionBundle,
+          intent: context.intent,
+          source: "human-gate-approval",
+          reason: "TMA delivered a ready bundle after human approval.",
+          options: context.options,
+          reviewDecision: approvalDecision,
+          metadata: {
+            gateId: updatedGate.gateId,
+            eventId: humanGateEvent.eventId,
+          },
+        });
+        activation = staged.activation;
+        replay = staged.replay;
+        continueResult = staged.autoContinue;
+        if (continueResult?.dispatchResult) {
+          this.#writeTapControlPlaneCheckpoint({
+            sessionId: context.accessRequest.sessionId,
+            runId: context.accessRequest.runId,
+            reason: "manual",
+            metadata: {
+              sourceOperation: "human-gate-decision",
+              gateId: updatedGate.gateId,
+              decision: "approve",
+              eventId: humanGateEvent.eventId,
+              provisionStatus: provisionBundle.status,
+              provisionId: provisionRequest.provisionId,
+              dispatchStatus: continueResult.dispatchResult.status,
+            },
+          });
+          return {
+            ...continueResult.dispatchResult,
+            accessRequest: context.accessRequest,
+            reviewDecision: approvalDecision,
+            provisionRequest,
+            provisionBundle,
+            activation: continueResult.activation ?? continueResult.dispatchResult.activation ?? activation,
+            replay: continueResult.dispatchResult.replay ?? replay,
+            humanGate: continueResult.dispatchResult.humanGate ?? humanGate,
+            continueResult,
+          };
+        }
+      }
       this.#writeTapControlPlaneCheckpoint({
         sessionId: context.accessRequest.sessionId,
         runId: context.accessRequest.runId,
@@ -1731,26 +2122,16 @@ export class AgentCoreRuntime {
         provisionRequest,
         provisionBundle,
         activation: provisionBundle.status === "ready"
-          ? this.#createActivationHandoff({
+          ? activation ?? this.#createActivationHandoff({
             source: "provision_bundle",
             bundle: provisionBundle,
             asset: provisionAsset,
           })
           : undefined,
         replay: provisionBundle.status === "ready"
-          ? await this.#stageProvisionReplay({
-              accessRequest: context.accessRequest,
-              provisionBundle,
-              intent: context.intent,
-              source: "human-gate-approval",
-              options: context.options,
-              reviewDecision: approvalDecision,
-              metadata: {
-                gateId: updatedGate.gateId,
-                eventId: humanGateEvent.eventId,
-              },
-            })
+          ? replay
           : undefined,
+        continueResult,
         humanGate,
       };
     }
@@ -1869,6 +2250,10 @@ export class AgentCoreRuntime {
         decision: reviewDecision,
         source: "review_engine",
       });
+      this.#recordReviewerAgentRecord({
+        accessRequest,
+        reviewDecision,
+      });
       return {
         status: "denied",
         accessRequest,
@@ -1941,6 +2326,10 @@ export class AgentCoreRuntime {
         request: accessRequest,
         decision: reviewDecision,
         source: "routing_fast_path",
+      });
+      this.#recordReviewerAgentRecord({
+        accessRequest,
+        reviewDecision,
       });
       return {
         status: "waiting_human",
@@ -2472,6 +2861,10 @@ export class AgentCoreRuntime {
       profile: this.taControlPlaneGateway!.profile,
       inventory,
     });
+    this.#recordReviewerAgentRecord({
+      accessRequest: params.accessRequest,
+      reviewDecision,
+    });
     const consumed = this.taControlPlaneGateway!.consumeReviewDecision(reviewDecision);
 
     if (consumed.grant) {
@@ -2506,13 +2899,20 @@ export class AgentCoreRuntime {
     }
 
     if (reviewDecision.decision === "redirected_to_provisioning") {
+      const baseProvisionRequest = toProvisionRequestFromReviewDecision({
+        request: params.accessRequest,
+        decision: reviewDecision,
+        provisionId: `${reviewDecision.decisionId}:provision`,
+        createdAt: new Date().toISOString(),
+      });
+      await this.#recordToolReviewProvisionRequest({
+        provisionRequest: baseProvisionRequest,
+        accessRequest: params.accessRequest,
+        reviewDecision,
+        reason: "Reviewer redirected the request into provisioning and asked tool reviewer to issue a concrete TMA work order.",
+      });
       const provisionRequest = this.#assembleProvisionRequestForRuntime({
-        request: toProvisionRequestFromReviewDecision({
-          request: params.accessRequest,
-          decision: reviewDecision,
-          provisionId: `${reviewDecision.decisionId}:provision`,
-          createdAt: new Date().toISOString(),
-        }),
+        request: baseProvisionRequest,
         accessRequest: params.accessRequest,
         reviewDecision,
         inventory,
@@ -2521,27 +2921,43 @@ export class AgentCoreRuntime {
       const provisionAsset = provisionBundle.status === "ready"
         ? this.provisionerRuntime!.assetIndex.getCurrent(provisionRequest.provisionId)
         : undefined;
+      this.#recordTmaAgentRecord({
+        request: provisionRequest,
+        bundle: provisionBundle,
+      });
+      let activation: TaCapabilityActivationHandoff | undefined;
+      let replay: TaCapabilityReplayHandoff | undefined;
+      let continueResult: ContinueTaProvisioningResult | undefined;
       if (provisionBundle.status === "ready") {
-        await this.#recordToolReviewDeliveryFromBundle(
-          provisionBundle,
-          "TMA delivered a ready bundle back into the TAP provision lane.",
-          {
-            requestId: params.accessRequest.requestId,
-            sessionId: params.accessRequest.sessionId,
-            runId: params.accessRequest.runId,
-          },
-        );
-        await this.#stageProvisionReplay({
+        const staged = await this.#recordReadyBundleAndStageReplay({
           accessRequest: params.accessRequest,
+          provisionRequest,
           provisionBundle,
           intent: params.intent,
           source: "review-provisioning",
+          reason: "TMA delivered a ready bundle back into the TAP provision lane.",
           options: params.options,
           reviewDecision,
           metadata: {
             decisionId: reviewDecision.decisionId,
           },
         });
+        activation = staged.activation;
+        replay = staged.replay;
+        continueResult = staged.autoContinue;
+        if (continueResult?.dispatchResult) {
+          return {
+            ...continueResult.dispatchResult,
+            accessRequest: params.accessRequest,
+            reviewDecision,
+            provisionRequest,
+            provisionBundle,
+            activation: continueResult.activation ?? continueResult.dispatchResult.activation ?? activation,
+            replay: continueResult.dispatchResult.replay ?? replay,
+            continueResult,
+            safety: params.safety?.outcome === "allow" ? undefined : params.safety,
+          };
+        }
       }
       return {
         status: provisionBundle.status === "ready" ? "provisioned" : "provisioning_failed",
@@ -2550,19 +2966,16 @@ export class AgentCoreRuntime {
         provisionRequest,
         provisionBundle,
         activation: provisionBundle.status === "ready"
-          ? this.#createActivationHandoff({
+          ? activation ?? this.#createActivationHandoff({
             source: "provision_bundle",
             bundle: provisionBundle,
             asset: provisionAsset,
           })
           : undefined,
         replay: provisionBundle.status === "ready"
-          ? this.#createReplayHandoff({
-            source: "provision_bundle",
-            bundle: provisionBundle,
-            asset: provisionAsset,
-          })
+          ? replay
           : undefined,
+        continueResult,
         safety: params.safety?.outcome === "allow" ? undefined : params.safety,
       };
     }
@@ -2693,6 +3106,8 @@ export class AgentCoreRuntime {
         toolReviewWorkOrder,
         runtimeAssembly: {
           sourceRequestId: params.accessRequest.requestId,
+          sourceSessionId: params.accessRequest.sessionId,
+          sourceRunId: params.accessRequest.runId,
           sourceDecisionId: params.reviewDecision.decisionId,
           sourceMode: params.accessRequest.mode,
         },
@@ -2739,7 +3154,7 @@ export class AgentCoreRuntime {
       return;
     }
 
-    await this.toolReviewerRuntime.submit({
+    const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:request:${params.gate.requestId}`,
       governanceAction: {
         kind: "human_gate",
@@ -2763,6 +3178,7 @@ export class AgentCoreRuntime {
         },
       },
     });
+    this.#recordToolReviewerAgentRecord(result);
   }
 
   async #recordToolReviewReplay(params: {
@@ -2775,7 +3191,7 @@ export class AgentCoreRuntime {
       return;
     }
 
-    await this.toolReviewerRuntime.submit({
+    const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:provision:${params.replay.provisionId}`,
       governanceAction: {
         kind: "replay",
@@ -2798,6 +3214,7 @@ export class AgentCoreRuntime {
         },
       },
     });
+    this.#recordToolReviewerAgentRecord(result);
   }
 
   #readTmaDeliveryReceiptFromBundle(
@@ -2820,7 +3237,7 @@ export class AgentCoreRuntime {
       return;
     }
 
-    await this.toolReviewerRuntime.submit({
+    const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:provision:${params.provisionId}`,
       governanceAction: {
         kind: "delivery",
@@ -2849,6 +3266,7 @@ export class AgentCoreRuntime {
         },
       },
     });
+    this.#recordToolReviewerAgentRecord(result);
   }
 
   async #recordToolReviewDeliveryFromBundle(
@@ -2892,7 +3310,7 @@ export class AgentCoreRuntime {
       return;
     }
 
-    await this.toolReviewerRuntime.submit({
+    const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:provision:${params.provisionId}`,
       governanceAction: {
         kind: "activation",
@@ -2928,6 +3346,7 @@ export class AgentCoreRuntime {
         },
       },
     });
+    this.#recordToolReviewerAgentRecord(result);
   }
 
   async #recordToolReviewLifecycle(params: {
@@ -2948,7 +3367,7 @@ export class AgentCoreRuntime {
       return;
     }
 
-    await this.toolReviewerRuntime.submit({
+    const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:lifecycle:${params.capabilityKey}`,
       governanceAction: {
         kind: "lifecycle",
@@ -2980,6 +3399,7 @@ export class AgentCoreRuntime {
           : undefined,
       },
     });
+    this.#recordToolReviewerAgentRecord(result);
   }
 
   #findCurrentProvisionAsset(capabilityKey: string): ProvisionAssetRecord | undefined {

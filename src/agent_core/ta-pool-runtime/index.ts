@@ -154,6 +154,19 @@ export {
 } from "./runtime-recovery.js";
 
 export type {
+  CreateTapAgentRecordInput,
+  TapAgentRecord,
+  TapAgentRecordActor,
+  TapThreeAgentUsageReport,
+} from "./three-agent-record.js";
+export {
+  cloneTapAgentRecords,
+  createTapAgentRecord,
+  createTapThreeAgentUsageReport,
+  TAP_AGENT_RECORD_ACTORS,
+} from "./three-agent-record.js";
+
+export type {
   TapRuntimeSnapshotStateInput,
 } from "./runtime-checkpoint.js";
 export {

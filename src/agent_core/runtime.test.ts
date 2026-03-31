@@ -1130,14 +1130,26 @@ test("AgentCoreRuntime can assemble review -> provisioning through T/A pool for 
     "review_only",
   );
   const toolReviewSessionId = `tool-review:provision:${result.provisionRequest!.provisionId}`;
+  const toolReviewPlan = runtime.getToolReviewerGovernancePlan(toolReviewSessionId);
+  assert.equal(toolReviewPlan?.items.some((item) =>
+    item.governanceKind === "provision_request" && item.readyForHandoff), true);
   assert.equal(
-    runtime.getToolReviewerGovernancePlan(toolReviewSessionId)?.items.some((item) =>
+    toolReviewPlan?.items.some((item) =>
       item.governanceKind === "delivery" && item.readyForHandoff),
     true,
   );
   assert.equal(
     runtime.listToolReviewerQualityReports().find((report) => report.sessionId === toolReviewSessionId)?.verdict,
     "handoff_ready",
+  );
+  const recordedProvisionRequest = runtime.provisionerRuntime?.registry.get(result.provisionRequest!.provisionId)?.request;
+  assert.equal(
+    (
+      recordedProvisionRequest?.metadata?.toolReviewWorkOrder as {
+        sourceGovernanceKind?: string;
+      } | undefined
+    )?.sourceGovernanceKind,
+    "provision_request",
   );
 });
 
@@ -1795,6 +1807,181 @@ test("AgentCoreRuntime records tool reviewer governance sessions from runtime hu
   assert.equal(taskGovernance.taskPolicy.effectiveMode, "permissive");
   assert.equal(taskGovernance.taskPolicy.automationDepth, "prefer_auto");
   assert.equal(taskGovernance.objectId, "tap-governance:profile.runtime.tool-review-mainline:permissive:task-tool-review-mainline");
+});
+
+test("AgentCoreRuntime records a unified three-agent usage ledger across reviewer, tool reviewer, and TMA", async () => {
+  const runtime = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.three-agent-usage-ledger",
+      agentClass: "main-agent",
+      baselineCapabilities: ["docs.read"],
+      allowedCapabilityPatterns: ["computer.*"],
+    }),
+  });
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-three-agent-usage-ledger",
+      sessionId: session.sessionId,
+      userInput: "Leave a durable three-agent TAP usage trace.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+
+  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
+    intentId: "intent-three-agent-ledger-1",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    kind: "capability_call",
+    createdAt: "2026-03-31T08:00:00.000Z",
+    priority: "normal",
+    request: {
+      requestId: "request-three-agent-ledger-1",
+      intentId: "intent-three-agent-ledger-1",
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      capabilityKey: "computer.use",
+      input: {
+        task: "capture a preview screenshot",
+      },
+      priority: "normal",
+    },
+  }, {
+    agentId: "agent-three-agent-ledger",
+    requestedTier: "B2",
+    mode: "restricted",
+    reason: "Force reviewer -> tool reviewer -> TMA ledger flow.",
+  });
+
+  assert.equal(waiting.status, "waiting_human");
+  const waitingReport = runtime.createTapThreeAgentUsageReport({
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+  });
+  assert.equal(waitingReport.recordCount >= 2, true);
+  assert.equal(waitingReport.latestByActor.reviewer?.status, "escalated_to_human");
+  assert.equal(waitingReport.latestByActor.tool_reviewer?.status, "waiting_human");
+  assert.equal(waitingReport.latestByActor.tma, undefined);
+
+  const approved = await runtime.submitTaHumanGateDecision({
+    gateId: runtime.listTaHumanGates()[0]!.gateId,
+    action: "approve",
+    actorId: "user-three-agent-ledger",
+  });
+
+  assert.equal(approved.status, "provisioned");
+  const records = runtime.listTapAgentRecords({
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+  });
+  assert.equal(records.some((record) => record.actor === "reviewer"), true);
+  assert.equal(
+    records.some((record) => record.actor === "reviewer" && record.status === "approved"),
+    true,
+  );
+  assert.equal(records.some((record) => record.actor === "tool_reviewer"), true);
+  assert.equal(records.some((record) => record.actor === "tma"), true);
+
+  const report = runtime.createTapThreeAgentUsageReport({
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+  });
+  assert.equal(report.latestByActor.reviewer?.status, "approved");
+  assert.equal(report.latestByActor.tool_reviewer?.status, "ready_for_handoff");
+  assert.equal(report.latestByActor.tma?.status, "ready");
+  assert.match(report.summary, /Reviewer is approved/i);
+  assert.match(report.summary, /tool reviewer is ready_for_handoff/i);
+  assert.match(report.summary, /TMA is ready/i);
+});
+
+test("AgentCoreRuntime preserves three-agent usage ledger records across TAP snapshot hydration", async () => {
+  const runtime = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.three-agent-ledger-hydration",
+      agentClass: "main-agent",
+      baselineCapabilities: ["docs.read"],
+      allowedCapabilityPatterns: ["computer.*"],
+    }),
+  });
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-three-agent-ledger-hydration",
+      sessionId: session.sessionId,
+      userInput: "Hydrate the three-agent usage ledger.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+
+  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
+    intentId: "intent-three-agent-ledger-hydration-1",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    kind: "capability_call",
+    createdAt: "2026-03-31T08:10:00.000Z",
+    priority: "normal",
+    request: {
+      requestId: "request-three-agent-ledger-hydration-1",
+      intentId: "intent-three-agent-ledger-hydration-1",
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      capabilityKey: "computer.use",
+      input: {
+        task: "hydrate after reviewer and TMA trace",
+      },
+      priority: "normal",
+    },
+  }, {
+    agentId: "agent-three-agent-ledger-hydration",
+    requestedTier: "B2",
+    mode: "restricted",
+    reason: "Create a resumable three-agent ledger before snapshot.",
+  });
+  assert.equal(waiting.status, "waiting_human");
+
+  const approved = await runtime.submitTaHumanGateDecision({
+    gateId: runtime.listTaHumanGates()[0]!.gateId,
+    action: "approve",
+    actorId: "user-three-agent-ledger-hydration",
+  });
+  assert.equal(approved.status, "provisioned");
+
+  const beforeSnapshot = runtime.createTapThreeAgentUsageReport({
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+  });
+  const snapshot = runtime.createTapRuntimeSnapshot();
+  assert.equal(
+    snapshot.agentRecords?.filter((record) =>
+      record.sessionId === session.sessionId && record.runId === created.run.runId
+    ).length,
+    beforeSnapshot.recordCount,
+  );
+
+  const recovered = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.three-agent-ledger-hydration",
+      agentClass: "main-agent",
+      baselineCapabilities: ["docs.read"],
+      allowedCapabilityPatterns: ["computer.*"],
+    }),
+  });
+  recovered.hydrateRecoveredTapRuntimeSnapshot(snapshot);
+
+  const afterSnapshot = recovered.createTapThreeAgentUsageReport({
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+  });
+  assert.equal(afterSnapshot.recordCount, beforeSnapshot.recordCount);
+  assert.equal(afterSnapshot.latestByActor.reviewer?.status, beforeSnapshot.latestByActor.reviewer?.status);
+  assert.equal(afterSnapshot.latestByActor.tool_reviewer?.status, beforeSnapshot.latestByActor.tool_reviewer?.status);
+  assert.equal(afterSnapshot.latestByActor.tma?.status, beforeSnapshot.latestByActor.tma?.status);
 });
 
 test("AgentCoreRuntime records blocked tool-review lifecycle when target binding is missing", async () => {

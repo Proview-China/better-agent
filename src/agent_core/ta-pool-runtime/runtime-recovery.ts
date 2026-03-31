@@ -7,6 +7,7 @@ import type {
   ProvisionerDurableSnapshot,
   TmaSessionState,
 } from "../ta-pool-provision/index.js";
+import type { TapAgentRecord } from "./three-agent-record.js";
 import {
   createPoolRuntimeSnapshots,
   createTapPoolRuntimeSnapshot,
@@ -27,6 +28,7 @@ export interface TapRuntimeHydratedState {
   toolReviewerSessions: ToolReviewSessionSnapshot[];
   provisionerDurableSnapshot?: ProvisionerDurableSnapshot;
   tmaSessions: Map<string, TmaSessionState>;
+  agentRecords: Map<string, TapAgentRecord>;
 }
 
 function assertUniqueKey(kind: string, key: string, seen: Set<string>): void {
@@ -63,6 +65,7 @@ export function hydrateTapRuntimeSnapshot(
   const activationAttempts = new Map<string, TaActivationAttemptRecord>();
   const resumeEnvelopes = new Map<string, TaResumeEnvelope>();
   const tmaSessions = new Map<string, TmaSessionState>();
+  const agentRecords = new Map<string, TapAgentRecord>();
 
   const seenGateIds = new Set<string>();
   for (const gate of normalized.humanGates) {
@@ -110,6 +113,12 @@ export function hydrateTapRuntimeSnapshot(
     tmaSessions.set(session.sessionId, session);
   }
 
+  const seenAgentRecordIds = new Set<string>();
+  for (const record of normalized.agentRecords ?? []) {
+    assertUniqueKey("tap agent record", record.recordId, seenAgentRecordIds);
+    agentRecords.set(record.recordId, record);
+  }
+
   return {
     humanGates,
     humanGateContexts,
@@ -121,6 +130,7 @@ export function hydrateTapRuntimeSnapshot(
     toolReviewerSessions: [...(normalized.toolReviewerSessions ?? [])],
     provisionerDurableSnapshot: normalized.provisionerDurableSnapshot,
     tmaSessions,
+    agentRecords,
   };
 }
 

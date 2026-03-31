@@ -14,6 +14,7 @@ import type {
   ProvisionerDurableSnapshot,
   TmaSessionState,
 } from "../ta-pool-provision/index.js";
+import type { TapAgentRecord } from "./three-agent-record.js";
 
 export interface TaResumeEnvelope {
   envelopeId: string;
@@ -83,6 +84,7 @@ export interface TapPoolRuntimeSnapshot {
   toolReviewerSessions?: ToolReviewSessionSnapshot[];
   provisionerDurableSnapshot?: ProvisionerDurableSnapshot;
   tmaSessions?: TmaSessionState[];
+  agentRecords?: TapAgentRecord[];
   metadata?: Record<string, unknown>;
 }
 
@@ -102,6 +104,7 @@ export interface TapPoolRuntimeSnapshotInput {
   toolReviewerSessions?: readonly ToolReviewSessionSnapshot[];
   provisionerDurableSnapshot?: ProvisionerDurableSnapshot;
   tmaSessions?: readonly TmaSessionState[];
+  agentRecords?: readonly TapAgentRecord[];
   metadata?: Record<string, unknown>;
 }
 
@@ -204,6 +207,10 @@ export function createTapPoolRuntimeSnapshot(
       ...session,
       boundary: { ...session.boundary },
       metadata: session.metadata ? { ...session.metadata } : undefined,
+    })),
+    agentRecords: input.agentRecords?.map((record) => ({
+      ...record,
+      metadata: record.metadata ? { ...record.metadata } : undefined,
     })),
     metadata: input.metadata,
   };
