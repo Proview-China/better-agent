@@ -1,816 +1,190 @@
 # Current Context
 
-更新时间：2026-03-18
+更新时间：2026-04-02
 
-## 当前阶段
+## 当前主线
 
-- 仓库处于 `reboot/blank-slate` 重启阶段。
-- 目标是从空白起点重新建立可持续演进的架构，而不是继续修补旧实现。
-- `rax` 的第一版 control-plane 骨架已经落下；`MCP` 第一阶段和 review 收口已完成。
-- `agent_core` 的第一阶段 raw runtime kernel 里程碑也已完成，并已进入“可运行闭环”状态。
-- 当前最新进展：
-  - `MCP` 的 registry surface 已与 runtime 实现面对齐
-  - `src/rax/index.ts` 的 MCP 公共类型导出已补齐 resources/prompts 相关项
-  - `rax.mcp.use()` 已落地，返回 route-bound MCP session handle
-  - 真实 Playwright MCP 已通过 `stdio` 与 `streamable-http` 在 OpenAI / Anthropic / DeepMind 三个 route 上跑通
-  - 模型经由 MCP 完成任务的 live smoke 也已拿到：
-    - GPT type：`gmn` 上游通过 stateless Responses tool loop 成功返回 `Example Domain`
-    - Claude type：`https://viewpro.top` 通过 Anthropic `toolRunner()` + MCP 成功返回 `Example Domain`
-    - Gemini type：`https://viewpro.top` 通过 `mcpToTool()` + `gemini-2.5-flash` 成功返回 `Example Domain`
-- `search.ground` 已确定采用 `native-first + governed-task` 路线：
-  - 对上层暴露 `rax.websearch.create()`
-  - `rax.websearch.create()` 现在直接执行官方 native search，并返回统一结果壳
-  - `rax.websearch.prepare()` 仅保留给内部/测试使用
-  - 内部保留 `search.web` / `search.fetch` / `search.ground` 作为 canonical 语义骨架
-  - OpenAI / Anthropic / DeepMind 均走官方 native search tooling
-  - unofficial gateway 默认不承诺原生搜索能力，按 compatibility profile 阻断
-- `websearch` 的统一结果 contract 已补齐：
-  - `WebSearchOutput`
-  - `normalizeWebSearchOutput()`
-  - `toWebSearchCapabilityResult()`
-  - `toWebSearchFailureResult()`
-- 已补真实 `rax.websearch.create()` smoke，当前 `.env.local` 下结论更细化了：
-  - OpenAI route on `gmn.chuangzuoli.com/v1` 可正常承接原生 web search；当前最新 smoke 里 `gpt-5.4` 与 `gpt-5` 都已成功
-  - Anthropic route on `viewpro.top` 已进一步收口：
-    - `.env.local` 里的 `claude-opus-4.6-thinking` 在当前主上游会 `503`
-    - 同一路由下 `claude-opus-4-6-thinking` 可跑普通 `messages.create`
-    - `messages + web_search` 这条 API server-tool 路不稳定
-    - 但切到 `agent/Claude Code` 路后，`rax.websearch.create()` 已能稳定返回结果
-  - DeepMind/Gemini 也已细化：
-    - 当前 `.env.local` 里的 `gemini-3-flash` 在主上游会因 channel 不可用而 `503`
-    - 同一路由下只把模型切到 `gemini-3.1-pro-preview` 后：
-      - 普通 `generateContent` 可用
-      - `googleSearch` 也可用
-      - `rax.websearch.create()` 已成功返回结果
-    - 说明 Gemini 这条在“正确模型 + 正确 SDK 调用”下，已经具备 citation-grade grounding 的基础
-  - live smoke 配置现在支持：
-    - 进程环境覆盖 `.env.local`
-    - `PRAXIS_LIVE_ENV_FILE`
-    - 单 provider smoke 默认写入 provider 级 report，避免顺序实验互相覆盖
-  - `skill` 现在也已有第一版 execution smoke：
-    - `npm run smoke:skill:execution:live`
-    - 当前重点不再只是 `/skills` registry，而是“skill carrier 真挂到请求上以后，上游会不会承接”
-    - 当前已知 execution 事实：
-      - OpenAI inline skill 真执行在当前 route 上返回 `502`
-      - Anthropic prebuilt skill (`pptx`) 在 `claude-opus-4-6-thinking` 下虽可请求成功，但当前返回明确表明 skill tool 并未真正可用
-      - DeepMind 当前仍保持 truthful skip，尚未宣称 JS baseline 下已有统一 skill execution runtime
-- 当前重点已从前一阶段的 `search.ground` / `MCP` 收口，切换到 `skill` 薄承载层启动：
-  - `skill` 现在明确回收到 infra/adapter 层，目标是贴着 OpenAI / Anthropic / Google ADK 的官方 skill carrier 做统一接入
-  - 更复杂的能力组织、上下文治理与长期演化，继续放回包装机架构、Context Manager、policy、ledger 等上层部件
-  - 第一批代码骨架已落地：
-    - `src/rax/skill-runtime.ts`
-    - `src/rax/skill-types.ts`
-    - provider-specific skill carrier builders under `src/integrations/*/api/tools/skills/`
-    - `rax.skill.loadLocal()`
-    - `rax.skill.define()`
-    - `rax.skill.containerCreate()`
-    - `rax.skill.discover()`
-    - `rax.skill.list()`
-    - `rax.skill.get()`
-    - `rax.skill.publish()`
-    - `rax.skill.remove()`
-    - `rax.skill.listVersions()`
-    - `rax.skill.getVersion()`
-    - `rax.skill.getContent()`
-    - `rax.skill.getVersionContent()`
-    - `rax.skill.publishVersion()`
-    - `rax.skill.removeVersion()`
-    - `rax.skill.setDefaultVersion()`
-    - `npm run smoke:skill:live`
-    - `npm run report:skill:capability`
-    - `rax.skill.bind()`
-    - `rax.skill.activate()`
-    - `rax.skill.prepare()`
-    - `rax.skill.use()`
-    - `rax.skill.mount()`
-    - `skill` 已进入统一 capability registry / 词表：
-      - `skill.define`
-      - `skill.discover`
-      - `skill.list`
-      - `skill.read`
-      - `skill.create`
-      - `skill.update`
-      - `skill.remove`
-      - `skill.bind`
-      - `skill.activate`
-      - `skill.use`
-      - `skill.load`
-  - `skill` 当前又向“更真实转译官方 SDK”推进了一步：
-    - `prepare()` 现在会输出更接近官方 SDK 的 `PreparedInvocation`
-    - `use()` 现在能从 `source` 直接走到官方 carrier activation
-    - `mount()` 现在能从已有 container 直接得到 activation + prepared invocation
-    - OpenAI / Anthropic / Google 的 skill carrier payload 已拆到各自 integration builder
-    - OpenAI hosted shell 现在更贴近官方 Responses `skill_reference` attachment 形状：
-      - `version` 改为可选
-      - 不再把本地 descriptor 版本伪装成 hosted skill version
-      - hosted lifecycle 元数据与真正 attach 到 shell 的引用已分开
-    - Anthropic API managed skill 现在更贴近官方 beta messages / beta.skills：
-      - managed skill 默认按 `custom` skill 处理
-      - `version` 改为可选
-      - `code_execution` tool 与 beta header 组合进入 binding / activation
-    - managed lifecycle prepared invocation 已开始统一：
-      - OpenAI / Anthropic 现在都可通过 `rax.skill` 公共接口准备 managed registry 调用
-      - 当前已支持：
-        - `list`
-        - `get`
-        - `publish`
-        - `remove`
-        - `listVersions`
-        - `getVersion`
-        - `publishVersion`
-      - OpenAI 额外支持：
-        - `setDefaultVersion`
-      - Google ADK 当前对 hosted registry lifecycle 明确报 unsupported
-    - managed lifecycle compatibility/profile 现在也已开始统一：
-      - `raxLocal` 会直接阻断 OpenAI / Anthropic / DeepMind gateway profile 上不该假设存在的 skill registry 动作
-      - 不再默认让 gateway route 先发到远端，再用 `404` 当能力探测
-      - compatibility profile 现在也显式带 `supportsManagedSkills`
-    - managed lifecycle query passthrough 已开始贴官方 SDK：
-      - OpenAI `providerOptions.openai` 现在可透传：
-        - `after`
-        - `limit`
-        - `order`
-      - Anthropic `providerOptions.anthropic` 现在可透传：
-        - `limit`
-        - `page`
-        - `betas`
-        - `source` 仍保留在公共 `input`
-        - `betas` 继续由 builder 自动并入官方 `skills-2025-10-02`
-      - Anthropic upload surfaces 现在也会自动并入官方 upload beta：
-        - `files-api-2025-04-14`
-        - 当前范围：
-          - `client.beta.skills.create`
-          - `client.beta.skills.versions.create`
-    - Anthropic API-managed carrier override 现在也已有更贴官方的 runtime coverage：
-      - `code_execution_type`
-      - `allowed_callers`
-      - managed skill `type`
-      - managed skill `version`
-      - carrier `betas`
-      - legacy official `code_execution_20250522`
-      - 即使用户显式传了其他 `betas`，managed carrier 仍会继续自动并入与 `code_execution_type` 对应的官方 beta
-      - `skill.use()` / `skill.mount()` 现在也已有 API-managed carrier 端到端覆盖
-      - Anthropic quickstart 风格的 prebuilt skill 路径也已有公共使用面覆盖：
-        - `type: "anthropic"`
-        - `skill_id: "pptx"`
-        - `version: "latest"`
-    - Anthropic upload-only lifecycle 现在也更贴官方：
-      - `client.beta.skills.create`
-      - `client.beta.skills.versions.create`
-      默认会自动并入：
-        - `files-api-2025-04-14`
-        - `skills-2025-10-02`
-      但不会把 `files-api` 这层自动扩大到 `list/get/remove`
-    - OpenAI hosted shell lifecycle 现在也又向官方收紧了一步：
-      - `skill_reference.version` 支持 numeric / `"latest"`
-      - attachment version 与 hosted version resource metadata 已拆开
-      - hosted shell `environment` setting 已有 runtime coverage：
-        - `file_ids`
-        - `memory_limit`
-        - `network_policy`
-    - OpenAI shell carrier 现在也已覆盖 inline official carrier：
-      - 按官方 `InlineSkill` 形状进入 `tools[].environment.skills`
-      - 当前保持为 OpenAI provider-specific carrier，不扩成新的公共动作
-      - `skill.use()` / `skill.mount()` 现在也已有端到端覆盖
-    - OpenAI managed upload prepared payload 现在也已更贴官方 SDK：
-      - `publish / publishVersion` 当前改为 `args + bundle` 分离的 call plan
-      - 不再把 `files` 伪装成自定义 bundle body
-      - 更贴近 `openai-node` 的 `Uploadable | Uploadable[]` 执行期 lowering 语义
-    - `skill` 公共类型当前也向 provider truth 收了一层：
-      - `SkillBindInput.details`
-      - `SkillUseInput.details`
-      - `SkillProviderBindingLike.details`
-      已不再只是裸 `Record<string, unknown>`，而是三家 official carrier override 的联合类型
-    - provider-specific official extension 已开始显式建模：
-      - OpenAI 现在支持：
-        - `rax.skill.getContent()`
-        - `rax.skill.getVersionContent()`
-      - Anthropic / Google 当前对这组 content download surface 仍保持 unsupported / 未承诺
-    - capability report 已开始成型：
-      - `skill live smoke` 结果现在可进一步汇总成：
-        - `memory/live-reports/skill-capability-report.json`
-      - 当前 report 会同时表达：
-        - official support
-        - local gateway compatibility
-        - live smoke evidence
-        - prepared payload summary
-      - 当前已细化到 action-level matrix：
-        - `list`
-        - `get`
-        - `publish`
-        - `remove`
-        - `listVersions`
-        - `getVersion`
-        - `publishVersion`
-        - `removeVersion`
-        - `setDefaultVersion`
-        - `getContent`
-        - `getVersionContent`
-      - 当前 action-level report 还会带：
-        - `officialDocs`
-        - `officialNotes`
-        - `sdkEntrypoints`
-        - `preparedPayload`
-        - `routeEvidence`
-        - `routeSummary`
-    - `skill live smoke` 脚手架已落地：
-      - 默认以只读方式验证 OpenAI / Anthropic 的 managed registry 调用是否真能走到官方 SDK
-      - 默认验证 Google ADK managed lifecycle 的 unsupported boundary
-      - 暂不默认执行 publish/remove 这类会修改远端状态的动作
-      - 当前最新实测：
-        - OpenAI route on current `.env.local` 对 `/v1/skills` 返回 `404`
-        - Anthropic route on current `.env.local` 对 `/v1/skills` 返回 `404`
-        - 说明当前 route 不能被视为 hosted skill registry carrier
-      - 现在也会自动写入：
-        - `memory/live-reports/skill-live-smoke.json`
-    - `discover()` 现在支持扫描父目录下的多个 skill 子目录
-    - `loadLocal()` 在父目录只包含一个 skill 子目录时可自动解析，多个时会明确报 `skill_source_ambiguous`
-  - `docs/ability/14-skill-execution-roadmap.md` 已落地，当前对 skill 路线的完成度估算约为 `94%`
-- `agent_core` 当前已开始单独收口：
-  - 第一版先不把治理层、包装机、拓扑和上下文装载塞进 kernel
-  - 当前先把 `raw runtime kernel` 总纲定为：
-    - `AgentSession`
-    - `AgentRun`
-    - `AgentState`
-    - `CapabilityPort`
-    - `CheckpointStore`
-  - 同时明确 3 条必需运行语义：
-    - `GoalFrame`
-    - `StepTransition`
-    - `EventJournal`
-  - 当前已补第一版高性能方向：
-    - `event-first`
-    - `delta-state`
-    - `queued-port`
-    - `tiered-checkpoint`
-    - `hot/cold split`
-  - 当前建议的对象级优化也已收口：
-    - `AgentSession` -> `hot header + cold log`
-    - `AgentRun` -> `single decision lane + async execution lanes`
-    - `AgentState` -> `small structured state + state_delta`
-    - `CapabilityPort` -> `broker + queue + cache + backpressure`
-    - `CheckpointStore` -> `fast checkpoint + durable checkpoint`
-  - 新总纲文档：
-    - `docs/ability/16-agent-core-runtime-kernel-outline.md`
-  - 当前也已补可直接分发给并行 Codex 的任务包：
-    - `docs/ability/agent-core-runtime-kernel-task-pack/README.md`
-    - `00-phase0-protocol-freeze.md`
-    - `01-agent-session.md`
-    - `02-agent-run.md`
-    - `03-agent-state.md`
-    - `04-capability-port.md`
-    - `05-checkpoint-store.md`
-    - `06-goal-frame.md`
-    - `07-step-transition.md`
-    - `08-event-journal.md`
-  - 路线图现在也已明确：
-    - `09-12` 是研究与草案记录
-    - `14` 是当前实际执行路线图
-  - 路线图已补适合单个子智能体执行的 Work Package 和可复制 prompt
-  - 当前本地验证基线已更新为：
-    - `npm run typecheck` 通过
-    - `npm test` 通过
-    - `155 pass / 0 fail`
-  - `agent_core` 现已从设计稿进入可运行代码，`src/agent_core/**` 已落地：
-    - `types`
-    - `goal`
-    - `journal`
-    - `state`
-    - `transition`
-    - `port`
-    - `checkpoint`
-    - `run`
-    - `session`
-    - `runtime`
-    - `integrations/model-inference`
-    - `integrations/rax-port`
-  - 最小 raw agent 闭环已真实跑通，当前已验证成立的路径是：
-    - 创建 `session`
-    - 创建 `run`
-    - 将用户输入编译成 `goal`
-    - 生成 `model_inference intent`
-    - 通过 `gmn` 上游实际调用 `gpt-5.4`
-    - 收到模型结果
-    - 将 `run` 推进到 `completed`
-  - 这意味着 5 个核心对象已不再只是纸面抽象，而是进入可运行闭环：
-    - `AgentSession`
-    - `AgentRun`
-    - `AgentState`
-    - `CapabilityPort`
-    - `CheckpointStore`
-  - 同时 3 条运行语义也已被当前最小内核验证成立：
-    - `GoalFrame`
-    - `StepTransition`
-    - `EventJournal`
-  - 当前最小闭环的真实集成状态：
-    - 已通过 `src/agent_core/integrations/model-inference.ts` 接到 `gmn` 上游
-    - 当前最小直问直答路径使用 `gpt-5.4`
-    - 已存在第一条 `agent_core -> rax` capability bridge：`search.ground`
-  - 当前更细的验证基线：
-    - `npx tsx --test src/agent_core/**/*.test.ts` 通过
-    - `42 pass / 0 fail`
-    - 仓库级 `npm test` 通过
-    - `155 pass / 0 fail`
-  - 当前远端与提交状态：
-    - 里程碑提交已进入 `origin/reboot/blank-slate`
-    - 当前提交为 `42ce88f`
-    - 提交说明为 `Implement raw agent_core kernel and minimal answer loop`
-  - 下一阶段已开始进入“能力接口优先”模式：
-    - 当前先不急着扩更多 capability 接线
-    - 当前先冻结 `agent_core -> capability pool` 的统一接口规范
-    - 当前已明确先做 `Capability Interface`，再做 `Capability Pool`
-    - 当前新总纲文档：
-      - `docs/ability/17-agent-capability-interface-and-pool-outline.md`
-    - 当前阶段性状态总结文档：
-      - `docs/ability/18-agent-capability-interface-implementation-status.md`
-    - 当前上下文压缩交接 prompt：
-      - `docs/ability/19-agent-capability-interface-handoff-prompt.md`
-    - 当前也已补可直接分发给并行 Codex 的任务包：
-      - `docs/ability/agent-capability-interface-task-pack/README.md`
-      - `00-phase0-interface-protocol-freeze.md`
-      - `01-kernel-capability-gateway.md`
-      - `02-capability-manifest-and-binding.md`
-      - `03-capability-invocation-and-lease.md`
-      - `04-capability-pool-registry-and-lifecycle.md`
-      - `05-capability-dispatch-scheduler.md`
-      - `06-result-envelope-and-event-bridge.md`
-      - `07-model-inference-adapter.md`
-      - `08-rax-websearch-adapter.md`
-      - `09-rax-mcp-adapter-skeleton.md`
-      - `10-rax-skill-adapter-skeleton.md`
-      - `11-hot-swap-drain-and-health.md`
-      - `12-runtime-assembly-and-integration.md`
-    - 当前已明确的接口分层：
-      - `kernel-facing`
-      - `pool-facing`
-      - `provider-facing`
-    - 当前已明确的设计原则：
-      - 公共语言在上，provider lowering 在下
-      - 冷路径丰富，热路径极薄
-      - 热插拔走 generation / drain，不污染 kernel 主 loop
-      - `agent_core` 热路径只应看到：
-        - `capability key`
-        - `invocation plan`
-        - `execution handle`
-        - `result envelope`
-        - `backpressure signal`
-    - 当前已明确的工程顺序：
-      - 先冻结接口协议与对象名
-      - 再实现 pool registry / lease / dispatch / result
-      - 再把 `model inference`、`websearch`、`mcp`、`skill` 逐条桥接进统一能力面
-      - 当前推荐的多智能体开工方法：
-        - `Wave 0`：`1` 个协议冻结负责人
-        - `Wave 1`：`4` 个并行 Codex 处理 gateway / manifest-binding / invocation-lease / result-bridge
-        - `Wave 2`：`3` 个并行 Codex 处理 registry-lifecycle / dispatch-scheduler / hot-swap-health
-        - `Wave 3`：`4` 个并行 Codex 处理 model-inference / websearch / mcp / skill adapters
-        - `Wave 4`：`1` 个集成负责人做 runtime assembly 与联调
-    - 当前第一波实现已经开始真正落地到代码：
-      - `src/agent_core/capability-types/**`
-      - `src/agent_core/capability-gateway/**`
-      - `src/agent_core/capability-model/**`
-      - `src/agent_core/capability-invocation/**`
-      - `src/agent_core/capability-result/**`
-      - `src/agent_core/capability-pool/**`
-      - `src/agent_core/integrations/model-inference-adapter.ts`
-      - `src/agent_core/integrations/rax-websearch-adapter.ts`
-      - `src/agent_core/integrations/rax-mcp-adapter.ts`
-      - `src/agent_core/integrations/rax-skill-adapter.ts`
-    - 当前代码级已成立的接口骨架：
-      - `CapabilityAdapter`
-      - `CapabilityPool`
-      - `KernelCapabilityGateway`
-      - `CapabilityManifest / Binding / Lease / InvocationPlan / PreparedCall / ExecutionHandle / ResultEnvelope`
-    - 当前第一版 pool 已具备：
-      - registry / lifecycle
-      - queue / backpressure / idempotency result cache
-      - draining / health 基础
-      - direct / queued dispatch
-    - 当前验证基线已进一步更新：
-      - `npm run typecheck` 通过
-      - `npx tsx --test src/agent_core/**/*.test.ts` 通过
-      - `65 pass / 0 fail`
-      - `npm test` 通过
-      - `156 pass / 0 fail`
-    - 当前尚未完成的点：
-      - 新 `capability pool / gateway` 已开始接入 `AgentCoreRuntime`
-      - 当前 `AgentCoreRuntime` 已拥有：
-        - `capabilityPool`
-        - `capabilityGateway`
-        - `registerCapabilityAdapter(...)`
-        - `dispatchCapabilityPlan(...)`
-        - `dispatchCapabilityIntentViaGateway(...)`
-      - 当前 result bridge 已能把 pool 返回结果写回 journal 并推进 run
-      - 但旧 `CapabilityPortBroker` 主路径仍保留，尚未完全切换到新总装路径
-      - `model inference` 已有统一 adapter，但 `runUntilTerminal()` 仍主要走旧的 runtime 特判闭环
-  - `src/rax/index.ts` 现在也已把 skill 的最小公共语言层与 provider-specific override 输入面导出到公共 barrel：
-    - `SkillBindingDetailsInput`
-    - `SkillBindingDetails`
-    - `SkillProviderBindingLike`
-    - `SkillActivationPayload`
-    - `SkillActivationPlanLike`
-    - OpenAI / Anthropic / DeepMind 的 `*Overrides`
-- `MCP` 的本轮 review 收口结果仍然保留：
-  - lifecycle 管理口已收成 route-scoped
-  - provider shell metadata / notes 已与当前 runtime 表面对齐
-  - registry / public barrel 已与当前实现面对齐
-- `MCP` 的下一轮收敛已开始：
-  - provider shell 不再是一家一个唯一层，而是开始拆成更贴近官方 carrier 的 `api` / `agent` 双壳
-  - `McpRuntime.connect()` 现在允许显式 `layer` 选到对应 carrier shell，不再被单壳模型硬性拒绝
-  - 当前默认 auto route 仍保持第一阶段兼容选择：
-    - OpenAI -> `agent`
-    - Anthropic -> `api`
-    - DeepMind -> `agent`
-  - 但新的审计已经确认：后续还要继续把 surface/profile 收紧到更接近三家官方 MCP carrier 的真实边界
-  - `docs/ability/13-mcp-official-alignment-roadmap.md` 现已作为 MCP 主执行路线图，Work Package 粒度已适合单个子智能体独立接手
-  - provider-native executor 这条现在又往前推进了一段：
-    - OpenAI agent-native `compose` 已能把 Responses 输入抽成 `@openai/agents` 的 `run` invocation
-    - OpenAI agent-native `execute` 已能真实走 `stdio + Agent + Runner.run(...)`
-    - Anthropic agent-native `execute` 不再只返回 `Query` 对象，而是会消费到最终 assistant message
-    - Anthropic agent-native 现在也已补上 Claude runtime 的认证与权限桥接：
-      - 显式通过 `options.env` 注入 `ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL`
-      - 对自动化 executor 使用 Claude runtime 的 tool-approval bypass
-    - DeepMind agent-native 现在也已补上 ADK runtime execute：
-      - `compose` 会把 `generateContent` 输入收成 `@google/adk` 的 `InMemoryRunner.runEphemeral` invocation
-      - `execute` 会真实走 `MCPToolset + LlmAgent + InMemoryRunner`
-      - 当 `baseURL` 看起来不是 Google 官方域名时，会走官方 `ApigeeLlm` 代理模型桥接；官方域名则走 `Gemini`
-  - `mcp.serve` 这条现在也开始收口了：
-    - `rax.mcp.serve()` / `rax.mcp.native.serve()` 已存在
-    - Anthropic agent-side 现在会真实走官方 `createSdkMcpServer()`
-    - OpenAI 当前仍明确 unsupported
-    - DeepMind 当前保持 documented-but-unimplemented 的 truthful result
-  - `WP-03 Anthropic API MCP Connector` 已拿到第一段实际结果：
-    - Anthropic `api` shell 现在明确是 remote-first、tools-first
-    - 显式 `provider=anthropic + layer=api + stdio` 会被拒绝
-    - Anthropic `api` shell 上 `resources/prompts` 现在会报 `mcp_surface_unsupported`
-    - richer `resources/prompts` 正向测试已改到 Anthropic `agent` carrier
-  - `WP-05 Gemini API MCP Carrier` 与 `WP-01 OpenAI API MCP Carrier` 也已拿到第一段对称 contract：
-    - OpenAI / Anthropic / DeepMind 三家 `api` shell 当前都已明确为 tools-first
-    - OpenAI `api` shell 显式 `stdio` 会被拒绝
-    - OpenAI / DeepMind `api` shell 上 `resources/prompts` 现在也会报 `mcp_surface_unsupported`
-    - 三家 API carrier 的第一批 tools-first contract 已有定向测试覆盖
-  - `WP-07 MCP Compatibility Profiles` 已开始真正落地：
-    - `BaseCompatibilityProfile` 现在已可表达 MCP 的 layer-level 规则
-    - 默认 `rax` 运行面现在会挂载 `DEFAULT_COMPATIBILITY_PROFILES`
-    - 官方 profile 已能对 MCP 做最小阻断：
-      - Anthropic `api + stdio` 会被 compatibility profile 直接拦截
-      - OpenAI `api + resources` 会被 compatibility profile 直接拦截
-      - DeepMind `api + prompts` 会被 compatibility profile 直接拦截
-	  - `WP-08 Shared Runtime vs Native Lowering Split` 已拿到第一段结构性结果：
-    - `McpProviderShell` / `McpConnectionSummary` 现在已带 `officialCarrier`、`carrierKind`、`loweringMode`
-    - facade 现在已明确分出：
-      - `rax.mcp.shared.*`
-      - `rax.mcp.native.prepare(...)`
-      - 旧的 `rax.mcp.use/connect/...` 仍保留为 shared-runtime 兼容别名
-    - `mcp.native.prepare(...)` 现在会按 provider shell 的 native transport 能力，输出官方 native carrier plan，并返回 `supported true/false`
-    - OpenAI / Anthropic / DeepMind 的 agent-side native prepare payload skeleton 已落成：
-      - OpenAI -> Agents MCP server shape
-      - Anthropic -> Claude Agent/Code runtime `mcpServers` shape
-      - DeepMind -> ADK `McpToolset` shape
-    - OpenAI / Anthropic / DeepMind 的 API-side native prepare payload skeleton 也已落成：
-      - OpenAI -> Responses `tools.type=mcp` shape
-      - Anthropic -> `mcp_servers + mcp_toolset` connector shape
-      - DeepMind -> Gemini `mcpToTool` bridge shape
-	    - `native.prepare` 现在已具备 builder-ready 元数据：
-	      - `builderId`
-	      - `constraintSnapshot`
-	      - `unsupportedReasons`
-    - `rax.mcp.native.build()` 已落成：
-      - 对支持的 native plan 返回标准 `PreparedInvocation`
-      - 对不支持的 native plan 抛 `mcp_native_build_unsupported`
-    - `rax.mcp.native.compose()` 已落成：
-      - OpenAI Responses 与 Anthropic Messages 现在可把 native MCP build 结果合并回模型调用 prepared invocation
-      - DeepMind/Gemini 当前仍明确报 `mcp_native_compose_unsupported`
-	    - `rax.mcp.native.execute()` 与 `composeAndExecute()` 已落成：
-	      - 控制面已完整，并开始接入真实 provider-native executor
-	      - OpenAI agent-native `stdio` 已可真实执行
-	      - Anthropic agent-native `query()` 路已接到最终消息消费与自动化权限桥接
-	      - DeepMind agent-native `MCPToolset` 路也已接到真实 ADK runtime execute
-	    - DeepMind 官方 profile 现在也已带最小 `supportedModelHints`，native prepare 可直接读到默认模型提示
-	    - gateway / official profile 的 MCP 阻断和 native prepare 现在可以共存
-	    - 当前 MCP + runtime 定向测试为 `105 pass`
-	    - gmn 上游的 OpenAI live smoke 现在明确应优先使用 `gpt-5.4`
-	    - `smoke:mcp:native:live` 当前结果已澄清为 carrier-level reality：
-	      - OpenAI API-style Responses MCP 仍被 `gmn` 上游 `502` 阻断
-	      - OpenAI agent-native `stdio` 已在 `gpt-5.4` 上真实返回 `Example Domain`
-	      - Anthropic API connector 仍因 localhost HTTP 不是公开 HTTPS MCP server 而 blocked
-	      - Anthropic agent-native `stdio` 已在 `claude-opus-4-6-thinking` 上真实返回 `Example Domain`
-	      - DeepMind agent-native `stdio` 已在 `gemini-2.5-flash` 上真实返回 `Example Domain`
-    - 新增 `smoke:mcp:native:live` 脚本后，native live smoke 现状是：
-      - OpenAI native live smoke 当前被 `gmn` 上游 `502` 阻断
-      - Anthropic native live smoke 当前不适合用本地 `localhost` HTTP MCP 当作官方 connector 基线，因官方 connector 要求 remote/public HTTP MCP
+- 当前项目级主线已经切换到新的 `dev` / `dev-master`。
+- 当前主线提交：
+  - `987effd`
+  - `Import Batch 1 CMP support layer`
+- 旧 `dev` 已归档为：
+  - `archive/dev-legacy-2026-04-01`
+  - `8d97096`
 
-## 当前明确约束
+一句白话：
 
-- TypeScript + Node.js 是新的默认实现语言和工具链。
-- `memory/` 是仓库内长期记忆层，重要的架构和执行结论要持续写回这里。
-- `docs/` 目录可能由另一个 Codex 实例并行更新；看到文档变化时不要惊讶，也不要回滚无关改动。
-- macOS 不默认使用 Electron。
-- Windows / Linux 未来可以考虑 Electron，但现在先不搭 UI 壳。
-- 需要保持仓库尽量干净，不要提前搬回旧 `dev` 分支的大型目录树。
-- unofficial upstream 必须按 compatibility profile 处理，不能假设它们是完整官方 API 平台。
-- `rax` 当前同时维护两条运行面：
-  - `rax`：默认官方形态运行时
-  - `raxLocal`：兼容 unofficial gateway 的本地运行时
+- 现在真正要继续推进的，不再是 legacy `dev`
+- 而是 reboot 之后的新总装线
 
-## 当前近期待办
+## 当前阶段一句话
 
-1. 继续把 `skill` 收窄为官方 carrier adapter，而不是把包装机所有复杂度塞进 `skill`：
-   - OpenAI：`shell` + `environment.skills`
-   - Anthropic：`container.skills` 或 filesystem `Skill`
-   - Google ADK：`SkillToolset`
-2. 继续细化 `rax.skill` v0：
-   - `define`
-   - `discover`
-   - `bind`
-   - `activate`
-   - `loadLocal`
-   - `prepare`
-   - `use`
-   - `mount`
-3. 继续细化 `Skill Container` 和 `Context Manager`，但把它们视为上层架构部件，而不是 `skill` 本身：
-   - bindings
-   - policy
-   - ledger
-   - metadata -> entry markdown -> resources/helpers 三层加载
-4. 如果后续要让 `skill` 使用 MCP，优先复用 `mcp.use()` 作为统一会话入口，而不是重做三套 provider-specific MCP 逻辑。
-5. 保持 `memory/` 作为并行协作下的项目长期记忆层。
-6. 先把 `agent_core` 的 raw runtime kernel 细化完，再进入 topology / io / ooa / autonomy 这些治理层细化。
-7. 当前新阶段已经进入 `T/A Pool` 概念固化：
-   - 当前新总纲文档：
-     - `docs/ability/20-ta-pool-control-plane-outline.md`
-   - 当前新任务包：
-     - `docs/ability/ta-pool-task-pack/README.md`
-     - `00-phase0-protocol-freeze.md`
-     - `01-baseline-profile-and-tier-model.md`
-     - `02-access-request-and-review-decision.md`
-     - `03-control-plane-gateway.md`
-     - `04-mode-policy-matrix.md`
-     - `05-execution-plane-bridge.md`
-     - `06-provision-request-and-artifact-bundle.md`
-     - `07-provision-registry-and-lifecycle.md`
-     - `08-reviewer-runtime-shell.md`
-     - `09-provisioner-runtime-shell.md`
-     - `10-context-aperture-placeholder.md`
-     - `11-safety-intercept-and-human-escalation.md`
-     - `12-runtime-assembly-and-integration.md`
-     - `13-end-to-end-smoke-and-test-pack.md`
-   - 当前对 `T/A Pool` 的阶段性判断：
-     - 它不是对现有 `CapabilityPool` 的替换
-     - 它是包在现有 execution plane 上层的一层 control plane
-   - 当前已经定死的五个平面：
-     - `kernel plane`
-     - `execution plane`
-     - `review plane`
-     - `provision plane`
-     - `context plane`
-   - 当前已经定死的四层权限：
-     - `B0 baseline`
-     - `B1 requestable`
-     - `B2 sensitive`
-     - `B3 critical`
-   - 当前已经定死的三种运行模式：
-     - `strict`
-     - `balanced`
-     - `yolo`
-   - 当前已经定死的六种审核结果：
-     - `approved`
-     - `partially_approved`
-     - `denied`
-     - `deferred`
-     - `escalated_to_human`
-     - `redirected_to_provisioning`
-   - 当前已经明确的关键边界：
-     - 默认放权必须存在，否则主 agent 会退化成只能对话的壳
-     - reviewer / provisioner 属于控制面，不直接污染 raw kernel
-     - 项目状态、记忆池、包装机未来一定会接 reviewer，但当前阶段先留 `context aperture` 坑位，不提前耦合
-8. 当前 `T/A Pool` 第一波代码已经开始真实落地到 `src/agent_core/**`：
-   - 当前已落地目录：
-     - `src/agent_core/ta-pool-types/**`
-     - `src/agent_core/ta-pool-model/**`
-     - `src/agent_core/ta-pool-review/**`
-     - `src/agent_core/ta-pool-provision/**`
-     - `src/agent_core/ta-pool-safety/**`
-     - `src/agent_core/ta-pool-context/**`
-     - `src/agent_core/ta-pool-runtime/**`
-   - 当前已落地的第一波能力：
-     - baseline profile / tier model
-     - mode policy matrix
-     - review decision engine
-     - review routing helpers
-     - reviewer runtime shell
-     - provision request / artifact bundle registry
-     - provisioner runtime shell
-     - safety interceptor
-     - execution bridge
-     - control-plane gateway
-   - 当前 runtime 装配状态：
-     - `AgentCoreRuntime` 已开始接入 `TaControlPlaneGateway`
-     - 已可：
-       - resolve baseline T/A grant
-       - dispatch granted capability through pooled path
-       - surface `review_required` when capability is not baseline
-   - 当前验证基线：
-     - `npm run typecheck` 通过
-     - `npx tsx --test src/agent_core/**/*.test.ts` 通过
-     - 当前 `agent_core` 定向测试：`112 pass / 0 fail`
-   - 当前阶段判断：
-     - `T/A Pool` 第一波控制面骨架已经成立
-     - 但还没有完成完整 runtime assembly
-     - 也还没有把 reviewer / provisioner / safety 完全串进端到端主流程
-9. 当前 `T/A Pool` 的基础 runtime assembly 已经打通：
-   - `AgentCoreRuntime` 现在不只支持手动：
-     - `resolveTaCapabilityAccess(...)`
-     - `dispatchTaCapabilityGrant(...)`
-   - 还新增并打通了：
-     - `dispatchCapabilityIntentViaTaPool(...)`
-   - 当前这条链已能在 runtime 内部完成：
-     - safety
-     - baseline fast path
-     - reviewer runtime
-     - provisioner runtime
-     - execution bridge
-     - pooled capability dispatch
-   - 当前已验证成立的三条装配路径：
-     - review -> dispatch
-     - review -> provisioning
-     - safety -> interrupt
-   - 当前验证基线已经更新为：
-     - `npm run typecheck` 通过
-     - `npx tsx --test src/agent_core/**/*.test.ts` 通过
-     - 当前 `agent_core` 定向测试：`115 pass / 0 fail`
-   - 当前最准确的阶段判断：
-     - `T/A Pool` 已经不是孤立模块集合
-     - 第一个 pool 已经接进 `raw_agent_core` 预留接口
-     - 但还没有把它改成所有 capability intent 的默认主路径
-10. 当前 `TAP` 已进入“可用 runtime 控制面”阶段：
-   - 当前已成立：
-     - default `capability_call -> TAP`
-     - reviewer bootstrap worker bridge
-     - provisioner bootstrap worker bridge
-     - capability package template SDK
-     - 最小 enforcement token / execution guard
-     - `restricted -> waiting_human -> approve / reject`
-     - replay skeleton / activation handoff skeleton
-   - 当前验证基线已更新为：
-     - `npm run typecheck` 通过
-     - `npm run build` 通过
-     - `npx tsx --test src/agent_core/**/*.test.ts` 通过
-     - 当前 `agent_core` 定向测试：`159 pass / 0 fail`
-     - `npm run smoke:websearch:live -- --provider=openai` 通过
-     - `gmn + gpt-5.4` 的 `native_plain / native_search / rax_websearch` 都是 `ok`
-   - 当前仍未完成：
-     - 真实 builder
-     - 真实 activation driver
-     - durable human gate / replay 恢复链
-     - reviewer 真实项目状态 / 记忆池 / 包装机接入
-11. 当前 `TAP` 补全设计已经冻结到新的 detailed blueprint：
-   - 新文档：
-     - `docs/ability/27-tap-runtime-completion-blueprint.md`
-   - 这轮冻结的核心共识：
-     - `activation driver` 是 control-plane 后段机械装配器，负责把 provision 产物接回 `CapabilityPool`
-     - provisioner 将继续收口成 `toolmakeragent (TMA)`，并拆成 `planner / executor` 两层
-     - reviewer 继续保持只审、只读、只投票，不执行、不造工具、不直接发 grant
-     - durable 恢复链第一版先走 checkpoint-first 路线，优先把 `human gate / replay / activation attempt` 写入 pool runtime snapshot
-     - 当前不提前抽 shared framework；先把 `TAP` 做成完整样板，之后再给 `mp/cmp` 等第二个 pool 抽 shared primitives
-   - 当前建议的实现顺序：
-     - 先做 `activation driver`
-     - 再做 `real builder / TMA`
-     - 最后做 durable `human gate / replay`
-12. 当前 `TAP` 第三阶段并行编码任务包已经完成：
-   - 新目录：
-     - `docs/ability/tap-runtime-completion-task-pack/`
-   - README 已冻结：
-     - `docs/ability/tap-runtime-completion-task-pack/README.md`
-   - 当前任务拆分为 13 份：
-     - `00-runtime-completion-protocol-freeze.md`
-     - `01-activation-driver-contract.md`
-     - `02-tma-runtime-contract.md`
-     - `03-durable-pool-runtime-snapshot.md`
-     - `04-activation-driver-runtime.md`
-     - `05-package-materializer-and-factory-resolver.md`
-     - `06-tma-planner-lane.md`
-     - `07-tma-executor-lane.md`
-     - `08-durable-human-gate.md`
-     - `09-durable-replay-and-activation-attempts.md`
-     - `10-runtime-recovery-assembly.md`
-     - `11-first-class-tooling-baseline-for-reviewer-and-tma.md`
-     - `12-end-to-end-runtime-closure-and-smoke.md`
-   - 当前推荐分波：
-     - Wave 0：`00`
-     - Wave 1：`01/02/03`
-     - Wave 2：`04/05/06/07`
-     - Wave 3：`08/09/10`
-     - Wave 4：`11/12`
-   - 当前推荐总并发：
-     - `4-6` 个真正会改共享协议的 worker
-13. 当前 `TAP` 第三阶段第一波代码已经真实落地：
-   - 当前已成立：
-     - `00` 协议冻结已进代码
-     - activation contracts / factory resolver / materializer / driver 已进代码
-     - `AgentCoreRuntime` 已新增：
-       - `registerTaActivationFactory(...)`
-       - `activateTaProvisionAsset(...)`
-       - `createTapRuntimeSnapshot()`
-       - `createPoolRuntimeSnapshots()`
-       - activation attempt 索引读取
-     - `TMA planner` helper 已落地
-     - `TMA executor` helper 已落地
-     - checkpoint `pool-runtime-checkpoint` helper 已落地
-     - `runtime-recovery` / `runtime-snapshot` helper 已落地
-   - 当前验证基线已更新为：
-     - `npm run typecheck` 通过
-     - `npm run build` 通过
-     - `npm test` 通过
-     - `npx tsx --test src/agent_core/**/*.test.ts` 通过
-     - 当前 `agent_core` 定向测试：`182 pass / 0 fail`
-     - 当前 `dist/**/*.test.js`：`170 pass / 0 fail`
-   - 当前最准确的阶段判断：
-     - `TAP` 已不只是“可用控制面”
-     - 第三阶段第一波 helper 与 activation runtime integration 已开始成立
-     - 但 durable checkpoint 写入点和更深的 `TMA -> provisioner runtime` 主链仍待继续推进
-14. 当前 `TAP` 的 `Wave 4-5` 后半段已经继续推进一小波真实代码落地：
-   - 当前工作树：
-     - `/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/reboot-merge`
-   - 当前分支：
-     - `reboot/blank-slate`
-   - 当前在 `f924c82` 之后继续完成的核心内容：
-     - `tool_reviewer` 已开始真实接入 runtime 主链
-       - runtime 现在会自动记录：
-         - `human_gate`
-         - `replay`
-         - `activation`
-       - 不再只是“手工 submit 一条治理壳记录”
-     - `resume envelope` 已新增显式恢复入口：
-       - `resumeTaEnvelope(...)`
-       - 当前可以：
-         - 保持 `human_gate` 待人工批准
-         - 从 pending replay 重新进入 review / dispatch
-         - 对 activation retry 走第一版恢复入口
-     - `recover + hydrate` 已补回更多控制面状态：
-       - 会恢复 `tool_reviewer / reviewer / provisioner / TMA`
-       - 会恢复必要的 `session header`
-       - 会恢复 control-plane 的 `request / decision`
-     - `run-coordinator.resumeRun(...)` 已补一刀：
-       - 不再先要求 run 必须已经在内存 map 里
-       - 允许先走 checkpoint/journal 恢复再回到 runtime
-   - 当前新增的关键验证：
-     - recover 之后继续批准 `waiting_human` 仍能 dispatch
-     - recover 之后按 replay envelope 重新进入 review / dispatch
-     - hydrate 后 human-gate envelope 不会偷偷 auto-approve
-     - runtime 主链会自动产出 `tool_reviewer` governance session / action ledger
-   - 当前验证基线已更新为：
-     - `npm run typecheck` 通过
-     - `npx tsx --test src/agent_core/runtime.test.ts` 通过
-     - `npx tsx --test src/agent_core/**/*.test.ts` 通过
-     - 当前 `agent_core` 定向测试：`306 pass / 0 fail`
-     - `npm test` 通过
-     - 当前仓库级测试：`190 pass / 0 fail / 1 skipped`
-   - 当前这轮涉及的主文件：
-     - `src/agent_core/runtime.ts`
-     - `src/agent_core/runtime.test.ts`
-     - `src/agent_core/run/run-coordinator.ts`
-     - `src/agent_core/ta-pool-runtime/control-plane-gateway.ts`
-     - `docs/ability/46-tap-wave4-wave5-durable-lanes-and-hydration.md`
-   - 当前最准确的阶段判断：
-     - `Wave 4-5 durable lane baseline` 已经不是终点
-     - 后半段的 runtime resume / `tool_reviewer` mainline hookup 已开始 code-backed
-     - 但 `18-three-agent-negative-boundary-tests` 还没有完整铺满
-     - 更深的 `TMA durable resume / activation orchestration / final production closure` 仍待继续
-15. 当前 `18-three-agent-negative-boundary-tests` 已开始进入第一批真实代码与测试：
-   - 当前已补上的边界：
-     - `replay resume` 遇到 activation 失败时会短路，不再继续 dispatch
-     - `resumeTaEnvelope(...)` 已补：
-       - `resume_envelope_not_found`
-       - malformed replay envelope -> `resume_not_supported`
-       - malformed activation envelope -> `resume_not_supported`
-     - `manual replay policy` 现在有 runtime 级负例，明确只停在 handoff
-     - `tool_reviewer` runtime 主链产出的 action 已有 `governance_only` 断言
-     - reviewer 非法 bridge 输出后不会污染 durable state
-     - provision/TMA restore 会把被篡改的 boundary 重新钳回 `capability_build_only`
-   - 当前这一批验证已通过：
-     - `npm run typecheck`
-     - `npx tsx --test src/agent_core/runtime.test.ts src/agent_core/ta-pool-review/reviewer-runtime.test.ts src/agent_core/ta-pool-review/reviewer-worker-bridge.test.ts src/agent_core/ta-pool-tool-review/tool-review-runtime.test.ts src/agent_core/ta-pool-provision/provisioner-runtime.test.ts`
-   - 当前阶段判断：
-     - `18` 已开始落地
-     - 但还只是第一批 negative boundary tests
-     - 后面仍可继续补：
-       - reviewer/human-gate recovery 幂等性
-       - tool_reviewer lifecycle runtime-level negative tests
-       - TMA 真正 resumable orchestration
-16. 当前 `18` 已继续推进第二批更偏“终态收口”的内容：
-   - 当前新增已成立：
-     - human-gate 批准/拒绝后会清理对应 human-gate resume envelope
-     - recover 后已终态 gate 不再被当成 pending human-gate 恢复入口
-     - reviewer durable state 在 human-gate resolve 后会进入 `completed`
-     - human-gate approve 遇到已有 provision asset 时不会重复 provisioning
-     - runtime 已新增薄的 `applyTaCapabilityLifecycle(...)` 入口
-       - 现在可以把 lifecycle missing binding 之类的错误记录成 `tool_reviewer` 的 `lifecycle_blocked`
-     - provision/TMA 已新增显式 `resumeTmaSession(...)` 入口
-       - restore 后可以显式继续一次最小 build 主链
-   - 当前这批定向验证已通过：
-     - `npm run typecheck`
-     - `npx tsx --test src/agent_core/runtime.test.ts src/agent_core/ta-pool-review/reviewer-runtime.test.ts src/agent_core/ta-pool-tool-review/tool-review-runtime.test.ts src/agent_core/ta-pool-provision/provisioner-runtime.test.ts src/agent_core/ta-pool-provision/tma-executor.test.ts`
-   - 当前阶段判断：
-     - `18` 已不只是在补失败短路
-     - 现在开始同时补 reviewer/human-gate 完成态收口、tool_reviewer lifecycle blocked、TMA explicit resume
-     - 但更完整的 lifecycle orchestration / TMA resumable executor 主链 / final production closure 仍待继续
+Praxis 现在已经从“纯 reboot 基座”推进到：
+
+- 以 reboot/TAP 为底座
+- 已把 `CMP` 的文档、infra、支撑层安全接回新主线
+- 但还没有进入高风险总装入口收口
+
+白话：
+
+- 新地基已经立住
+- `CMP` 的低耦合主体已经装回来
+- 真正最危险的 runtime 总装还没开始
+
+## 当前已经确定的架构事实
+
+### 1. `CMP`、`MP`、`TAP` 是并列池
+
+- `CMP` 负责主动上下文治理
+- `TAP` 负责能力供给与治理
+- `MP` 仍是后续方向，不是这轮主线
+
+当前不要做错的事：
+
+- 不要把三者混成一个大而空的 memory system
+- 不要把 `cmp/mp` 当成 “MP 已完成” 的线
+
+### 2. `git_infra` 是共享底座
+
+- `git_infra` 是项目级共享协作底座
+- 它不是 `CMP` 私有系统
+- `CMP` 只是它的消费者之一
+
+### 3. `CMP` 的真相主干仍然是 `git`
+
+- `CMP` 的 canonical source 是 `git`
+- `CMP DB` 仍是结构化投影层，不是第二真相源
+- `MQ` 仍然是邻接传播，不是无约束全局广播
+
+### 4. reboot/TAP 基座当前仍需保护
+
+当前 reboot 线已经在新主线上完整承接了：
+
+- `docs/ability/20-28`
+- `docs/ability/43-51`
+- `src/agent_core/ta-pool*/**`
+- 当前的 capability / `TAP` runtime 主线
+
+这部分当前视为：
+
+- 基座保护区
+
+## 当前已经真正落到新主线的内容
+
+### 一、reboot/TAP 基座
+
+当前已经在新主线上成立：
+
+- `agent_core` raw runtime kernel
+- capability interface / pool
+- `T/A Pool`
+- `TAP` runtime completion
+- three-agent real usage 主线
+- `skill` / `websearch` / `MCP` 的 reboot 阶段成果
+
+### 二、`CMP` 文档与阶段记录
+
+当前已经接回新主线：
+
+- `docs/ability/29-40`
+- `docs/ability/44-46`
+- `docs/ability/cmp-*`
+- `memory/compaction-handoff-prompt*.md`
+- `memory/worklog/2026-03-20-cmp-*`
+- `memory/worklog/2026-03-24-cmp-*`
+- `memory/worklog/2026-03-25-cmp-*`
+
+白话：
+
+- 现在新主线已经能读到 `CMP` 的总纲、任务包和阶段记忆
+- 不用再只靠旧 `cmp/mp` 分支理解 `CMP`
+
+### 三、`CMP` 基础设施
+
+当前已经接回新主线：
+
+- `infra/cmp/**`
+- `scripts/cmp-status-panel-server.mjs`
+
+这意味着：
+
+- `CMP` 的本地 infra 面和状态面板脚本已经进入当前主线
+
+### 四、`CMP` 支撑层代码
+
+当前已经接回新主线：
+
+- `src/agent_core/cmp-types/**`
+- `src/agent_core/cmp-git/**`
+- `src/agent_core/cmp-db/**`
+- `src/agent_core/cmp-mq/**`
+- `src/agent_core/cmp-runtime/**`
+
+白话：
+
+- `CMP` 的协议、git/DB/MQ 支撑层、runtime 支撑层已经进入新 `dev`
+- 但五角色和总装入口还没接回来
+
+## 当前还没有接回来的高风险部分
+
+下面这些当前仍明确后置：
+
+- `src/agent_core/runtime.ts`
+- `src/agent_core/runtime.test.ts`
+- `src/rax/index.ts`
+- `package.json` 的更深总装入口调整
+- `src/agent_core/cmp-five-agent/**`
+- `src/agent_core/integrations/model-inference*.ts`
+- `src/rax/cmp-*/**`
+
+原因：
+
+- 它们是 reboot/TAP 基座与 `CMP` 主体真正会撞上的装配口
+- 一旦过早处理，容易把当前新主线再次打散
+
+## 当前验证基线
+
+以下验证已经在当前新主线上真实通过：
+
+- `npm run typecheck`
+- `npx tsx --test src/agent_core/cmp-git/*.test.ts`
+  - `32 pass / 0 fail`
+- `npx tsx --test src/agent_core/cmp-db/*.test.ts`
+  - `23 pass / 0 fail / 1 skip`
+- `npx tsx --test src/agent_core/cmp-mq/*.test.ts`
+  - `25 pass / 0 fail`
+- `npx tsx --test src/agent_core/cmp-runtime/*.test.ts`
+  - `63 pass / 0 fail / 1 skip`
+
+白话：
+
+- Batch 1 接回来的 `CMP` 支撑层已经能在新主线上站住
+- 这不是只把文件搬过来，还已经过了最小验证
+
+## 当前最重要的文档入口
+
+后续主线程和子代理应优先从下面这些入口理解现状：
+
+- `docs/master.md`
+- `docs/ability/52-dev-master-integration-outline.md`
+- `docs/ability/53-dev-master-cmp-import-checklist.md`
+- `docs/ability/54-dev-master-conflict-research-plan.md`
+- `docs/ability/55-dev-master-batch1-task-pack.md`
+
+## 当前最推荐下一步
+
+当前最推荐的下一步不是直接碰 `main`，也不是直接做五角色 live 化。
+
+而是：
+
+1. 继续做总装入口桥位盘点
+2. 决定 `package.json` 与 `rax` 表面的低风险调整
+3. 在明确桥位后，再进入：
+   - `cmp-five-agent`
+   - `rax.cmp`
+   - runtime assembly
+
+一句收口：
+
+- Praxis 现在已经完成了 reboot 基座 + `CMP` 支撑层的第一轮接合
+- 下一步开始进入真正的高风险总装阶段
