@@ -82,6 +82,21 @@
 - `index.ts` 并不是“整体大改”
 - 更像是围绕上述几个 `CMP` 出口做增量补齐
 
+### 4. `cmp-runtime.ts` 不能按 `cmp/mp` 版本原样移植
+
+这轮主线程已经核实：
+
+- 当前新主线的 `src/agent_core/runtime.ts`
+  还没有暴露 `cmp/mp` 版 `cmp-runtime.ts` 所依赖的那整组 `CMP` workflow 方法
+- 当前 `src/agent_core/index.ts`
+  也还没有把 `cmp-git / cmp-runtime / cmp-five-agent` 这些面整体导出
+- 当前新主线甚至还没有 `src/agent_core/cmp-five-agent/**`
+
+白话：
+
+- `cmp-runtime.ts` 如果照 `cmp/mp` 原样搬回来，会直接踩到 runtime assembly 的未接线区
+- 所以 `Phase B` 必须继续收窄，不能假装它已经是一个“纯低风险壳子”
+
 ## 当前不要做错的事
 
 - 不要因为 `rax` 比 runtime 风险小，就把 `cmp-facade` 和 `cmp-runtime` 一起一把并上。
@@ -122,8 +137,11 @@
 
 目标：
 
-- 把 `CMP` 的 runtime 壳子接回主线
-- 但仍不提前处理 facade
+- 先判断是否只能接一个“薄 runtime shell”
+- 如果当前 `agent_core/runtime.ts` 还没有对应桥位，则：
+  - 只允许接 connectors/runtime container 层
+  - 不允许假装 workflow passthrough 已经就绪
+- 仍不提前处理 facade
 
 最小验收：
 
@@ -166,7 +184,8 @@
 
 只负责：
 
-- Phase B
+- Phase B 的薄 runtime shell
+- 不能擅自补 `agent_core/runtime.ts`
 
 不负责：
 
@@ -193,4 +212,8 @@
 一句收口：
 
 - 现在最安全的下一步，不是去撞 `runtime assembly`
-- 而是先把 `rax` 这一层按 Phase A -> B -> C 收回来
+- 而是先把 `rax` 这一层按：
+  - Phase A `cmp-types/config/status-panel`
+  - Phase B `thin runtime shell if possible`
+  - Phase C `cmp-facade`
+  逐层收回来
