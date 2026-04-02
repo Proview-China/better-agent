@@ -143,12 +143,33 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 - 现在 `CMP` 的基础脚本入口已经在主线上
 - Batch 2 的前置风险清单也已经形成文档
 
+### 六、`rax` 低风险 `CMP` 表面切片
+
+当前已经接回新主线：
+
+- `src/rax/cmp-domain.ts`
+- `src/rax/cmp-domain.test.ts`
+- `src/rax/cmp-connectors.ts`
+- `src/rax/cmp-connectors.test.ts`
+- `src/rax/index.ts` 的最小相关 export
+- `src/index.ts` 的 `cmp-domain` 公共出口
+
+白话：
+
+- 我们还没有接 `rax.cmp`
+- 但已经先把最独立、最不容易误伤总装主链的 `CMP` 表面模块接回来了
+
 ## 当前还没有接回来的高风险部分
 
 下面这些当前仍明确后置：
 
 - `src/agent_core/runtime.ts`
 - `src/agent_core/runtime.test.ts`
+- `src/rax/cmp-config.ts`
+- `src/rax/cmp-types.ts`
+- `src/rax/cmp-status-panel.ts`
+- `src/rax/cmp-facade.ts`
+- `src/rax/cmp-runtime.ts`
 - `src/agent_core/cmp-five-agent/**`
 - `src/agent_core/integrations/model-inference*.ts`
 - 五角色 live LLM 化的更深接线
@@ -171,6 +192,10 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
   - `25 pass / 0 fail`
 - `npx tsx --test src/agent_core/cmp-runtime/*.test.ts`
   - `63 pass / 0 fail / 1 skip`
+- `npx tsx --test src/rax/cmp-domain.test.ts`
+  - `3 pass / 0 fail`
+- `npx tsx --test src/rax/cmp-connectors.test.ts`
+  - `4 pass / 0 fail`
 
 白话：
 
