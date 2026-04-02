@@ -66,6 +66,17 @@
   2. 再处理 `cmp-runtime / cmp-status-panel`
   3. 最后才是 `cmp-facade`
 
+补充核实：
+
+- 这条顺序在主线推进中已经发生了真实变化：
+  - `cmp-domain / cmp-connectors` 早已在位
+  - `cmp-types / cmp-config / cmp-status-panel` 也已经接回主线并通过最小验证
+
+所以当前 `rax` 真正剩下的缺口，已经收窄为：
+
+- `cmp-runtime`
+- `cmp-facade`
+
 ### 3. `package.json` 低风险脚本入口已经在位
 
 当前已确认主线上已经存在：
@@ -80,6 +91,21 @@
 
 - 这一步已经不再是阻塞点
 - 后面无需再为 `CMP infra` 触达路径单独补脚本
+
+### 3.5 `cmp-runtime` 当前不能被误判成薄壳
+
+最新核实的事实是：
+
+- 当前新主线的 `src/agent_core/runtime.ts`
+  还没有暴露 `cmp/mp` 版 `src/rax/cmp-runtime.ts` 所依赖的那整组 `CMP` workflow 方法
+- 当前新主线的 `src/agent_core/index.ts`
+  也没有把 `cmp-git / cmp-runtime / cmp-five-agent` 这些面整体导出
+- 当前新主线还没有 `src/agent_core/cmp-five-agent/**`
+
+当前判断：
+
+- `cmp-runtime.ts` 如果照 `cmp/mp` 原样接回，会变成一个表面完整但不诚实的壳
+- 所以当前真正的阻塞，不是 `rax` 表面本身，而是 runtime bridge 策略还没定型
 
 ### 4. 项目叙事入口已经基本成型
 
@@ -106,8 +132,8 @@
 
 如果继续往前走，当前最安全的顺序应是：
 
-1. 先做 `rax` 的低风险 `CMP` 表面接回
-2. 再决定 `cmp-runtime` / `cmp-status-panel` 的接法
+1. 先保持 `rax` Phase A 稳定
+2. 再单独澄清 `cmp-runtime` 的 runtime bridge 策略
 3. 然后评估 `cmp-five-agent` 的 Batch 2 准入
 4. 最后才进入 `runtime assembly`
 
@@ -115,5 +141,5 @@
 
 - Batch 1 已站稳
 - `package.json` 已不是问题
-- `rax` 可以作为下一个受控施工面
+- `rax` 的 Phase A 已站稳
 - `runtime assembly` 仍然必须最后处理

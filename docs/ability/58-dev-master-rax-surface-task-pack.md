@@ -50,20 +50,25 @@
 
 ### 2. `rax` 当前真正缺的是 5 个点
 
-当前还没有接回主线的是：
+在最初拆包时，当前还没有接回主线的是：
 
-- `src/rax/cmp-types.ts`
-- `src/rax/cmp-config.ts`
-- `src/rax/cmp-status-panel.ts`
 - `src/rax/cmp-runtime.ts`
 - `src/rax/cmp-facade.ts`
 
 以及对应测试：
 
-- `src/rax/cmp-config.test.ts`
-- `src/rax/cmp-status-panel.test.ts`
 - `src/rax/cmp-runtime.test.ts`
 - `src/rax/cmp-facade.test.ts`
+
+补充核实：
+
+- `src/rax/cmp-types.ts`
+- `src/rax/cmp-config.ts`
+- `src/rax/cmp-status-panel.ts`
+- `src/rax/cmp-config.test.ts`
+- `src/rax/cmp-status-panel.test.ts`
+
+现已在新主线上并通过最小验证。
 
 ### 3. `src/rax/index.ts` 的缺口也已缩小
 
@@ -213,7 +218,7 @@
 
 - 现在最安全的下一步，不是去撞 `runtime assembly`
 - 而是先把 `rax` 这一层按：
-  - Phase A `cmp-types/config/status-panel`
+  - Phase A `cmp-types/config/status-panel` 已完成
   - Phase B `thin runtime shell if possible`
   - Phase C `cmp-facade`
   逐层收回来

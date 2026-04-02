@@ -108,6 +108,8 @@
   - [57-dev-master-deepcheck-report-wave2.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/57-dev-master-deepcheck-report-wave2.md)
 - 新 `dev` 的 `rax` 专项任务包：
   - [58-dev-master-rax-surface-task-pack.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/58-dev-master-rax-surface-task-pack.md)
+- 新 `dev` 的 runtime bridge 审计：
+  - [59-dev-master-runtime-bridge-audit.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/59-dev-master-runtime-bridge-audit.md)
 - MCP 官方对齐与分阶段执行路线图：
   - [13-mcp-official-alignment-roadmap.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/13-mcp-official-alignment-roadmap.md)
 - Agent Core raw runtime kernel 总纲：
