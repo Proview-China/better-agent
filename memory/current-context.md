@@ -5,9 +5,10 @@
 ## 当前主线
 
 - 当前项目级主线已经切换到新的 `dev` / `dev-master`。
-- 当前主线提交：
-  - `cf394e2`
-  - `Document Batch 2 preflight and add CMP scripts`
+- 当前主线当前代表的是：
+  - reboot 基座
+  - `CMP` Batch 1
+  - `rax` Phase A
 - 旧 `dev` 已归档为：
   - `archive/dev-legacy-2026-04-01`
   - `8d97096`
@@ -23,13 +24,15 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 
 - 以 reboot/TAP 为底座
 - 已把 `CMP` 的文档、infra、支撑层安全接回新主线
-- 并且已经补上 `CMP` 的基础脚本入口与 Batch 2 前置清单
-- 但真正危险的 runtime assembly 收口还没开始
+- 已补上 `CMP` 的基础脚本入口
+- 已完成 `rax` 的 Phase A
+- 但 `cmp-runtime` / `cmp-facade` / `runtime assembly` 仍未进入实现
 
 白话：
 
 - 新地基已经立住
 - `CMP` 的低耦合主体已经装回来
+- `rax` 的第一层门面已经接回
 - 真正最危险的 runtime 总装还没开始
 
 ## 当前已经确定的架构事实
@@ -106,10 +109,17 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 
 - `infra/cmp/**`
 - `scripts/cmp-status-panel-server.mjs`
+- `package.json` 里的：
+  - `cmp:infra:up`
+  - `cmp:infra:down`
+  - `cmp:infra:ps`
+  - `cmp:infra:status`
+  - `cmp:status:serve`
 
-这意味着：
+白话：
 
 - `CMP` 的本地 infra 面和状态面板脚本已经进入当前主线
+- 基础脚本入口也已经在位
 
 ### 四、`CMP` 支撑层代码
 
@@ -126,24 +136,7 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 - `CMP` 的协议、git/DB/MQ 支撑层、runtime 支撑层已经进入新 `dev`
 - 但五角色和总装入口还没接回来
 
-### 五、低风险总装入口
-
-当前已经接回新主线：
-
-- `package.json` 里的：
-  - `cmp:infra:up`
-  - `cmp:infra:down`
-  - `cmp:infra:ps`
-  - `cmp:infra:status`
-  - `cmp:status:serve`
-- `docs/ability/56-dev-master-batch2-preflight.md`
-
-白话：
-
-- 现在 `CMP` 的基础脚本入口已经在主线上
-- Batch 2 的前置风险清单也已经形成文档
-
-### 六、`rax` 低风险 `CMP` 表面切片
+### 五、`rax` 低风险 `CMP` 表面
 
 当前已经接回新主线：
 
@@ -151,13 +144,17 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 - `src/rax/cmp-domain.test.ts`
 - `src/rax/cmp-connectors.ts`
 - `src/rax/cmp-connectors.test.ts`
-- `src/rax/index.ts` 的最小相关 export
-- `src/index.ts` 的 `cmp-domain` 公共出口
+- `src/rax/cmp-types.ts`
+- `src/rax/cmp-config.ts`
+- `src/rax/cmp-config.test.ts`
+- `src/rax/cmp-status-panel.ts`
+- `src/rax/cmp-status-panel.test.ts`
+- `src/rax/index.ts` 的 Phase A 相关 export
 
 白话：
 
-- 我们还没有接 `rax.cmp`
-- 但已经先把最独立、最不容易误伤总装主链的 `CMP` 表面模块接回来了
+- `CMP` 的 domain、connectors、types、config、status panel 已经在主线
+- 但 `rax.cmp` runtime/facade 还没有接回来
 
 ## 当前还没有接回来的高风险部分
 
@@ -165,11 +162,8 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 
 - `src/agent_core/runtime.ts`
 - `src/agent_core/runtime.test.ts`
-- `src/rax/cmp-config.ts`
-- `src/rax/cmp-types.ts`
-- `src/rax/cmp-status-panel.ts`
-- `src/rax/cmp-facade.ts`
 - `src/rax/cmp-runtime.ts`
+- `src/rax/cmp-facade.ts`
 - `src/agent_core/cmp-five-agent/**`
 - `src/agent_core/integrations/model-inference*.ts`
 - 五角色 live LLM 化的更深接线
@@ -177,7 +171,7 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 原因：
 
 - 它们是 reboot/TAP 基座与 `CMP` 主体真正会撞上的高风险装配口
-- 一旦过早处理，容易把当前新主线再次打散
+- 其中 `cmp-runtime.ts` 不能按 `cmp/mp` 原样搬回，因为当前主线的 `agent_core/runtime.ts` 还没有它依赖的那整组 `CMP workflow` 方法
 
 ## 当前验证基线
 
@@ -196,11 +190,13 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
   - `3 pass / 0 fail`
 - `npx tsx --test src/rax/cmp-connectors.test.ts`
   - `4 pass / 0 fail`
+- `npx tsx --test src/rax/cmp-config.test.ts src/rax/cmp-status-panel.test.ts`
+  - `5 pass / 0 fail`
 
 白话：
 
-- Batch 1 接回来的 `CMP` 支撑层已经能在新主线上站住
-- 这不是只把文件搬过来，还已经过了最小验证
+- Batch 1 和 `rax` Phase A 都已经过了最小验证
+- 这不是只把文件搬过来，还已经在当前主线上站住了
 
 ## 当前最重要的文档入口
 
@@ -212,6 +208,8 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 - `docs/ability/54-dev-master-conflict-research-plan.md`
 - `docs/ability/55-dev-master-batch1-task-pack.md`
 - `docs/ability/56-dev-master-batch2-preflight.md`
+- `docs/ability/57-dev-master-deepcheck-report-wave2.md`
+- `docs/ability/58-dev-master-rax-surface-task-pack.md`
 
 ## 当前最推荐下一步
 
@@ -221,11 +219,14 @@ Praxis 现在已经从“纯 reboot 基座”推进到：
 
 1. 继续做 `runtime assembly` 桥位盘点
 2. 判断 `cmp-five-agent` 的最小准入边界
-3. 在明确桥位后，再进入：
+3. 重新定义 `cmp-runtime` 的最小诚实形态
+   白话：决定它是继续后置，还是先做一个 thin runtime shell
+4. 在明确桥位后，再进入：
+   - `cmp-runtime`
    - `cmp-five-agent`
    - runtime assembly
 
 一句收口：
 
-- Praxis 现在已经完成了 reboot 基座 + `CMP` 支撑层 + 基础脚本入口的第一轮接合
-- 下一步开始进入真正的高风险 runtime 总装阶段
+- Praxis 现在已经完成了 reboot 基座 + `CMP` 支撑层 + `rax` Phase A 的第一轮接合
+- 下一步开始进入真正的高风险 runtime 总装前置研究
