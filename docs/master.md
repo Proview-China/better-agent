@@ -138,9 +138,56 @@
   - [28-tap-runtime-wave0-implementation-status.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/28-tap-runtime-wave0-implementation-status.md)
 - TAP runtime 补全并行编码任务包：
   - [tap-runtime-completion-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-runtime-completion-task-pack/README.md)
+- CMP 总纲：
+  - [29-cmp-context-management-pool-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/29-cmp-context-management-pool-outline.md)
+- CMP Part 1: core interface 与 canonical object model：
+  - [30-cmp-core-interface-and-canonical-object-model.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/30-cmp-core-interface-and-canonical-object-model.md)
+- CMP Part 2: git lineage repo 与同步治理：
+  - [31-cmp-git-lineage-repo-and-sync-governance.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/31-cmp-git-lineage-repo-and-sync-governance.md)
+- CMP Part 3: DB projection 与邻接广播契约：
+  - [32-cmp-db-projection-and-neighborhood-broadcast-contract.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/32-cmp-db-projection-and-neighborhood-broadcast-contract.md)
+- CMP Part 4: 五 agent 运行拓扑与主动/被动模式：
+  - [33-cmp-five-agent-runtime-and-active-passive-flow.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/33-cmp-five-agent-runtime-and-active-passive-flow.md)
+- CMP infra 真实 backend 与 bootstrap 总纲：
+  - [34-cmp-infra-real-backend-and-bootstrap-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/34-cmp-infra-real-backend-and-bootstrap-outline.md)
+- CMP infra 收尾总纲：
+  - [35-cmp-infra-closure-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/35-cmp-infra-closure-outline.md)
+- RAX CMP 工作流接入总纲：
+  - [36-rax-cmp-workflow-integration-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/36-rax-cmp-workflow-integration-outline.md)
+- TAP 第一波 capability 接入总纲：
+  - [37-tap-first-wave-capability-intake-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/37-tap-first-wave-capability-intake-outline.md)
+- CMP/MP 十 agent 最小能力基线：
+  - [38-cmp-mp-ten-agent-minimum-capability-baseline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/38-cmp-mp-ten-agent-minimum-capability-baseline.md)
+- CMP runtime 正式接入与 TAP 最小接缝总纲：
+  - [39-cmp-runtime-live-integration-and-tap-bridge-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/39-cmp-runtime-live-integration-and-tap-bridge-outline.md)
+- CMP 非五-agent收口总纲：
+  - [40-cmp-non-five-agent-closure-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/40-cmp-non-five-agent-closure-outline.md)
+- TAP capability family 与三角色总装配总纲：
+  - [41-tap-capability-family-and-three-agent-assembly-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/41-tap-capability-family-and-three-agent-assembly-outline.md)
+- TAP 第一波 capability 接入任务包：
+  - [tap-first-wave-capability-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-first-wave-capability-task-pack/README.md)
+- CMP infra 并行编码任务包：
+  - [cmp-infra-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-infra-task-pack/README.md)
+- CMP infra 收尾并行编码任务包：
+  - [cmp-infra-closure-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-infra-closure-task-pack/README.md)
+- RAX CMP 工作流接入任务包：
+  - [rax-cmp-workflow-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/rax-cmp-workflow-task-pack/README.md)
+- CMP runtime 正式接入与联调任务包：
+  - [cmp-runtime-live-integration-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-runtime-live-integration-task-pack/README.md)
+- CMP 非五-agent收口任务包：
+  - [cmp-non-five-agent-closure-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-non-five-agent-closure-task-pack/README.md)
+  - [cmp-non-five-agent-closure-task-pack/part0-program-control/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-non-five-agent-closure-task-pack/part0-program-control/README.md)
+- TAP capability family 与三角色并行任务包：
+  - [tap-capability-family-and-three-agent-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-capability-family-and-three-agent-task-pack/README.md)
+- CMP 并行编码任务包：
+  - [cmp-implementation-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-implementation-task-pack/README.md)
 - T/A Pool 并行编码任务包：
   - [ta-pool-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/ta-pool-task-pack/README.md)
 - TAP 第二阶段可用化任务包：
   - [tap-usable-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/tap-usable-task-pack/README.md)
 - Agent Core 并行编码任务包：
   - [agent-core-runtime-kernel-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/agent-core-runtime-kernel-task-pack/README.md)
+- CMP 最终收尾总纲：
+  - [46-cmp-final-closure-outline.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/46-cmp-final-closure-outline.md)
+- CMP 最终收尾任务包：
+  - [cmp-final-closure-task-pack/README.md](/home/proview/Desktop/Praxis_series/Praxis/docs/ability/cmp-final-closure-task-pack/README.md)

@@ -40,6 +40,9 @@ export function recoverFromCheckpoint(
     poolRuntimeSnapshots: checkpoint?.snapshot?.poolRuntimeSnapshots
       ? structuredClone(checkpoint.snapshot.poolRuntimeSnapshots)
       : undefined,
+    cmpRuntimeSnapshot: checkpoint?.snapshot?.cmpRuntimeSnapshot
+      ? structuredClone(checkpoint.snapshot.cmpRuntimeSnapshot)
+      : undefined,
     replayedEvents,
     resumeCursor: replayedEvents.at(-1)?.cursor ?? checkpoint?.record.journalCursor
   };

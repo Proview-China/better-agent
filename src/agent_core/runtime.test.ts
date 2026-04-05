@@ -1,26 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
-  createMcpReadCapabilityPackage,
-  createRaxWebsearchCapabilityPackage,
-} from "./capability-package/index.js";
 import { createGoalSource } from "./goal/goal-source.js";
 import type { ModelInferenceExecutionResult } from "./integrations/model-inference.js";
-import { createRaxMcpCapabilityManifest } from "./integrations/rax-mcp-adapter.js";
 import { createRaxSearchGroundCapabilityDefinition } from "./integrations/rax-port.js";
-import { createRaxMcpCapabilityAdapter } from "./integrations/rax-mcp-adapter.js";
-import { createRaxWebsearchActivationFactory } from "./integrations/rax-websearch-adapter.js";
 import { createAgentCoreRuntime } from "./runtime.js";
-import type { CapabilityAdapter, CapabilityCallIntent, CapabilityPackage } from "./index.js";
-import { createAgentCapabilityProfile, createProvisionArtifactBundle, createProvisionRequest } from "./ta-pool-types/index.js";
-import { createFirstWaveCapabilityProfile } from "./ta-pool-model/index.js";
+import type { CapabilityAdapter, CapabilityCallIntent, CmpActionIntent } from "./index.js";
+import {
+  createAgentLineage,
+  createCmpAgentLocalTableSet,
+  createCmpBranchFamily,
+  createCmpDbPostgresAdapter,
+  createCmpGitAgentBranchRuntime,
+  createInMemoryCmpGitBackend,
+  type CmpGitBranchRef,
+  type CmpGitProjectRepoBootstrapPlan,
+  createCmpGitLineageNode,
+  createCmpGitProjectRepo,
+  createCmpGitProjectRepoBootstrapPlan,
+  createCmpProjectDbTopology,
+  createInMemoryCmpRedisMqAdapter,
+} from "./index.js";
+import { createAgentCapabilityProfile, createProvisionRequest } from "./ta-pool-types/index.js";
 import { createReviewerRuntime } from "./ta-pool-review/index.js";
-import { createToolReviewGovernanceTrace } from "./ta-pool-tool-review/index.js";
 import { TA_ENFORCEMENT_METADATA_KEY } from "./ta-pool-runtime/enforcement-guard.js";
-import { createTaPendingReplay, createTaResumeEnvelope } from "./ta-pool-runtime/index.js";
-import type { RaxFacade } from "../rax/facade.js";
 import {
   DEFAULT_COMPATIBILITY_PROFILES,
   McpNativeRuntime,
@@ -30,22 +33,6 @@ import {
   defaultCapabilityRouter,
   type WebSearchRuntimeLike,
 } from "../rax/index.js";
-
-function readCapabilityAccessAssignment(
-  metadata: Record<string, unknown> | undefined,
-): string | undefined {
-  const capabilityAccess = metadata?.capabilityAccess;
-  if (
-    capabilityAccess
-    && typeof capabilityAccess === "object"
-    && "assignment" in capabilityAccess
-    && typeof capabilityAccess.assignment === "string"
-  ) {
-    return capabilityAccess.assignment;
-  }
-
-  return undefined;
-}
 
 function createFakeRaxFacade() {
   const fakeWebSearchRuntime: WebSearchRuntimeLike = {
@@ -89,84 +76,6 @@ function createFakeRaxFacade() {
   );
 }
 
-function createFakeMcpFacade(): Pick<RaxFacade, "mcp"> {
-  return {
-    mcp: {
-      shared: {} as RaxFacade["mcp"]["shared"],
-      native: {
-        prepare: () => {
-          throw new Error("not used");
-        },
-        serve: () => {
-          throw new Error("not used");
-        },
-        build: () => {
-          throw new Error("not used");
-        },
-        compose: () => {
-          throw new Error("not used");
-        },
-        execute: async () => {
-          throw new Error("not used");
-        },
-        composeAndExecute: async () => {
-          throw new Error("not used");
-        },
-      },
-      use: async () => {
-        throw new Error("not used");
-      },
-      connect: async () => {
-        throw new Error("not used");
-      },
-      listConnections: () => [],
-      disconnect: async () => {},
-      disconnectAll: async () => {},
-      listTools: async (options) => ({
-        connectionId: options.input.connectionId,
-        tools: [{ name: "browser.search" }, { name: "filesystem.read" }],
-      }),
-      listResources: async () => {
-        throw new Error("not used");
-      },
-      readResource: async (options) => ({
-        connectionId: options.input.connectionId,
-        uri: options.input.uri,
-        contents: [{ type: "text", text: "resource-body" }],
-      }),
-      listPrompts: async () => {
-        throw new Error("not used");
-      },
-      getPrompt: async () => {
-        throw new Error("not used");
-      },
-      call: async () => {
-        throw new Error("not used");
-      },
-      serve: () => {
-        throw new Error("not used");
-      },
-    },
-  };
-}
-
-function toRuntimeCapabilityManifest(
-  capabilityPackage: CapabilityPackage,
-  capabilityId: string,
-) {
-  return {
-    capabilityId,
-    capabilityKey: capabilityPackage.manifest.capabilityKey,
-    kind: capabilityPackage.manifest.capabilityKind,
-    version: capabilityPackage.manifest.version,
-    generation: capabilityPackage.manifest.generation,
-    description: capabilityPackage.manifest.description,
-    routeHints: capabilityPackage.manifest.routeHints,
-    tags: capabilityPackage.manifest.tags,
-    metadata: capabilityPackage.manifest.metadata,
-  };
-}
-
 test("AgentCoreRuntime wires session, run, and internal journal flow together", async () => {
   const runtime = createAgentCoreRuntime();
   const session = runtime.createSession();
@@ -191,6 +100,189 @@ test("AgentCoreRuntime wires session, run, and internal journal flow together", 
     runtime.readRunEvents(outcome.run.runId).map((entry) => entry.event.type),
     ["run.created", "state.delta_applied", "intent.queued"],
   );
+});
+
+test("AgentCoreRuntime can keep CMP infra backends on the runtime boundary without wiring them yet", async () => {
+  const projectId = "proj-runtime-cmp-backends";
+  const topology = createCmpProjectDbTopology({
+    projectId,
+  });
+  const lineage = createCmpGitLineageNode({
+    agentId: "main",
+    projectId,
+    status: "active",
+  });
+  const projectRepo = createCmpGitProjectRepo({
+    projectId,
+    repoName: "proj-runtime-cmp-backends",
+  });
+  const branchRuntime = createCmpGitAgentBranchRuntime({
+    lineage,
+    projectRepo,
+    repoRootPath: "/tmp/praxis/proj-runtime-cmp-backends",
+  });
+
+  const gitBackend = {
+    bootstrapProjectRepo(plan: ReturnType<typeof createCmpGitProjectRepoBootstrapPlan>) {
+      return {
+        projectRepo: plan.projectRepo,
+        repoRootPath: plan.repoRootPath,
+        defaultBranchName: plan.defaultBranchName,
+        createdBranchNames: plan.branchKinds.map((kind) => `${kind}/${plan.projectRepo.defaultAgentId}`),
+        status: "bootstrapped" as const,
+      };
+    },
+    bootstrapAgentBranchRuntime(runtime: typeof branchRuntime) {
+      return [runtime.branchFamily.cmp.fullRef, runtime.branchFamily.work.fullRef] as const;
+    },
+    readBranchHead(runtime: typeof branchRuntime) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+      };
+    },
+    writeCheckedRef(runtime: typeof branchRuntime, commitSha: string) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+        checkedRefName: runtime.checkedRefName,
+        checkedCommitSha: commitSha,
+      };
+    },
+    writePromotedRef(runtime: typeof branchRuntime, commitSha: string) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+        promotedRefName: runtime.promotedRefName,
+        promotedCommitSha: commitSha,
+      };
+    },
+  };
+  const dbAdapter = createCmpDbPostgresAdapter({
+    topology,
+    localTableSets: [
+      createCmpAgentLocalTableSet({
+        projectId,
+        agentId: "main",
+      }),
+    ],
+  });
+  const mqAdapter = createInMemoryCmpRedisMqAdapter();
+
+  const runtime = createAgentCoreRuntime({
+    cmpInfraBackends: {
+      git: gitBackend,
+      db: dbAdapter,
+      mq: mqAdapter,
+    },
+  });
+
+  assert.equal(runtime.cmpInfraBackends.git, gitBackend);
+  assert.equal(runtime.cmpInfraBackends.db, dbAdapter);
+  assert.equal(runtime.cmpInfraBackends.mq, mqAdapter);
+});
+
+test("AgentCoreRuntime can bootstrap CMP infra through configured git and mq backends", async () => {
+  const projectId = "proj-runtime-bootstrap";
+  const gitBackend = {
+    bootstrapProjectRepo(plan: CmpGitProjectRepoBootstrapPlan) {
+      return {
+        projectRepo: plan.projectRepo,
+        repoRootPath: plan.repoRootPath,
+        defaultBranchName: plan.defaultBranchName,
+        createdBranchNames: plan.branchKinds.map((kind: string) => `${kind}/${plan.projectRepo.defaultAgentId}`),
+        status: "bootstrapped" as const,
+      };
+    },
+    bootstrapAgentBranchRuntime(runtime: { branchFamily: { work: { fullRef: string }; cmp: { fullRef: string }; mp: { fullRef: string }; tap: { fullRef: string } } }) {
+      return [
+        runtime.branchFamily.work.fullRef,
+        runtime.branchFamily.cmp.fullRef,
+        runtime.branchFamily.mp.fullRef,
+        runtime.branchFamily.tap.fullRef,
+      ] as const;
+    },
+    readBranchHead(runtime: { branchFamily: { cmp: CmpGitBranchRef } }) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+      };
+    },
+    writeCheckedRef(runtime: { branchFamily: { cmp: CmpGitBranchRef }; checkedRefName: string }, commitSha: string) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+        checkedRefName: runtime.checkedRefName,
+        checkedCommitSha: commitSha,
+      };
+    },
+    writePromotedRef(runtime: { branchFamily: { cmp: CmpGitBranchRef }; promotedRefName: string }, commitSha: string) {
+      return {
+        branchRef: runtime.branchFamily.cmp,
+        promotedRefName: runtime.promotedRefName,
+        promotedCommitSha: commitSha,
+      };
+    },
+  };
+  const runtime = createAgentCoreRuntime({
+    cmpInfraBackends: {
+      git: gitBackend,
+      mq: createInMemoryCmpRedisMqAdapter(),
+      db: createCmpDbPostgresAdapter({
+        topology: createCmpProjectDbTopology({
+          projectId,
+        }),
+        localTableSets: [
+          createCmpAgentLocalTableSet({
+            projectId,
+            agentId: "main",
+          }),
+        ],
+      }),
+      dbExecutor: {
+        connection: {
+          databaseName: projectId,
+        },
+        async executeStatement() {
+          throw new Error("not used in bootstrapCmpProjectInfra test");
+        },
+        async executeBootstrapContract(contract) {
+          return {
+            receipt: {
+              projectId: contract.projectId,
+              databaseName: contract.databaseName,
+              schemaName: contract.schemaName,
+              status: "bootstrapped" as const,
+              expectedTargetCount: contract.readbackStatements.length,
+              presentTargetCount: contract.readbackStatements.length,
+              readbackRecords: contract.readbackStatements.map((statement) => ({
+                target: statement.target,
+                schemaName: contract.schemaName,
+                tableName: statement.target.split(".").slice(1).join("."),
+                tableRef: statement.target,
+                status: "present" as const,
+              })),
+            },
+            bootstrapExecutions: [],
+            readbackExecutions: [],
+          };
+        },
+      },
+    },
+  });
+
+  const receipt = await runtime.bootstrapCmpProjectInfra({
+    projectId,
+    repoName: projectId,
+    repoRootPath: `/tmp/praxis/${projectId}`,
+    agents: [
+      { agentId: "main", depth: 0 },
+      { agentId: "child-a", parentAgentId: "main", depth: 1 },
+    ],
+  });
+
+  assert.equal(receipt.git.projectRepo.projectId, projectId);
+  assert.equal(receipt.gitBranchBootstraps.length, 2);
+  assert.equal(receipt.dbReceipt.status, "bootstrapped");
+  assert.equal(receipt.mqBootstraps.length, 2);
+  assert.equal(runtime.listCmpLineages().length, 2);
+  assert.equal(runtime.getCmpProjectInfraBootstrapReceipt(projectId)?.git.projectRepo.projectId, projectId);
+  assert.equal(runtime.listCmpProjectInfraBootstrapReceipts().length, 1);
 });
 
 test("AgentCoreRuntime can dispatch a capability intent through the new gateway and pool path", async () => {
@@ -284,7 +376,7 @@ test("AgentCoreRuntime can dispatch a capability intent through the new gateway 
 
 test("AgentCoreRuntime can resolve a baseline T/A grant and dispatch it through the pooled path", async () => {
   const runtime = createAgentCoreRuntime({
-    taProfile: createFirstWaveCapabilityProfile({
+    taProfile: createAgentCapabilityProfile({
       profileId: "profile.runtime",
       agentClass: "main-agent",
       baselineCapabilities: ["search.ground"],
@@ -354,7 +446,6 @@ test("AgentCoreRuntime can resolve a baseline T/A grant and dispatch it through 
   });
 
   assert.equal(resolved.status, "baseline_granted");
-  assert.equal(readCapabilityAccessAssignment(resolved.grant.metadata), "baseline");
 
   const dispatched = await runtime.dispatchTaCapabilityGrant({
     grant: resolved.grant,
@@ -465,280 +556,12 @@ test("AgentCoreRuntime routes capability_call through TAP by default in dispatch
   );
 });
 
-test("AgentCoreRuntime default TAP dispatch applies governance tool-policy overrides before baseline fast path", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.tap-governance-default-route",
-      agentClass: "main-agent",
-      baselineCapabilities: ["search.ground"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-tap-governance-default-route",
-      sessionId: session.sessionId,
-      userInput: "Governance object should override default TAP routing.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const intent: CapabilityCallIntent = {
-    intentId: "intent-tap-governance-default-route-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: new Date("2026-03-30T09:00:00.000Z").toISOString(),
-    priority: "high",
-    request: {
-      requestId: "request-tap-governance-default-route-1",
-      intentId: "intent-tap-governance-default-route-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "search.ground",
-      input: {
-        query: "Force human review through governance override",
-      },
-      priority: "high",
-      metadata: {
-        tapUserOverride: {
-          toolPolicyOverrides: [
-            {
-              capabilitySelector: "search.ground",
-              policy: "human_gate",
-            },
-          ],
-        },
-      },
-    },
-  };
-
-  const dispatched = await runtime.dispatchIntent(intent);
-
-  assert.equal(dispatched.status, "waiting_human");
-  assert.equal(dispatched.dispatch, undefined);
-  assert.equal(dispatched.grant, undefined);
-  assert.equal(dispatched.reviewDecision?.decision, "escalated_to_human");
-  assert.equal(runtime.listTaHumanGates().length, 1);
-  assert.equal(runtime.listReviewerDurableStates().at(-1)?.decision, "escalated_to_human");
-  const userSurface = runtime.createTapUserSurfaceSnapshot();
-  assert.equal(userSurface.currentLayer, "reviewer");
-  assert.equal(userSurface.pendingHumanGateCount, 2);
-  assert.deepEqual(userSurface.activeCapabilityKeys, []);
-  assert.match(userSurface.summary, /waiting for 2 human approval/i);
-});
-
-test("AgentCoreRuntime dispatches MCP read family capability packages through the default TAP path", async () => {
-  const listToolsPackage = createMcpReadCapabilityPackage({
-    capabilityKey: "mcp.listTools",
-  });
-  const readResourcePackage = createMcpReadCapabilityPackage({
-    capabilityKey: "mcp.readResource",
-  });
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.mcp-read-default-route",
-      agentClass: "main-agent",
-      baselineCapabilities: [
-        listToolsPackage.manifest.capabilityKey,
-        readResourcePackage.manifest.capabilityKey,
-      ],
-    }),
-  });
-  const adapter = createRaxMcpCapabilityAdapter({
-    facade: createFakeMcpFacade(),
-  });
-
-  runtime.registerCapabilityAdapter(
-    toRuntimeCapabilityManifest(listToolsPackage, "cap-mcp-list-tools"),
-    adapter,
-  );
-  runtime.registerCapabilityAdapter(
-    toRuntimeCapabilityManifest(readResourcePackage, "cap-mcp-read-resource"),
-    adapter,
-  );
-
-  const scenarios = [
-    {
-      package: listToolsPackage,
-      goalId: "goal-runtime-mcp-list-tools-default-route",
-      runIdSuffix: "list-tools",
-      requestInput: {
-        route: { provider: "openai", model: "gpt-5.4" },
-        input: { connectionId: "conn-read-1" },
-      },
-    },
-    {
-      package: readResourcePackage,
-      goalId: "goal-runtime-mcp-read-resource-default-route",
-      runIdSuffix: "read-resource",
-      requestInput: {
-        route: { provider: "openai", model: "gpt-5.4" },
-        input: { connectionId: "conn-read-1", uri: "memory://resource" },
-      },
-    },
-  ] as const;
-
-  for (const scenario of scenarios) {
-    const session = runtime.createSession();
-    const goal = runtime.createCompiledGoal(
-      createGoalSource({
-        goalId: scenario.goalId,
-        sessionId: session.sessionId,
-        userInput: `Dispatch ${scenario.package.manifest.capabilityKey} through TAP.`,
-      }),
-    );
-    const created = await runtime.createRun({
-      sessionId: session.sessionId,
-      goal,
-    });
-
-    const result = await runtime.dispatchIntent({
-      intentId: `intent-${scenario.runIdSuffix}`,
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      kind: "capability_call",
-      createdAt: "2026-03-25T09:00:00.000Z",
-      priority: "high",
-      request: {
-        requestId: `request-${scenario.runIdSuffix}`,
-        intentId: `intent-${scenario.runIdSuffix}`,
-        sessionId: session.sessionId,
-        runId: created.run.runId,
-        capabilityKey: scenario.package.manifest.capabilityKey,
-        input: scenario.requestInput,
-        priority: "high",
-      },
-    });
-
-    assert.equal(result.status, "dispatched");
-    assert.equal(result.grant?.capabilityKey, scenario.package.manifest.capabilityKey);
-    assert.equal(result.dispatch?.prepared.capabilityKey, scenario.package.manifest.capabilityKey);
-    assert.equal(result.runOutcome?.run.runId, created.run.runId);
-    assert.deepEqual(
-      runtime.readRunEvents(created.run.runId).map((entry) => entry.event.type).slice(-3),
-      ["capability.result_received", "state.delta_applied", "intent.queued"],
-    );
-  }
-});
-
-test("AgentCoreRuntime can dispatch search.ground through TAP after package-backed activation materialization", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.tap.search-ground-package",
-      agentClass: "main-agent",
-      baselineCapabilities: ["search.ground"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-search-ground-package",
-      sessionId: session.sessionId,
-      userInput: "Package-backed grounded search should dispatch through TAP.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const capabilityPackage = createRaxWebsearchCapabilityPackage();
-  runtime.registerTaActivationFactory(
-    RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
-    createRaxWebsearchActivationFactory({
-      facade: createFakeRaxFacade(),
-    }),
-  );
-
-  const provisionRequest = createProvisionRequest({
-    provisionId: "provision-search-ground-package-1",
-    sourceRequestId: "source-search-ground-package-1",
-    requestedCapabilityKey: capabilityPackage.manifest.capabilityKey,
-    requestedTier: "B1",
-    reason: "Activate the package-backed search.ground capability through TAP runtime.",
-    replayPolicy: capabilityPackage.replayPolicy,
-    createdAt: "2026-03-25T00:00:00.000Z",
-  });
-  const provisionBundle = createProvisionArtifactBundle({
-    bundleId: capabilityPackage.metadata?.bundleId as string,
-    provisionId: provisionRequest.provisionId,
-    status: "ready",
-    toolArtifact: capabilityPackage.artifacts?.toolArtifact,
-    bindingArtifact: capabilityPackage.artifacts?.bindingArtifact,
-    verificationArtifact: capabilityPackage.artifacts?.verificationArtifact,
-    usageArtifact: capabilityPackage.artifacts?.usageArtifact,
-    activationSpec: capabilityPackage.activationSpec,
-    replayPolicy: capabilityPackage.replayPolicy,
-    completedAt: "2026-03-25T00:00:00.500Z",
-    metadata: {
-      source: "runtime-test",
-      packageKey: capabilityPackage.manifest.capabilityKey,
-    },
-  });
-  runtime.provisionerRuntime?.registry.registerRequest(provisionRequest);
-  runtime.provisionerRuntime?.registry.attachBundle(provisionBundle);
-  const provisionRecord = runtime.provisionerRuntime?.registry.get(provisionRequest.provisionId);
-  assert.ok(provisionRecord?.bundle);
-  runtime.provisionerRuntime?.assetIndex.ingest(provisionRecord);
-
-  const activation = await runtime.activateTaProvisionAsset(provisionRequest.provisionId);
-  assert.equal(activation.status, "activated");
-  assert.equal(activation.activation?.status, "active");
-  assert.equal(runtime.listTaActivationAttempts().length, 1);
-
-  const intent: CapabilityCallIntent = {
-    intentId: "intent-search-ground-package-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T00:00:01.000Z",
-    priority: "high",
-    request: {
-      requestId: "request-search-ground-package-1",
-      intentId: "intent-search-ground-package-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "search.ground",
-      input: {
-        provider: "openai",
-        model: "gpt-5.4",
-        query: "What is Praxis?",
-      },
-      priority: "high",
-    },
-  };
-
-  const dispatched = await runtime.dispatchCapabilityIntentViaTaPool(intent, {
-    agentId: "agent-main",
-    requestedTier: "B1",
-    mode: "standard",
-    reason: "Package-backed search.ground should dispatch as a first-class TAP capability.",
-  });
-
-  assert.equal(capabilityPackage.activationSpec?.targetPool, "ta-capability-pool");
-  assert.equal(dispatched.status, "dispatched");
-  assert.equal(dispatched.grant?.capabilityKey, "search.ground");
-  assert.equal(dispatched.dispatch?.prepared.capabilityKey, "search.ground");
-
-  await new Promise((resolve) => setTimeout(resolve, 20));
-
-  assert.ok(
-    runtime.readRunEvents(created.run.runId).some((entry) => {
-      return entry.event.type === "capability.result_received";
-    }),
-  );
-});
-
 test("AgentCoreRuntime surfaces review-required T/A access when capability is not baseline", async () => {
   const runtime = createAgentCoreRuntime({
-    taProfile: createFirstWaveCapabilityProfile({
+    taProfile: createAgentCapabilityProfile({
       profileId: "profile.runtime",
       agentClass: "main-agent",
-      reviewOnlyCapabilities: ["mcp.playwright"],
+      baselineCapabilities: ["docs.read"],
     }),
   });
   const session = runtime.createSession();
@@ -766,68 +589,14 @@ test("AgentCoreRuntime surfaces review-required T/A access when capability is no
 
   assert.equal(resolved.status, "review_required");
   assert.equal(resolved.request.requestedCapabilityKey, "mcp.playwright");
-  assert.equal(readCapabilityAccessAssignment(resolved.request.metadata), "review_only");
-});
-
-test("AgentCoreRuntime uses packaged MCP call policy as a review-required thick capability", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.mcp-call-package",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["mcp.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-mcp-call-package",
-      sessionId: session.sessionId,
-      userInput: "Route MCP tool calls through TAP package policy.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const manifest = createRaxMcpCapabilityManifest({
-    capabilityKey: "mcp.call",
-  });
-  const capabilityPackage = manifest.metadata?.capabilityPackage as {
-    policy: {
-      defaultBaseline: {
-        grantedTier: "B1" | "B2" | "B3" | "B0";
-      };
-      recommendedMode: "standard" | "restricted" | "permissive" | "balanced" | "strict" | "yolo" | "bapr";
-      riskLevel: string;
-    };
-  };
-
-  const resolved = runtime.resolveTaCapabilityAccess({
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    agentId: "agent-main",
-    capabilityKey: manifest.capabilityKey,
-    reason: "Packaged MCP tool calls should go through reviewer flow first.",
-    requestedTier: capabilityPackage.policy.defaultBaseline.grantedTier,
-    mode: capabilityPackage.policy.recommendedMode,
-    metadata: {
-      riskLevel: capabilityPackage.policy.riskLevel,
-    },
-  });
-
-  assert.equal(resolved.status, "review_required");
-  assert.equal(resolved.request.requestedCapabilityKey, "mcp.call");
-  assert.equal(resolved.request.requestedTier, capabilityPackage.policy.defaultBaseline.grantedTier);
-  assert.equal(resolved.request.mode, capabilityPackage.policy.recommendedMode);
 });
 
 test("AgentCoreRuntime can assemble review -> dispatch through T/A pool for available capabilities", async () => {
   const runtime = createAgentCoreRuntime({
-    taProfile: createFirstWaveCapabilityProfile({
+    taProfile: createAgentCapabilityProfile({
       profileId: "profile.runtime.review",
       agentClass: "main-agent",
+      baselineCapabilities: ["docs.read"],
       allowedCapabilityPatterns: ["search.*"],
     }),
   });
@@ -880,19 +649,6 @@ test("AgentCoreRuntime can assemble review -> dispatch through T/A pool for avai
     generation: 1,
     description: "Review-driven grounded search capability.",
   }, adapter);
-
-  const resolved = runtime.resolveTaCapabilityAccess({
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    agentId: "agent-main",
-    capabilityKey: "search.ground",
-    reason: "Pattern-allowed capability should stay on the reviewer path in balanced mode.",
-    requestedTier: "B1",
-    mode: "balanced",
-  });
-
-  assert.equal(resolved.status, "review_required");
-  assert.equal(readCapabilityAccessAssignment(resolved.request.metadata), "allowed_pattern");
 
   const intent: CapabilityCallIntent = {
     intentId: "intent-ta-review-1",
@@ -1092,18 +848,6 @@ test("AgentCoreRuntime can assemble review -> provisioning through T/A pool for 
     requestedTier: "B2",
     mode: "balanced",
     reason: "Capability is currently missing and should trigger provisioning.",
-    metadata: {
-      tapGovernanceDirective: {
-        governanceObjectId: "tap-governance:test-provision-replay",
-        effectiveMode: "permissive",
-        automationDepth: "prefer_auto",
-        explanationStyle: "plain_language",
-        derivedRiskLevel: "normal",
-        matchedToolPolicy: "review_only",
-        matchedToolPolicySelector: "computer.use",
-        forceHumanByRisk: false,
-      },
-    },
   });
 
   assert.equal(result.status, "provisioned");
@@ -1112,45 +856,7 @@ test("AgentCoreRuntime can assemble review -> provisioning through T/A pool for 
   assert.equal(result.provisionBundle?.status, "ready");
   assert.equal(result.replay?.policy, "re_review_then_dispatch");
   assert.equal(result.replay?.state, "pending_re_review");
-  assert.equal(typeof result.replay?.resumeEnvelopeId, "string");
-  assert.equal(result.replay?.resumeEnvelopeId?.startsWith("resume:replay:"), true);
   assert.equal(runtime.listTaPendingReplays().length, 1);
-  assert.deepEqual(runtime.listResumableTmaSessions(), []);
-  assert.equal(
-    (result.provisionBundle?.metadata?.tmaDeliveryReceipt as { completionTarget?: string } | undefined)?.completionTarget,
-    "ready_bundle",
-  );
-  const replayEnvelope = runtime.listTaResumeEnvelopes().find((entry) => entry.source === "replay");
-  assert.equal(
-    (
-      replayEnvelope?.metadata as {
-        tapGovernanceDirective?: { matchedToolPolicy?: string };
-      } | undefined
-    )?.tapGovernanceDirective?.matchedToolPolicy,
-    "review_only",
-  );
-  const toolReviewSessionId = `tool-review:provision:${result.provisionRequest!.provisionId}`;
-  const toolReviewPlan = runtime.getToolReviewerGovernancePlan(toolReviewSessionId);
-  assert.equal(toolReviewPlan?.items.some((item) =>
-    item.governanceKind === "provision_request" && item.readyForHandoff), true);
-  assert.equal(
-    toolReviewPlan?.items.some((item) =>
-      item.governanceKind === "delivery" && item.readyForHandoff),
-    true,
-  );
-  assert.equal(
-    runtime.listToolReviewerQualityReports().find((report) => report.sessionId === toolReviewSessionId)?.verdict,
-    "handoff_ready",
-  );
-  const recordedProvisionRequest = runtime.provisionerRuntime?.registry.get(result.provisionRequest!.provisionId)?.request;
-  assert.equal(
-    (
-      recordedProvisionRequest?.metadata?.toolReviewWorkOrder as {
-        sourceGovernanceKind?: string;
-      } | undefined
-    )?.sourceGovernanceKind,
-    "provision_request",
-  );
 });
 
 test("AgentCoreRuntime keeps restricted requests inside TAP until human approval arrives", async () => {
@@ -1265,107 +971,6 @@ test("AgentCoreRuntime keeps restricted requests inside TAP until human approval
   assert.equal(runtime.listTaHumanGateEvents(gate.gateId).length, 2);
 });
 
-test("AgentCoreRuntime keeps packaged mcp.native.execute behind a human gate in restricted mode", async () => {
-  let executed = false;
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.mcp-native-package",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["mcp.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-mcp-native-package",
-      sessionId: session.sessionId,
-      userInput: "Keep native MCP execution behind package policy and human review.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const manifest = createRaxMcpCapabilityManifest({
-    capabilityKey: "mcp.native.execute",
-  });
-  const capabilityPackage = manifest.metadata?.capabilityPackage as {
-    policy: {
-      defaultBaseline: {
-        grantedTier: "B0" | "B1" | "B2" | "B3";
-      };
-      recommendedMode: "bapr" | "yolo" | "permissive" | "standard" | "restricted";
-    };
-  };
-  const adapter: CapabilityAdapter = {
-    id: "adapter.mcp-native.execute.human-gate",
-    runtimeKind: "rax-mcp",
-    supports(plan) {
-      return plan.capabilityKey === "mcp.native.execute";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "long-running",
-      };
-    },
-    async execute() {
-      executed = true;
-      return {
-        executionId: "mcp-native-execute:unexpected",
-        resultId: "mcp-native-execute:unexpected",
-        status: "success",
-        completedAt: "2026-03-25T12:00:02.000Z",
-      };
-    },
-  };
-
-  runtime.registerCapabilityAdapter(manifest, adapter);
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-mcp-native-package-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T12:00:00.000Z",
-    priority: "high",
-    request: {
-      requestId: "request-mcp-native-package-1",
-      intentId: "intent-mcp-native-package-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "mcp.native.execute",
-      input: {
-        route: { provider: "openai", model: "gpt-5.4", layer: "agent" },
-        input: {
-          transport: {
-            kind: "stdio",
-            command: "node",
-            args: ["server.js"],
-          },
-        },
-      },
-      priority: "high",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: capabilityPackage.policy.defaultBaseline.grantedTier,
-    mode: capabilityPackage.policy.recommendedMode,
-    reason: "Packaged native execute should wait for a human before dispatch.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-  assert.equal(waiting.reviewDecision?.decision, "escalated_to_human");
-  assert.equal(waiting.humanGate?.capabilityKey, "mcp.native.execute");
-  assert.equal(executed, false);
-});
-
 test("AgentCoreRuntime can reject a waiting restricted human gate without throwing", async () => {
   const runtime = createAgentCoreRuntime({
     taProfile: createAgentCapabilityProfile({
@@ -1434,81 +1039,6 @@ test("AgentCoreRuntime can reject a waiting restricted human gate without throwi
   assert.equal(runtime.listTaHumanGateEvents(gate.gateId).length, 2);
 });
 
-test("AgentCoreRuntime does not reprovision on human-gate approval when a provision asset is already tracked", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.human-gate-existing-asset",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-human-gate-existing-asset",
-      sessionId: session.sessionId,
-      userInput: "Approve against an already tracked provision asset.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  await runtime.provisionerRuntime?.submit(createProvisionRequest({
-    provisionId: "provision-existing-asset-1",
-    sourceRequestId: "request-existing-asset-1",
-    requestedCapabilityKey: "computer.use",
-    reason: "Seed existing asset before human approval.",
-    createdAt: "2026-03-25T21:00:00.000Z",
-  }));
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-human-gate-existing-asset-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T21:00:01.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-human-gate-existing-asset-1",
-      intentId: "intent-human-gate-existing-asset-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "reuse ready provision asset",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "restricted",
-    reason: "Restricted approval should reuse tracked asset instead of reprovisioning.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-  const gate = runtime.listTaHumanGates()[0];
-  assert.ok(gate);
-
-  const approved = await runtime.submitTaHumanGateDecision({
-    gateId: gate.gateId,
-    action: "approve",
-    actorId: "user-existing-asset",
-  });
-
-  assert.equal(approved.status, "deferred");
-  assert.equal(approved.provisionRequest, undefined);
-  assert.equal(approved.activation?.source, "provision_asset");
-  assert.equal(approved.replay?.source, "provision_asset");
-  assert.deepEqual(
-    runtime.provisionerRuntime?.getBundleHistory("provision-existing-asset-1").map((bundle) => bundle.status),
-    ["building", "ready"],
-  );
-});
-
 test("AgentCoreRuntime can persist and recover TAP control-plane snapshot through checkpoint store", async () => {
   const runtime = createAgentCoreRuntime({
     taProfile: createAgentCapabilityProfile({
@@ -1565,1628 +1095,6 @@ test("AgentCoreRuntime can persist and recover TAP control-plane snapshot throug
   const tapSnapshot = await runtime.recoverTapRuntimeSnapshot(created.run.runId);
   assert.equal(tapSnapshot?.humanGates.length, 1);
   assert.equal(tapSnapshot?.humanGates[0]?.capabilityKey, "computer.use");
-});
-
-test("AgentCoreRuntime can hydrate reviewer, tool_reviewer, and provision durable state from TAP snapshot", async () => {
-  const profile = createAgentCapabilityProfile({
-    profileId: "profile.runtime.tap-hydrate",
-    agentClass: "main-agent",
-    baselineCapabilities: ["docs.read"],
-    allowedCapabilityPatterns: ["computer.*"],
-  });
-  const runtime = createAgentCoreRuntime({ taProfile: profile });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-tap-hydrate",
-      sessionId: session.sessionId,
-      userInput: "Hydrate reviewer, tool reviewer, and provision durable state.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const intent: CapabilityCallIntent = {
-    intentId: "intent-ta-hydrate-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T18:00:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-ta-hydrate-1",
-      intentId: "intent-ta-hydrate-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "hydrate durable lanes",
-      },
-      priority: "normal",
-    },
-  };
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool(intent, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "restricted",
-    reason: "Need a waiting human gate for durability hydration.",
-  });
-  assert.equal(waiting.status, "waiting_human");
-  assert.ok(waiting.accessRequest);
-
-  await runtime.reviewerRuntime?.submit({
-    request: waiting.accessRequest,
-    profile,
-  });
-  assert.equal(runtime.reviewerRuntime?.listDurableStates().length, 1);
-
-  const toolReviewTrace = createToolReviewGovernanceTrace({
-    actionId: "tool-review-action-1",
-    actorId: "tool-reviewer",
-    reason: "Stage activation governance review.",
-    createdAt: "2026-03-25T18:00:01.000Z",
-  });
-  await runtime.toolReviewerRuntime?.submit({
-    governanceAction: {
-      kind: "activation",
-      trace: toolReviewTrace,
-      provisionId: "provision-hydrate-1",
-      capabilityKey: "computer.use",
-      activationSpec: {
-        targetPool: "ta-capability-pool",
-        activationMode: "activate_after_verify",
-        registerOrReplace: "register_or_replace",
-        generationStrategy: "create_next_generation",
-        drainStrategy: "graceful",
-        adapterFactoryRef: "factory:computer.use",
-      },
-    },
-    sessionId: "tool-review-session-hydrate-1",
-  });
-
-  const provisionRequest = createProvisionRequest({
-    provisionId: "provision-hydrate-1",
-    sourceRequestId: "request-hydrate-1",
-    requestedCapabilityKey: "computer.use",
-    reason: "Need provision runtime durable state.",
-    createdAt: "2026-03-25T18:00:02.000Z",
-  });
-  await runtime.provisionerRuntime?.submit(provisionRequest);
-
-  const snapshot = runtime.createTapRuntimeSnapshot();
-  assert.ok(snapshot.reviewerDurableSnapshot);
-  assert.ok(snapshot.toolReviewerSessions);
-  assert.ok(snapshot.provisionerDurableSnapshot);
-  assert.equal(snapshot.humanGateContexts?.length, 1);
-
-  const recovered = createAgentCoreRuntime({ taProfile: profile });
-  recovered.hydrateRecoveredTapRuntimeSnapshot(snapshot);
-
-  assert.equal(recovered.reviewerRuntime?.listDurableStates().length, 1);
-  assert.equal(recovered.toolReviewerRuntime?.listSessions().length, 2);
-  assert.equal(recovered.provisionerRuntime?.getBundleHistory("provision-hydrate-1").length, 2);
-  assert.equal(recovered.listTaHumanGates().length, 1);
-  assert.equal(recovered.listTaResumeEnvelopes().length >= 1, true);
-});
-
-test("AgentCoreRuntime records tool reviewer governance sessions from runtime human-gate, replay, and activation paths", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.tool-review-mainline",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-tool-review-mainline",
-      sessionId: session.sessionId,
-      userInput: "Record tool reviewer mainline governance events.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-tool-review-mainline-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T20:00:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-tool-review-mainline-1",
-      intentId: "intent-tool-review-mainline-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "capture screenshot",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "restricted",
-    reason: "Need tool reviewer to follow the human gate path.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-  assert.equal(runtime.toolReviewerRuntime?.listSessions().length, 1);
-  assert.equal(runtime.toolReviewerRuntime?.listActions().length, 1);
-  assert.equal(runtime.toolReviewerRuntime?.listActions()[0]?.governanceKind, "human_gate");
-  assert.equal(runtime.toolReviewerRuntime?.listActions().every((action) => action.boundaryMode === "governance_only"), true);
-  assert.equal(runtime.getToolReviewerSession(`tool-review:request:${waiting.accessRequest!.requestId}`)?.status, "waiting_human");
-  assert.equal(runtime.listToolReviewerQualityReports()[0]?.verdict, "waiting_human");
-
-  const approved = await runtime.submitTaHumanGateDecision({
-    gateId: runtime.listTaHumanGates()[0]!.gateId,
-    action: "approve",
-    actorId: "user-tool-reviewer",
-  });
-  assert.equal(approved.status, "provisioned");
-  assert.equal(runtime.toolReviewerRuntime?.listActions().some((action) => action.governanceKind === "replay"), true);
-  assert.equal(runtime.listTmaSessions().length >= 2, true);
-  assert.equal(runtime.getProvisionDeliveryReport(approved.provisionRequest!.provisionId)?.status, "ready");
-  assert.equal(
-    runtime.getProvisionDeliveryReport(approved.provisionRequest!.provisionId)?.recommendedNextStep,
-    "Bundle is ready for tool reviewer quality checks, activation review, and replay planning.",
-  );
-
-  runtime.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.tool-review-mainline",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "tool-review-mainline-activation-ok",
-        },
-        completedAt: "2026-03-25T20:00:02.000Z",
-      };
-    },
-  }));
-
-  const activation = await runtime.activateTaProvisionAsset(approved.provisionRequest!.provisionId);
-  assert.equal(activation.status, "activated");
-  assert.equal(runtime.toolReviewerRuntime?.listActions().some((action) => action.governanceKind === "activation"), true);
-  assert.equal(runtime.toolReviewerRuntime?.listActions().every((action) => action.boundaryMode === "governance_only"), true);
-  const governancePlans = runtime.listToolReviewerGovernancePlans();
-  assert.equal(governancePlans.length >= 1, true);
-  assert.equal(governancePlans.some((plan) => plan.counts.readyForHandoff >= 1), true);
-  assert.equal(runtime.hasPendingTapGovernanceWork(), true);
-  assert.equal(runtime.createTapGovernanceSnapshot().blockingCapabilityKeys.includes("computer.use"), true);
-  assert.equal(runtime.listToolReviewerQualityReports().some((report) => report.verdict === "handoff_ready"), true);
-  assert.equal(runtime.listToolReviewerTmaWorkOrders().some((workOrder) => workOrder.capabilityKey === "computer.use"), true);
-  assert.equal(
-    runtime.getToolReviewerTmaWorkOrder(`tool-review:provision:${approved.provisionRequest!.provisionId}`)?.requestedLane,
-    "bootstrap",
-  );
-  const governanceObject = runtime.createTapGovernanceObject({
-    taskMode: "restricted",
-    userOverride: {
-      automationDepth: "prefer_human",
-    },
-  });
-  assert.equal(governanceObject.shared15ViewMatrix.length, 15);
-  assert.equal(governanceObject.taskPolicy.effectiveMode, "restricted");
-  assert.equal(governanceObject.userSurface.automationDepth, "prefer_human");
-  assert.equal(runtime.createTapUserSurfaceSnapshot().visibleMode, "permissive");
-  assert.equal(runtime.createTapCmpMpReadyChecklist().reviewerSectionRegistryReady, true);
-  const taskGovernance = runtime.createTapTaskGovernance({
-    taskId: "task-tool-review-mainline",
-    requestedMode: "standard",
-    userOverride: {
-      requestedMode: "permissive",
-      automationDepth: "prefer_auto",
-    },
-  });
-  assert.equal(taskGovernance.taskPolicy.effectiveMode, "permissive");
-  assert.equal(taskGovernance.taskPolicy.automationDepth, "prefer_auto");
-  assert.equal(taskGovernance.objectId, "tap-governance:profile.runtime.tool-review-mainline:permissive:task-tool-review-mainline");
-});
-
-test("AgentCoreRuntime records a unified three-agent usage ledger across reviewer, tool reviewer, and TMA", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.three-agent-usage-ledger",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-three-agent-usage-ledger",
-      sessionId: session.sessionId,
-      userInput: "Leave a durable three-agent TAP usage trace.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-three-agent-ledger-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-31T08:00:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-three-agent-ledger-1",
-      intentId: "intent-three-agent-ledger-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "capture a preview screenshot",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-three-agent-ledger",
-    requestedTier: "B2",
-    mode: "restricted",
-    reason: "Force reviewer -> tool reviewer -> TMA ledger flow.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-  const waitingReport = runtime.createTapThreeAgentUsageReport({
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-  });
-  assert.equal(waitingReport.recordCount >= 2, true);
-  assert.equal(waitingReport.latestByActor.reviewer?.status, "escalated_to_human");
-  assert.equal(waitingReport.latestByActor.tool_reviewer?.status, "waiting_human");
-  assert.equal(waitingReport.latestByActor.tma, undefined);
-
-  const approved = await runtime.submitTaHumanGateDecision({
-    gateId: runtime.listTaHumanGates()[0]!.gateId,
-    action: "approve",
-    actorId: "user-three-agent-ledger",
-  });
-
-  assert.equal(approved.status, "provisioned");
-  const records = runtime.listTapAgentRecords({
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-  });
-  assert.equal(records.some((record) => record.actor === "reviewer"), true);
-  assert.equal(
-    records.some((record) => record.actor === "reviewer" && record.status === "approved"),
-    true,
-  );
-  assert.equal(records.some((record) => record.actor === "tool_reviewer"), true);
-  assert.equal(records.some((record) => record.actor === "tma"), true);
-
-  const report = runtime.createTapThreeAgentUsageReport({
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-  });
-  assert.equal(report.latestByActor.reviewer?.status, "approved");
-  assert.equal(report.latestByActor.tool_reviewer?.status, "ready_for_handoff");
-  assert.equal(report.latestByActor.tma?.status, "ready");
-  assert.match(report.summary, /Reviewer is approved/i);
-  assert.match(report.summary, /tool reviewer is ready_for_handoff/i);
-  assert.match(report.summary, /TMA is ready/i);
-});
-
-test("AgentCoreRuntime preserves three-agent usage ledger records across TAP snapshot hydration", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.three-agent-ledger-hydration",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-three-agent-ledger-hydration",
-      sessionId: session.sessionId,
-      userInput: "Hydrate the three-agent usage ledger.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-three-agent-ledger-hydration-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-31T08:10:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-three-agent-ledger-hydration-1",
-      intentId: "intent-three-agent-ledger-hydration-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "hydrate after reviewer and TMA trace",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-three-agent-ledger-hydration",
-    requestedTier: "B2",
-    mode: "restricted",
-    reason: "Create a resumable three-agent ledger before snapshot.",
-  });
-  assert.equal(waiting.status, "waiting_human");
-
-  const approved = await runtime.submitTaHumanGateDecision({
-    gateId: runtime.listTaHumanGates()[0]!.gateId,
-    action: "approve",
-    actorId: "user-three-agent-ledger-hydration",
-  });
-  assert.equal(approved.status, "provisioned");
-
-  const beforeSnapshot = runtime.createTapThreeAgentUsageReport({
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-  });
-  const snapshot = runtime.createTapRuntimeSnapshot();
-  assert.equal(
-    snapshot.agentRecords?.filter((record) =>
-      record.sessionId === session.sessionId && record.runId === created.run.runId
-    ).length,
-    beforeSnapshot.recordCount,
-  );
-
-  const recovered = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.three-agent-ledger-hydration",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  recovered.hydrateRecoveredTapRuntimeSnapshot(snapshot);
-
-  const afterSnapshot = recovered.createTapThreeAgentUsageReport({
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-  });
-  assert.equal(afterSnapshot.recordCount, beforeSnapshot.recordCount);
-  assert.equal(afterSnapshot.latestByActor.reviewer?.status, beforeSnapshot.latestByActor.reviewer?.status);
-  assert.equal(afterSnapshot.latestByActor.tool_reviewer?.status, beforeSnapshot.latestByActor.tool_reviewer?.status);
-  assert.equal(afterSnapshot.latestByActor.tma?.status, beforeSnapshot.latestByActor.tma?.status);
-});
-
-test("AgentCoreRuntime records blocked tool-review lifecycle when target binding is missing", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.tool-review-lifecycle-blocked",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-    }),
-  });
-
-  const bindingsBefore = runtime.capabilityPool.listBindings();
-  const result = await runtime.applyTaCapabilityLifecycle({
-    capabilityKey: "mcp.playwright",
-    lifecycleAction: "suspend",
-    targetPool: "ta-capability-pool",
-    bindingId: "binding-missing",
-    reason: "Missing bindings should be recorded as blocked lifecycle governance.",
-  });
-
-  assert.equal(result.status, "blocked");
-  assert.equal(result.error?.code, "agent_core_capability_binding_missing");
-  assert.equal(runtime.capabilityPool.listBindings().length, bindingsBefore.length);
-  const latestLifecycleAction = runtime.toolReviewerRuntime?.listActions().slice(-1)[0];
-  assert.equal(latestLifecycleAction?.governanceKind, "lifecycle");
-  assert.equal(latestLifecycleAction?.boundaryMode, "governance_only");
-  assert.equal(latestLifecycleAction?.output.status, "lifecycle_blocked");
-  assert.equal(runtime.listToolReviewerQualityReports()[0]?.verdict, "blocked");
-});
-
-test("AgentCoreRuntime auto-continues eligible provisioning after lifecycle application", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.lifecycle-continue-provisioning",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-lifecycle-continue-provisioning",
-      sessionId: session.sessionId,
-      userInput: "Lifecycle apply should continue staged provisioning when replay is eligible.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisioned = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-lifecycle-continue-provisioning-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T21:30:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-lifecycle-continue-provisioning-1",
-      intentId: "intent-lifecycle-continue-provisioning-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "auto continue after lifecycle apply",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Stage provisioning, then continue it through lifecycle application.",
-  });
-
-  assert.equal(provisioned.status, "provisioned");
-  const provisionId = provisioned.provisionRequest?.provisionId;
-  assert.ok(provisionId);
-
-  runtime.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.lifecycle-continue-provisioning",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "lifecycle-continue-provisioning-ok",
-        },
-        completedAt: "2026-03-25T21:30:03.000Z",
-      };
-    },
-  }));
-
-  const activation = await runtime.activateTaProvisionAsset(provisionId!);
-  assert.equal(activation.status, "activated");
-  const bindingId = activation.receipt?.bindingId;
-  assert.ok(bindingId);
-  const attemptsBeforeLifecycle = runtime.listTaActivationAttempts().length;
-
-  const lifecycleResult = await runtime.applyTaCapabilityLifecycle({
-    capabilityKey: "computer.use",
-    lifecycleAction: "resume",
-    targetPool: "ta-capability-pool",
-    bindingId,
-    reason: "Lifecycle acceptance should continue the staged replay.",
-  });
-
-  assert.equal(lifecycleResult.status, "applied");
-  assert.equal(lifecycleResult.continuedProvisioning?.length, 1);
-  assert.equal(lifecycleResult.continuedProvisioning?.[0]?.status, "dispatched");
-  assert.equal(lifecycleResult.continuedProvisioning?.[0]?.dispatchResult?.grant?.capabilityKey, "computer.use");
-  assert.equal(lifecycleResult.continuedProvisioning?.[0]?.activationResult?.status, "activated");
-  assert.equal(runtime.listTaActivationAttempts().length, attemptsBeforeLifecycle);
-  assert.equal(runtime.listTaResumeEnvelopes().some((entry) => entry.source === "replay"), false);
-});
-
-test("AgentCoreRuntime can recover and continue a waiting human gate approval path", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.recover-human-gate",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["search.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-recover-human-gate",
-      sessionId: session.sessionId,
-      userInput: "Recover and continue a human gate.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  runtime.registerCapabilityAdapter({
-    capabilityId: "cap-search-ground-recover-human-gate",
-    capabilityKey: "search.ground",
-    kind: "tool",
-    version: "1.0.0",
-    generation: 1,
-    description: "Recovered human gate capability.",
-  }, {
-    id: "adapter.search.ground.recover-human-gate",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "search.ground";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "recovered-human-gate-ok",
-        },
-        completedAt: "2026-03-25T20:10:02.000Z",
-      };
-    },
-  });
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-recover-human-gate-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T20:10:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-recover-human-gate-1",
-      intentId: "intent-recover-human-gate-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "search.ground",
-      input: {
-        query: "recover and continue",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B1",
-    mode: "restricted",
-    reason: "Need recovery to preserve the human gate path.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-  await runtime.writeTapDurableCheckpoint(created.run.runId, "manual");
-
-  const recovered = createAgentCoreRuntime({
-    journal: runtime.journal,
-    checkpointStore: runtime.checkpointStore,
-    taProfile: runtime.taControlPlaneGateway?.profile,
-  });
-  recovered.registerCapabilityAdapter({
-    capabilityId: "cap-search-ground-recover-human-gate",
-    capabilityKey: "search.ground",
-    kind: "tool",
-    version: "1.0.0",
-    generation: 1,
-    description: "Recovered human gate capability.",
-  }, {
-    id: "adapter.search.ground.recover-human-gate",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "search.ground";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "recovered-human-gate-ok",
-        },
-        completedAt: "2026-03-25T20:10:03.000Z",
-      };
-    },
-  });
-  await recovered.recoverAndHydrateTapRuntime(created.run.runId);
-
-  const gate = recovered.listTaHumanGates()[0];
-  assert.ok(gate);
-
-  const approved = await recovered.submitTaHumanGateDecision({
-    gateId: gate.gateId,
-    action: "approve",
-    actorId: "user-after-recovery",
-  });
-
-  assert.equal(approved.status, "dispatched");
-  assert.equal(approved.runOutcome?.run.runId, created.run.runId);
-  assert.equal(recovered.getTaHumanGate(gate.gateId)?.status, "approved");
-});
-
-test("AgentCoreRuntime resolves recovered human-gate decisions idempotently after approval", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.human-gate-idempotent",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["search.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-human-gate-idempotent",
-      sessionId: session.sessionId,
-      userInput: "Recovered approval should stay idempotent.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  runtime.registerCapabilityAdapter({
-    capabilityId: "cap-search-ground-human-gate-idempotent",
-    capabilityKey: "search.ground",
-    kind: "tool",
-    version: "1.0.0",
-    generation: 1,
-    description: "Search capability for human gate idempotency.",
-  }, {
-    id: "adapter.search.ground.human-gate-idempotent",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "search.ground";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "human-gate-idempotent-ok",
-        },
-        completedAt: "2026-03-25T21:05:02.000Z",
-      };
-    },
-  });
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-human-gate-idempotent-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T21:05:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-human-gate-idempotent-1",
-      intentId: "intent-human-gate-idempotent-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "search.ground",
-      input: {
-        query: "idempotent approval",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B1",
-    mode: "restricted",
-    reason: "Approval should not be replayed twice after recovery.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-  const gate = runtime.listTaHumanGates()[0];
-  assert.ok(gate);
-  await runtime.submitTaHumanGateDecision({
-    gateId: gate.gateId,
-    action: "approve",
-    actorId: "user-idempotent",
-  });
-  await runtime.writeTapDurableCheckpoint(created.run.runId, "manual");
-
-  const recovered = createAgentCoreRuntime({
-    journal: runtime.journal,
-    checkpointStore: runtime.checkpointStore,
-    taProfile: runtime.taControlPlaneGateway?.profile,
-  });
-  recovered.registerCapabilityAdapter({
-    capabilityId: "cap-search-ground-human-gate-idempotent",
-    capabilityKey: "search.ground",
-    kind: "tool",
-    version: "1.0.0",
-    generation: 1,
-    description: "Search capability for human gate idempotency.",
-  }, {
-    id: "adapter.search.ground.human-gate-idempotent",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "search.ground";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "human-gate-idempotent-ok",
-        },
-        completedAt: "2026-03-25T21:05:03.000Z",
-      };
-    },
-  });
-  await recovered.recoverAndHydrateTapRuntime(created.run.runId);
-
-  const eventCountBefore = recovered.listTaHumanGateEvents(gate.gateId).length;
-  const second = await recovered.submitTaHumanGateDecision({
-    gateId: gate.gateId,
-    action: "approve",
-    actorId: "user-idempotent-again",
-  });
-
-  assert.equal(second.status, "dispatched");
-  assert.equal(recovered.listTaHumanGateEvents(gate.gateId).length, eventCountBefore);
-  assert.equal(recovered.getTaResumeEnvelope(`resume:human-gate:${gate.gateId}`), undefined);
-});
-
-test("AgentCoreRuntime snapshots completed reviewer durable state after human-gate resolution", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.reviewer-completed-after-gate",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["search.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-reviewer-completed-after-gate",
-      sessionId: session.sessionId,
-      userInput: "Reviewer durable state should finish after gate resolution.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  runtime.registerCapabilityAdapter({
-    capabilityId: "cap-search-ground-reviewer-completed",
-    capabilityKey: "search.ground",
-    kind: "tool",
-    version: "1.0.0",
-    generation: 1,
-    description: "Search capability for reviewer completion.",
-  }, {
-    id: "adapter.search.ground.reviewer-completed",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "search.ground";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "reviewer-completed-ok",
-        },
-        completedAt: "2026-03-25T21:10:02.000Z",
-      };
-    },
-  });
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-reviewer-completed-after-gate-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T21:10:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-reviewer-completed-after-gate-1",
-      intentId: "intent-reviewer-completed-after-gate-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "search.ground",
-      input: {
-        query: "reviewer durable completion",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B1",
-    mode: "restricted",
-    reason: "Force a gate and then complete reviewer durable state.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-
-  const gate = runtime.listTaHumanGates()[0];
-  assert.ok(gate);
-  await runtime.submitTaHumanGateDecision({
-    gateId: gate.gateId,
-    action: "approve",
-    actorId: "user-reviewer-completed",
-  });
-
-  assert.equal(runtime.reviewerRuntime?.getDurableState(waiting.accessRequest!.requestId)?.stage, "completed");
-});
-
-test("AgentCoreRuntime does not auto-resume a human-gate envelope after hydration", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.human-gate-envelope-boundary",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["search.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-human-gate-envelope-boundary",
-      sessionId: session.sessionId,
-      userInput: "Hydration should not auto-approve a human gate.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-human-gate-envelope-boundary-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T20:15:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-human-gate-envelope-boundary-1",
-      intentId: "intent-human-gate-envelope-boundary-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "search.ground",
-      input: {
-        query: "do not auto resume",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B1",
-    mode: "restricted",
-    reason: "Hydration must leave the human gate pending.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-  const envelope = runtime.listTaResumeEnvelopes().find((entry) => entry.source === "human_gate");
-  assert.ok(envelope);
-
-  const recovered = createAgentCoreRuntime({
-    taProfile: runtime.taControlPlaneGateway?.profile,
-  });
-  recovered.hydrateRecoveredTapRuntimeSnapshot(runtime.createTapRuntimeSnapshot());
-
-  const resumed = await recovered.resumeTaEnvelope(envelope!.envelopeId);
-
-  assert.equal(resumed.status, "human_gate_pending");
-  assert.equal(resumed.dispatchResult, undefined);
-  assert.equal(recovered.listTaHumanGates()[0]?.status, "waiting_human");
-});
-
-test("AgentCoreRuntime can recover and resume a pending replay from a stored TAP envelope", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.resume-replay-envelope",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-resume-replay-envelope",
-      sessionId: session.sessionId,
-      userInput: "Recover and resume a staged replay envelope.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisioned = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-resume-replay-envelope-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T20:20:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-resume-replay-envelope-1",
-      intentId: "intent-resume-replay-envelope-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "recover replay envelope",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Need a staged replay before recovery.",
-  });
-
-  assert.equal(provisioned.status, "provisioned");
-
-  runtime.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.resume-envelope",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "resume-envelope-ok",
-        },
-        completedAt: "2026-03-25T20:20:03.000Z",
-      };
-    },
-  }));
-  await runtime.activateTaProvisionAsset(provisioned.provisionRequest!.provisionId);
-  await runtime.writeTapDurableCheckpoint(created.run.runId, "manual");
-
-  const replayEnvelope = runtime.listTaResumeEnvelopes().find((envelope) => envelope.source === "replay");
-  assert.ok(replayEnvelope);
-
-  const recovered = createAgentCoreRuntime({
-    journal: runtime.journal,
-    checkpointStore: runtime.checkpointStore,
-    taProfile: runtime.taControlPlaneGateway?.profile,
-  });
-  recovered.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.resume-envelope",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "resume-envelope-ok",
-        },
-        completedAt: "2026-03-25T20:20:04.000Z",
-      };
-    },
-  }));
-  await recovered.recoverAndHydrateTapRuntime(created.run.runId);
-
-  assert.equal(recovered.listTaActivationAttempts().length, 1);
-  assert.equal(recovered.toolReviewerRuntime?.listActions().some((action) => action.governanceKind === "activation"), true);
-
-  const resumed = await recovered.resumeTaEnvelope(replayEnvelope!.envelopeId);
-
-  assert.equal(resumed.status, "dispatched");
-  assert.equal(resumed.dispatchResult?.grant?.capabilityKey, "computer.use");
-  assert.equal(recovered.getTaResumeEnvelope(replayEnvelope!.envelopeId), undefined);
-});
-
-test("AgentCoreRuntime can continue recovered TAP replay backlog through the runtime driver", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.continue-recovered-tap-runtime",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-continue-recovered-tap-runtime",
-      sessionId: session.sessionId,
-      userInput: "Continue recovered replay backlog through the runtime driver.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisioned = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-continue-recovered-tap-runtime-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-30T11:00:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-continue-recovered-tap-runtime-1",
-      intentId: "intent-continue-recovered-tap-runtime-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "recover runtime backlog",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Need a provisioned replay backlog first.",
-  });
-
-  assert.equal(provisioned.status, "provisioned");
-
-  runtime.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.continue-recovered-runtime",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "continue-recovered-runtime-ok",
-        },
-        completedAt: "2026-03-30T11:00:04.000Z",
-      };
-    },
-  }));
-  await runtime.activateTaProvisionAsset(provisioned.provisionRequest!.provisionId);
-  await runtime.writeTapDurableCheckpoint(created.run.runId, "manual");
-
-  const recovered = createAgentCoreRuntime({
-    journal: runtime.journal,
-    checkpointStore: runtime.checkpointStore,
-    taProfile: runtime.taControlPlaneGateway?.profile,
-  });
-  recovered.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.continue-recovered-runtime",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "continue-recovered-runtime-ok",
-        },
-        completedAt: "2026-03-30T11:00:05.000Z",
-      };
-    },
-  }));
-  await recovered.recoverAndHydrateTapRuntime(created.run.runId);
-
-  const continued = await recovered.continueRecoveredTapRuntime(created.run.runId);
-
-  assert.equal(continued.provisionResults.length, 1);
-  assert.equal(continued.provisionResults[0]?.provisionId, provisioned.provisionRequest!.provisionId);
-  assert.equal(continued.provisionResults[0]?.continueResult?.status, "dispatched");
-  assert.equal(continued.provisionResults[0]?.continueResult?.dispatchResult?.grant?.capabilityKey, "computer.use");
-});
-
-test("AgentCoreRuntime replay resume keeps tap governance directive after recovery", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.resume-replay-governance",
-      agentClass: "main-agent",
-      baselineCapabilities: ["search.ground"],
-      allowedCapabilityPatterns: ["search.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-resume-replay-governance",
-      sessionId: session.sessionId,
-      userInput: "Recovered replay should keep governance directive.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const replay = createTaPendingReplay({
-    replayId: "replay:governance-resume-1",
-    request: {
-      requestId: "request-governance-resume-1",
-      requestedCapabilityKey: "search.ground",
-    },
-    provisionBundle: createProvisionArtifactBundle({
-      bundleId: "bundle-governance-resume-1",
-      provisionId: "provision-governance-resume-1",
-      status: "ready",
-      replayPolicy: "re_review_then_dispatch",
-      toolArtifact: {
-        artifactId: "artifact-governance-tool",
-        kind: "tool",
-        ref: "tool.json",
-      },
-      bindingArtifact: {
-        artifactId: "artifact-governance-binding",
-        kind: "binding",
-        ref: "binding.json",
-      },
-      verificationArtifact: {
-        artifactId: "artifact-governance-verification",
-        kind: "verification",
-        ref: "verification.json",
-      },
-      usageArtifact: {
-        artifactId: "artifact-governance-usage",
-        kind: "usage",
-        ref: "usage.md",
-      },
-    }),
-    createdAt: "2026-03-30T10:00:00.000Z",
-    metadata: {
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      mode: "restricted",
-      requestedTier: "B1",
-    },
-  });
-  const envelope = createTaResumeEnvelope({
-    envelopeId: "resume:replay:governance-resume-1",
-    source: "replay",
-    requestId: "request-governance-resume-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    capabilityKey: "search.ground",
-    requestedTier: "B1",
-    mode: "restricted",
-    reason: "Resume replay with preserved governance directive.",
-    intentRequest: {
-      requestId: "request-governance-resume-1",
-      intentId: "intent-governance-resume-1",
-      capabilityKey: "search.ground",
-      input: {
-        query: "resume with governance",
-      },
-      priority: "normal",
-    },
-    metadata: {
-      replayId: replay.replayId,
-      agentId: "agent-main",
-      tapGovernanceDirective: {
-        governanceObjectId: "tap-governance:resume-1",
-        effectiveMode: "restricted",
-        automationDepth: "prefer_human",
-        explanationStyle: "plain_language",
-        derivedRiskLevel: "normal",
-        matchedToolPolicy: "human_gate",
-        matchedToolPolicySelector: "search.ground",
-        forceHumanByRisk: false,
-      },
-    },
-  });
-
-  runtime.hydrateRecoveredTapRuntimeSnapshot({
-    humanGates: [],
-    humanGateEvents: [],
-    pendingReplays: [replay],
-    activationAttempts: [],
-    resumeEnvelopes: [envelope],
-  });
-
-  const resumed = await runtime.resumeTaEnvelope(envelope.envelopeId);
-
-  assert.equal(resumed.status, "waiting_human");
-  assert.equal(resumed.dispatchResult?.reviewDecision?.decision, "escalated_to_human");
-  assert.equal(runtime.listTaHumanGates().length, 1);
-  assert.equal(runtime.listReviewerDurableStates().at(-1)?.decision, "escalated_to_human");
-});
-
-test("AgentCoreRuntime continueRecoveredTapRuntime leaves recovered human gates untouched", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.continue-recovered-human-gate-boundary",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["search.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-continue-recovered-human-gate-boundary",
-      sessionId: session.sessionId,
-      userInput: "Recovered human gate should stay untouched by continue driver.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const waiting = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-continue-recovered-human-gate-boundary-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-30T11:05:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-continue-recovered-human-gate-boundary-1",
-      intentId: "intent-continue-recovered-human-gate-boundary-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "search.ground",
-      input: {
-        query: "keep human gate pending",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B1",
-    mode: "restricted",
-    reason: "Recovered continue driver must ignore human gate backlog.",
-  });
-
-  assert.equal(waiting.status, "waiting_human");
-
-  const recovered = createAgentCoreRuntime({
-    taProfile: runtime.taControlPlaneGateway?.profile,
-  });
-  recovered.hydrateRecoveredTapRuntimeSnapshot(runtime.createTapRuntimeSnapshot());
-
-  const continued = await recovered.continueRecoveredTapRuntime(created.run.runId);
-
-  assert.equal(continued.provisionResults.length, 0);
-  assert.equal(recovered.listTaHumanGates()[0]?.status, "waiting_human");
-});
-
-test("AgentCoreRuntime returns resume_envelope_not_found for unknown envelope ids", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.resume-envelope-missing",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-    }),
-  });
-
-  const result = await runtime.resumeTaEnvelope("resume:missing");
-
-  assert.equal(result.status, "resume_envelope_not_found");
-  assert.equal(runtime.listTaResumeEnvelopes().length, 0);
-});
-
-test("AgentCoreRuntime returns resume_not_supported for malformed replay envelopes", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.resume-envelope-malformed",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-    }),
-  });
-  const malformed = createTaResumeEnvelope({
-    envelopeId: "resume:malformed-replay",
-    source: "replay",
-    requestId: "request-malformed-replay",
-    sessionId: "session-malformed-replay",
-    runId: "run-malformed-replay",
-    capabilityKey: "computer.use",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Malformed replay envelope for boundary testing.",
-  });
-  runtime.hydrateRecoveredTapRuntimeSnapshot({
-    humanGates: [],
-    humanGateEvents: [],
-    pendingReplays: [],
-    activationAttempts: [],
-    resumeEnvelopes: [malformed],
-  });
-
-  const result = await runtime.resumeTaEnvelope(malformed.envelopeId);
-
-  assert.equal(result.status, "resume_not_supported");
-  assert.equal(runtime.getTaResumeEnvelope(malformed.envelopeId)?.envelopeId, malformed.envelopeId);
-});
-
-test("AgentCoreRuntime returns resume_not_supported for activation envelopes without provisionId", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.activation-envelope-malformed",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-    }),
-  });
-  const malformed = createTaResumeEnvelope({
-    envelopeId: "resume:activation:malformed",
-    source: "activation",
-    requestId: "request-activation-malformed",
-    sessionId: "session-activation-malformed",
-    runId: "run-activation-malformed",
-    capabilityKey: "computer.use",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Activation envelope should carry a provision id.",
-  });
-  runtime.hydrateRecoveredTapRuntimeSnapshot({
-    humanGates: [],
-    humanGateEvents: [],
-    pendingReplays: [],
-    activationAttempts: [],
-    resumeEnvelopes: [malformed],
-  });
-
-  const result = await runtime.resumeTaEnvelope(malformed.envelopeId);
-
-  assert.equal(result.status, "resume_not_supported");
-  assert.equal(result.activationResult, undefined);
-});
-
-test("AgentCoreRuntime keeps replay envelope pending when activation fails during resume", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.resume-replay-activation-fail",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-resume-replay-activation-fail",
-      sessionId: session.sessionId,
-      userInput: "Replay resume should stop if activation fails.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisioned = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-resume-replay-activation-fail-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T20:30:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-resume-replay-activation-fail-1",
-      intentId: "intent-resume-replay-activation-fail-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "do not dispatch after failed activation",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Create a replay envelope that will fail activation.",
-  });
-
-  assert.equal(provisioned.status, "provisioned");
-  const replayEnvelope = runtime.listTaResumeEnvelopes().find((envelope) => envelope.source === "replay");
-  assert.ok(replayEnvelope);
-
-  const result = await runtime.resumeTaEnvelope(replayEnvelope!.envelopeId);
-
-  assert.equal(result.status, "failed");
-  assert.equal(result.dispatchResult, undefined);
-  assert.equal(runtime.getTaResumeEnvelope(replayEnvelope!.envelopeId)?.envelopeId, replayEnvelope!.envelopeId);
-});
-
-test("AgentCoreRuntime keeps manual replay policy at handoff only without auto-opening human gate", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.manual-replay-boundary",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-manual-replay-boundary",
-      sessionId: session.sessionId,
-      userInput: "Manual replay should stay at handoff only.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisionBundle = await runtime.provisionerRuntime?.submit(createProvisionRequest({
-    provisionId: "provision-manual-replay-boundary",
-    sourceRequestId: "request-manual-replay-boundary",
-    requestedCapabilityKey: "computer.use",
-    reason: "Manual replay boundary test.",
-    replayPolicy: "manual",
-    createdAt: "2026-03-25T20:40:00.000Z",
-  }));
-  assert.equal(provisionBundle?.status, "ready");
-
-  const result = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-manual-replay-boundary-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T20:40:01.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-manual-replay-boundary-1",
-      intentId: "intent-manual-replay-boundary-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "manual replay handoff only",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Ready manual replay asset should only surface handoff state.",
-  });
-
-  assert.equal(result.status, "deferred");
-  assert.equal(result.replay?.policy, "manual");
-  assert.equal(result.humanGate?.source, "replay_policy");
-  assert.equal(runtime.listTaHumanGates().length, 0);
 });
 
 test("AgentCoreRuntime inventory sees ready provision assets and avoids duplicate provisioning redirects", async () => {
@@ -3371,511 +1279,6 @@ test("AgentCoreRuntime can replay provisioned capabilities after activation hand
   assert.equal(replayed.reviewDecision?.decision, "approved");
   assert.equal(replayed.grant?.capabilityKey, "computer.use");
   assert.equal(replayed.dispatch?.prepared.capabilityKey, "computer.use");
-});
-
-test("AgentCoreRuntime can continue a provisioned capability through activation and replay in one call", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.continue-provisioning",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-continue-provisioning",
-      sessionId: session.sessionId,
-      userInput: "Continue provisioning through activation and replay.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisioned = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-continue-provisioning-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T21:10:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-continue-provisioning-1",
-      intentId: "intent-continue-provisioning-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "continue provisioning mainline",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Provision first and then continue automatically.",
-  });
-
-  assert.equal(provisioned.status, "provisioned");
-  const provisionId = provisioned.provisionRequest?.provisionId;
-  assert.ok(provisionId);
-
-  runtime.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.continue-provisioning",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "continue-provisioning-ok",
-        },
-        completedAt: "2026-03-25T21:10:03.000Z",
-      };
-    },
-  }));
-
-  const continued = await runtime.continueTaProvisioning(provisionId!);
-
-  assert.equal(continued.status, "dispatched");
-  assert.equal(continued.dispatchResult?.grant?.capabilityKey, "computer.use");
-  assert.equal(continued.activationResult?.status, "activated");
-  assert.equal(runtime.getTaActivationAttempt(continued.activationResult?.attempt?.attemptId ?? "")?.status, "succeeded");
-  assert.equal(runtime.listTaResumeEnvelopes().some((entry) => entry.source === "replay"), false);
-});
-
-test("AgentCoreRuntime continueTaProvisioning reuses an already active asset without creating a second activation attempt", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.continue-provisioning-active-asset",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-continue-provisioning-active-asset",
-      sessionId: session.sessionId,
-      userInput: "Reuse active asset when continuing provisioning.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisioned = await runtime.dispatchCapabilityIntentViaTaPool({
-    intentId: "intent-continue-provisioning-active-asset-1",
-    sessionId: session.sessionId,
-    runId: created.run.runId,
-    kind: "capability_call",
-    createdAt: "2026-03-25T21:20:00.000Z",
-    priority: "normal",
-    request: {
-      requestId: "request-continue-provisioning-active-asset-1",
-      intentId: "intent-continue-provisioning-active-asset-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      input: {
-        task: "reuse active asset",
-      },
-      priority: "normal",
-    },
-  }, {
-    agentId: "agent-main",
-    requestedTier: "B2",
-    mode: "balanced",
-    reason: "Create replay envelope, then activate before continue call.",
-  });
-
-  assert.equal(provisioned.status, "provisioned");
-  const provisionId = provisioned.provisionRequest?.provisionId;
-  assert.ok(provisionId);
-
-  runtime.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.continue-active-asset",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "continue-active-asset-ok",
-        },
-        completedAt: "2026-03-25T21:20:03.000Z",
-      };
-    },
-  }));
-
-  const activation = await runtime.activateTaProvisionAsset(provisionId!);
-  assert.equal(activation.status, "activated");
-  const attemptsBeforeContinue = runtime.listTaActivationAttempts().length;
-
-  const continued = await runtime.continueTaProvisioning(provisionId!);
-
-  assert.equal(continued.status, "dispatched");
-  assert.equal(continued.activationResult?.status, "activated");
-  assert.equal(runtime.listTaActivationAttempts().length, attemptsBeforeContinue);
-  assert.equal(continued.dispatchResult?.grant?.capabilityKey, "computer.use");
-});
-
-test("AgentCoreRuntime continueTaProvisioning can continue auto-after-verify replay once activation is ready", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.continue-provisioning-auto-after-verify",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-continue-provisioning-auto-after-verify",
-      sessionId: session.sessionId,
-      userInput: "Continue auto-after-verify replay from runtime continue driver.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisionBundle = await runtime.provisionerRuntime?.submit(createProvisionRequest({
-    provisionId: "provision-auto-after-verify-continue",
-    sourceRequestId: "request-auto-after-verify-continue-1",
-    requestedCapabilityKey: "computer.use",
-    reason: "Auto-after-verify replay should keep a resumable runtime path.",
-    replayPolicy: "auto_after_verify",
-    createdAt: "2026-03-25T21:30:00.000Z",
-  }));
-  assert.equal(provisionBundle?.status, "ready");
-
-  const replay = createTaPendingReplay({
-    replayId: "replay:auto-after-verify-continue",
-    request: {
-      requestId: "request-auto-after-verify-continue-1",
-      requestedCapabilityKey: "computer.use",
-    },
-    provisionBundle: provisionBundle!,
-    createdAt: "2026-03-25T21:30:02.000Z",
-    metadata: {
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      mode: "balanced",
-      requestedTier: "B2",
-      taskContext: {
-        source: "runtime-test",
-      },
-    },
-  });
-  runtime.hydrateRecoveredTapRuntimeSnapshot({
-    humanGates: [],
-    humanGateEvents: [],
-    pendingReplays: [replay],
-    activationAttempts: [],
-    resumeEnvelopes: [createTaResumeEnvelope({
-      envelopeId: "resume:replay:replay:auto-after-verify-continue",
-      source: "replay",
-      requestId: "request-auto-after-verify-continue-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      requestedTier: "B2",
-      mode: "balanced",
-      reason: "Resume auto-after-verify replay from continue driver.",
-      intentRequest: {
-        requestId: "request-auto-after-verify-continue-1",
-        intentId: "intent-auto-after-verify-continue-1",
-        capabilityKey: "computer.use",
-        input: {
-          task: "continue auto-after-verify replay",
-        },
-        priority: "normal",
-      },
-      metadata: {
-        replayId: replay.replayId,
-        provisionId: "provision-auto-after-verify-continue",
-        agentId: "agent-main",
-        taskContext: {
-          source: "runtime-test",
-        },
-      },
-    })],
-  });
-  assert.equal(runtime.getTaReplayResumeEnvelope(replay.replayId)?.envelopeId, "resume:replay:replay:auto-after-verify-continue");
-
-  runtime.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.continue-auto-after-verify",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "continue-auto-after-verify-ok",
-        },
-        completedAt: "2026-03-25T21:30:04.000Z",
-      };
-    },
-  }));
-
-  const continued = await runtime.continueTaProvisioning("provision-auto-after-verify-continue");
-
-  assert.equal(continued.status, "dispatched");
-  assert.equal(continued.activationResult?.status, "activated");
-  assert.equal(continued.dispatchResult?.grant?.capabilityKey, "computer.use");
-  assert.equal(runtime.listTaResumeEnvelopes().some((entry) => entry.source === "replay"), false);
-});
-
-test("AgentCoreRuntime continueTaProvisioning stops when tool reviewer still marks the provision lane blocked", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.continue-provisioning-blocked-by-tool-review",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-
-  const provisionBundle = await runtime.provisionerRuntime?.submit(createProvisionRequest({
-    provisionId: "provision-blocked-by-tool-review",
-    sourceRequestId: "request-blocked-by-tool-review-1",
-    requestedCapabilityKey: "computer.use",
-    reason: "Tool reviewer should be able to keep the provision lane blocked.",
-    replayPolicy: "re_review_then_dispatch",
-    createdAt: "2026-03-25T21:40:00.000Z",
-  }));
-  assert.equal(provisionBundle?.status, "ready");
-
-  const replay = createTaPendingReplay({
-    replayId: "replay:blocked-by-tool-review",
-    request: {
-      requestId: "request-blocked-by-tool-review-1",
-      requestedCapabilityKey: "computer.use",
-    },
-    provisionBundle: provisionBundle!,
-    createdAt: "2026-03-25T21:40:01.000Z",
-  });
-  runtime.hydrateRecoveredTapRuntimeSnapshot({
-    humanGates: [],
-    humanGateEvents: [],
-    pendingReplays: [replay],
-    activationAttempts: [],
-    resumeEnvelopes: [createTaResumeEnvelope({
-      envelopeId: "resume:replay:blocked-by-tool-review",
-      source: "replay",
-      requestId: "request-blocked-by-tool-review-1",
-      sessionId: "session-blocked-by-tool-review",
-      runId: "run-blocked-by-tool-review",
-      capabilityKey: "computer.use",
-      requestedTier: "B2",
-      mode: "balanced",
-      reason: "Blocked governance should stop continueTaProvisioning before replay resumes.",
-      intentRequest: {
-        requestId: "request-blocked-by-tool-review-1",
-        intentId: "intent-blocked-by-tool-review-1",
-        capabilityKey: "computer.use",
-        input: {
-          task: "do not continue while tool reviewer is blocked",
-        },
-        priority: "normal",
-      },
-      metadata: {
-        replayId: replay.replayId,
-        provisionId: "provision-blocked-by-tool-review",
-        agentId: "agent-main",
-      },
-    })],
-  });
-  await runtime.toolReviewerRuntime?.submit({
-    sessionId: "tool-review:provision:provision-blocked-by-tool-review",
-    governanceAction: {
-      kind: "lifecycle",
-      trace: createToolReviewGovernanceTrace({
-        actionId: "action-tool-review-blocked-provision",
-        actorId: "tool-reviewer",
-        reason: "Keep the provision lane blocked until lifecycle issues are fixed.",
-        createdAt: "2026-03-25T21:40:02.000Z",
-      }),
-      capabilityKey: "computer.use",
-      lifecycleAction: "register",
-      targetPool: "ta-capability-pool",
-      failure: {
-        code: "binding_missing",
-        message: "Binding is not ready yet.",
-      },
-    },
-  });
-
-  const continued = await runtime.continueTaProvisioning("provision-blocked-by-tool-review");
-
-  assert.equal(continued.status, "blocked");
-  assert.equal(runtime.getTaPendingReplay(replay.replayId)?.replayId, replay.replayId);
-  assert.equal(runtime.getTaReplayResumeEnvelope(replay.replayId)?.envelopeId, "resume:replay:blocked-by-tool-review");
-});
-
-test("AgentCoreRuntime continueTaProvisioning keeps replay backlog when resumed replay opens a fresh human gate", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.continue-provisioning-waiting-human",
-      agentClass: "main-agent",
-      baselineCapabilities: ["docs.read"],
-      allowedCapabilityPatterns: ["computer.*"],
-    }),
-  });
-  const session = runtime.createSession();
-  const goal = runtime.createCompiledGoal(
-    createGoalSource({
-      goalId: "goal-runtime-continue-provisioning-waiting-human",
-      sessionId: session.sessionId,
-      userInput: "Continue provisioning should preserve replay backlog when a new gate opens.",
-    }),
-  );
-  const created = await runtime.createRun({
-    sessionId: session.sessionId,
-    goal,
-  });
-
-  const provisionBundle = await runtime.provisionerRuntime?.submit(createProvisionRequest({
-    provisionId: "provision-waiting-human-on-continue",
-    sourceRequestId: "request-waiting-human-on-continue-1",
-    requestedCapabilityKey: "computer.use",
-    reason: "Replay resume should reopen a human gate in restricted mode.",
-    replayPolicy: "re_review_then_dispatch",
-    createdAt: "2026-03-25T21:50:00.000Z",
-  }));
-  assert.equal(provisionBundle?.status, "ready");
-  const replay = createTaPendingReplay({
-    replayId: "replay:waiting-human-on-continue",
-    request: {
-      requestId: "request-waiting-human-on-continue-1",
-      requestedCapabilityKey: "computer.use",
-    },
-    provisionBundle: provisionBundle!,
-    createdAt: "2026-03-25T21:50:01.000Z",
-    metadata: {
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      mode: "restricted",
-      requestedTier: "B3",
-    },
-  });
-  runtime.hydrateRecoveredTapRuntimeSnapshot({
-    humanGates: [],
-    humanGateEvents: [],
-    pendingReplays: [replay],
-    activationAttempts: [],
-    resumeEnvelopes: [createTaResumeEnvelope({
-      envelopeId: "resume:replay:waiting-human-on-continue",
-      source: "replay",
-      requestId: "request-waiting-human-on-continue-1",
-      sessionId: session.sessionId,
-      runId: created.run.runId,
-      capabilityKey: "computer.use",
-      requestedTier: "B3",
-      mode: "restricted",
-      reason: "Restricted replay should reopen a human gate instead of dropping backlog.",
-      intentRequest: {
-        requestId: "request-waiting-human-on-continue-1",
-        intentId: "intent-waiting-human-on-continue-1",
-        capabilityKey: "computer.use",
-        input: {
-          task: "reopen restricted gate",
-        },
-        priority: "normal",
-      },
-      metadata: {
-        replayId: replay.replayId,
-        provisionId: "provision-waiting-human-on-continue",
-        agentId: "agent-main",
-      },
-    })],
-  });
-  runtime.registerTaActivationFactory("factory:computer.use", () => ({
-    id: "adapter.computer.use.waiting-human-on-continue",
-    runtimeKind: "tool",
-    supports(plan) {
-      return plan.capabilityKey === "computer.use";
-    },
-    async prepare(plan, lease) {
-      return {
-        preparedId: `${plan.planId}:prepared`,
-        leaseId: lease.leaseId,
-        capabilityKey: plan.capabilityKey,
-        bindingId: lease.bindingId,
-        generation: lease.generation,
-        executionMode: "direct",
-      };
-    },
-    async execute(prepared) {
-      return {
-        executionId: `${prepared.preparedId}:execution`,
-        resultId: `${prepared.preparedId}:result`,
-        status: "success",
-        output: {
-          answer: "should-not-run-before-human-gate",
-        },
-        completedAt: "2026-03-25T21:50:04.000Z",
-      };
-    },
-  }));
-
-  const continued = await runtime.continueTaProvisioning("provision-waiting-human-on-continue");
-
-  assert.equal(continued.status, "waiting_human");
-  assert.equal(runtime.getTaPendingReplay(replay.replayId)?.replayId, replay.replayId);
-  assert.equal(runtime.getTaReplayResumeEnvelope(replay.replayId)?.envelopeId, "resume:replay:waiting-human-on-continue");
-  assert.equal(runtime.listTaHumanGates().length, 1);
 });
 
 test("AgentCoreRuntime lets bapr mode dispatch straight through TAP for available capabilities", async () => {
@@ -4132,172 +1535,6 @@ test("AgentCoreRuntime can finish a minimal direct-answer run through model infe
   );
 });
 
-test("AgentCoreRuntime can route model inference through TAP when model.infer is baseline-granted", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.model-infer-via-tap",
-      agentClass: "main-agent",
-      baselineCapabilities: ["model.infer"],
-      defaultMode: "permissive",
-    }),
-    modelInferenceExecutor: async ({ intent }): Promise<ModelInferenceExecutionResult> => ({
-      provider: "openai",
-      model: "gpt-5.4",
-      layer: "api",
-      raw: { answer: "意义在于被你活出来。" },
-      result: {
-        resultId: `${intent.intentId}:result`,
-        sessionId: intent.sessionId,
-        runId: intent.runId,
-        source: "model",
-        status: "success",
-        output: {
-          text: "意义在于被你活出来。",
-        },
-        evidence: [],
-        emittedAt: new Date("2026-03-30T00:00:02.000Z").toISOString(),
-        correlationId: intent.correlationId,
-      },
-    }),
-  });
-  const session = runtime.createSession();
-  const result = await runtime.runUntilTerminal({
-    sessionId: session.sessionId,
-    source: createGoalSource({
-      goalId: "goal-runtime-model-via-tap",
-      sessionId: session.sessionId,
-      userInput: "请你回答我生命存在的意义是什么?",
-      metadata: {
-        provider: "openai",
-        model: "gpt-5.4",
-      },
-    }),
-    maxSteps: 2,
-  });
-
-  assert.equal(result.outcome.run.status, "completed");
-  assert.equal(result.capabilityDispatch?.status, "dispatched");
-  assert.equal(result.capabilityDispatch?.dispatch?.prepared.capabilityKey, "model.infer");
-  assert.match(result.answer ?? "", /意义|活出来/u);
-  assert.deepEqual(
-    result.finalEvents.map((entry) => entry.event.type).slice(-4),
-    ["capability.result_received", "state.delta_applied", "run.completed", "state.delta_applied"],
-  );
-});
-
-test("AgentCoreRuntime defaults reviewer, tool reviewer, and TMA to model-backed workers", async () => {
-  const runtime = createAgentCoreRuntime({
-    taProfile: createAgentCapabilityProfile({
-      profileId: "profile.runtime.default-tap-workers-model-backed",
-      agentClass: "main-agent",
-      defaultMode: "permissive",
-    }),
-    modelInferenceExecutor: async ({ intent }): Promise<ModelInferenceExecutionResult> => {
-      const workerKind = intent.frame.metadata?.tapWorkerKind;
-      const text = workerKind === "tap-reviewer"
-        ? JSON.stringify({
-          schemaVersion: "tap-reviewer-worker-output/v1",
-          workerKind: "reviewer",
-          lane: "bootstrap-reviewer",
-          vote: "allow_with_constraints",
-          reason: "default model-backed reviewer",
-        })
-        : workerKind === "tap-tool-reviewer"
-          ? JSON.stringify({
-            summary: "default model-backed tool reviewer",
-            metadata: {
-              trace: "tool-reviewer",
-            },
-          })
-          : workerKind === "tap-tma"
-            ? JSON.stringify({
-              buildSummary: "default model-backed tma",
-              replayRecommendationReason: "default model-backed replay reason",
-              metadata: {
-                trace: "tma",
-              },
-            })
-            : JSON.stringify({
-              text: "fallback",
-            });
-
-      return {
-        provider: "openai",
-        model: "gpt-5.4",
-        layer: "api",
-        raw: { text },
-        result: {
-          resultId: `${intent.intentId}:result`,
-          sessionId: intent.sessionId,
-          runId: intent.runId,
-          source: "model",
-          status: "success",
-          output: { text },
-          emittedAt: "2026-03-30T10:30:00.000Z",
-        },
-      };
-    },
-  });
-
-  const reviewerDecision = await runtime.reviewerRuntime!.submit({
-    request: {
-      requestId: "req-runtime-workers-1",
-      sessionId: "session-runtime-workers-1",
-      runId: "run-runtime-workers-1",
-      agentId: "agent-runtime-workers-1",
-      requestedCapabilityKey: "mcp.playwright",
-      requestedTier: "B1",
-      reason: "Need browser tooling.",
-      mode: "permissive",
-      canonicalMode: "permissive",
-      createdAt: "2026-03-30T10:30:00.000Z",
-    },
-    profile: createAgentCapabilityProfile({
-      profileId: "profile-runtime-workers-reviewer",
-      agentClass: "main-agent",
-      defaultMode: "permissive",
-      baselineCapabilities: ["docs.read"],
-    }),
-    inventory: {
-      availableCapabilityKeys: ["mcp.playwright"],
-    },
-  });
-
-  const toolReview = await runtime.toolReviewerRuntime!.submit({
-    governanceAction: {
-      kind: "lifecycle",
-      trace: createToolReviewGovernanceTrace({
-        actionId: "action-runtime-workers-1",
-        actorId: "tool-reviewer",
-        reason: "Need lifecycle staging.",
-        createdAt: "2026-03-30T10:30:01.000Z",
-      }),
-      capabilityKey: "mcp.playwright",
-      lifecycleAction: "register",
-      targetPool: "ta-capability-pool",
-    },
-  });
-
-  const provisionBundle = await runtime.provisionerRuntime!.submit(createProvisionRequest({
-    provisionId: "provision-runtime-workers-1",
-    sourceRequestId: "req-runtime-workers-1",
-    requestedCapabilityKey: "repo.write",
-    reason: "Need bootstrap tooling package.",
-    createdAt: "2026-03-30T10:30:02.000Z",
-  }));
-
-  assert.equal(reviewerDecision.reason, "default model-backed reviewer");
-  assert.equal(toolReview.output.summary, "default model-backed tool reviewer");
-  assert.equal(provisionBundle.metadata?.buildSummary, "default model-backed tma");
-  const provisionReplayMetadata = provisionBundle.metadata?.replayRecommendation as
-    | { reason?: string }
-    | undefined;
-  assert.equal(
-    provisionReplayMetadata?.reason,
-    "default model-backed replay reason",
-  );
-});
-
 test("AgentCoreRuntime runUntilTerminal stops cleanly when TAP returns a non-dispatched capability status", async () => {
   const runtime = createAgentCoreRuntime({
     taProfile: createAgentCapabilityProfile({
@@ -4357,4 +1594,1271 @@ test("AgentCoreRuntime runUntilTerminal stops cleanly when TAP returns a non-dis
     result.finalEvents.map((entry) => entry.event.type),
     ["run.created", "state.delta_applied", "intent.queued"],
   );
+});
+
+test("AgentCoreRuntime can run the first CMP active path through ingest, delta, snapshot, package, and dispatch", () => {
+  const runtime = createAgentCoreRuntime();
+  const lineage = createAgentLineage({
+    agentId: "main",
+    depth: 0,
+    projectId: "cmp-project",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/main",
+      cmpBranch: "cmp/main",
+      mpBranch: "mp/main",
+      tapBranch: "tap/main",
+    }),
+    childAgentIds: ["child-1"],
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "main",
+    sessionId: "session-cmp-1",
+    runId: "run-cmp-1",
+    lineage,
+    taskSummary: "ingest active cmp context",
+    materials: [
+      {
+        kind: "user_input",
+        ref: "payload:user-1",
+      },
+    ],
+  });
+  assert.equal(ingested.status, "accepted");
+  assert.equal(ingested.acceptedEventIds.length, 1);
+
+  const committed = runtime.commitContextDelta({
+    agentId: "main",
+    sessionId: "session-cmp-1",
+    runId: "run-cmp-1",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Record the first active CMP delta.",
+    syncIntent: "local_record",
+  });
+  assert.equal(committed.status, "accepted");
+  assert.ok(committed.snapshotCandidateId);
+
+  const resolved = runtime.resolveCheckedSnapshot({
+    agentId: "main",
+    projectId: "cmp-project",
+  });
+  assert.equal(resolved.status, "resolved");
+  assert.equal(resolved.found, true);
+  assert.ok(resolved.snapshot);
+
+  const materialized = runtime.materializeContextPackage({
+    agentId: "main",
+    snapshotId: resolved.snapshot!.snapshotId,
+    targetAgentId: "child-1",
+    packageKind: "child_seed",
+  });
+  assert.equal(materialized.status, "materialized");
+  assert.equal(materialized.contextPackage.packageKind, "child_seed");
+
+  const dispatched = runtime.dispatchContextPackage({
+    agentId: "main",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "main",
+    targetAgentId: "child-1",
+    targetKind: "child",
+  });
+  assert.equal(dispatched.status, "dispatched");
+  assert.equal(dispatched.receipt.status, "delivered");
+
+  assert.equal(runtime.readCmpEvents("main").length, 1);
+  assert.equal(runtime.listCmpDeltas().length, 1);
+  assert.equal(runtime.listCmpSyncEvents("main").length >= 2, true);
+  assert.ok(runtime.getCmpDispatchReceipt(dispatched.receipt.dispatchId));
+  const fiveAgentSummary = runtime.getCmpFiveAgentRuntimeSummary("main");
+  assert.equal(fiveAgentSummary.configurationVersion, "cmp-five-agent-role-catalog/v1");
+  assert.equal(fiveAgentSummary.configuredRoles.icma.promptPackId, "cmp-five-agent/icma-prompt-pack/v1");
+  assert.deepEqual(fiveAgentSummary.capabilityMatrix.dbWriters, ["dbagent"]);
+  assert.equal(fiveAgentSummary.flow.childSeedToIcmaCount, 1);
+});
+
+test("AgentCoreRuntime records CMP formal request, section, snapshot, and package objects along the active path", () => {
+  const runtime = createAgentCoreRuntime();
+  const lineage = createAgentLineage({
+    agentId: "main-objects",
+    depth: 0,
+    projectId: "cmp-project-objects",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/main-objects",
+      cmpBranch: "cmp/main-objects",
+      mpBranch: "mp/main-objects",
+      tapBranch: "tap/main-objects",
+    }),
+    childAgentIds: ["child-objects"],
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "main-objects",
+    sessionId: "session-cmp-objects",
+    runId: "run-cmp-objects",
+    lineage,
+    taskSummary: "ingest cmp object model path",
+    materials: [
+      { kind: "user_input", ref: "payload:objects:user" },
+      { kind: "tool_result", ref: "payload:objects:tool" },
+    ],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "main-objects",
+    sessionId: "session-cmp-objects",
+    runId: "run-cmp-objects",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "commit cmp object model path",
+    syncIntent: "local_record",
+  });
+  assert.equal(committed.status, "accepted");
+
+  const resolved = runtime.resolveCheckedSnapshot({
+    agentId: "main-objects",
+    projectId: "cmp-project-objects",
+  });
+  assert.equal(resolved.found, true);
+  const snapshotId = resolved.snapshot!.snapshotId;
+
+  const materialized = runtime.materializeContextPackage({
+    agentId: "main-objects",
+    snapshotId,
+    targetAgentId: "child-objects",
+    packageKind: "child_seed",
+  });
+  const dispatched = runtime.dispatchContextPackage({
+    agentId: "main-objects",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "main-objects",
+    targetAgentId: "child-objects",
+    targetKind: "child",
+  });
+
+  const requests = runtime.listCmpRequestRecords().filter((record) => record.projectId === "cmp-project-objects");
+  const sections = runtime.listCmpSectionRecords().filter((record) => record.projectId === "cmp-project-objects");
+  const snapshots = runtime.listCmpSnapshotRecords().filter((record) => record.projectId === "cmp-project-objects");
+  const packages = runtime.listCmpPackageRecords().filter((record) => record.projectId === "cmp-project-objects");
+  const fiveAgent = runtime.getCmpFiveAgentRuntimeSnapshot("main-objects");
+
+  assert.equal(requests.some((record) => record.requestKind === "active_ingest"), true);
+  assert.equal(requests.some((record) => record.requestKind === "materialize_package" && record.status === "served"), true);
+  assert.equal(requests.some((record) => record.requestKind === "dispatch_package" && record.status === "served"), true);
+  assert.equal(sections.some((record) => record.lifecycle === "raw"), true);
+  assert.equal(sections.some((record) => record.lifecycle === "pre"), true);
+  assert.equal(sections.some((record) => record.lifecycle === "checked"), true);
+  assert.equal(sections.some((record) => record.lifecycle === "persisted"), true);
+  assert.equal(snapshots.some((record) => record.snapshotId === snapshotId && record.stage === "checked"), true);
+  assert.equal(packages.some((record) => record.packageId === materialized.contextPackage.packageId && record.status === "dispatched"), true);
+  assert.equal(fiveAgent.icmaRecords[0]?.structuredOutput.intent, "ingest cmp object model path");
+  assert.equal(fiveAgent.iteratorRecords[0]?.reviewOutput.minimumReviewUnit, "commit");
+  assert.deepEqual(fiveAgent.iteratorRecords[0]?.reviewOutput.sourceSectionIds.length! > 0, true);
+  assert.equal(fiveAgent.checkerRecords[0]?.reviewOutput.trimSummary, "checker trims to section-level high-signal content");
+  assert.equal(fiveAgent.dbAgentRecords[0]?.materializationOutput.bundleSchemaVersion, "cmp-dispatch-bundle/v1");
+  assert.equal(fiveAgent.dispatcherRecords[0]?.bundle.target.targetIngress, "child_icma_only");
+  assert.equal((dispatched.receipt.metadata?.cmpDispatcherBundle as { target?: { targetIngress?: string } } | undefined)?.target?.targetIngress, "child_icma_only");
+});
+
+test("AgentCoreRuntime can resolve CMP five-agent TAP capability access by role profile", () => {
+  const runtime = createAgentCoreRuntime();
+
+  const iteratorResolution = runtime.resolveCmpFiveAgentCapabilityAccess({
+    role: "iterator",
+    sessionId: "session-role-capability",
+    runId: "run-role-capability",
+    agentId: "iterator-agent",
+    capabilityKey: "cmp.git.write",
+    reason: "iterator advances candidate commit",
+  });
+  assert.equal(iteratorResolution.profile.profileId, "cmp-five-agent/iterator-tap-profile/v1");
+  assert.equal(iteratorResolution.resolution.status, "review_required");
+
+  const dbagentResolution = runtime.resolveCmpFiveAgentCapabilityAccess({
+    role: "dbagent",
+    sessionId: "session-role-capability",
+    runId: "run-role-capability",
+    agentId: "dbagent-agent",
+    capabilityKey: "cmp.db.write",
+    reason: "dbagent writes projection",
+  });
+  assert.equal(dbagentResolution.profile.profileId, "cmp-five-agent/dbagent-tap-profile/v1");
+  assert.equal(dbagentResolution.resolution.status, "review_required");
+
+  const icmaResolution = runtime.resolveCmpFiveAgentCapabilityAccess({
+    role: "icma",
+    sessionId: "session-role-capability",
+    runId: "run-role-capability",
+    agentId: "icma-agent",
+    capabilityKey: "cmp.git.write",
+    reason: "icma should not write git",
+  });
+  assert.equal(icmaResolution.profile.profileId, "cmp-five-agent/icma-tap-profile/v1");
+  assert.equal(icmaResolution.resolution.status, "review_required");
+});
+
+test("AgentCoreRuntime can dispatch CMP five-agent capability through TAP review and execution bridge", async () => {
+  const runtime = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.cmp-five-agent-bridge",
+      agentClass: "main-agent",
+      baselineCapabilities: ["docs.read"],
+      allowedCapabilityPatterns: ["cmp.git.*"],
+    }),
+  });
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-cmp-five-agent-bridge",
+      sessionId: session.sessionId,
+      userInput: "Bridge CMP iterator capability into TAP execution.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+  const adapter: CapabilityAdapter = {
+    id: "adapter.cmp.git.write.bridge",
+    runtimeKind: "tool",
+    supports(plan) {
+      return plan.capabilityKey === "cmp.git.write";
+    },
+    async prepare(plan, lease) {
+      return {
+        preparedId: `${plan.planId}:prepared`,
+        leaseId: lease.leaseId,
+        capabilityKey: plan.capabilityKey,
+        bindingId: lease.bindingId,
+        generation: lease.generation,
+        executionMode: "direct",
+      };
+    },
+    async execute(prepared) {
+      return {
+        executionId: `${prepared.preparedId}:execution`,
+        resultId: `${prepared.preparedId}:result`,
+        status: "success",
+        output: {
+          branch: "cmp/main",
+        },
+        completedAt: new Date("2026-03-30T12:00:03.000Z").toISOString(),
+      };
+    },
+  };
+  runtime.registerCapabilityAdapter({
+    capabilityId: "cap-cmp-git-write-bridge",
+    capabilityKey: "cmp.git.write",
+    kind: "tool",
+    version: "1.0.0",
+    generation: 1,
+    description: "CMP git write through TAP bridge.",
+  }, adapter);
+
+  const result = await runtime.dispatchCmpFiveAgentCapability({
+    role: "iterator",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    agentId: "cmp-iterator-main",
+    capabilityKey: "cmp.git.write",
+    reason: "iterator commits checked section candidate",
+    capabilityInput: {
+      branchRef: "cmp/main",
+      candidateId: "candidate-1",
+    },
+    requestedTier: "B1",
+    mode: "balanced",
+    cmpContext: {
+      requestId: "cmp-request-1",
+      sourceSnapshotId: "snapshot-1",
+      sourceSectionIds: ["section-1"],
+    },
+  });
+
+  assert.equal(result.role, "iterator");
+  assert.equal(result.profile.profileId, "cmp-five-agent/iterator-tap-profile/v1");
+  assert.equal(result.dispatch.status, "dispatched");
+  assert.equal(result.dispatch.grant?.capabilityKey, "cmp.git.write");
+  assert.equal((result.bridgeMetadata.cmpTapBridge as { sourceSnapshotId?: string } | undefined)?.sourceSnapshotId, "snapshot-1");
+});
+
+test("AgentCoreRuntime can dispatch a cmp_action intent through the kernel loop", async () => {
+  const runtime = createAgentCoreRuntime();
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-cmp-intent",
+      sessionId: session.sessionId,
+      userInput: "Drive CMP through the kernel intent path.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+
+  const lineage = createAgentLineage({
+    agentId: "cmp-main",
+    depth: 0,
+    projectId: "cmp-project-kernel-intent",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/cmp-main",
+      cmpBranch: "cmp/cmp-main",
+      mpBranch: "mp/cmp-main",
+      tapBranch: "tap/cmp-main",
+    }),
+  });
+
+  const intent: CmpActionIntent<"ingest_runtime_context"> = {
+    intentId: "cmp-intent-1",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    kind: "cmp_action",
+    createdAt: "2026-03-25T00:00:00.000Z",
+    priority: "normal",
+    request: {
+      requestId: "cmp-request-1",
+      intentId: "cmp-intent-1",
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      action: "ingest_runtime_context",
+      input: {
+        agentId: "cmp-main",
+        sessionId: session.sessionId,
+        runId: created.run.runId,
+        lineage,
+        taskSummary: "Kernel CMP ingest path",
+        materials: [
+          {
+            kind: "user_input",
+            ref: "payload:cmp-kernel-intent",
+          },
+        ],
+      },
+      priority: "normal",
+    },
+  };
+
+  const dispatched = await runtime.dispatchIntent(intent);
+
+  assert.equal(dispatched.action, "ingest_runtime_context");
+  assert.equal(dispatched.error, undefined);
+  assert.equal(dispatched.runOutcome.run.status, "waiting");
+  assert.equal(dispatched.runOutcome.queuedIntent?.kind, "model_inference");
+  assert.equal(runtime.readCmpEvents("cmp-main").length, 1);
+  const tailEventTypes = runtime.readRunEvents(created.run.runId).slice(-3).map((entry) => entry.event.type);
+  assert.deepEqual(tailEventTypes, [
+    "capability.result_received",
+    "state.delta_applied",
+    "intent.queued",
+  ]);
+});
+
+test("AgentCoreRuntime can serve the first CMP passive historical reply", () => {
+  const runtime = createAgentCoreRuntime();
+  const lineage = createAgentLineage({
+    agentId: "main",
+    depth: 0,
+    projectId: "cmp-project-passive",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/main",
+      cmpBranch: "cmp/main",
+      mpBranch: "mp/main",
+      tapBranch: "tap/main",
+    }),
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "main",
+    sessionId: "session-cmp-2",
+    runId: "run-cmp-2",
+    lineage,
+    taskSummary: "prepare passive history",
+    materials: [
+      {
+        kind: "assistant_output",
+        ref: "payload:assistant-1",
+      },
+    ],
+  });
+  runtime.commitContextDelta({
+    agentId: "main",
+    sessionId: "session-cmp-2",
+    runId: "run-cmp-2",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Prepare checked snapshot for passive query.",
+    syncIntent: "submit_to_parent",
+  });
+
+  const historical = runtime.requestHistoricalContext({
+    requesterAgentId: "main",
+    projectId: "cmp-project-passive",
+    reason: "Need the latest checked historical package.",
+    query: {},
+  });
+
+  assert.equal(historical.status, "materialized");
+  assert.equal(historical.found, true);
+  assert.ok(historical.snapshot);
+  assert.ok(historical.contextPackage);
+  assert.equal(historical.contextPackage?.packageKind, "historical_reply");
+});
+
+test("AgentCoreRuntime records and serves CMP reintervention requests through DBAgent during passive history flow", () => {
+  const runtime = createAgentCoreRuntime();
+  const parentLineage = createAgentLineage({
+    agentId: "parent-reint",
+    depth: 0,
+    projectId: "cmp-project-reintervention",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/parent-reint",
+      cmpBranch: "cmp/parent-reint",
+      mpBranch: "mp/parent-reint",
+      tapBranch: "tap/parent-reint",
+    }),
+    childAgentIds: ["child-reint"],
+  });
+  const childLineage = createAgentLineage({
+    agentId: "child-reint",
+    parentAgentId: "parent-reint",
+    depth: 1,
+    projectId: "cmp-project-reintervention",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/child-reint",
+      cmpBranch: "cmp/child-reint",
+      mpBranch: "mp/child-reint",
+      tapBranch: "tap/child-reint",
+    }),
+  });
+
+  runtime.ingestRuntimeContext({
+    agentId: "parent-reint",
+    sessionId: "session-parent-reint",
+    runId: "run-parent-reint",
+    lineage: parentLineage,
+    taskSummary: "seed parent lineage for reintervention",
+    materials: [{ kind: "state_marker", ref: "payload:parent-reint" }],
+    requiresActiveSync: false,
+  });
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "child-reint",
+    sessionId: "session-child-reint",
+    runId: "run-child-reint",
+    lineage: childLineage,
+    taskSummary: "child prepares local checked snapshot before passive request",
+    materials: [{ kind: "assistant_output", ref: "payload:child-reint" }],
+  });
+  runtime.commitContextDelta({
+    agentId: "child-reint",
+    sessionId: "session-child-reint",
+    runId: "run-child-reint",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "prepare child history for reintervention path",
+    syncIntent: "submit_to_parent",
+  });
+
+  const historical = runtime.requestHistoricalContext({
+    requesterAgentId: "child-reint",
+    projectId: "cmp-project-reintervention",
+    reason: "child requests parent coarse package for missing context",
+    query: {},
+    metadata: {
+      cmpReinterventionGapSummary: "missing parent coarse package for dependency context",
+      cmpCurrentStateSummary: "child only has local checked snapshot and no parent-served package",
+      cmpCurrentPackageId: "pkg-child-current",
+    },
+  });
+
+  assert.equal(historical.status, "materialized");
+  const historicalFiveAgent = historical.metadata?.cmpFiveAgent as { reinterventionRequestId?: string } | undefined;
+  assert.equal(historicalFiveAgent?.reinterventionRequestId !== undefined, true);
+  const summary = runtime.getCmpFiveAgentRuntimeSummary("child-reint");
+  const snapshot = runtime.getCmpFiveAgentRuntimeSnapshot("child-reint");
+  assert.equal(summary.flow.reinterventionPendingCount, 0);
+  assert.equal(summary.flow.reinterventionServedCount, 1);
+  assert.equal(snapshot.dbAgentRecords.at(-1)?.materializationOutput.bundleSchemaVersion, "cmp-dispatch-bundle/v1");
+  assert.equal(snapshot.dispatcherRecords.at(-1)?.bundle.target.targetIngress, "core_agent_return");
+  assert.equal((historical.contextPackage?.metadata?.cmpDispatcherBundle as { target?: { targetIngress?: string } } | undefined)?.target?.targetIngress, "core_agent_return");
+});
+
+test("AgentCoreRuntime second wave promotes submit_to_parent deltas through cmp-git governance", () => {
+  const runtime = createAgentCoreRuntime();
+  const parentLineage = createAgentLineage({
+    agentId: "parent",
+    depth: 0,
+    projectId: "cmp-project-governance",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/parent",
+      cmpBranch: "cmp/parent",
+      mpBranch: "mp/parent",
+      tapBranch: "tap/parent",
+    }),
+    childAgentIds: ["child"],
+  });
+  const childLineage = createAgentLineage({
+    agentId: "child",
+    parentAgentId: "parent",
+    depth: 1,
+    projectId: "cmp-project-governance",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/child",
+      cmpBranch: "cmp/child",
+      mpBranch: "mp/child",
+      tapBranch: "tap/child",
+    }),
+  });
+
+  runtime.ingestRuntimeContext({
+    agentId: "parent",
+    sessionId: "session-parent",
+    runId: "run-parent",
+    lineage: parentLineage,
+    taskSummary: "seed parent lineage",
+    materials: [{ kind: "state_marker", ref: "payload:parent-seed" }],
+    requiresActiveSync: false,
+  });
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "child",
+    sessionId: "session-child",
+    runId: "run-child",
+    lineage: childLineage,
+    taskSummary: "child reports upward",
+    materials: [{ kind: "assistant_output", ref: "payload:child-report" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "child",
+    sessionId: "session-child",
+    runId: "run-child",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Submit child context upward.",
+    syncIntent: "submit_to_parent",
+  });
+
+  assert.ok(committed.snapshotCandidateId);
+  assert.equal(runtime.listCmpGitPullRequests().length, 1);
+  assert.equal(runtime.listCmpGitPromotions().length, 1);
+  const checked = runtime.resolveCheckedSnapshot({
+    agentId: "child",
+    projectId: "cmp-project-governance",
+  });
+  assert.equal(checked.found, true);
+  const projection = runtime.getCmpDbProjectionRecord(`projection:${checked.snapshot!.snapshotId}`);
+  assert.equal(projection?.state, "promoted_by_parent");
+});
+
+test("AgentCoreRuntime second wave syncs DB package and delivery records during dispatch", () => {
+  const runtime = createAgentCoreRuntime();
+  const parentLineage = createAgentLineage({
+    agentId: "main",
+    depth: 0,
+    projectId: "cmp-project-delivery",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/main",
+      cmpBranch: "cmp/main",
+      mpBranch: "mp/main",
+      tapBranch: "tap/main",
+    }),
+    childAgentIds: ["child-a"],
+  });
+  runtime.ingestRuntimeContext({
+    agentId: "main",
+    sessionId: "session-delivery",
+    runId: "run-delivery",
+    lineage: parentLineage,
+    taskSummary: "prepare delivery path",
+    materials: [{ kind: "user_input", ref: "payload:delivery-user" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "main",
+    sessionId: "session-delivery",
+    runId: "run-delivery",
+    eventIds: runtime.readCmpEvents("main").map((event) => event.eventId),
+    changeSummary: "Prepare materialized package.",
+    syncIntent: "dispatch_to_children",
+  });
+  const checked = runtime.getCmpCheckedSnapshot(committed.metadata?.checkedSnapshotId as string);
+  const materialized = runtime.materializeContextPackage({
+    agentId: "main",
+    snapshotId: checked!.snapshotId,
+    targetAgentId: "child-a",
+    packageKind: "child_seed",
+  });
+  const dispatched = runtime.dispatchContextPackage({
+    agentId: "main",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "main",
+    targetAgentId: "child-a",
+    targetKind: "child",
+  });
+
+  const packageRecord = runtime.getCmpDbContextPackageRecord(materialized.contextPackage.packageId);
+  const deliveryRecord = runtime.getCmpDbDeliveryRecord(dispatched.receipt.dispatchId);
+  assert.equal(packageRecord?.state, "delivered");
+  assert.equal(deliveryRecord?.state, "delivered");
+});
+
+test("AgentCoreRuntime second wave blocks non-skipping lineage dispatch to an ancestor", () => {
+  const runtime = createAgentCoreRuntime();
+  const root = createAgentLineage({
+    agentId: "root",
+    depth: 0,
+    projectId: "cmp-project-nonskipping",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/root",
+      cmpBranch: "cmp/root",
+      mpBranch: "mp/root",
+      tapBranch: "tap/root",
+    }),
+    childAgentIds: ["mid"],
+  });
+  const mid = createAgentLineage({
+    agentId: "mid",
+    parentAgentId: "root",
+    depth: 1,
+    projectId: "cmp-project-nonskipping",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/mid",
+      cmpBranch: "cmp/mid",
+      mpBranch: "mp/mid",
+      tapBranch: "tap/mid",
+    }),
+    childAgentIds: ["leaf"],
+    metadata: { ancestorAgentIds: ["root"] },
+  });
+  const leaf = createAgentLineage({
+    agentId: "leaf",
+    parentAgentId: "mid",
+    depth: 2,
+    projectId: "cmp-project-nonskipping",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/leaf",
+      cmpBranch: "cmp/leaf",
+      mpBranch: "mp/leaf",
+      tapBranch: "tap/leaf",
+    }),
+    metadata: { ancestorAgentIds: ["mid", "root"] },
+  });
+
+  runtime.ingestRuntimeContext({
+    agentId: "root",
+    sessionId: "session-root",
+    runId: "run-root",
+    lineage: root,
+    taskSummary: "seed root",
+    materials: [{ kind: "state_marker", ref: "payload:root-seed" }],
+    requiresActiveSync: false,
+  });
+  runtime.ingestRuntimeContext({
+    agentId: "mid",
+    sessionId: "session-mid",
+    runId: "run-mid",
+    lineage: mid,
+    taskSummary: "seed mid",
+    materials: [{ kind: "state_marker", ref: "payload:mid-seed" }],
+    requiresActiveSync: false,
+  });
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "leaf",
+    sessionId: "session-leaf",
+    runId: "run-leaf",
+    lineage: leaf,
+    taskSummary: "leaf tries to over-report",
+    materials: [{ kind: "assistant_output", ref: "payload:leaf-output" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "leaf",
+    sessionId: "session-leaf",
+    runId: "run-leaf",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Prepare non-skipping test package.",
+    syncIntent: "submit_to_parent",
+  });
+  const checked = runtime.getCmpCheckedSnapshot(committed.metadata?.checkedSnapshotId as string);
+  const materialized = runtime.materializeContextPackage({
+    agentId: "leaf",
+    snapshotId: checked!.snapshotId,
+    targetAgentId: "root",
+    packageKind: "promotion_update",
+  });
+
+  assert.throws(() => {
+    runtime.dispatchContextPackage({
+      agentId: "leaf",
+      packageId: materialized.contextPackage.packageId,
+      sourceAgentId: "leaf",
+      targetAgentId: "root",
+      targetKind: "parent",
+    });
+  }, /not allowed for non-skipping delivery|not visible/i);
+});
+
+test("AgentCoreRuntime third wave can complete parent-child reseed and acknowledgement", () => {
+  const runtime = createAgentCoreRuntime();
+  const parent = createAgentLineage({
+    agentId: "parent",
+    depth: 0,
+    projectId: "cmp-project-reseed",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/parent",
+      cmpBranch: "cmp/parent",
+      mpBranch: "mp/parent",
+      tapBranch: "tap/parent",
+    }),
+    childAgentIds: ["child-r"],
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "parent",
+    sessionId: "session-reseed",
+    runId: "run-reseed",
+    lineage: parent,
+    taskSummary: "prepare child reseed package",
+    materials: [{ kind: "context_package", ref: "payload:reseed-package" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "parent",
+    sessionId: "session-reseed",
+    runId: "run-reseed",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Build child reseed package.",
+    syncIntent: "dispatch_to_children",
+  });
+  const checked = runtime.getCmpCheckedSnapshot(committed.metadata?.checkedSnapshotId as string);
+  const materialized = runtime.materializeContextPackage({
+    agentId: "parent",
+    snapshotId: checked!.snapshotId,
+    targetAgentId: "child-r",
+    packageKind: "child_seed",
+  });
+  const dispatched = runtime.dispatchContextPackage({
+    agentId: "parent",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "parent",
+    targetAgentId: "child-r",
+    targetKind: "child",
+  });
+  const acknowledged = runtime.acknowledgeCmpDispatch({
+    dispatchId: dispatched.receipt.dispatchId,
+  });
+
+  assert.equal(acknowledged.status, "acknowledged");
+  assert.equal(runtime.getCmpDbContextPackageRecord(materialized.contextPackage.packageId)?.state, "acknowledged");
+  assert.equal(runtime.getCmpDbDeliveryRecord(dispatched.receipt.dispatchId)?.state, "acknowledged");
+});
+
+test("AgentCoreRuntime can advance MQ delivery timeout into retry and expiry states", async () => {
+  const runtime = createAgentCoreRuntime({
+    cmpInfraBackends: {
+      git: createInMemoryCmpGitBackend(),
+      mq: createInMemoryCmpRedisMqAdapter(),
+    },
+  });
+
+  await runtime.bootstrapCmpProjectInfra({
+    projectId: "cmp-project-timeout",
+    repoName: "cmp-project-timeout",
+    repoRootPath: "/tmp/praxis/cmp-project-timeout",
+    agents: [
+      { agentId: "parent", depth: 0 },
+      { agentId: "child", parentAgentId: "parent", depth: 1 },
+    ],
+    defaultAgentId: "parent",
+  });
+
+  const parent = createAgentLineage({
+    agentId: "parent",
+    depth: 0,
+    projectId: "cmp-project-timeout",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/parent",
+      cmpBranch: "cmp/parent",
+      mpBranch: "mp/parent",
+      tapBranch: "tap/parent",
+    }),
+    childAgentIds: ["child"],
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "parent",
+    sessionId: "session-timeout",
+    runId: "run-timeout",
+    lineage: parent,
+    taskSummary: "prepare timeout package",
+    materials: [{ kind: "context_package", ref: "payload:timeout-package" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "parent",
+    sessionId: "session-timeout",
+    runId: "run-timeout",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Build timeout package.",
+    syncIntent: "dispatch_to_children",
+  });
+  const checked = runtime.getCmpCheckedSnapshot(committed.metadata?.checkedSnapshotId as string);
+  const materialized = runtime.materializeContextPackage({
+    agentId: "parent",
+    snapshotId: checked!.snapshotId,
+    targetAgentId: "child",
+    packageKind: "child_seed",
+  });
+  const dispatched = runtime.dispatchContextPackage({
+    agentId: "parent",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "parent",
+    targetAgentId: "child",
+    targetKind: "child",
+  });
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (runtime.getCmpDispatchReceipt(dispatched.receipt.dispatchId)?.metadata?.mqReceiptId) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  const firstSweep = runtime.advanceCmpMqDeliveryTimeouts({
+    projectId: "cmp-project-timeout",
+    now: "2099-03-25T01:01:10.000Z",
+  });
+  const secondSweep = runtime.advanceCmpMqDeliveryTimeouts({
+    projectId: "cmp-project-timeout",
+    now: "2099-03-25T01:02:20.000Z",
+  });
+  const thirdSweep = runtime.advanceCmpMqDeliveryTimeouts({
+    projectId: "cmp-project-timeout",
+    now: "2099-03-25T01:03:30.000Z",
+  });
+
+  assert.equal(firstSweep.retryScheduledCount, 1);
+  assert.equal(secondSweep.retryScheduledCount, 1);
+  assert.equal(thirdSweep.expiredCount, 1);
+  assert.equal(runtime.getCmpDbDeliveryRecord(dispatched.receipt.dispatchId)?.state, "expired");
+  assert.equal(runtime.getCmpRuntimeDeliveryTruthSummary("cmp-project-timeout").expiredCount, 1);
+});
+
+test("AgentCoreRuntime third wave keeps sibling exchange out of upward promotion", () => {
+  const runtime = createAgentCoreRuntime();
+  const root = createAgentLineage({
+    agentId: "root-s",
+    depth: 0,
+    projectId: "cmp-project-sibling",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/root-s",
+      cmpBranch: "cmp/root-s",
+      mpBranch: "mp/root-s",
+      tapBranch: "tap/root-s",
+    }),
+    childAgentIds: ["sib-a", "sib-b"],
+  });
+  const siblingA = createAgentLineage({
+    agentId: "sib-a",
+    parentAgentId: "root-s",
+    depth: 1,
+    projectId: "cmp-project-sibling",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/sib-a",
+      cmpBranch: "cmp/sib-a",
+      mpBranch: "mp/sib-a",
+      tapBranch: "tap/sib-a",
+    }),
+  });
+  const siblingB = createAgentLineage({
+    agentId: "sib-b",
+    parentAgentId: "root-s",
+    depth: 1,
+    projectId: "cmp-project-sibling",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/sib-b",
+      cmpBranch: "cmp/sib-b",
+      mpBranch: "mp/sib-b",
+      tapBranch: "tap/sib-b",
+    }),
+  });
+  runtime.ingestRuntimeContext({
+    agentId: "root-s",
+    sessionId: "session-sibling-root",
+    runId: "run-sibling-root",
+    lineage: root,
+    taskSummary: "seed root lineage",
+    materials: [{ kind: "state_marker", ref: "payload:root-s" }],
+    requiresActiveSync: false,
+  });
+  runtime.ingestRuntimeContext({
+    agentId: "sib-b",
+    sessionId: "session-sibling-b",
+    runId: "run-sibling-b",
+    lineage: siblingB,
+    taskSummary: "register sibling B before direct peer attempt",
+    materials: [{ kind: "state_marker", ref: "payload:sibling-b" }],
+    requiresActiveSync: false,
+  });
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "sib-a",
+    sessionId: "session-sibling-a",
+    runId: "run-sibling-a",
+    lineage: siblingA,
+    taskSummary: "prepare peer exchange package",
+    materials: [{ kind: "assistant_output", ref: "payload:sibling-a" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "sib-a",
+    sessionId: "session-sibling-a",
+    runId: "run-sibling-a",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Prepare sibling exchange without upward promotion.",
+    syncIntent: "broadcast_to_peers",
+  });
+  const checked = runtime.getCmpCheckedSnapshot(committed.metadata?.checkedSnapshotId as string);
+  const materialized = runtime.materializeContextPackage({
+    agentId: "sib-a",
+    snapshotId: checked!.snapshotId,
+    targetAgentId: "sib-b",
+    packageKind: "peer_exchange",
+  });
+  assert.throws(() => {
+    runtime.dispatchContextPackage({
+      agentId: "sib-a",
+      packageId: materialized.contextPackage.packageId,
+      sourceAgentId: "sib-a",
+      targetAgentId: "sib-b",
+      targetKind: "peer",
+    });
+  }, /not visible|non-skipping/i);
+  assert.equal(runtime.listCmpGitPromotions().length, 0);
+});
+
+test("AgentCoreRuntime third wave can recover a CMP runtime snapshot and continue serving history", () => {
+  const runtime = createAgentCoreRuntime();
+  const lineage = createAgentLineage({
+    agentId: "recover-main",
+    depth: 0,
+    projectId: "cmp-project-recover",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/recover-main",
+      cmpBranch: "cmp/recover-main",
+      mpBranch: "mp/recover-main",
+      tapBranch: "tap/recover-main",
+    }),
+    childAgentIds: ["recover-child"],
+  });
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "recover-main",
+    sessionId: "session-recover",
+    runId: "run-recover",
+    lineage,
+    taskSummary: "prepare snapshot recovery",
+    materials: [{ kind: "assistant_output", ref: "payload:recover-main" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "recover-main",
+    sessionId: "session-recover",
+    runId: "run-recover",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Prepare runtime snapshot.",
+    syncIntent: "submit_to_parent",
+  });
+  const checked = runtime.getCmpCheckedSnapshot(committed.metadata?.checkedSnapshotId as string);
+  const materialized = runtime.materializeContextPackage({
+    agentId: "recover-main",
+    snapshotId: checked!.snapshotId,
+    targetAgentId: "recover-child",
+    packageKind: "child_seed",
+  });
+  runtime.dispatchContextPackage({
+    agentId: "recover-main",
+    packageId: materialized.contextPackage.packageId,
+    sourceAgentId: "recover-main",
+    targetAgentId: "recover-child",
+    targetKind: "child",
+  });
+
+  const snapshot = runtime.createCmpRuntimeSnapshot();
+  const recovered = createAgentCoreRuntime();
+  recovered.recoverCmpRuntimeSnapshot(snapshot);
+
+  assert.equal(recovered.listCmpLineages().length, 2);
+  assert.equal(recovered.listCmpContextPackages().length, 1);
+  assert.equal(recovered.listCmpDispatchReceipts().length, 1);
+
+  const historical = recovered.requestHistoricalContext({
+    requesterAgentId: "recover-main",
+    projectId: "cmp-project-recover",
+    reason: "Read history after runtime recovery.",
+    query: {},
+  });
+  assert.equal(historical.found, true);
+  assert.equal(historical.contextPackage?.packageKind, "historical_reply");
+});
+
+test("AgentCoreRuntime third wave can reseed a child lineage through a parent-dispatched context package", () => {
+  const runtime = createAgentCoreRuntime();
+  const parent = createAgentLineage({
+    agentId: "parent-reseed",
+    depth: 0,
+    projectId: "cmp-project-reseed",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/parent-reseed",
+      cmpBranch: "cmp/parent-reseed",
+      mpBranch: "mp/parent-reseed",
+      tapBranch: "tap/parent-reseed",
+    }),
+    childAgentIds: ["child-reseed"],
+  });
+  const child = createAgentLineage({
+    agentId: "child-reseed",
+    parentAgentId: "parent-reseed",
+    depth: 1,
+    projectId: "cmp-project-reseed",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/child-reseed",
+      cmpBranch: "cmp/child-reseed",
+      mpBranch: "mp/child-reseed",
+      tapBranch: "tap/child-reseed",
+    }),
+  });
+
+  const parentIngest = runtime.ingestRuntimeContext({
+    agentId: "parent-reseed",
+    sessionId: "session-parent-reseed",
+    runId: "run-parent-reseed",
+    lineage: parent,
+    taskSummary: "Parent prepares a high-signal child seed.",
+    materials: [{ kind: "system_prompt", ref: "payload:parent-seed" }],
+  });
+  const parentCommit = runtime.commitContextDelta({
+    agentId: "parent-reseed",
+    sessionId: "session-parent-reseed",
+    runId: "run-parent-reseed",
+    eventIds: parentIngest.acceptedEventIds,
+    changeSummary: "Prepare child reseed package.",
+    syncIntent: "dispatch_to_children",
+  });
+  const parentChecked = runtime.getCmpCheckedSnapshot(parentCommit.metadata?.checkedSnapshotId as string);
+  const seedPackage = runtime.materializeContextPackage({
+    agentId: "parent-reseed",
+    snapshotId: parentChecked!.snapshotId,
+    targetAgentId: "child-reseed",
+    packageKind: "child_seed",
+  });
+  const delivered = runtime.dispatchContextPackage({
+    agentId: "parent-reseed",
+    packageId: seedPackage.contextPackage.packageId,
+    sourceAgentId: "parent-reseed",
+    targetAgentId: "child-reseed",
+    targetKind: "child",
+  });
+
+  assert.equal(delivered.receipt.status, "delivered");
+
+  const childIngest = runtime.ingestRuntimeContext({
+    agentId: "child-reseed",
+    sessionId: "session-child-reseed",
+    runId: "run-child-reseed",
+    lineage: child,
+    taskSummary: "Child consumes reseeded context package.",
+    materials: [
+      {
+        kind: "context_package",
+        ref: seedPackage.contextPackage.packageRef,
+      },
+    ],
+  });
+  const childCommit = runtime.commitContextDelta({
+    agentId: "child-reseed",
+    sessionId: "session-child-reseed",
+    runId: "run-child-reseed",
+    eventIds: childIngest.acceptedEventIds,
+    changeSummary: "Child records reseeded context locally.",
+    syncIntent: "local_record",
+  });
+
+  const childChecked = runtime.getCmpCheckedSnapshot(childCommit.metadata?.checkedSnapshotId as string);
+  assert.ok(childChecked);
+  assert.equal(runtime.readCmpEvents("child-reseed").at(-1)?.kind, "context_package_received");
+});
+
+test("AgentCoreRuntime third wave can route sibling exchange through parent mediation without turning it into upward promotion", () => {
+  const runtime = createAgentCoreRuntime();
+  const parent = createAgentLineage({
+    agentId: "parent-peer",
+    depth: 0,
+    projectId: "cmp-project-peer",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/parent-peer",
+      cmpBranch: "cmp/parent-peer",
+      mpBranch: "mp/parent-peer",
+      tapBranch: "tap/parent-peer",
+    }),
+    childAgentIds: ["left-peer", "right-peer"],
+  });
+  const left = createAgentLineage({
+    agentId: "left-peer",
+    parentAgentId: "parent-peer",
+    depth: 1,
+    projectId: "cmp-project-peer",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/left-peer",
+      cmpBranch: "cmp/left-peer",
+      mpBranch: "mp/left-peer",
+      tapBranch: "tap/left-peer",
+    }),
+  });
+  const right = createAgentLineage({
+    agentId: "right-peer",
+    parentAgentId: "parent-peer",
+    depth: 1,
+    projectId: "cmp-project-peer",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/right-peer",
+      cmpBranch: "cmp/right-peer",
+      mpBranch: "mp/right-peer",
+      tapBranch: "tap/right-peer",
+    }),
+  });
+
+  runtime.ingestRuntimeContext({
+    agentId: "parent-peer",
+    sessionId: "session-parent-peer",
+    runId: "run-parent-peer",
+    lineage: parent,
+    taskSummary: "Seed parent lineage for sibling exchange.",
+    materials: [{ kind: "state_marker", ref: "payload:parent-peer-seed" }],
+    requiresActiveSync: false,
+  });
+  runtime.ingestRuntimeContext({
+    agentId: "right-peer",
+    sessionId: "session-right-peer-seed",
+    runId: "run-right-peer-seed",
+    lineage: right,
+    taskSummary: "Register the right sibling lineage before peer delivery.",
+    materials: [{ kind: "state_marker", ref: "payload:right-peer-seed" }],
+    requiresActiveSync: false,
+  });
+
+  const leftIngest = runtime.ingestRuntimeContext({
+    agentId: "left-peer",
+    sessionId: "session-left-peer",
+    runId: "run-left-peer",
+    lineage: left,
+    taskSummary: "Left sibling prepares a peer package.",
+    materials: [{ kind: "assistant_output", ref: "payload:left-peer-output" }],
+  });
+  const leftCommit = runtime.commitContextDelta({
+    agentId: "left-peer",
+    sessionId: "session-left-peer",
+    runId: "run-left-peer",
+    eventIds: leftIngest.acceptedEventIds,
+    changeSummary: "Prepare sibling exchange package.",
+    syncIntent: "submit_to_parent",
+  });
+  const leftChecked = runtime.getCmpCheckedSnapshot(leftCommit.metadata?.checkedSnapshotId as string);
+  const upwardPackage = runtime.materializeContextPackage({
+    agentId: "left-peer",
+    snapshotId: leftChecked!.snapshotId,
+    targetAgentId: "parent-peer",
+    packageKind: "promotion_update",
+  });
+  const upwardDispatch = runtime.dispatchContextPackage({
+    agentId: "left-peer",
+    packageId: upwardPackage.contextPackage.packageId,
+    sourceAgentId: "left-peer",
+    targetAgentId: "parent-peer",
+    targetKind: "parent",
+  });
+  assert.equal(upwardDispatch.receipt.status, "delivered");
+
+  const parentIngest = runtime.ingestRuntimeContext({
+    agentId: "parent-peer",
+    sessionId: "session-parent-peer-forward",
+    runId: "run-parent-peer-forward",
+    lineage: parent,
+    taskSummary: "Parent mediates a sibling exchange.",
+    materials: [{ kind: "context_package", ref: upwardPackage.contextPackage.packageRef }],
+  });
+  const parentCommit = runtime.commitContextDelta({
+    agentId: "parent-peer",
+    sessionId: "session-parent-peer-forward",
+    runId: "run-parent-peer-forward",
+    eventIds: parentIngest.acceptedEventIds,
+    changeSummary: "Repackage sibling exchange through the parent.",
+    syncIntent: "dispatch_to_children",
+  });
+  const parentChecked = runtime.getCmpCheckedSnapshot(parentCommit.metadata?.checkedSnapshotId as string);
+  const peerPackage = runtime.materializeContextPackage({
+    agentId: "parent-peer",
+    snapshotId: parentChecked!.snapshotId,
+    targetAgentId: "right-peer",
+    packageKind: "peer_exchange",
+  });
+  assert.equal(peerPackage.contextPackage.packageKind, "peer_exchange");
+  const promotion = runtime.listCmpGitPromotions().find((record) => record.sourceAgentId === "left-peer");
+  assert.ok(promotion);
+
+  const rightIngest = runtime.ingestRuntimeContext({
+    agentId: "right-peer",
+    sessionId: "session-right-peer",
+    runId: "run-right-peer",
+    lineage: right,
+    taskSummary: "Right sibling consumes peer package.",
+    materials: [{ kind: "context_package", ref: peerPackage.contextPackage.packageRef }],
+  });
+  assert.equal(rightIngest.status, "accepted");
+  assert.equal(runtime.readCmpEvents("right-peer").at(-1)?.kind, "context_package_received");
+});
+
+test("AgentCoreRuntime third wave exposes recoverable lineage snapshot anchors after an interruption-shaped flow", () => {
+  const runtime = createAgentCoreRuntime();
+  const lineage = createAgentLineage({
+    agentId: "recover-main",
+    depth: 0,
+    projectId: "cmp-project-recover",
+    branchFamily: createCmpBranchFamily({
+      workBranch: "work/recover-main",
+      cmpBranch: "cmp/recover-main",
+      mpBranch: "mp/recover-main",
+      tapBranch: "tap/recover-main",
+    }),
+    childAgentIds: ["recover-child"],
+  });
+
+  const ingested = runtime.ingestRuntimeContext({
+    agentId: "recover-main",
+    sessionId: "session-recover-main",
+    runId: "run-recover-main",
+    lineage,
+    taskSummary: "Prepare interrupted lineage snapshot anchors.",
+    materials: [{ kind: "assistant_output", ref: "payload:recover-main-output" }],
+  });
+  const committed = runtime.commitContextDelta({
+    agentId: "recover-main",
+    sessionId: "session-recover-main",
+    runId: "run-recover-main",
+    eventIds: ingested.acceptedEventIds,
+    changeSummary: "Stage checked snapshot and child package before interruption.",
+    syncIntent: "dispatch_to_children",
+  });
+  const checked = runtime.getCmpCheckedSnapshot(committed.metadata?.checkedSnapshotId as string);
+  const pkg = runtime.materializeContextPackage({
+    agentId: "recover-main",
+    snapshotId: checked!.snapshotId,
+    targetAgentId: "recover-child",
+    packageKind: "child_seed",
+  });
+
+  assert.ok(runtime.getCmpSnapshotCandidate(committed.snapshotCandidateId!));
+  assert.ok(runtime.getCmpCheckedSnapshot(checked!.snapshotId));
+  assert.ok(runtime.getCmpPromotedProjection(pkg.contextPackage.sourceProjectionId));
+  assert.ok(runtime.getCmpDbProjectionRecord(`projection:${checked!.snapshotId}`));
+  assert.ok(runtime.getCmpDbContextPackageRecord(pkg.contextPackage.packageId));
+
+  const historical = runtime.requestHistoricalContext({
+    requesterAgentId: "recover-main",
+    projectId: "cmp-project-recover",
+    reason: "Use the last checked snapshot as a recovery anchor after interruption.",
+    query: {
+      snapshotId: checked!.snapshotId,
+      packageKindHint: "historical_reply",
+    },
+  });
+
+  assert.equal(historical.found, true);
+  assert.equal(historical.snapshot?.snapshotId, checked!.snapshotId);
+  assert.equal(historical.contextPackage?.packageKind, "historical_reply");
 });

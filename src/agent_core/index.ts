@@ -1,5 +1,60 @@
 export * from "./types/index.js";
 export * from "./capability-types/index.js";
+export * from "./cmp-types/index.js";
+export * from "./cmp-five-agent/index.js";
+export * from "./cmp-git/index.js";
+export * from "./cmp-runtime/index.js";
+export {
+  CMP_DB_AGENT_LOCAL_TABLE_KINDS,
+  CMP_DB_SHARED_TABLE_KINDS,
+  CMP_PROJECTION_STATES,
+  createCmpAgentLocalTableSet,
+  createCmpDbPostgresAdapter,
+  createCmpProjectDbTopology,
+  sanitizeSqlIdentifier,
+  validateCmpAgentLocalTableSet,
+  validateCmpProjectDbTopology,
+  validateCheckedSnapshotLike,
+  validateCmpProjectionRecord,
+  createCmpProjectionRecordFromCheckedSnapshot,
+  advanceCmpProjectionRecord,
+  canTransitionCmpProjectionState,
+  assertCmpProjectionStateTransition,
+  isTerminalCmpProjectionState,
+  isCmpProjectionState,
+} from "./cmp-db/index.js";
+export type {
+  CheckedSnapshotLike,
+  CmpAgentLocalTableSet,
+  CmpDbAgentLocalTableKind,
+  CmpDbAgentLocalTableDefinition,
+  CmpDbIndexDefinition,
+  CmpDbSharedTableDefinition,
+  CmpDbSharedTableKind,
+  CmpProjectDbTopology,
+  CmpProjectionState,
+} from "./cmp-db/index.js";
+export {
+  CMP_MQ_CHANNEL_KINDS,
+  CMP_NEIGHBORHOOD_DIRECTIONS,
+  createInMemoryCmpRedisMqAdapter,
+  validateCmpAgentNeighborhood,
+  validateCmpMqTopicDescriptor,
+  validateCmpIcmaPublishEnvelope,
+  createCmpMqTopic,
+  createCmpMqTopicTopology,
+  listNeighborhoodTopics,
+  resolveNeighborhoodAudience,
+  createCmpIcmaPublishEnvelope,
+  assertNoSkippingNeighborhoodBroadcast,
+} from "./cmp-mq/index.js";
+export type {
+  CmpAgentNeighborhood,
+  CmpIcmaPublishEnvelope,
+  CmpMqChannelKind,
+  CmpMqTopicDescriptor,
+  CmpNeighborhoodDirection,
+} from "./cmp-mq/index.js";
 export * from "./ta-pool-types/index.js";
 export * from "./ta-pool-model/index.js";
 export * from "./ta-pool-review/index.js";

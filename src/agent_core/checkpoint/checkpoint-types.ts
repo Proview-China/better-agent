@@ -1,5 +1,6 @@
 import type { EventJournalLike, JournalReadResult } from "../journal/index.js";
 import type { PoolRuntimeSnapshots } from "../ta-pool-runtime/runtime-snapshot.js";
+import type { CmpRuntimeSnapshot } from "../cmp-runtime/runtime-snapshot.js";
 import type { CheckpointRecord } from "../types/kernel-checkpoint.js";
 import type { RunRecord } from "../types/kernel-run.js";
 import type { AgentState } from "../types/kernel-state.js";
@@ -10,6 +11,7 @@ export interface CheckpointSnapshotData {
   state: AgentState;
   sessionHeader?: SessionHeader;
   poolRuntimeSnapshots?: PoolRuntimeSnapshots;
+  cmpRuntimeSnapshot?: CmpRuntimeSnapshot;
 }
 
 export interface StoredCheckpoint {
@@ -27,6 +29,7 @@ export interface CheckpointRecoveryResult {
   state: AgentState;
   run?: RunRecord;
   poolRuntimeSnapshots?: PoolRuntimeSnapshots;
+  cmpRuntimeSnapshot?: CmpRuntimeSnapshot;
   replayedEvents: JournalReadResult[];
   resumeCursor?: JournalCursor;
 }

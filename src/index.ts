@@ -37,9 +37,9 @@ export const praxisBootstrapStatus = {
   desktopTargets: {
     macos: "native-first",
     windows: "electron-candidate",
-    linux: "electron-candidate"
+    linux: "electron-candidate",
   },
-  memoryDirectory: "./memory"
+  memoryDirectory: "./memory",
 } as const;
 
 export function describePraxisBootstrap(): string {
@@ -47,7 +47,7 @@ export function describePraxisBootstrap(): string {
     "Praxis reboot scaffold ready.",
     "The unified capability runtime is named rax.",
     "TypeScript/Node is the active baseline.",
-    "Project memory lives under ./memory."
+    "Project memory lives under ./memory.",
   ].join(" ");
 }
 

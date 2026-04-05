@@ -30,6 +30,9 @@ import {
   buildOpenAISkillLocalDirectoryBundle,
   buildOpenAISkillVersionCreatePlan
 } from "../integrations/openai/api/tools/skills/managed.js";
+import { createRaxCmpFacade } from "./cmp-facade.js";
+import type { RaxCmpFacade, RaxCmpRuntimeLike } from "./cmp-types.js";
+import type { RaxCmpConfig } from "./cmp-config.js";
 import { composeNativeMcpInvocation } from "./mcp-native-compose.js";
 import { McpNativeRuntime, type McpNativeRuntimeLike } from "./mcp-native-runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
@@ -206,7 +209,10 @@ export interface RaxFacade {
     removeVersion(options: FacadeCallOptions<SkillVersionRemoveInput>): PreparedInvocation<Record<string, unknown>>;
     setDefaultVersion(options: FacadeCallOptions<SkillSetDefaultVersionInput>): PreparedInvocation<Record<string, unknown>>;
   };
+  cmp: RaxCmpFacade;
 }
+
+type RaxCmpRuntimeFactory = (config: RaxCmpConfig) => RaxCmpRuntimeLike;
 
 export function createRaxFacade(
   router: CapabilityRouter,
@@ -214,9 +220,18 @@ export function createRaxFacade(
   mcpRuntime = new McpRuntime(),
   webSearchRuntime: WebSearchRuntimeLike = new WebSearchRuntime(),
   skillRuntime = new SkillRuntime(),
-  mcpNativeRuntime: McpNativeRuntimeLike = new McpNativeRuntime()
+  mcpNativeRuntime: McpNativeRuntimeLike = new McpNativeRuntime(),
+  cmpRuntimeFactory?: RaxCmpRuntimeFactory
 ): RaxFacade {
-  return createConfiguredRaxFacade(router, profiles, mcpRuntime, webSearchRuntime, skillRuntime, mcpNativeRuntime);
+  return createConfiguredRaxFacade(
+    router,
+    profiles,
+    mcpRuntime,
+    webSearchRuntime,
+    skillRuntime,
+    mcpNativeRuntime,
+    cmpRuntimeFactory
+  );
 }
 
 export function createConfiguredRaxFacade(
@@ -225,8 +240,12 @@ export function createConfiguredRaxFacade(
   mcpRuntime = new McpRuntime(),
   webSearchRuntime: WebSearchRuntimeLike = new WebSearchRuntime(),
   skillRuntime = new SkillRuntime(),
-  mcpNativeRuntime: McpNativeRuntimeLike = new McpNativeRuntime()
+  mcpNativeRuntime: McpNativeRuntimeLike = new McpNativeRuntime(),
+  cmpRuntimeFactory?: RaxCmpRuntimeFactory
 ): RaxFacade {
+  const cmp = createRaxCmpFacade({
+    runtimeFactory: cmpRuntimeFactory,
+  });
   function prepare<TInput = unknown, TPayload = unknown>(
     capability: "generate" | "embed" | "file" | "batch" | "search",
     action: "create" | "stream" | "upload" | "submit" | "ground",
@@ -1805,6 +1824,7 @@ export function createConfiguredRaxFacade(
       setDefaultVersion: (options) => {
         return prepareManagedSkillSetDefaultInvocation(options);
       }
-    }
+    },
+    cmp
   };
 }

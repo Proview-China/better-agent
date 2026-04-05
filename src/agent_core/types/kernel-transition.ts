@@ -6,6 +6,7 @@ export const STEP_ACTION_KINDS = [
   "internal_step",
   "model_inference",
   "capability_call",
+  "cmp_action",
   "wait",
   "pause",
   "complete",

@@ -1,17 +1,6 @@
 export type {
-  CreateRaxCmpConfigInput,
-  RaxCmpConfig,
-} from "./cmp-config.js";
-export type {
-  CmpConnectorOwnership,
-  CmpPostgresConnector,
-  CmpRedisConnector,
-  CmpSharedGitInfraConnector,
-  CmpSharedInfraConnectorMetadata,
-  CmpSharedInfraConnectors,
-  CmpWorkflowAgentInput,
-} from "./cmp-connectors.js";
-export type {
+  RaxCmpBootstrapInput,
+  RaxCmpBootstrapResult,
   RaxCmpAcceptanceReadiness,
   RaxCmpAutomationPolicy,
   RaxCmpBootstrapAgentInput,
@@ -21,7 +10,9 @@ export type {
   RaxCmpDispatchInput,
   RaxCmpDispatchScope,
   RaxCmpExecutionStyle,
+  RaxCmpFacade,
   RaxCmpFallbackPolicy,
+  RaxCmpFallbackReadiness,
   RaxCmpGitInfraConfig,
   RaxCmpIngestInput,
   RaxCmpLineageScope,
@@ -40,26 +31,24 @@ export type {
   RaxCmpRecoverResult,
   RaxCmpRecoveryPreference,
   RaxCmpRequestHistoryInput,
-  RaxCmpSession,
-  RaxCmpSmokeCheck,
-  RaxCmpSmokeInput,
-  RaxCmpSmokeResult,
-  RaxCmpStatusPanel,
-  RaxCmpTruthLayerSummary,
-  RaxCmpFallbackReadiness,
   RaxCmpRoleCapabilityAccessInput,
   RaxCmpRoleCapabilityDispatchInput,
+  RaxCmpRuntimeLike,
+  RaxCmpSession,
+  RaxCmpSmokeInput,
+  RaxCmpSmokeResult,
+  RaxCmpSmokeCheck,
+  RaxCmpStatusPanel,
+  RaxCmpTruthLayerSummary,
   RaxCmpCommitInput,
   RaxCmpResolveInput,
   RaxCmpMaterializeInput,
 } from "./cmp-types.js";
-export type { RaxCmpStatusPanelSection } from "./cmp-status-panel.js";
 export type {
-  CmpRule,
-  CmpRuleAction,
-  CmpRuleEvaluation,
-  CmpRuleMatch,
-  CmpRulePack,
+  CreateRaxCmpConfigInput,
+  RaxCmpConfig,
+} from "./cmp-config.js";
+export type {
   CmpSection,
   CmpSectionFidelity,
   CmpSectionKind,
@@ -67,7 +56,26 @@ export type {
   CmpStoredSection,
   CmpStoredSectionPlane,
   CmpStoredSectionState,
+  CmpRule,
+  CmpRuleAction,
+  CmpRuleEvaluation,
+  CmpRuleMatch,
+  CmpRulePack,
 } from "./cmp-domain.js";
+export type {
+  CmpConnectorOwnership,
+  CmpPostgresConnector,
+  CmpRedisConnector,
+  CmpSharedGitInfraConnector,
+  CmpSharedInfraConnectorMetadata,
+  CmpSharedInfraConnectors,
+  CmpWorkflowAgentInput,
+} from "./cmp-connectors.js";
+export type {
+  CreateRaxCmpRuntimeInput,
+  RaxCmpRuntime,
+} from "./cmp-runtime.js";
+export type { RaxCmpStatusPanelSection } from "./cmp-status-panel.js";
 export type {
   CapabilityAction,
   CapabilityDefinition,
@@ -81,7 +89,7 @@ export type {
   ProviderCapabilitySupport,
   SdkLayer,
   SupportPool,
-  SupportStatus
+  SupportStatus,
 } from "./types.js";
 export type {
   WebSearchCitation,
@@ -90,7 +98,7 @@ export type {
   WebSearchFreshness,
   WebSearchOutput,
   WebSearchSource,
-  WebSearchUserLocation
+  WebSearchUserLocation,
 } from "./websearch-types.js";
 export type {
   SkillActivateInput,
@@ -147,21 +155,21 @@ export type {
   OpenAILocalShellSkillReferenceOverrides,
   OpenAIInlineShellSkillOverrides,
   OpenAIHostedShellEnvironmentOverrides,
-  OpenAIHostedShellSkillLifecycleOverrides
+  OpenAIHostedShellSkillLifecycleOverrides,
 } from "../integrations/openai/api/tools/skills/carrier.js";
 export type {
   AnthropicFilesystemSkillBindingOverrides,
-  AnthropicManagedSkillBindingOverrides
+  AnthropicManagedSkillBindingOverrides,
 } from "../integrations/anthropic/api/tools/skills/carrier.js";
 export type {
   DeepMindLocalSkillReferenceOverrides,
-  DeepMindCodeDefinedSkillReferenceOverrides
+  DeepMindCodeDefinedSkillReferenceOverrides,
 } from "../integrations/deepmind/api/tools/skills/carrier.js";
 export type {
   AdapterSdkSurface,
   CapabilityAdapterDescriptor,
   FacadeCallOptions,
-  PreparedInvocation
+  PreparedInvocation,
 } from "./contracts.js";
 export type {
   McpCarrierKind,
@@ -194,7 +202,7 @@ export type {
   McpSessionReadResourceInput,
   McpToolSummary,
   McpTransportConfig,
-  McpTransportKind
+  McpTransportKind,
 } from "./mcp-types.js";
 export type {
   AnthropicCompatibilityProfile,
@@ -202,13 +210,16 @@ export type {
   DeepMindCompatibilityProfile,
   McpCompatibilityProfile,
   McpLayerCompatibility,
-  OpenAICompatibilityProfile
+  OpenAICompatibilityProfile,
 } from "./compatibility.js";
 
 export {
   createRaxCmpConfig,
   loadRaxCmpConfigFromEnv,
 } from "./cmp-config.js";
+export {
+  createRaxCmpFacade,
+} from "./cmp-facade.js";
 export {
   createCmpSharedGitInfraConnector,
   createCmpPostgresConnector,
@@ -247,6 +258,9 @@ export {
   RAX_CMP_RECOVERY_PREFERENCES,
 } from "./cmp-types.js";
 export {
+  createRaxCmpRuntime,
+} from "./cmp-runtime.js";
+export {
   createCmpStatusPanelRows,
   createCmpStatusPanelRows as createCmpStatusPanelRenderRows,
   createRaxCmpStatusPanel,
@@ -260,16 +274,16 @@ export {
   PROVIDERS,
   SDK_LAYERS,
   SUPPORT_POOLS,
-  SUPPORT_STATUSES
+  SUPPORT_STATUSES,
 } from "./types.js";
 export {
   buildWebSearchTaskPrompt,
-  citationsEnabled
+  citationsEnabled,
 } from "./websearch-types.js";
 export {
   normalizeWebSearchOutput,
   toWebSearchCapabilityResult,
-  toWebSearchFailureResult
+  toWebSearchFailureResult,
 } from "./websearch-result.js";
 export type { WebSearchRuntimeLike } from "./websearch-runtime.js";
 export { WebSearchRuntime } from "./websearch-runtime.js";
@@ -284,11 +298,11 @@ export {
   CompatibilityBlockedError,
   MissingAdapterError,
   RaxRoutingError,
-  UnsupportedCapabilityError
+  UnsupportedCapabilityError,
 } from "./errors.js";
 
 export {
-  THIN_CAPABILITY_ADAPTERS
+  THIN_CAPABILITY_ADAPTERS,
 } from "./adapters.js";
 
 export {
@@ -296,7 +310,7 @@ export {
   DEFAULT_COMPATIBILITY_PROFILES,
   LOCAL_GATEWAY_COMPATIBILITY_PROFILES,
   getCompatibilityProfile,
-  supportsCapabilityInProfile
+  supportsCapabilityInProfile,
 } from "./compatibility.js";
 export { MCP_PROVIDER_SHELLS } from "./mcp-shells.js";
 
@@ -304,7 +318,7 @@ export {
   CAPABILITY_REGISTRY,
   getCapabilityDefinition,
   listCapabilities,
-  listCapabilitiesForProvider
+  listCapabilitiesForProvider,
 } from "./registry.js";
 export {
   defaultCapabilityRouter,
@@ -316,5 +330,5 @@ export {
   localGatewayMcpNativeRuntime,
   localGatewaySkillRuntime,
   rax,
-  raxLocal
+  raxLocal,
 } from "./runtime.js";

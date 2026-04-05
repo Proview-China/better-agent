@@ -1,4 +1,5 @@
 import type { PoolRuntimeSnapshots } from "../ta-pool-runtime/index.js";
+import type { CmpRuntimeSnapshot } from "../cmp-runtime/index.js";
 import type { RunRecord } from "../types/kernel-run.js";
 import type { AgentState } from "../types/kernel-state.js";
 import type { SessionHeader } from "../types/kernel-session.js";
@@ -12,6 +13,7 @@ export interface CreatePoolRuntimeCheckpointSnapshotInput {
   state: AgentState;
   sessionHeader?: SessionHeader;
   poolRuntimeSnapshots?: PoolRuntimeSnapshots;
+  cmpRuntimeSnapshot?: CmpRuntimeSnapshot;
 }
 
 export function createPoolRuntimeCheckpointSnapshot(
@@ -23,6 +25,9 @@ export function createPoolRuntimeCheckpointSnapshot(
     sessionHeader: input.sessionHeader ? structuredClone(input.sessionHeader) : undefined,
     poolRuntimeSnapshots: input.poolRuntimeSnapshots
       ? structuredClone(input.poolRuntimeSnapshots)
+      : undefined,
+    cmpRuntimeSnapshot: input.cmpRuntimeSnapshot
+      ? structuredClone(input.cmpRuntimeSnapshot)
       : undefined,
   };
 }

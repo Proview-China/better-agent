@@ -1,10 +1,22 @@
 import type {
+  BootstrapCmpProjectInfraInput,
+  DispatchCmpFiveAgentCapabilityResult,
+  CmpFiveAgentCapabilityAccessResolution,
+  CmpFiveAgentRole,
+  CmpPeerExchangeApprovalRecord,
+  CmpFiveAgentSummary,
   CmpPackageRecord,
   CmpRequestRecord,
+  CmpRuntimeDeliveryTruthSummary,
+  CmpRuntimeProjectRecoverySummary,
+  CmpRuntimeRecoverySummary,
   CmpSectionRecord,
   CmpSnapshotRecord,
   CommitContextDeltaInput,
   CommitContextDeltaResult,
+  CmpProjectInfraBootstrapReceipt,
+  CmpRuntimeInfraProjectState,
+  CmpRuntimeSnapshot,
   DispatchContextPackageInput,
   DispatchContextPackageResult,
   IngestRuntimeContextInput,
@@ -15,18 +27,11 @@ import type {
   RequestHistoricalContextResult,
   ResolveCheckedSnapshotInput,
   ResolveCheckedSnapshotResult,
-} from "../agent_core/cmp-types/index.js";
-import type {
-  CmpProjectInfraBootstrapReceipt,
-  CmpRuntimeInfraProjectState,
-  CmpRuntimeSnapshot,
-} from "../agent_core/cmp-runtime/index.js";
-import type {
-  AccessRequestScope,
   TaCapabilityTier,
   TaPoolMode,
-} from "../agent_core/ta-pool-types/index.js";
-import type { IntentPriority } from "../agent_core/types/index.js";
+  AccessRequestScope,
+  IntentPriority,
+} from "../agent_core/index.js";
 import type { CreateRaxCmpConfigInput, RaxCmpConfig } from "./cmp-config.js";
 
 export type RaxCmpMode = "active_preferred" | "passive_only" | "mixed";
@@ -225,15 +230,65 @@ export interface RaxCmpSession {
   createdAt: string;
   config: RaxCmpConfig;
   control: RaxCmpManualControlSurface;
-  runtime?: unknown;
+  runtime: RaxCmpRuntimeLike;
   metadata?: Record<string, unknown>;
 }
 
 export interface RaxCmpCreateInput {
   config: CreateRaxCmpConfigInput | RaxCmpConfig;
-  runtime?: unknown;
+  runtime?: RaxCmpRuntimeLike;
   control?: RaxCmpManualControlInput;
   metadata?: Record<string, unknown>;
+}
+
+export interface RaxCmpBootstrapInput {
+  session: RaxCmpSession;
+  payload: Omit<BootstrapCmpProjectInfraInput, "projectId" | "repoName" | "repoRootPath"> & {
+    projectId?: string;
+    repoName?: string;
+    repoRootPath?: string;
+  };
+  control?: RaxCmpManualControlInput;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RaxCmpBootstrapResult {
+  status: "bootstrapped";
+  receipt: CmpProjectInfraBootstrapReceipt;
+  session: RaxCmpSession;
+  control: RaxCmpManualControlSurface;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RaxCmpReadbackInput {
+  session: RaxCmpSession;
+  projectId?: string;
+  control?: RaxCmpManualControlInput;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RaxCmpReadbackResult {
+  status: "found" | "not_found";
+  receipt?: CmpProjectInfraBootstrapReceipt;
+  infraState?: CmpRuntimeInfraProjectState;
+  summary?: RaxCmpReadbackSummary;
+  control?: RaxCmpManualControlSurface;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RaxCmpTruthLayerSummary {
+  layer: "git" | "db" | "redis";
+  status: "ready" | "degraded" | "failed";
+  truthFor: string[];
+  readbackMode: "receipt" | "infra_state" | "reconciled";
+  details: Record<string, unknown>;
+}
+
+export interface RaxCmpFallbackReadiness {
+  gitHistoryRebuild: "available" | "not_needed" | "unavailable";
+  dbProjectionFallback: "available" | "not_needed" | "unavailable";
+  recoveryReconciliation: "available" | "not_needed" | "unavailable";
+  redisDeliveryRecovery: "available" | "partial" | "unavailable";
 }
 
 export type RaxCmpReadinessStatus = "ready" | "degraded" | "failed";
@@ -266,7 +321,7 @@ export interface RaxCmpAcceptanceReadiness {
 }
 
 export interface RaxCmpStatusPanel {
-  roles: Record<string, {
+  roles: Record<CmpFiveAgentRole, {
     count: number;
     latestStage?: string;
   }>;
@@ -283,7 +338,7 @@ export interface RaxCmpStatusPanel {
     reinterventionServedCount: number;
   };
   health: {
-    readbackStatus: RaxCmpReadinessStatus;
+    readbackStatus: "ready" | "degraded" | "failed";
     deliveryDriftCount: number;
     expiredDeliveryCount: number;
     liveInfraReady: boolean;
@@ -301,24 +356,9 @@ export interface RaxCmpStatusPanel {
   };
 }
 
-export interface RaxCmpTruthLayerSummary {
-  layer: "git" | "db" | "redis";
-  status: "ready" | "degraded" | "failed";
-  truthFor: string[];
-  readbackMode: "receipt" | "infra_state" | "reconciled";
-  details: Record<string, unknown>;
-}
-
-export interface RaxCmpFallbackReadiness {
-  gitHistoryRebuild: "available" | "not_needed" | "unavailable";
-  dbProjectionFallback: "available" | "not_needed" | "unavailable";
-  recoveryReconciliation: "available" | "not_needed" | "unavailable";
-  redisDeliveryRecovery: "available" | "partial" | "unavailable";
-}
-
 export interface RaxCmpReadbackSummary {
   projectId: string;
-  status: RaxCmpReadinessStatus;
+  status: "ready" | "degraded" | "failed";
   receiptAvailable: boolean;
   infraStateAvailable: boolean;
   gitBootstrapStatus?: CmpProjectInfraBootstrapReceipt["git"]["status"];
@@ -335,28 +375,13 @@ export interface RaxCmpReadbackSummary {
   truthLayers: RaxCmpTruthLayerSummary[];
   fallbacks: RaxCmpFallbackReadiness;
   objectModel?: RaxCmpObjectModelReadinessSummary;
-  recoverySummary?: Record<string, unknown>;
-  projectRecovery?: Record<string, unknown>;
-  deliverySummary?: Record<string, unknown>;
+  recoverySummary?: CmpRuntimeRecoverySummary;
+  projectRecovery?: CmpRuntimeProjectRecoverySummary;
+  deliverySummary?: CmpRuntimeDeliveryTruthSummary;
+  fiveAgentSummary?: CmpFiveAgentSummary;
   acceptance: RaxCmpAcceptanceReadiness;
   statusPanel?: RaxCmpStatusPanel;
   issues: string[];
-}
-
-export interface RaxCmpReadbackInput {
-  session: RaxCmpSession;
-  projectId?: string;
-  control?: RaxCmpManualControlInput;
-  metadata?: Record<string, unknown>;
-}
-
-export interface RaxCmpReadbackResult {
-  status: "found" | "not_found";
-  receipt?: CmpProjectInfraBootstrapReceipt;
-  infraState?: CmpRuntimeInfraProjectState;
-  summary?: RaxCmpReadbackSummary;
-  control?: RaxCmpManualControlSurface;
-  metadata?: Record<string, unknown>;
 }
 
 export interface RaxCmpRecoverInput {
@@ -374,11 +399,47 @@ export interface RaxCmpRecoverResult {
   readback?: RaxCmpReadbackSummary;
   recovery?: {
     status: "aligned" | "degraded";
-    projectRecovery?: Record<string, unknown>;
+    projectRecovery?: CmpRuntimeProjectRecoverySummary;
     appliedPreference: RaxCmpRecoveryPreference;
     dryRun: boolean;
   };
   metadata?: Record<string, unknown>;
+}
+
+export interface RaxCmpRoleCapabilityAccessInput {
+  session: RaxCmpSession;
+  role: CmpFiveAgentRole;
+  payload: {
+    agentId: string;
+    capabilityKey: string;
+    reason: string;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    taskContext?: Record<string, unknown>;
+    requestedScope?: AccessRequestScope;
+    requestedDurationMs?: number;
+    metadata?: Record<string, unknown>;
+  };
+}
+
+export interface RaxCmpRoleCapabilityDispatchInput {
+  session: RaxCmpSession;
+  role: CmpFiveAgentRole;
+  payload: {
+    agentId: string;
+    capabilityKey: string;
+    reason: string;
+    capabilityInput: Record<string, unknown>;
+    priority?: IntentPriority;
+    timeoutMs?: number;
+    requestedTier?: TaCapabilityTier;
+    mode?: TaPoolMode;
+    taskContext?: Record<string, unknown>;
+    requestedScope?: AccessRequestScope;
+    requestedDurationMs?: number;
+    cmpContext?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  };
 }
 
 export interface RaxCmpSmokeCheck {
@@ -395,7 +456,7 @@ export interface RaxCmpSmokeCheck {
     | "tap_bridge"
     | "live_infra"
     | "final_acceptance";
-  status: RaxCmpReadinessStatus;
+  status: "ready" | "degraded" | "failed";
   summary: string;
   metadata?: Record<string, unknown>;
 }
@@ -408,7 +469,7 @@ export interface RaxCmpSmokeInput {
 }
 
 export interface RaxCmpSmokeResult {
-  status: RaxCmpReadinessStatus;
+  status: "ready" | "degraded" | "failed";
   checks: RaxCmpSmokeCheck[];
   control?: RaxCmpManualControlSurface;
   metadata?: Record<string, unknown>;
@@ -450,10 +511,29 @@ export interface RaxCmpDispatchInput {
   control?: RaxCmpManualControlInput;
 }
 
-export interface RaxCmpRoleCapabilityAccessInput {
+export interface RaxCmpPeerApprovalInput {
   session: RaxCmpSession;
-  role: string;
-  payload: {
+  approvalId: string;
+  actorAgentId: string;
+  decision: "approved" | "rejected";
+  note?: string;
+}
+
+export interface RaxCmpRuntimeLike {
+  bootstrapCmpProjectInfra(
+    input: BootstrapCmpProjectInfraInput,
+  ): Promise<CmpProjectInfraBootstrapReceipt> | CmpProjectInfraBootstrapReceipt;
+  getCmpProjectInfraBootstrapReceipt(projectId: string): CmpProjectInfraBootstrapReceipt | undefined;
+  getCmpRuntimeInfraProjectState?(projectId: string): CmpRuntimeInfraProjectState | undefined;
+  getCmpRuntimeRecoverySummary?(): CmpRuntimeRecoverySummary;
+  getCmpRuntimeProjectRecoverySummary?(projectId: string): CmpRuntimeProjectRecoverySummary | undefined;
+  getCmpRuntimeDeliveryTruthSummary?(projectId: string): CmpRuntimeDeliveryTruthSummary;
+  getCmpFiveAgentRuntimeSummary?(agentId?: string): CmpFiveAgentSummary;
+  getCmpRuntimeSnapshot?(): CmpRuntimeSnapshot;
+  resolveCmpFiveAgentCapabilityAccess?(input: {
+    role: CmpFiveAgentRole;
+    sessionId: string;
+    runId: string;
     agentId: string;
     capabilityKey: string;
     reason: string;
@@ -463,13 +543,11 @@ export interface RaxCmpRoleCapabilityAccessInput {
     requestedScope?: AccessRequestScope;
     requestedDurationMs?: number;
     metadata?: Record<string, unknown>;
-  };
-}
-
-export interface RaxCmpRoleCapabilityDispatchInput {
-  session: RaxCmpSession;
-  role: string;
-  payload: {
+  }): Promise<CmpFiveAgentCapabilityAccessResolution> | CmpFiveAgentCapabilityAccessResolution;
+  dispatchCmpFiveAgentCapability?(input: {
+    role: CmpFiveAgentRole;
+    sessionId: string;
+    runId: string;
     agentId: string;
     capabilityKey: string;
     reason: string;
@@ -483,5 +561,53 @@ export interface RaxCmpRoleCapabilityDispatchInput {
     requestedDurationMs?: number;
     cmpContext?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
+  }): Promise<DispatchCmpFiveAgentCapabilityResult> | DispatchCmpFiveAgentCapabilityResult;
+  reviewCmpPeerExchangeApproval?(input: {
+    approvalId: string;
+    actorAgentId: string;
+    decision: "approved" | "rejected";
+    note?: string;
+  }): Promise<CmpPeerExchangeApprovalRecord> | CmpPeerExchangeApprovalRecord;
+  advanceCmpMqDeliveryTimeouts?(input?: { projectId?: string; now?: string }): {
+    projectId?: string;
+    processedCount: number;
+    retryScheduledCount: number;
+    expiredCount: number;
   };
+  recoverCmpRuntimeSnapshot(snapshot: CmpRuntimeSnapshot): Promise<void> | void;
+  ingestRuntimeContext(
+    input: IngestRuntimeContextInput,
+  ): Promise<IngestRuntimeContextResult> | IngestRuntimeContextResult;
+  commitContextDelta(
+    input: CommitContextDeltaInput,
+  ): Promise<CommitContextDeltaResult> | CommitContextDeltaResult;
+  resolveCheckedSnapshot(
+    input: ResolveCheckedSnapshotInput,
+  ): Promise<ResolveCheckedSnapshotResult> | ResolveCheckedSnapshotResult;
+  materializeContextPackage(
+    input: MaterializeContextPackageInput,
+  ): Promise<MaterializeContextPackageResult> | MaterializeContextPackageResult;
+  dispatchContextPackage(
+    input: DispatchContextPackageInput,
+  ): Promise<DispatchContextPackageResult> | DispatchContextPackageResult;
+  requestHistoricalContext(
+    input: RequestHistoricalContextInput,
+  ): Promise<RequestHistoricalContextResult> | RequestHistoricalContextResult;
+}
+
+export interface RaxCmpFacade {
+  create(input: RaxCmpCreateInput): RaxCmpSession;
+  bootstrap(input: RaxCmpBootstrapInput): Promise<RaxCmpBootstrapResult>;
+  readback(input: RaxCmpReadbackInput): Promise<RaxCmpReadbackResult>;
+  recover(input: RaxCmpRecoverInput): Promise<RaxCmpRecoverResult>;
+  ingest(input: RaxCmpIngestInput): Promise<IngestRuntimeContextResult>;
+  commit(input: RaxCmpCommitInput): Promise<CommitContextDeltaResult>;
+  resolve(input: RaxCmpResolveInput): Promise<ResolveCheckedSnapshotResult>;
+  materialize(input: RaxCmpMaterializeInput): Promise<MaterializeContextPackageResult>;
+  dispatch(input: RaxCmpDispatchInput): Promise<DispatchContextPackageResult>;
+  resolveRoleCapabilityAccess(input: RaxCmpRoleCapabilityAccessInput): Promise<CmpFiveAgentCapabilityAccessResolution>;
+  dispatchRoleCapability(input: RaxCmpRoleCapabilityDispatchInput): Promise<DispatchCmpFiveAgentCapabilityResult>;
+  approvePeerExchange(input: RaxCmpPeerApprovalInput): Promise<CmpPeerExchangeApprovalRecord>;
+  requestHistory(input: RaxCmpRequestHistoryInput): Promise<RequestHistoricalContextResult>;
+  smoke(input: RaxCmpSmokeInput): Promise<RaxCmpSmokeResult>;
 }
