@@ -172,6 +172,10 @@ export interface ReviewerWorkerVoteOutput {
   deferredReason?: string;
   escalationTarget?: string;
   provisionCapabilityKey?: string;
+  humanSummary?: string;
+  userFacingExplanation?: string;
+  contextFindings?: string[];
+  operatorNotes?: string[];
   requiredFollowups?: string[];
   metadata?: Record<string, unknown>;
 }
@@ -307,6 +311,8 @@ export function parseReviewerWorkerVoteOutput(
   }
 
   const requiredFollowups = normalizeStringArray(output.requiredFollowups);
+  const contextFindings = normalizeStringArray(output.contextFindings);
+  const operatorNotes = normalizeStringArray(output.operatorNotes);
   const denyPatterns = normalizeStringArray(output.denyPatterns);
   const recommendedScope = normalizeScope(output.recommendedScope);
 
@@ -331,6 +337,12 @@ export function parseReviewerWorkerVoteOutput(
     provisionCapabilityKey: typeof output.provisionCapabilityKey === "string"
       ? output.provisionCapabilityKey.trim() || undefined
       : undefined,
+    humanSummary: typeof output.humanSummary === "string" ? output.humanSummary.trim() || undefined : undefined,
+    userFacingExplanation: typeof output.userFacingExplanation === "string"
+      ? output.userFacingExplanation.trim() || undefined
+      : undefined,
+    contextFindings,
+    operatorNotes,
     requiredFollowups,
     metadata: isRecord(output.metadata) ? output.metadata : undefined,
   };
@@ -362,6 +374,23 @@ export function compileReviewerWorkerVote(
     ...(output.requiredFollowups ? { requiredFollowups: output.requiredFollowups } : {}),
     ...(output.recommendedConstraints ? { reviewerConstraints: output.recommendedConstraints } : {}),
   };
+  const reviewerExplanation = {
+    summary: output.humanSummary
+      ?? input.request.plainLanguageRisk?.plainLanguageSummary
+      ?? output.reason,
+    rationale: output.userFacingExplanation
+      ?? input.request.plainLanguageRisk?.whyItIsRisky
+      ?? output.reason,
+    userImpact: input.request.plainLanguageRisk?.possibleConsequence
+      ?? "This request changes the TAP execution path and needs an explicit reviewer decision.",
+    nextStep: output.vote === "redirect_to_provisioning"
+      ? "Wait for TMA to prepare the capability package before retrying this request."
+      : output.vote === "escalate_to_human"
+        ? "Stop and wait for a human decision."
+        : output.vote === "defer"
+          ? "Keep the request pending until its prerequisite or replay condition is satisfied."
+          : "Continue on the approved runtime path with the reviewer constraints applied.",
+  };
 
   const decision = createReviewDecision({
     decisionId: output.decisionId ?? `${input.request.requestId}:reviewer-worker`,
@@ -372,6 +401,7 @@ export function compileReviewerWorkerVote(
     reason: output.reason,
     riskLevel: output.riskLevel ?? input.request.riskLevel,
     plainLanguageRisk: input.request.plainLanguageRisk,
+    reviewerExplanation,
     grantCompilerDirective:
       output.vote === "allow" || output.vote === "allow_with_constraints"
         ? {
@@ -400,6 +430,11 @@ export function compileReviewerWorkerVote(
       lane: output.lane,
       schemaVersion: output.schemaVersion,
       promptPackVersion: input.promptPack.schemaVersion,
+      reviewerExplanation: {
+        ...reviewerExplanation,
+        contextFindings: output.contextFindings,
+        operatorNotes: output.operatorNotes,
+      },
       ...(output.requiredFollowups ? { requiredFollowups: output.requiredFollowups } : {}),
       ...(output.metadata ? { reviewerWorkerMetadata: output.metadata } : {}),
     },

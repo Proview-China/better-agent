@@ -12,6 +12,27 @@ export interface TmaReadyBundleArtifactRefs {
   usage: string;
 }
 
+export interface TmaReadyBundleVerificationItem {
+  evidenceId: string;
+  kind: string;
+  status: string;
+  summary: string;
+  ref?: string;
+}
+
+export interface TmaReadyBundleVerificationSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+}
+
+export interface TmaReadyBundleExecutionSummary {
+  reportId: string;
+  status: string;
+  summary: string;
+}
+
 export interface TmaReadyBundleReceipt {
   provisionId: string;
   requestedCapabilityKey: string;
@@ -25,8 +46,11 @@ export interface TmaReadyBundleReceipt {
   artifactRefs: TmaReadyBundleArtifactRefs;
   verificationEvidenceIds: string[];
   verificationStatuses: string[];
+  verificationSummary: TmaReadyBundleVerificationSummary;
+  verificationItems: TmaReadyBundleVerificationItem[];
   rollbackHandleId?: string;
   reportId: string;
+  executionSummary: TmaReadyBundleExecutionSummary;
 }
 
 function toArtifactRef(artifact: ProvisionArtifactRef): string {
@@ -49,6 +73,20 @@ export function createTmaReadyBundleReceipt(input: {
   rollbackHandle?: TmaRollbackHandle;
   report: TmaExecutionReport;
 }): TmaReadyBundleReceipt {
+  const verificationItems = input.verificationEvidence.map((item) => ({
+    evidenceId: item.evidenceId,
+    kind: item.kind,
+    status: item.status,
+    summary: item.summary,
+    ref: item.ref?.trim() || undefined,
+  }));
+  const verificationSummary: TmaReadyBundleVerificationSummary = {
+    total: verificationItems.length,
+    passed: verificationItems.filter((item) => item.status === "passed").length,
+    failed: verificationItems.filter((item) => item.status === "failed").length,
+    skipped: verificationItems.filter((item) => item.status === "skipped").length,
+  };
+
   return {
     provisionId: input.provisionId,
     requestedCapabilityKey: input.requestedCapabilityKey,
@@ -67,7 +105,14 @@ export function createTmaReadyBundleReceipt(input: {
     },
     verificationEvidenceIds: input.verificationEvidence.map((item) => item.evidenceId),
     verificationStatuses: input.verificationEvidence.map((item) => item.status),
+    verificationSummary,
+    verificationItems,
     rollbackHandleId: input.rollbackHandle?.handleId,
     reportId: input.report.reportId,
+    executionSummary: {
+      reportId: input.report.reportId,
+      status: input.report.status,
+      summary: input.report.summary,
+    },
   };
 }

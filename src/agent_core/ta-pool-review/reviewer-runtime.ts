@@ -211,6 +211,41 @@ export class ReviewerRuntime {
     await this.#recordDurableState(input.request, input.decision, input.source);
   }
 
+  #ensureStructuredExplanation(input: {
+    request: AccessRequest;
+    decision: ReviewDecision;
+    plainLanguageRisk: ReturnType<typeof formatPlainLanguageRisk>;
+  }): ReviewDecision {
+    if (input.decision.reviewerExplanation) {
+      return input.decision;
+    }
+
+    const reviewerExplanation = {
+      summary: input.plainLanguageRisk.plainLanguageSummary,
+      rationale: input.decision.reason,
+      userImpact: input.plainLanguageRisk.possibleConsequence,
+      nextStep: input.decision.decision === "redirected_to_provisioning"
+        ? "等待 TMA 先补齐能力包，再回到 reviewer 流程重新判断。"
+        : input.decision.decision === "escalated_to_human"
+          ? "等待人工批准或拒绝后再继续。"
+          : input.decision.decision === "deferred"
+            ? input.decision.deferredReason ?? input.plainLanguageRisk.whatHappensIfNotRun
+            : "按当前 reviewer 决策继续走后续 runtime 主链。",
+    };
+
+    return {
+      ...input.decision,
+      reviewerExplanation,
+      metadata: {
+        ...(input.decision.metadata ?? {}),
+        reviewerExplanation: {
+          ...reviewerExplanation,
+          source: "reviewer-runtime",
+        },
+      },
+    };
+  }
+
   async submit(input: ReviewerRuntimeSubmitInput): Promise<ReviewDecision> {
     const requestedAction = input.request.requestedAction
       ?? `request capability ${input.request.requestedCapabilityKey}`;
@@ -285,8 +320,13 @@ export class ReviewerRuntime {
     });
 
     if (routed.outcome !== "review_required") {
-      await this.#recordDurableState(input.request, routed.decision, "routing_fast_path");
-      return routed.decision;
+      const decision = this.#ensureStructuredExplanation({
+        request: input.request,
+        decision: routed.decision,
+        plainLanguageRisk,
+      });
+      await this.#recordDurableState(input.request, decision, "routing_fast_path");
+      return decision;
     }
 
     const fallback: EvaluateReviewDecisionInput = {
@@ -315,17 +355,25 @@ export class ReviewerRuntime {
         workerEnvelope,
       });
       if (hookDecision) {
-        const decision = compileReviewerWorkerVote({
+        const decision = this.#ensureStructuredExplanation({
           request: input.request,
-          promptPack,
-          output: hookDecision,
+          decision: compileReviewerWorkerVote({
+            request: input.request,
+            promptPack,
+            output: hookDecision,
+          }),
+          plainLanguageRisk,
         });
         await this.#recordDurableState(input.request, decision, "llm_hook");
         return decision;
       }
     }
 
-    const decision = evaluateReviewDecision(fallback);
+    const decision = this.#ensureStructuredExplanation({
+      request: input.request,
+      decision: evaluateReviewDecision(fallback),
+      plainLanguageRisk,
+    });
     await this.#recordDurableState(input.request, decision, "review_engine");
     return decision;
   }

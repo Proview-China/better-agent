@@ -257,6 +257,8 @@ test("reviewer runtime keeps provisioning redirects resumable but still vote-onl
   const durable = runtime.getDurableState(request.requestId);
   assert.equal(durable?.stage, "ready_to_resume");
   assert.equal(durable?.hasGrantCompilerDirective, false);
+  assert.ok(decision.reviewerExplanation?.summary);
+  assert.match(decision.reviewerExplanation?.nextStep ?? "", /TMA|reviewer/i);
 });
 
 test("default reviewer llm hook can drive runtime decisions through model inference", async () => {
@@ -280,6 +282,9 @@ test("default reviewer llm hook can drive runtime decisions through model infere
               lane: REVIEWER_WORKER_BRIDGE_LANE,
               vote: "allow_with_constraints",
               reason: "model-backed reviewer approval",
+              humanSummary: "可以继续，但要保持在当前审批边界里。",
+              userFacingExplanation: "这次请求会被批准，但不会扩大到额外的危险动作。",
+              contextFindings: ["Runtime inventory already carries the matching capability."],
               requiredFollowups: ["log-reviewer-model-trace"],
             }),
           },
@@ -302,8 +307,14 @@ test("default reviewer llm hook can drive runtime decisions through model infere
 
   assert.equal(decision.vote, "allow_with_constraints");
   assert.equal(decision.reason, "model-backed reviewer approval");
+  assert.equal(decision.reviewerExplanation?.summary, "可以继续，但要保持在当前审批边界里。");
+  assert.match(decision.reviewerExplanation?.nextStep ?? "", /runtime path|approved|继续/i);
   assert.deepEqual(
     decision.metadata?.requiredFollowups,
     ["log-reviewer-model-trace"],
+  );
+  assert.equal(
+    (decision.metadata?.reviewerExplanation as { summary?: string } | undefined)?.summary,
+    "可以继续，但要保持在当前审批边界里。",
   );
 });

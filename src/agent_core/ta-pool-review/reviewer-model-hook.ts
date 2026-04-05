@@ -22,6 +22,7 @@ function createReviewerUserPrompt(input: ReviewerRuntimeHookInput): string {
     "Allowed votes: allow, allow_with_constraints, deny, defer, escalate_to_human, redirect_to_provisioning.",
     "Do not emit grants, decision tokens, execution requests, or any execution-bearing fields.",
     "Keep any recommended scope narrower than the original request.",
+    "Optional explanation fields: humanSummary, userFacingExplanation, contextFindings, operatorNotes.",
     "",
     "Prompt pack:",
     JSON.stringify(input.promptPack, null, 2),

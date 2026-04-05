@@ -41,12 +41,39 @@ test("provisioner runtime records building then ready through the default provis
   assert.equal((bundle.metadata?.tmaDeliveryReceipt as { completionTarget?: string } | undefined)?.completionTarget, "ready_bundle");
   assert.equal((bundle.metadata?.tmaDeliveryReceipt as { plannerSessionId?: string } | undefined)?.plannerSessionId, "tma:provision-1:planner");
   assert.equal((bundle.metadata?.tmaDeliveryReceipt as { executorSessionId?: string } | undefined)?.executorSessionId, "tma:provision-1:executor");
+  assert.deepEqual(
+    (bundle.metadata?.tmaDeliveryReceipt as {
+      verificationSummary?: { total?: number; passed?: number; failed?: number; skipped?: number };
+    } | undefined)?.verificationSummary,
+    {
+      total: 2,
+      passed: 2,
+      failed: 0,
+      skipped: 0,
+    },
+  );
+  assert.equal(
+    (bundle.metadata?.tmaDeliveryReceipt as {
+      executionSummary?: { status?: string; summary?: string };
+    } | undefined)?.executionSummary?.status,
+    "completed",
+  );
   assert.equal(registry.get(request.provisionId)?.bundle?.status, "ready");
   assert.deepEqual(runtime.assetIndex.listCapabilityKeysByStatus(["ready_for_review"]), ["mcp.playwright"]);
   assert.equal(
     runtime.assetIndex.getCurrent(request.provisionId)?.activation.bindingArtifactRef,
     "provisioned/mcp.playwright/binding.json",
   );
+  const deliveryReport = runtime.createDeliveryReport(request.provisionId);
+  assert.deepEqual(deliveryReport.verificationSummary, {
+    total: 2,
+    passed: 2,
+    failed: 0,
+    skipped: 0,
+  });
+  assert.equal(deliveryReport.verificationItems?.[0]?.status, "passed");
+  assert.equal(deliveryReport.executionSummary?.status, "completed");
+  assert.equal(deliveryReport.rollbackHandleId, "plan:provision-1:rollback");
   assert.deepEqual(runtime.listResumableTmaSessions(), []);
   const plannerSession = runtime.getTmaSession("tma:provision-1:planner");
   assert.equal(plannerSession?.status, "completed");
@@ -245,6 +272,119 @@ test("provisioner runtime can use the model-backed worker bridge for build summa
     "model-backed replay rationale",
   );
   assert.equal(bundle.metadata?.workerBridge, true);
+});
+
+test("provisioner delivery report highlights failed verification evidence from the ready receipt", async () => {
+  let counter = 0;
+  const runtime = createProvisionerRuntime({
+    workerBridge: async (input) => {
+      const defaultOutput = {
+        workerAction: "build_capability_package" as const,
+        originalTaskDisposition: "left_for_main_agent" as const,
+        buildSummary: "bundle with failing verification",
+        toolArtifact: {
+          artifactId: "tool-fail-1",
+          kind: "tool" as const,
+          ref: "tool:fail",
+        },
+        bindingArtifact: {
+          artifactId: "binding-fail-1",
+          kind: "binding" as const,
+          ref: "binding:fail",
+        },
+        verificationArtifact: {
+          artifactId: "verification-fail-1",
+          kind: "verification" as const,
+          ref: "verify:fail",
+        },
+        usageArtifact: {
+          artifactId: "usage-fail-1",
+          kind: "usage" as const,
+          ref: "usage:fail",
+        },
+        activationPayload: {
+          targetPool: "ta-capability-pool",
+          activationMode: "stage_only" as const,
+          registerOrReplace: "register_or_replace" as const,
+          generationStrategy: "create_next_generation" as const,
+          drainStrategy: "graceful" as const,
+          manifestPayload: {
+            capabilityKey: input.request.requestedCapabilityKey,
+          },
+          bindingPayload: {
+            adapterId: "adapter.fail",
+          },
+          adapterFactoryRef: "factory:fail",
+        },
+        replayRecommendation: {
+          policy: "re_review_then_dispatch" as const,
+          reason: "Review the failing verification first.",
+          requiresReviewerApproval: true,
+          suggestedTrigger: "after_review" as const,
+        },
+        metadata: {},
+      };
+
+      return defaultOutput;
+    },
+    clock: () => new Date("2026-03-31T10:20:00.000Z"),
+    idFactory: () => `bundle-fail-${++counter}`,
+  });
+
+  const request = createProvisionRequest({
+    provisionId: "provision-failing-verification-1",
+    sourceRequestId: "request-failing-verification-1",
+    requestedCapabilityKey: "repo.write",
+    reason: "Need a ready bundle with failing verification evidence.",
+    createdAt: "2026-03-31T10:20:00.000Z",
+  });
+
+  const bundle = await runtime.submit(request);
+  const executorMetadata = bundle.metadata?.tmaExecutor as
+    | { verificationEvidence?: Array<{ status?: string; summary?: string }> }
+    | undefined;
+  if (executorMetadata?.verificationEvidence?.[0]) {
+    executorMetadata.verificationEvidence[0]!.status = "failed";
+    executorMetadata.verificationEvidence[0]!.summary = "Smoke check failed after bundle build.";
+  }
+  const receipt = bundle.metadata?.tmaDeliveryReceipt as
+    | {
+      verificationSummary?: { total?: number; passed?: number; failed?: number; skipped?: number };
+      verificationItems?: Array<{ status?: string; summary?: string }>;
+      executionSummary?: { summary?: string };
+    }
+    | undefined;
+  if (receipt?.verificationSummary) {
+    receipt.verificationSummary = {
+      total: 1,
+      passed: 0,
+      failed: 1,
+      skipped: 0,
+    };
+  }
+  if (receipt?.verificationItems?.[0]) {
+    receipt.verificationItems[0]!.status = "failed";
+    receipt.verificationItems[0]!.summary = "Smoke check failed after bundle build.";
+  }
+  if (receipt?.executionSummary) {
+    receipt.executionSummary.summary = "Executor completed with failed smoke evidence.";
+  }
+
+  const report = runtime.createDeliveryReport(request.provisionId);
+
+  assert.equal(report.status, "ready");
+  assert.deepEqual(report.verificationSummary, {
+    total: 1,
+    passed: 0,
+    failed: 1,
+    skipped: 0,
+  });
+  assert.equal(report.verificationItems?.[0]?.status, "failed");
+  assert.equal(
+    report.recommendedNextStep,
+    "Bundle is ready but verification contains failures; tool reviewer should inspect the evidence before activation or replay planning.",
+  );
+  assert.match(report.summary, /Executor completed with failed smoke evidence/i);
 });
 
 test("provisioner runtime can serialize and restore durable state without losing bundle history order", async () => {

@@ -127,6 +127,13 @@ export interface GrantCompilerDirective {
   metadata?: Record<string, unknown>;
 }
 
+export interface ReviewerStructuredExplanation {
+  summary: string;
+  rationale: string;
+  userImpact: string;
+  nextStep: string;
+}
+
 export interface CapabilityGrant {
   grantId: string;
   requestId: string;
@@ -157,6 +164,7 @@ export interface ReviewDecision {
   reason: string;
   riskLevel?: TaPoolRiskLevel;
   plainLanguageRisk?: PlainLanguageRiskPayload;
+  reviewerExplanation?: ReviewerStructuredExplanation;
   grant?: CapabilityGrant;
   grantCompilerDirective?: GrantCompilerDirective;
   deferredReason?: string;
@@ -194,6 +202,7 @@ export interface CreateReviewDecisionInput {
   reviewerId?: string;
   riskLevel?: TaPoolRiskLevel;
   plainLanguageRisk?: PlainLanguageRiskPayload;
+  reviewerExplanation?: ReviewerStructuredExplanation;
   grant?: CapabilityGrant;
   grantCompilerDirective?: GrantCompilerDirective;
   deferredReason?: string;
@@ -364,6 +373,21 @@ function normalizePlainLanguageRisk(
 
   const normalized = createPlainLanguageRiskPayload(payload);
   return normalized;
+}
+
+function normalizeReviewerStructuredExplanation(
+  explanation?: ReviewerStructuredExplanation,
+): ReviewerStructuredExplanation | undefined {
+  if (!explanation) {
+    return undefined;
+  }
+
+  return {
+    summary: explanation.summary.trim(),
+    rationale: explanation.rationale.trim(),
+    userImpact: explanation.userImpact.trim(),
+    nextStep: explanation.nextStep.trim(),
+  };
 }
 
 function normalizeGrantCompilerDirective(
@@ -544,6 +568,21 @@ export function validateReviewDecision(reviewDecision: ReviewDecision): void {
     validatePlainLanguageRiskPayload(reviewDecision.plainLanguageRisk);
   }
 
+  if (reviewDecision.reviewerExplanation) {
+    if (!reviewDecision.reviewerExplanation.summary.trim()) {
+      throw new Error("Reviewer explanation requires a non-empty summary.");
+    }
+    if (!reviewDecision.reviewerExplanation.rationale.trim()) {
+      throw new Error("Reviewer explanation requires a non-empty rationale.");
+    }
+    if (!reviewDecision.reviewerExplanation.userImpact.trim()) {
+      throw new Error("Reviewer explanation requires a non-empty userImpact.");
+    }
+    if (!reviewDecision.reviewerExplanation.nextStep.trim()) {
+      throw new Error("Reviewer explanation requires a non-empty nextStep.");
+    }
+  }
+
   if (
     reviewDecision.vote === "allow" ||
     reviewDecision.vote === "allow_with_constraints"
@@ -588,6 +627,7 @@ export function createReviewDecision(input: CreateReviewDecisionInput): ReviewDe
     reason: input.reason.trim(),
     riskLevel: input.riskLevel,
     plainLanguageRisk: normalizePlainLanguageRisk(input.plainLanguageRisk),
+    reviewerExplanation: normalizeReviewerStructuredExplanation(input.reviewerExplanation),
     grant: input.grant,
     grantCompilerDirective: normalizeGrantCompilerDirective(input.grantCompilerDirective),
     deferredReason: input.deferredReason?.trim() || undefined,

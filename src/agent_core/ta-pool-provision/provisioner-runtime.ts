@@ -32,6 +32,11 @@ import {
   type TmaSessionState,
 } from "./tma-session-state.js";
 import { createTmaReadyBundleReceipt } from "./tma-delivery-receipt.js";
+import type {
+  TmaReadyBundleExecutionSummary,
+  TmaReadyBundleVerificationItem,
+  TmaReadyBundleVerificationSummary,
+} from "./tma-delivery-receipt.js";
 
 export interface ProvisionBuildArtifacts {
   toolArtifact: ProvisionArtifactRef;
@@ -81,6 +86,10 @@ export interface ProvisionDeliveryReport {
     verification?: string;
     usage?: string;
   };
+  verificationSummary?: TmaReadyBundleVerificationSummary;
+  verificationItems?: TmaReadyBundleVerificationItem[];
+  executionSummary?: TmaReadyBundleExecutionSummary;
+  rollbackHandleId?: string;
   tmaSessionIds: string[];
   resumableSessionIds: string[];
   recommendedNextStep: string;
@@ -295,10 +304,20 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
     const resumableSessionIds = relatedSessions
       .filter((session) => session.status === "resumable")
       .map((session) => session.sessionId);
+    const deliveryReceipt = latestBundle?.metadata?.tmaDeliveryReceipt as
+      | {
+        verificationSummary?: TmaReadyBundleVerificationSummary;
+        verificationItems?: TmaReadyBundleVerificationItem[];
+        executionSummary?: TmaReadyBundleExecutionSummary;
+        rollbackHandleId?: string;
+      }
+      | undefined;
     const summary = !latestBundle
       ? `No provision bundle exists yet for ${provisionId}.`
       : latestBundle.status === "ready"
-        ? `Provision bundle ${latestBundle.bundleId} is ready with tool, binding, verification, and usage artifacts attached.`
+        ? deliveryReceipt?.executionSummary?.summary
+          ? `Provision bundle ${latestBundle.bundleId} is ready. ${deliveryReceipt.executionSummary.summary}`
+          : `Provision bundle ${latestBundle.bundleId} is ready with tool, binding, verification, and usage artifacts attached.`
         : latestBundle.status === "failed"
           ? `Provision bundle ${latestBundle.bundleId} failed and should be inspected before retrying.`
           : `Provision bundle ${latestBundle.bundleId} is still building.`;
@@ -307,7 +326,9 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
       : latestBundle.status === "ready"
         ? resumableSessionIds.length > 0
           ? "Bundle is ready, but resumable TMA sessions still exist; inspect whether they should be resumed or closed."
-          : "Bundle is ready for tool reviewer quality checks, activation review, and replay planning."
+          : deliveryReceipt?.verificationSummary?.failed
+            ? "Bundle is ready but verification contains failures; tool reviewer should inspect the evidence before activation or replay planning."
+            : "Bundle is ready for tool reviewer quality checks, activation review, and replay planning."
         : latestBundle.status === "failed"
           ? resumableSessionIds.length > 0
             ? "Resume the TMA session or fix the worker bridge inputs before retrying."
@@ -327,6 +348,10 @@ export class ProvisionerRuntime implements ProvisionerRuntimeLike {
         verification: latestBundle?.verificationArtifact?.ref,
         usage: latestBundle?.usageArtifact?.ref,
       },
+      verificationSummary: deliveryReceipt?.verificationSummary,
+      verificationItems: deliveryReceipt?.verificationItems,
+      executionSummary: deliveryReceipt?.executionSummary,
+      rollbackHandleId: deliveryReceipt?.rollbackHandleId,
       tmaSessionIds: relatedSessions.map((session) => session.sessionId),
       resumableSessionIds,
       recommendedNextStep,

@@ -221,7 +221,27 @@ test("tool reviewer runtime records ready bundle delivery as a handoff-ready gov
         },
         verificationEvidenceIds: ["evidence-1"],
         verificationStatuses: ["passed"],
+        verificationSummary: {
+          total: 1,
+          passed: 1,
+          failed: 0,
+          skipped: 0,
+        },
+        verificationItems: [
+          {
+            evidenceId: "evidence-1",
+            kind: "test",
+            status: "passed",
+            summary: "Smoke verification passed.",
+            ref: "verification.json",
+          },
+        ],
         reportId: "report-delivery-1",
+        executionSummary: {
+          reportId: "report-delivery-1",
+          status: "completed",
+          summary: "Executed plan for computer.use.",
+        },
       },
     },
     sessionId: "tool-review:provision:prov-delivery-1",

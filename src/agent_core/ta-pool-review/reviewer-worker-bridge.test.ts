@@ -137,6 +137,10 @@ test("reviewer worker bridge packages bootstrap lane input and compiles vote-onl
       lane: REVIEWER_WORKER_BRIDGE_LANE,
       vote: "allow_with_constraints",
       reason: "Approve with a narrower scope.",
+      humanSummary: "可以批准，但只给更窄的范围。",
+      userFacingExplanation: "这次会继续，但只保留你原请求里的安全子范围。",
+      contextFindings: ["Inventory already reports a matching capability family."],
+      operatorNotes: ["Do not widen file access beyond src/**."],
       recommendedTier: "B1",
       recommendedScope: {
         pathPatterns: ["src/**"],
@@ -155,6 +159,22 @@ test("reviewer worker bridge packages bootstrap lane input and compiles vote-onl
     ["record decision trace"],
   );
   assert.deepEqual(decision.grantCompilerDirective?.grantedScope?.denyPatterns, ["src/secrets/**"]);
+  assert.equal(
+    decision.reviewerExplanation?.summary,
+    "可以批准，但只给更窄的范围。",
+  );
+  assert.equal(
+    decision.reviewerExplanation?.rationale,
+    "这次会继续，但只保留你原请求里的安全子范围。",
+  );
+  assert.equal(
+    (decision.metadata?.reviewerExplanation as { summary?: string } | undefined)?.summary,
+    "可以批准，但只给更窄的范围。",
+  );
+  assert.deepEqual(
+    (decision.metadata?.reviewerExplanation as { contextFindings?: string[] } | undefined)?.contextFindings,
+    ["Inventory already reports a matching capability family."],
+  );
 });
 
 test("reviewer worker bridge rejects allow votes that invent a new allow-list scope", () => {
