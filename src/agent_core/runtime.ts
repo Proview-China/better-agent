@@ -545,6 +545,7 @@ export interface TaCapabilityReplayHandoff {
   reason: string;
   requiresReviewerApproval: boolean;
   suggestedTrigger?: string;
+  resumeEnvelopeId?: string;
   nextStep: string;
   metadata?: Record<string, unknown>;
 }
@@ -955,7 +956,7 @@ export class AgentCoreRuntime {
     this.#modelInferenceExecutor = options.modelInferenceExecutor ?? executeModelInference;
     this.taControlPlaneGateway = options.taControlPlaneGateway
       ?? (options.taProfile ? new TaControlPlaneGateway({ profile: options.taProfile }) : undefined);
-    const enableDefaultTapAgentModels = this.taControlPlaneGateway !== undefined;
+    const enableDefaultTapAgentModels = options.modelInferenceExecutor !== undefined;
     this.reviewerRuntime = options.reviewerRuntime
       ?? (this.taControlPlaneGateway ? createReviewerRuntime(
         enableDefaultTapAgentModels
@@ -4945,8 +4946,13 @@ export class AgentCoreRuntime {
       throw new Error("Provisioner runtime is not configured on this runtime.");
     }
 
-    const requestedTier = options.requestedTier ?? "B1";
-    const mode = options.mode ?? profile.defaultMode;
+    const governanceDirective = readTapGovernanceDispatchDirective(options.metadata)
+      ?? this.#createTapGovernanceDispatchDirective(intent);
+    const requestedTier = maxCapabilityTier(
+      options.requestedTier ?? "B1",
+      governanceDirective.matchedToolPolicy === "human_gate" ? "B3" : "B1",
+    );
+    const mode = options.mode ?? governanceDirective.effectiveMode ?? profile.defaultMode;
     const reason = options.reason ?? `Capability ${intent.request.capabilityKey} requested by runtime.`;
     const safety = evaluateSafetyInterception({
       mode,
@@ -4985,6 +4991,7 @@ export class AgentCoreRuntime {
           ...(intent.metadata ?? {}),
           ...(intent.request.metadata ?? {}),
           ...(options.metadata ?? {}),
+          tapGovernanceDirective: governanceDirective,
           safetyEscalation: true,
         },
       });
@@ -5043,6 +5050,7 @@ export class AgentCoreRuntime {
         ...(intent.metadata ?? {}),
         ...(intent.request.metadata ?? {}),
         ...(options.metadata ?? {}),
+        tapGovernanceDirective: governanceDirective,
       },
     });
 
@@ -5074,146 +5082,21 @@ export class AgentCoreRuntime {
     }
 
     const accessRequest = resolved.request;
-    const inventory = this.#buildTaReviewInventory();
-    const reviewDecision = await this.reviewerRuntime.submit({
-      request: accessRequest,
-      profile,
-      inventory,
-    });
-    const consumed = gateway.consumeReviewDecision(reviewDecision);
-
-    if (consumed.grant) {
-      const executionRequestId = consumed.decisionToken?.requestId ?? intent.request.requestId;
-      const dispatch = await this.dispatchTaCapabilityGrant({
-        grant: consumed.grant,
-        decisionToken: consumed.decisionToken,
-        sessionId: intent.sessionId,
-        runId: intent.runId,
-        intentId: intent.intentId,
-        requestId: executionRequestId,
-        capabilityKey: intent.request.capabilityKey,
-        input: intent.request.input,
-        priority: intent.request.priority,
-        timeoutMs: intent.request.timeoutMs,
-        metadata: intent.request.metadata,
-      });
-      const runOutcome = await this.#awaitCapabilityRunOutcome({
-        requestId: executionRequestId,
-        timeoutMs: intent.request.timeoutMs,
-      });
-      return {
-        status: "dispatched",
-        accessRequest,
-        reviewDecision,
-        grant: consumed.grant,
-        decisionToken: consumed.decisionToken,
-        dispatch,
-        runOutcome,
-        safety: safety.outcome === "allow" ? undefined : safety,
-      };
-    }
-
-    if (reviewDecision.decision === "redirected_to_provisioning") {
-      const provisionRequest = this.#assembleProvisionRequestForRuntime({
-        request: toProvisionRequestFromReviewDecision({
-          request: accessRequest,
-          decision: reviewDecision,
-          provisionId: `${reviewDecision.decisionId}:provision`,
-          createdAt: new Date().toISOString(),
-        }),
-        accessRequest,
-        reviewDecision,
-        inventory,
-      });
-      const provisionBundle = await this.provisionerRuntime.submit(provisionRequest);
-      const provisionAsset = provisionBundle.status === "ready"
-        ? this.provisionerRuntime.assetIndex.getCurrent(provisionRequest.provisionId)
-        : undefined;
-      if (provisionBundle.status === "ready") {
-        this.#stageProvisionReplay({
-          accessRequest,
-          provisionBundle,
-          intent,
-          source: "review-provisioning",
-          metadata: {
-            decisionId: reviewDecision.decisionId,
-          },
-        });
-      }
-      return {
-        status: provisionBundle.status === "ready" ? "provisioned" : "provisioning_failed",
-        accessRequest,
-        reviewDecision,
-        provisionRequest,
-        provisionBundle,
-        activation: provisionBundle.status === "ready"
-          ? this.#createActivationHandoff({
-            source: "provision_bundle",
-            bundle: provisionBundle,
-            asset: provisionAsset,
-          })
-          : undefined,
-        replay: provisionBundle.status === "ready"
-          ? this.#createReplayHandoff({
-            source: "provision_bundle",
-            bundle: provisionBundle,
-            asset: provisionAsset,
-          })
-          : undefined,
-        safety: safety.outcome === "allow" ? undefined : safety,
-      };
-    }
-
-    const provisionAsset = this.#findCurrentProvisionAsset(intent.request.capabilityKey);
-    const replay = provisionAsset
-      ? this.#createReplayHandoff({
-        source: "provision_asset",
-        asset: provisionAsset,
-      })
-      : undefined;
-
-    return {
-      status: reviewDecision.decision === "escalated_to_human"
-        ? "waiting_human"
-        : reviewDecision.decision as Exclude<
-          DispatchCapabilityIntentViaTaPoolResult["status"],
-          "dispatched" | "waiting_human" | "provisioned" | "provisioning_failed" | "blocked" | "interrupted"
-        >,
+    return this.#completeTapReviewFlow({
       accessRequest,
-      reviewDecision,
-      activation: provisionAsset
-        ? this.#createActivationHandoff({
-          source: "provision_asset",
-          asset: provisionAsset,
-        })
-        : undefined,
-      replay,
-      humanGate: reviewDecision.decision === "escalated_to_human"
-        ? this.#openHumanGate({
-          accessRequest,
-          reviewDecision,
-          intent,
-          options,
-        })
-        : replay?.policy === "manual"
-          ? this.#createHumanGateHandoff({
-            source: "replay_policy",
-            capabilityKey: accessRequest.requestedCapabilityKey,
-            requestedTier: accessRequest.requestedTier,
-            mode: accessRequest.mode,
-            requestedAction: accessRequest.requestedAction ?? this.#describeCapabilityIntentAction(intent),
-            reason: replay.reason,
-            riskLevel: reviewDecision.riskLevel ?? accessRequest.riskLevel,
-            plainLanguageRisk: reviewDecision.plainLanguageRisk ?? accessRequest.plainLanguageRisk,
-            metadata: {
-              accessRequestId: accessRequest.requestId,
-              reviewDecisionId: reviewDecision.decisionId,
-              replayPolicy: replay.policy,
-            },
-          })
-          : undefined,
-      safety: safety.outcome === "allow" ? undefined : safety,
-    };
+      intent,
+      options: {
+        ...options,
+        mode,
+        requestedTier: effectiveTier,
+        metadata: {
+          ...(options.metadata ?? {}),
+          tapGovernanceDirective: governanceDirective,
+        },
+      },
+      safety,
+      inventory: this.#buildTaReviewInventory(),
+    });
   }
 
   async dispatchCapabilityIntent(intent: CapabilityCallIntent): Promise<DispatchCapabilityIntentResult> {
@@ -5850,6 +5733,7 @@ export class AgentCoreRuntime {
             : policy === "auto_after_verify"
               ? "verification.passed"
               : "re_review.completed",
+      resumeEnvelopeId: pendingReplay ? this.getTaReplayResumeEnvelope(pendingReplay.replayId)?.envelopeId : undefined,
       nextStep: policy === "none"
         ? "Do nothing."
         : policy === "manual"
@@ -6784,17 +6668,22 @@ export class AgentCoreRuntime {
     safety?: ReturnType<typeof evaluateSafetyInterception>;
     inventory?: ReviewDecisionEngineInventory;
   }): Promise<DispatchCapabilityIntentViaTaPoolResult> {
+    const gateway = params.options.controlPlaneGatewayOverride ?? this.taControlPlaneGateway;
+    const profile = params.options.profileOverride ?? gateway?.profile;
+    if (!gateway || !profile) {
+      throw new Error("T/A control-plane gateway is not configured on this runtime.");
+    }
     const inventory = params.inventory ?? this.#buildTaReviewInventory();
     const reviewDecision = await this.reviewerRuntime!.submit({
       request: params.accessRequest,
-      profile: this.taControlPlaneGateway!.profile,
+      profile,
       inventory,
     });
     this.#recordReviewerAgentRecord({
       accessRequest: params.accessRequest,
       reviewDecision,
     });
-    const consumed = this.taControlPlaneGateway!.consumeReviewDecision(reviewDecision);
+    const consumed = gateway.consumeReviewDecision(reviewDecision);
 
     if (consumed.grant) {
       const executionRequestId = consumed.decisionToken?.requestId ?? params.intent.request.requestId;
