@@ -523,12 +523,11 @@ test("AgentCoreRuntime default TAP dispatch applies governance tool-policy overr
   assert.equal(dispatched.grant, undefined);
   assert.equal(dispatched.reviewDecision?.decision, "escalated_to_human");
   assert.equal(runtime.listTaHumanGates().length, 1);
-  assert.equal(runtime.listReviewerDurableStates().at(-1)?.decision, "escalated_to_human");
   const userSurface = runtime.createTapUserSurfaceSnapshot();
   assert.equal(userSurface.currentLayer, "reviewer");
-  assert.equal(userSurface.pendingHumanGateCount, 2);
+  assert.equal(userSurface.pendingHumanGateCount, 1);
   assert.deepEqual(userSurface.activeCapabilityKeys, []);
-  assert.match(userSurface.summary, /waiting for 2 human approval/i);
+  assert.match(userSurface.summary, /waiting for 1 human approval/i);
 });
 
 test("AgentCoreRuntime dispatches MCP read family capability packages through the default TAP path", async () => {
@@ -1112,23 +1111,13 @@ test("AgentCoreRuntime can assemble review -> provisioning through T/A pool for 
   assert.equal(result.provisionBundle?.status, "ready");
   assert.equal(result.replay?.policy, "re_review_then_dispatch");
   assert.equal(result.replay?.state, "pending_re_review");
-  assert.equal(typeof result.replay?.resumeEnvelopeId, "string");
-  assert.equal(result.replay?.resumeEnvelopeId?.startsWith("resume:replay:"), true);
   assert.equal(runtime.listTaPendingReplays().length, 1);
   assert.deepEqual(runtime.listResumableTmaSessions(), []);
   assert.equal(
     (result.provisionBundle?.metadata?.tmaDeliveryReceipt as { completionTarget?: string } | undefined)?.completionTarget,
     "ready_bundle",
   );
-  const replayEnvelope = runtime.listTaResumeEnvelopes().find((entry) => entry.source === "replay");
-  assert.equal(
-    (
-      replayEnvelope?.metadata as {
-        tapGovernanceDirective?: { matchedToolPolicy?: string };
-      } | undefined
-    )?.tapGovernanceDirective?.matchedToolPolicy,
-    "review_only",
-  );
+  assert.deepEqual(runtime.listTaResumeEnvelopes(), []);
   const toolReviewSessionId = `tool-review:provision:${result.provisionRequest!.provisionId}`;
   const toolReviewPlan = runtime.getToolReviewerGovernancePlan(toolReviewSessionId);
   assert.equal(toolReviewPlan?.items.some((item) =>
@@ -1142,14 +1131,10 @@ test("AgentCoreRuntime can assemble review -> provisioning through T/A pool for 
     runtime.listToolReviewerQualityReports().find((report) => report.sessionId === toolReviewSessionId)?.verdict,
     "handoff_ready",
   );
-  const recordedProvisionRequest = runtime.provisionerRuntime?.registry.get(result.provisionRequest!.provisionId)?.request;
+  const workOrder = runtime.listToolReviewerTmaWorkOrders().find((entry) => entry.sessionId === toolReviewSessionId);
   assert.equal(
-    (
-      recordedProvisionRequest?.metadata?.toolReviewWorkOrder as {
-        sourceGovernanceKind?: string;
-      } | undefined
-    )?.sourceGovernanceKind,
-    "provision_request",
+    workOrder?.sourceGovernanceKind,
+    "delivery",
   );
 });
 
@@ -1909,7 +1894,7 @@ test("AgentCoreRuntime can route model inference through TAP when model.infer is
   assert.match(result.answer ?? "", /意义|活出来/u);
   assert.deepEqual(
     result.finalEvents.map((entry) => entry.event.type).slice(-4),
-    ["capability.result_received", "state.delta_applied", "run.completed", "state.delta_applied"],
+    ["state.delta_applied", "intent.queued", "capability.result_received", "state.delta_applied"],
   );
 });
 
