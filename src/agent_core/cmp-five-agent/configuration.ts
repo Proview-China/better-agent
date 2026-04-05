@@ -6,6 +6,7 @@ import {
   createAgentCapabilityProfile,
   type AgentCapabilityProfile,
 } from "../ta-pool-types/index.js";
+import type { CmpRoleLiveLlmMode } from "./live-llm.js";
 import type {
   CmpFiveAgentCapabilityMatrixSummary,
   CmpFiveAgentConfiguration,
@@ -18,6 +19,13 @@ import type {
 export type { CmpFiveAgentConfiguration } from "./types.js";
 
 export const CMP_FIVE_AGENT_CONFIGURATION_VERSION = "cmp-five-agent-role-catalog/v1";
+export const CMP_DEFAULT_ROLE_LIVE_LLM_MODES: Record<CmpFiveAgentRole, CmpRoleLiveLlmMode> = {
+  icma: "llm_assisted",
+  iterator: "llm_assisted",
+  checker: "llm_assisted",
+  dbagent: "llm_assisted",
+  dispatcher: "llm_assisted",
+};
 
 export type CmpCapabilityOwnership = "none" | "supporting" | "primary";
 
@@ -183,12 +191,14 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       systemPrompt: "Never rewrite the root system prompt. Only attach controlled CMP fragments.",
       systemPurpose: "shape ingress context without mutating root system truth",
       systemPolicy: "append_only_fragment",
-      mission: "Capture runtime context, split it by task intent, and attach only controlled fragments before handoff.",
-      handoffContract: "emit intent chunks and controlled fragments only; child seeds must later enter child ICMA only",
+      mission: "Capture runtime context, split it into multiple task-intent chunks when needed, automatically infer controlled fragment kinds, and attach only controlled fragments before handoff.",
+      handoffContract: "emit multiple intent chunks when needed, infer controlled fragments from materials, and ensure child seeds later enter child ICMA only",
       guardrails: [
         "Only attach constraint, risk, and flow fragments.",
         "Never rewrite the root system prompt.",
+        "Infer fragment kinds from materials, but only inside the allowed three-kind boundary.",
         "Never perform cmp git progression writes.",
+        "When multiple intent chunks exist, keep them separable and high-signal.",
       ],
       inputContract: [
         "raw runtime context",
@@ -196,9 +206,11 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
         "peer hint after parent approval when present",
       ],
       outputContract: [
-        "task-intent chunk set",
+        "multi-intent chunk set",
         "controlled fragment set",
+        "auto fragment detection metadata",
         "ingress assembly metadata",
+        "chunk-level operator/child guide set",
       ],
     }),
     profile: createProfile({
@@ -208,7 +220,8 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       missionLabel: "ingress-control",
       responsibilities: [
         "Capture runtime context at ingress.",
-        "Chunk materials by task intent.",
+        "Chunk materials by task intent, including multi-intent ingress.",
+        "Auto-detect controlled fragment kinds from source materials.",
         "Attach controlled fragments without mutating root system truth.",
       ],
       hardBoundaries: [
@@ -255,12 +268,15 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       systemPrompt: "Treat commit as the minimum auditable review unit and keep review refs stable.",
       systemPurpose: "advance cmp git state to auditable candidate commits",
       systemPolicy: "routing_only",
-      mission: "Advance prepared material into candidate commits and stable review refs.",
-      handoffContract: "handoff only candidate commit metadata and stable review refs to checker",
+      mission: "Advance prepared material into candidate commits, decide whether progression should hold or advance, and keep stable review refs with explicit annotations.",
+      handoffContract: "handoff candidate commit metadata, progression verdict, and stable review refs to checker",
       guardrails: [
         "Commit is the minimum review unit.",
+        "Emit an explicit progression verdict before advancing review state.",
+        "Keep review ref annotations stable and auditable.",
         "Do not finalize checked/promote outcomes.",
         "Do not route packages downstream.",
+        "Emit an explicit progression verdict for whether this candidate should advance.",
       ],
       inputContract: [
         "prepared material from ICMA",
@@ -269,6 +285,8 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       outputContract: [
         "candidate commit ref",
         "stable review ref metadata",
+        "progression verdict",
+        "review ref annotation",
       ],
     }),
     profile: createProfile({
@@ -280,6 +298,7 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
         "Advance cmp git workflow with candidate commits.",
         "Maintain stable review refs.",
         "Keep commit as the minimum review unit.",
+        "Emit explicit progression verdicts and review ref annotations for downstream checking.",
       ],
       hardBoundaries: [
         "Cannot finalize checked outcomes.",
@@ -325,12 +344,14 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       systemPrompt: "Restructure evidence, keep checked separate from suggest-promote, and assist parent review without replacing it.",
       systemPurpose: "review candidate commits and produce checked outcomes",
       systemPolicy: "decision_separated",
-      mission: "Review candidate commits, produce checked snapshots, and optionally raise suggest-promote for parent review.",
-      handoffContract: "handoff checked snapshot plus optional suggest-promote request; parent DBAgent remains primary reviewer",
+      mission: "Review candidate commits, produce checked snapshots, emit executable split/merge semantics, and optionally raise suggest-promote for parent review.",
+      handoffContract: "handoff checked snapshot plus executable split/merge semantics and optional suggest-promote request; parent DBAgent remains primary reviewer",
       guardrails: [
         "checked and suggest-promote remain separate states.",
+        "Split/merge outputs must be executable review semantics, not prose-only advice.",
         "Parent checker assistance is auxiliary under parent DBAgent review.",
         "Do not become the primary git writer.",
+        "Execution semantics are advisory for rule execution and do not directly rewrite truth.",
       ],
       inputContract: [
         "candidate commit refs",
@@ -340,6 +361,8 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
         "checked decision",
         "optional suggest-promote request",
         "parent checker assistance metadata",
+        "split execution semantics",
+        "merge execution semantics",
       ],
     }),
     profile: createProfile({
@@ -350,6 +373,7 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       responsibilities: [
         "Restructure candidate evidence.",
         "Produce checked decisions.",
+        "Emit execution-grade split/merge semantics for downstream rule execution.",
         "Escalate suggest-promote separately when parent review is warranted.",
       ],
       hardBoundaries: [
@@ -396,12 +420,14 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       systemPrompt: "Project checked truth into packages, own parent-side review entry, and preserve high-fidelity passive replies.",
       systemPurpose: "own DB/package truth and parent-side review entry",
       systemPolicy: "package_authority",
-      mission: "Materialize DB-backed package families, review parent-side promote requests, and serve passive historical replies.",
-      handoffContract: "emit primary package, timeline attachment, task snapshots, and parent-side review records",
+      mission: "Materialize DB-backed package families with explicit primary-package, timeline-package, task-snapshot, and passive-history strategies, review parent-side promote requests, and serve passive historical replies.",
+      handoffContract: "emit primary package, timeline attachment, task snapshots, passive packaging strategy, and parent-side review records",
       guardrails: [
         "DBAgent is the only role with primary DB write authority.",
         "Parent-side promote review lands here first.",
+        "Primary package, timeline package, task snapshot, and passive historical reply must stay distinguishable.",
         "Do not steal cmp git primary progression from iterator.",
+        "Keep active package, timeline package, task snapshots, and passive packaging strategies explicitly separated.",
       ],
       inputContract: [
         "checked snapshots",
@@ -411,7 +437,9 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
         "primary context package",
         "timeline attachment",
         "task snapshot bundle",
+        "passive historical reply package",
         "parent review record",
+        "package-specific strategy set",
       ],
     }),
     profile: createProfile({
@@ -423,6 +451,7 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
         "Materialize DB-backed package families.",
         "Own parent-side promote review entry.",
         "Serve passive historical packages and reintervention replies.",
+        "Keep active package, timeline package, task snapshots, and passive packaging strategies explicitly separated.",
       ],
       hardBoundaries: [
         "Cannot replace iterator as cmp git primary writer.",
@@ -468,12 +497,13 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       systemPrompt: "Route packages with explicit scope control: child seeds go only to child ICMA, peers require parent approval, passive replies return cleanly.",
       systemPurpose: "route packages under strict lineage policy",
       systemPolicy: "routing_only",
-      mission: "Route CMP packages to core, child, parent, and peer targets under explicit policy control.",
-      handoffContract: "deliver package routing state and approval state; do not recut package truth",
+      mission: "Route CMP packages to core, child, parent, and peer targets under explicit policy control, with differentiated child-seed, peer-slim, and passive-return strategies.",
+      handoffContract: "deliver package routing state, route-specific body strategy, and approval state; do not recut package truth",
       guardrails: [
         "Child seed must enter child ICMA only.",
         "Peer exchange requires explicit once-only parent approval.",
         "Dispatcher does not recut package truth.",
+        "Peer slim exchange must stay on its allowed field list and passive returns must keep their clean return path.",
       ],
       inputContract: [
         "materialized context packages",
@@ -481,8 +511,11 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
       ],
       outputContract: [
         "delivery receipt",
-        "routing summary",
+        "child-seed route bundle",
+        "peer slim exchange bundle",
+        "passive return bundle",
         "peer approval state when needed",
+        "route-specific body strategy",
       ],
     }),
     profile: createProfile({
@@ -494,6 +527,7 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
         "Route context packages.",
         "Return passive history to the requester.",
         "Keep package flow and approval state visible.",
+        "Enforce different bundle discipline for child seed, peer slim exchange, and passive return.",
       ],
       hardBoundaries: [
         "Cannot own cmp git progression.",
@@ -778,5 +812,15 @@ export function createCmpFiveAgentTapProfileCatalog(): CmpFiveAgentTapProfileCat
     checker: createCmpRoleTapProfile("checker"),
     dbagent: createCmpRoleTapProfile("dbagent"),
     dispatcher: createCmpRoleTapProfile("dispatcher"),
+  };
+}
+
+export function getCmpDefaultRoleLiveLlmMode(role: CmpFiveAgentRole): CmpRoleLiveLlmMode {
+  return CMP_DEFAULT_ROLE_LIVE_LLM_MODES[role];
+}
+
+export function createCmpRoleLiveLlmModeCatalog(): Record<CmpFiveAgentRole, CmpRoleLiveLlmMode> {
+  return {
+    ...CMP_DEFAULT_ROLE_LIVE_LLM_MODES,
   };
 }

@@ -28,7 +28,7 @@ export function createCmpStatusPanelRows(input: {
     rows.push({
       section: "roles",
       label: role,
-      value: `count=${entry.count}, latest=${entry.latestStage ?? "none"}`,
+      value: `count=${entry.count}, latest=${entry.latestStage ?? "none"}, live=${entry.liveMode ?? "unknown"}/${entry.liveStatus ?? "unknown"}, fallback=${entry.fallbackApplied === true}${entry.semanticSummary ? `, semantic=${entry.semanticSummary}` : ""}`,
     });
   }
 
@@ -73,6 +73,11 @@ export function createCmpStatusPanelRows(input: {
   });
   rows.push({
     section: "health",
+    label: "live_llm",
+    value: `ready=${input.panel.health.liveLlmReadyCount}, fallback=${input.panel.health.liveLlmFallbackCount}, failed=${input.panel.health.liveLlmFailedCount}`,
+  });
+  rows.push({
+    section: "health",
     label: "recovery",
     value: `status=${input.panel.health.recoveryStatus}`,
   });
@@ -91,6 +96,11 @@ export function createCmpStatusPanelRows(input: {
     section: "readiness",
     label: "five_agent_loop",
     value: `status=${input.panel.readiness.fiveAgentLoop}`,
+  });
+  rows.push({
+    section: "readiness",
+    label: "live_llm",
+    value: `status=${input.panel.readiness.liveLlm}`,
   });
   rows.push({
     section: "readiness",

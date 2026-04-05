@@ -34,6 +34,29 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
             childGuide: "child seed enters child icma only",
           },
         },
+        liveTrace: {
+          attemptId: "attempt-icma",
+          role: "icma",
+          mode: "llm_assisted",
+          stage: "emit",
+          status: "live_applied",
+          provider: "openai",
+          model: "gpt-5.4",
+          requestId: "request-icma",
+          createdAt: "2026-03-25T00:00:03.000Z",
+          completedAt: "2026-03-25T00:00:04.000Z",
+          fallbackApplied: false,
+        },
+        metadata: {
+          liveLlm: {
+            mode: "llm_assisted",
+            status: "succeeded",
+            fallbackApplied: false,
+            provider: "openai",
+            model: "gpt-5.4",
+            promptId: "cmp-five-agent/icma-prompt-pack/v1",
+          },
+        },
       },
     ],
     iteratorRecords: [
@@ -54,6 +77,23 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
           minimumReviewUnit: "commit",
           reviewRefMode: "stable_review_ref",
           handoffTarget: "checker",
+        },
+        liveTrace: {
+          attemptId: "attempt-iterator",
+          role: "iterator",
+          mode: "rules_only",
+          stage: "update_review_ref",
+          status: "rules_only",
+          createdAt: "2026-03-25T00:00:04.000Z",
+          completedAt: "2026-03-25T00:00:05.000Z",
+          fallbackApplied: true,
+        },
+        metadata: {
+          liveLlm: {
+            mode: "rules_only",
+            status: "rules_only",
+            fallbackApplied: false,
+          },
         },
       },
     ],
@@ -77,6 +117,25 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
           shortReason: "checked",
           detailedReason: "checker restructured evidence for promote-ready handoff",
         },
+        liveTrace: {
+          attemptId: "attempt-checker",
+          role: "checker",
+          mode: "llm_assisted",
+          stage: "suggest_promote",
+          status: "fallback_rules",
+          createdAt: "2026-03-25T00:00:05.000Z",
+          completedAt: "2026-03-25T00:00:06.000Z",
+          fallbackApplied: true,
+          errorMessage: "gateway unavailable",
+        },
+        metadata: {
+          liveLlm: {
+            mode: "llm_assisted",
+            status: "fallback",
+            fallbackApplied: true,
+            errorMessage: "gateway unavailable",
+          },
+        },
       },
     ],
     dbAgentRecords: [
@@ -97,6 +156,28 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
           sourceSnapshotId: "checked-1",
           packageTopology: "active_plus_timeline_plus_task_snapshots",
           bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+        },
+        liveTrace: {
+          attemptId: "attempt-dbagent",
+          role: "dbagent",
+          mode: "llm_assisted",
+          stage: "attach_snapshots",
+          status: "live_applied",
+          provider: "openai",
+          model: "gpt-5.4",
+          requestId: "request-dbagent",
+          createdAt: "2026-03-25T00:00:06.000Z",
+          completedAt: "2026-03-25T00:00:07.000Z",
+          fallbackApplied: false,
+        },
+        metadata: {
+          liveLlm: {
+            mode: "llm_assisted",
+            status: "succeeded",
+            fallbackApplied: false,
+            provider: "openai",
+            model: "gpt-5.4",
+          },
         },
       },
     ],
@@ -136,6 +217,26 @@ function createSnapshotFixture(): CmpFiveAgentRuntimeSnapshot {
         },
         metadata: {
           childSeedsEnterIcmaOnly: true,
+          liveLlm: {
+            mode: "llm_assisted",
+            status: "succeeded",
+            fallbackApplied: false,
+            provider: "openai",
+            model: "gpt-5.4",
+          },
+        },
+        liveTrace: {
+          attemptId: "attempt-dispatcher",
+          role: "dispatcher",
+          mode: "llm_assisted",
+          stage: "collect_receipt",
+          status: "live_applied",
+          provider: "openai",
+          model: "gpt-5.4",
+          requestId: "request-dispatcher",
+          createdAt: "2026-03-25T00:00:07.000Z",
+          completedAt: "2026-03-25T00:00:08.000Z",
+          fallbackApplied: false,
         },
       },
       {
@@ -405,8 +506,13 @@ test("observability composes richer fiveAgentSummary without adding new facade a
   assert.equal(summary.tapProfiles.iterator.profileId, "cmp-five-agent/iterator-tap-profile/v1");
   assert.equal(summary.tapProfiles.dbagent.allowedCapabilityPatterns.includes("cmp.db.write"), true);
   assert.deepEqual(summary.recovery.missingCheckpointRoles, []);
+  assert.equal(summary.live.icma.status, "succeeded");
+  assert.equal(summary.live.dispatcher.mode, "llm_assisted");
   assert.equal((summary.latestRoleMetadata.icma?.structuredOutput as { intent?: string } | undefined)?.intent, "整理当前主线");
+  assert.equal((summary.latestRoleMetadata.icma?.liveTrace as { provider?: string } | undefined)?.provider, "openai");
   assert.equal((summary.latestRoleMetadata.iterator?.reviewOutput as { minimumReviewUnit?: string } | undefined)?.minimumReviewUnit, "commit");
   assert.equal((summary.latestRoleMetadata.dbagent?.materializationOutput as { bundleSchemaVersion?: string } | undefined)?.bundleSchemaVersion, "cmp-dispatch-bundle/v1");
   assert.equal((summary.latestRoleMetadata.dispatcher?.bundle as { target?: { targetIngress?: string } } | undefined)?.target?.targetIngress, "core_agent_return");
+  assert.equal(summary.live.checker.status, "fallback");
+  assert.equal(summary.live.dispatcher.provider, "openai");
 });

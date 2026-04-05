@@ -466,30 +466,81 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
             structuredOutput: {
               intent: "整理当前主线",
               sourceAnchorRefs: ["msg:1"],
+              candidateBodyRefs: ["msg:1"],
+              boundary: "preserve_root_system_and_emit_controlled_fragments_only",
+              chunkingMode: "multi_auto",
+              autoFragmentPolicy: {
+                strategy: "llm_infer_from_materials",
+                detectedKinds: ["constraint", "flow"],
+              },
+              intentChunks: [{
+                chunkId: "chunk-1",
+                taskSummary: "整理当前主线",
+                materialRefs: ["msg:1"],
+                detectedFragmentKinds: ["constraint", "flow"],
+                operatorGuide: "preserve high-signal ingress",
+                childGuide: "child seeds enter child icma only",
+              }],
+              guide: {
+                operatorGuide: "preserve high-signal ingress",
+                childGuide: "child seeds enter child icma only",
+              },
             },
           },
           iterator: {
             reviewDiscipline: { minimumReviewUnit: "commit" },
-            reviewOutput: { minimumReviewUnit: "commit" },
+            reviewOutput: {
+              sourceSectionIds: ["section-pre"],
+              minimumReviewUnit: "commit",
+              progressionVerdict: "advance_commit",
+              reviewRefAnnotation: "candidate ready for checker",
+              handoffTarget: "checker",
+            },
           },
           checker: {
             reviewDiscipline: { checkedDetachedFromPromote: true },
             reviewOutput: {
               trimSummary: "checker trims to section-level high-signal content",
               sourceSectionIds: ["section-pre"],
+              checkedSectionIds: ["section-checked"],
+              splitDecisionRefs: ["split-1"],
+              mergeDecisionRefs: [],
+              splitExecutions: [{
+                decisionRef: "split-1",
+                sourceSectionId: "section-pre",
+                proposedSectionIds: ["section-checked"],
+                rationale: "split into checked section",
+              }],
+              shortReason: "checked snapshot is ready",
+              detailedReason: "checker separated verified evidence into execution-grade checked sections",
             },
           },
           dbagent: {
             packageAuthority: "dbagent_primary_packer",
             materializationOutput: {
+              requestId: "request-1",
+              sourceSectionIds: ["section-checked"],
+              packageTopology: "active_plus_timeline_plus_task_snapshots",
               bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+              primaryPackageStrategy: "active task package is the primary package",
+              timelinePackageStrategy: "timeline attachment remains separate",
+              taskSnapshotStrategy: "task snapshots stay append-only",
+              passivePackagingStrategy: "historical replies stay coarse and high-fidelity",
             },
           },
           dispatcher: {
             routePolicy: { targetIngress: "child_icma_only" },
             bundle: {
               target: { targetIngress: "child_icma_only" },
-              body: { primaryRef: "cmp-package:pkg-main" },
+              body: {
+                primaryRef: "cmp-package:pkg-main",
+                bodyStrategy: "child_seed_full",
+                slimExchangeFields: [],
+              },
+              governance: {
+                scopePolicy: "child_seed_only_to_child_icma",
+                routeRationale: "child package only enters child icma",
+              },
             },
           },
         },
@@ -607,6 +658,43 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
           },
           resumableRoles: ["icma", "iterator", "checker", "dbagent", "dispatcher"],
           missingCheckpointRoles: [],
+        },
+        live: {
+          icma: {
+            mode: "llm_assisted",
+            status: "succeeded",
+            fallbackApplied: false,
+            provider: "openai",
+            model: "gpt-5.4",
+          },
+          iterator: {
+            mode: "llm_assisted",
+            status: "succeeded",
+            fallbackApplied: false,
+            provider: "openai",
+            model: "gpt-5.4",
+          },
+          checker: {
+            mode: "llm_assisted",
+            status: "succeeded",
+            fallbackApplied: false,
+            provider: "openai",
+            model: "gpt-5.4",
+          },
+          dbagent: {
+            mode: "llm_assisted",
+            status: "succeeded",
+            fallbackApplied: false,
+            provider: "openai",
+            model: "gpt-5.4",
+          },
+          dispatcher: {
+            mode: "llm_assisted",
+            status: "succeeded",
+            fallbackApplied: false,
+            provider: "openai",
+            model: "gpt-5.4",
+          },
         },
       } satisfies CmpFiveAgentSummary;
     },
@@ -759,14 +847,25 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
   assert.equal(readback.summary?.fiveAgentSummary?.configurationVersion, "cmp-five-agent-role-catalog/v1");
   assert.deepEqual(readback.summary?.fiveAgentSummary?.capabilityMatrix.mqPublishers, ["icma", "dispatcher"]);
   assert.equal(readback.summary?.fiveAgentSummary?.tapProfiles.dispatcher.profileId, "cmp-five-agent/dispatcher-tap-profile/v1");
+  assert.equal(readback.summary?.fiveAgentSummary?.live.dispatcher.status, "succeeded");
+  assert.equal(readback.summary?.statusPanel?.roles.icma.semanticSummary, "chunking=multi_auto, chunks=1, fragments=0");
+  assert.equal(readback.summary?.statusPanel?.roles.iterator.semanticSummary, "verdict=advance_commit, annotation=candidate ready for checker");
+  assert.equal(readback.summary?.statusPanel?.roles.checker.semanticSummary, "split=1, merge=0");
+  assert.equal(readback.summary?.statusPanel?.roles.dbagent.semanticSummary, "primary=active task package is the primary package, timeline=timeline attachment remains separate, task=task snapshots stay append-only, passive=historical replies stay coarse and high-fidelity");
   assert.equal(readback.summary?.statusPanel?.roles.dispatcher.latestStage, "collect_receipt");
+  assert.equal(readback.summary?.statusPanel?.roles.dispatcher.liveMode, "llm_assisted");
+  assert.equal(readback.summary?.statusPanel?.roles.dispatcher.liveStatus, "succeeded");
+  assert.equal(readback.summary?.statusPanel?.roles.dispatcher.semanticSummary, "body=child_seed_full, ingress=child_icma_only, slim=0, scope=child_seed_only_to_child_icma");
   assert.equal(readback.summary?.statusPanel?.packageFlow.latestTargetIngress, "child_icma_only");
   assert.equal(readback.summary?.statusPanel?.requests.pendingPeerApprovalCount, 0);
   assert.equal(readback.summary?.statusPanel?.health.readbackStatus, "ready");
+  assert.equal(readback.summary?.statusPanel?.health.liveLlmReadyCount, 5);
   assert.equal(readback.summary?.acceptance.objectModel.status, "ready");
+  assert.equal(readback.summary?.acceptance.liveLlm.status, "ready");
   assert.equal(readback.summary?.acceptance.finalAcceptance.status, "ready");
   assert.equal(smoke.status, "ready");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.object_model.readiness")?.status, "ready");
+  assert.equal(smoke.checks.find((check) => check.id === "cmp.five_agent.live_llm")?.status, "ready");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.live_infra.readiness")?.status, "ready");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.final_acceptance")?.status, "ready");
 });
@@ -1132,7 +1231,9 @@ test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage 
   assert.equal(readback.summary?.fallbacks.gitHistoryRebuild, "available");
   assert.equal(readback.summary?.statusPanel?.health.readbackStatus, "degraded");
   assert.equal(readback.summary?.statusPanel?.readiness.liveInfra, "degraded");
+  assert.equal(readback.summary?.acceptance.liveLlm.status, "degraded");
   assert.equal(smoke.status, "degraded");
+  assert.equal(smoke.checks.find((check) => check.id === "cmp.five_agent.live_llm")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.truth.git")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.db.readback")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.truth.redis")?.status, "degraded");

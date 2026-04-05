@@ -313,6 +313,7 @@ export interface RaxCmpObjectModelReadinessSummary {
 export interface RaxCmpAcceptanceReadiness {
   objectModel: RaxCmpReadinessCheck;
   fiveAgentLoop: RaxCmpReadinessCheck;
+  liveLlm: RaxCmpReadinessCheck;
   bundleSchema: RaxCmpReadinessCheck;
   tapExecutionBridge: RaxCmpReadinessCheck;
   liveInfra: RaxCmpReadinessCheck;
@@ -324,6 +325,10 @@ export interface RaxCmpStatusPanel {
   roles: Record<CmpFiveAgentRole, {
     count: number;
     latestStage?: string;
+    liveMode?: CmpFiveAgentSummary["live"][CmpFiveAgentRole]["mode"];
+    liveStatus?: CmpFiveAgentSummary["live"][CmpFiveAgentRole]["status"];
+    fallbackApplied?: boolean;
+    semanticSummary?: string;
   }>;
   packageFlow: {
     modeCounts: Partial<Record<string, number>>;
@@ -342,12 +347,16 @@ export interface RaxCmpStatusPanel {
     deliveryDriftCount: number;
     expiredDeliveryCount: number;
     liveInfraReady: boolean;
+    liveLlmReadyCount: number;
+    liveLlmFallbackCount: number;
+    liveLlmFailedCount: number;
     recoveryStatus: RaxCmpReadinessStatus;
     finalAcceptanceStatus: RaxCmpReadinessStatus;
   };
   readiness: {
     objectModel: RaxCmpReadinessStatus;
     fiveAgentLoop: RaxCmpReadinessStatus;
+    liveLlm: RaxCmpReadinessStatus;
     bundleSchema: RaxCmpReadinessStatus;
     tapExecutionBridge: RaxCmpReadinessStatus;
     liveInfra: RaxCmpReadinessStatus;
@@ -452,6 +461,7 @@ export interface RaxCmpSmokeCheck {
     | "lineage"
     | "object_model"
     | "five_agent"
+    | "role_live"
     | "bundle_schema"
     | "tap_bridge"
     | "live_infra"

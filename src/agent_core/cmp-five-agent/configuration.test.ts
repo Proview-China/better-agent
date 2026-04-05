@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CMP_DEFAULT_ROLE_LIVE_LLM_MODES,
   CMP_FIVE_AGENT_CONFIGURATION_VERSION,
   createCmpFiveAgentCapabilityMatrixSummary,
   createCmpFiveAgentRoleSummaryCatalog,
+  createCmpRoleLiveLlmModeCatalog,
   createCmpFiveAgentTapProfileCatalog,
   createCmpRoleTapProfile,
   createCmpRoleCapabilityMatrix,
   createDefaultCmpFiveAgentRoleCatalog,
+  getCmpDefaultRoleLiveLlmMode,
   getCmpFiveAgentRoleDefinition,
 } from "./configuration.js";
 import { isCapabilityAllowedByProfile } from "../ta-pool-types/index.js";
@@ -27,15 +30,25 @@ test("cmp five-agent role catalog exposes five separated role definitions", () =
 test("getCmpFiveAgentRoleDefinition preserves hard boundaries and authority edges", () => {
   const icma = getCmpFiveAgentRoleDefinition("icma");
   const iterator = getCmpFiveAgentRoleDefinition("iterator");
+  const checker = getCmpFiveAgentRoleDefinition("checker");
+  const dbagent = getCmpFiveAgentRoleDefinition("dbagent");
   const dispatcher = getCmpFiveAgentRoleDefinition("dispatcher");
 
   assert.equal(CMP_FIVE_AGENT_CONFIGURATION_VERSION, "cmp-five-agent-role-catalog/v1");
   assert.match(icma.promptPack.systemPrompt, /root system prompt/i);
   assert.equal(icma.capabilityContract.git.access, "none");
+  assert.match(icma.promptPack.handoffContract, /multiple intent chunks/i);
   assert.equal(iterator.capabilityContract.git.access, "write");
   assert.match(iterator.capabilityContract.git.rationale, /primary writer/i);
+  assert.ok(iterator.promptPack.outputContract.includes("progression verdict"));
+  assert.match(checker.promptPack.mission, /executable split\/merge semantics/i);
+  assert.ok(checker.promptPack.outputContract.includes("split execution semantics"));
+  assert.match(dbagent.promptPack.mission, /primary-package, timeline-package, task-snapshot, and passive-history/i);
+  assert.ok(dbagent.promptPack.outputContract.includes("passive historical reply package"));
   assert.equal(dispatcher.capabilityContract.git.access, "none");
+  assert.match(dispatcher.promptPack.mission, /peer-slim/i);
   assert.match(dispatcher.promptPack.guardrails.join(" "), /child icma only/i);
+  assert.ok(dispatcher.promptPack.outputContract.includes("peer slim exchange bundle"));
 });
 
 test("cmp five-agent role summary catalog and capability matrix are readback friendly", () => {
@@ -57,6 +70,8 @@ test("cmp five-agent role summary catalog and capability matrix are readback fri
   assert.deepEqual(capabilitySummary.gitWriters, ["iterator", "checker"]);
   assert.deepEqual(capabilitySummary.dbWriters, ["dbagent"]);
   assert.deepEqual(capabilitySummary.mqPublishers, ["icma", "dispatcher"]);
+  assert.ok(getCmpFiveAgentRoleDefinition("checker").promptPack.outputContract.includes("split execution semantics"));
+  assert.ok(getCmpFiveAgentRoleDefinition("dbagent").promptPack.outputContract.includes("package-specific strategy set"));
 });
 
 test("cmp five-agent configuration compiles role-specific TAP profiles from capability contracts", () => {
@@ -90,4 +105,33 @@ test("cmp five-agent configuration compiles role-specific TAP profiles from capa
   assert.equal(isCapabilityAllowedByProfile({ profile: checker, capabilityKey: "cmp.git.write" }), false);
 
   assert.equal(catalog.dispatcher.profileId, dispatcher.profileId);
+});
+
+test("cmp five-agent configuration exposes default live llm modes for every role", () => {
+  const catalog = createCmpRoleLiveLlmModeCatalog();
+
+  assert.deepEqual(CMP_DEFAULT_ROLE_LIVE_LLM_MODES, {
+    icma: "llm_assisted",
+    iterator: "llm_assisted",
+    checker: "llm_assisted",
+    dbagent: "llm_assisted",
+    dispatcher: "llm_assisted",
+  });
+  assert.equal(getCmpDefaultRoleLiveLlmMode("icma"), "llm_assisted");
+  assert.equal(getCmpDefaultRoleLiveLlmMode("dispatcher"), "llm_assisted");
+  assert.equal(catalog.checker, "llm_assisted");
+});
+
+test("cmp five-agent configuration reflects the chosen fine-grained strategy deltas", () => {
+  const icma = getCmpFiveAgentRoleDefinition("icma");
+  const checker = getCmpFiveAgentRoleDefinition("checker");
+  const dbagent = getCmpFiveAgentRoleDefinition("dbagent");
+  const dispatcher = getCmpFiveAgentRoleDefinition("dispatcher");
+
+  assert.match(icma.profile.responsibilities.join(" "), /Auto-detect controlled fragment kinds/i);
+  assert.ok(icma.promptPack.outputContract.includes("chunk-level operator/child guide set"));
+  assert.match(checker.promptPack.guardrails.join(" "), /Execution semantics are advisory/i);
+  assert.match(checker.profile.responsibilities.join(" "), /execution-grade split\/merge semantics/i);
+  assert.match(dbagent.promptPack.guardrails.join(" "), /active package, timeline package, task snapshots, and passive packaging strategies/i);
+  assert.match(dispatcher.profile.responsibilities.join(" "), /child seed, peer slim exchange, and passive return/i);
 });

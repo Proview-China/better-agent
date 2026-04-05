@@ -35,6 +35,8 @@ export type {
 
 export const CMP_SYSTEM_FRAGMENT_KINDS = ["constraint", "risk", "flow"] as const;
 export type CmpSystemFragmentKind = (typeof CMP_SYSTEM_FRAGMENT_KINDS)[number];
+export const CMP_ROLE_LIVE_LLM_MODES = ["rules_only", "llm_assisted", "llm_required"] as const;
+export type CmpRoleLiveLlmMode = (typeof CMP_ROLE_LIVE_LLM_MODES)[number];
 export const CMP_ICMA_STAGES = ["capture", "chunk_by_intent", "attach_fragment", "emit"] as const;
 export const CMP_ITERATOR_STAGES = ["accept_material", "write_candidate_commit", "update_review_ref"] as const;
 export const CMP_CHECKER_STAGES = ["accept_candidate", "restructure", "checked", "suggest_promote"] as const;
@@ -117,6 +119,67 @@ export interface CmpRoleConfiguration {
   capabilityContract: CmpRoleCapabilityContract;
 }
 
+export interface CmpRoleLiveLlmRequest<TInput = Record<string, unknown>> {
+  requestId: string;
+  role: CmpFiveAgentRole;
+  agentId: string;
+  mode: CmpRoleLiveLlmMode;
+  stage: string;
+  createdAt: string;
+  promptPackId: string;
+  profileId: string;
+  prompt: {
+    system: string;
+    user: string;
+    systemPrompt: string;
+    systemPurpose: string;
+    mission: string;
+    guardrails: string[];
+    inputContract: string[];
+    outputContract: string[];
+    handoffContract: string;
+  };
+  input: TInput;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpRoleLiveLlmExecutorResult<TOutput = Record<string, unknown>> {
+  output: TOutput;
+  raw?: unknown;
+  provider?: string;
+  model?: string;
+  requestId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type CmpRoleLiveLlmExecutor<TInput = Record<string, unknown>, TOutput = Record<string, unknown>> = (
+  request: CmpRoleLiveLlmRequest<TInput>,
+) => Promise<CmpRoleLiveLlmExecutorResult<TOutput>>;
+
+export interface CmpRoleLiveLlmTrace {
+  attemptId: string;
+  role: CmpFiveAgentRole;
+  mode: CmpRoleLiveLlmMode;
+  stage: string;
+  status: "rules_only" | "live_applied" | "fallback_rules";
+  provider?: string;
+  model?: string;
+  requestId?: string;
+  createdAt: string;
+  completedAt: string;
+  fallbackApplied: boolean;
+  errorMessage?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CmpRoleLiveLlmOutcome<TOutput = Record<string, unknown>> {
+  mode: CmpRoleLiveLlmMode;
+  status: "rules_only" | "live_applied" | "fallback_rules";
+  output: TOutput;
+  trace: CmpRoleLiveLlmTrace;
+  raw?: unknown;
+}
+
 export interface CmpFiveAgentConfiguration {
   version: string;
   roles: Record<CmpFiveAgentRole, CmpRoleConfiguration>;
@@ -158,6 +221,20 @@ export interface CmpIcmaStructuredOutput {
   boundary: string;
   explicitFragmentIds: string[];
   preSectionIds: string[];
+  llmIntentRationale?: string;
+  chunkingMode?: "single_explicit" | "multi_explicit" | "multi_auto";
+  autoFragmentPolicy?: {
+    strategy: "llm_infer_from_materials";
+    detectedKinds: CmpSystemFragmentKind[];
+  };
+  intentChunks?: Array<{
+    chunkId: string;
+    taskSummary: string;
+    materialRefs: string[];
+    detectedFragmentKinds: CmpSystemFragmentKind[];
+    operatorGuide?: string;
+    childGuide?: string;
+  }>;
   guide: {
     operatorGuide: string;
     childGuide: string;
@@ -169,6 +246,7 @@ export interface CmpIcmaRecord extends CmpFiveAgentLoopRecord<CmpIcmaStage> {
   fragmentIds: string[];
   eventIds?: string[];
   structuredOutput: CmpIcmaStructuredOutput;
+  liveTrace?: CmpRoleLiveLlmTrace;
 }
 
 export interface CmpIcmaIngestInput {
@@ -202,7 +280,11 @@ export interface CmpIteratorRecord extends CmpFiveAgentLoopRecord<CmpIteratorSta
     minimumReviewUnit: "commit" | "section";
     reviewRefMode: "stable_review_ref";
     handoffTarget: "checker";
+    progressionVerdict?: "hold" | "advance_review" | "advance_commit";
+    commitRationale?: string;
+    reviewRefAnnotation?: string;
   };
+  liveTrace?: CmpRoleLiveLlmTrace;
 }
 
 export interface CmpIteratorAdvanceInput {
@@ -225,10 +307,24 @@ export interface CmpCheckerRecord extends CmpFiveAgentLoopRecord<CmpCheckerStage
     checkedSectionIds: string[];
     splitDecisionRefs: string[];
     mergeDecisionRefs: string[];
+    splitExecutions?: Array<{
+      decisionRef: string;
+      sourceSectionId: string;
+      proposedSectionIds: string[];
+      rationale: string;
+    }>;
+    mergeExecutions?: Array<{
+      decisionRef: string;
+      sourceSectionIds: string[];
+      targetSectionId: string;
+      rationale: string;
+    }>;
     trimSummary: string;
     shortReason: string;
     detailedReason: string;
+    promoteRationale?: string;
   };
+  liveTrace?: CmpRoleLiveLlmTrace;
 }
 
 export interface CmpPromoteRequestRecord extends CmpPromoteReviewRecord {
@@ -266,7 +362,13 @@ export interface CmpDbAgentRecord extends CmpFiveAgentLoopRecord<CmpDbAgentStage
     sourceSectionIds: string[];
     packageTopology: string;
     bundleSchemaVersion: "cmp-dispatch-bundle/v1";
+    materializationRationale?: string;
+    primaryPackageStrategy?: string;
+    timelinePackageStrategy?: string;
+    taskSnapshotStrategy?: string;
+    passivePackagingStrategy?: string;
   };
+  liveTrace?: CmpRoleLiveLlmTrace;
 }
 
 export interface CmpDbAgentMaterializeInput {
@@ -317,6 +419,8 @@ export interface CmpDispatcherBundleEnvelope {
     guideRef?: string;
     backgroundRef?: string;
     taskSnapshotRefs: string[];
+    slimExchangeFields?: string[];
+    bodyStrategy?: "child_seed_full" | "peer_exchange_slim" | "historical_return";
   };
   governance: {
     sourceAgentId: string;
@@ -325,8 +429,10 @@ export interface CmpDispatcherBundleEnvelope {
     approvalRequired: boolean;
     approvalId?: string;
     approvalStatus?: string;
+    routeRationale?: string;
     confidenceLabel: "high" | "medium";
     signalLabel: ContextPackage["fidelityLabel"];
+    scopePolicy?: string;
   };
   sourceAnchorRefs: string[];
 }
@@ -338,6 +444,7 @@ export interface CmpDispatcherRecord extends CmpFiveAgentLoopRecord<CmpDispatche
   targetKind: DispatchContextPackageInput["targetKind"];
   packageMode: "core_return" | "child_seed_via_icma" | "peer_exchange_slim" | "historical_reply_return" | "lineage_delivery";
   bundle: CmpDispatcherBundleEnvelope;
+  liveTrace?: CmpRoleLiveLlmTrace;
 }
 
 export type CmpDispatcherPackageMode = CmpDispatcherRecord["packageMode"];
@@ -404,6 +511,16 @@ export interface CmpFiveAgentRecoverySummary {
   missingCheckpointRoles: CmpFiveAgentRole[];
 }
 
+export interface CmpFiveAgentRoleLiveSummary {
+  mode: "rules_only" | "llm_assisted" | "llm_required" | "unknown";
+  status: "rules_only" | "succeeded" | "fallback" | "failed" | "unknown";
+  fallbackApplied: boolean;
+  provider?: string;
+  model?: string;
+  promptId?: string;
+  errorMessage?: string;
+}
+
 export interface CmpFiveAgentTapProfileSummary {
   role: CmpFiveAgentRole;
   profileId: string;
@@ -442,6 +559,7 @@ export interface CmpFiveAgentSummary {
   tapProfiles: Record<CmpFiveAgentRole, CmpFiveAgentTapProfileSummary>;
   flow: CmpFiveAgentFlowSummary;
   recovery: CmpFiveAgentRecoverySummary;
+  live: Record<CmpFiveAgentRole, CmpFiveAgentRoleLiveSummary>;
 }
 
 export function createCheckerCheckedSnapshotMetadata(input: { snapshot: CheckedSnapshot; result: { checkerRecord: CmpCheckerRecord; promoteRequest?: CmpPromoteRequestRecord } }): Record<string, unknown> {

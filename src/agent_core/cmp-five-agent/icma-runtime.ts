@@ -1,5 +1,9 @@
 import { getCmpRoleConfiguration } from "./configuration.js";
 import {
+  attachCmpRoleLiveAudit,
+  executeCmpRoleLiveLlmStep,
+} from "./live-llm.js";
+import {
   createCmpFiveAgentLoopRecord,
   createCmpRoleCheckpointRecord,
 } from "./shared.js";
@@ -10,6 +14,8 @@ import type {
   CmpIcmaRuntimeSnapshot,
   CmpIntentChunkRecord,
   CmpRoleCheckpointRecord,
+  CmpRoleLiveLlmExecutor,
+  CmpRoleLiveLlmMode,
   CmpSystemFragmentKind,
   CmpSystemFragmentRecord,
 } from "./types.js";
@@ -30,6 +36,91 @@ function normalizeFragmentKinds(value: unknown): CmpSystemFragmentKind[] {
     .filter(isFragmentKind);
 }
 
+function normalizeStringArray(value: unknown, allowed: readonly string[]): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const allowedSet = new Set(allowed);
+  return uniqueStrings(value.filter((item): item is string => typeof item === "string"))
+    .filter((entry) => allowedSet.has(entry));
+}
+
+function inferAutoFragmentKinds(materialKinds: string[]): CmpSystemFragmentKind[] {
+  const detected = new Set<CmpSystemFragmentKind>();
+  if (materialKinds.includes("user_input")) {
+    detected.add("constraint");
+  }
+  if (materialKinds.includes("tool_result") || materialKinds.includes("model_output")) {
+    detected.add("risk");
+  }
+  if (materialKinds.length > 1 || materialKinds.includes("system_input")) {
+    detected.add("flow");
+  }
+  return [...detected];
+}
+
+function normalizeIntentChunks(
+  value: unknown,
+  fallback: CmpIntentChunkRecord[],
+  allowedRefs: readonly string[],
+): Array<{
+  taskSummary: string;
+  materialRefs: string[];
+  detectedFragmentKinds: CmpSystemFragmentKind[];
+  operatorGuide?: string;
+  childGuide?: string;
+}> {
+  if (!Array.isArray(value)) {
+    return fallback.map((chunk) => ({
+      taskSummary: chunk.taskSummary,
+      materialRefs: chunk.materialRefs,
+      detectedFragmentKinds: normalizeFragmentKinds(chunk.metadata?.detectedFragmentKinds),
+      operatorGuide: typeof chunk.metadata?.operatorGuide === "string" ? chunk.metadata.operatorGuide : undefined,
+      childGuide: typeof chunk.metadata?.childGuide === "string" ? chunk.metadata.childGuide : undefined,
+    }));
+  }
+
+  const allowedSet = new Set(allowedRefs);
+  const normalized = value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      taskSummary: typeof item.taskSummary === "string" && item.taskSummary.trim().length > 0
+        ? item.taskSummary.trim()
+        : "",
+      materialRefs: uniqueStrings(
+        Array.isArray(item.materialRefs)
+          ? item.materialRefs.filter((entry): entry is string => typeof entry === "string" && allowedSet.has(entry))
+          : [],
+      ),
+      detectedFragmentKinds: normalizeFragmentKinds(item.detectedFragmentKinds),
+      operatorGuide: typeof item.operatorGuide === "string" && item.operatorGuide.trim().length > 0
+        ? item.operatorGuide.trim()
+        : undefined,
+      childGuide: typeof item.childGuide === "string" && item.childGuide.trim().length > 0
+        ? item.childGuide.trim()
+        : undefined,
+    }))
+    .filter((item) => item.taskSummary.length > 0 && item.materialRefs.length > 0);
+
+  return normalized.length > 0
+    ? normalized
+    : fallback.map((chunk) => ({
+      taskSummary: chunk.taskSummary,
+      materialRefs: chunk.materialRefs,
+      detectedFragmentKinds: normalizeFragmentKinds(chunk.metadata?.detectedFragmentKinds),
+      operatorGuide: typeof chunk.metadata?.operatorGuide === "string" ? chunk.metadata.operatorGuide : undefined,
+      childGuide: typeof chunk.metadata?.childGuide === "string" ? chunk.metadata.childGuide : undefined,
+    }));
+}
+
+function toLiveAuditStatus(status: "rules_only" | "live_applied" | "fallback_rules"): "rules_only" | "llm_applied" | "fallback_applied" {
+  return status === "live_applied"
+    ? "llm_applied"
+    : status === "fallback_rules"
+      ? "fallback_applied"
+      : "rules_only";
+}
+
 export interface CmpIcmaRuntimeResult {
   loop: CmpIcmaRecord;
   intentChunks: CmpIntentChunkRecord[];
@@ -45,25 +136,32 @@ export class CmpIcmaRuntime {
 
   capture(input: CmpIcmaIngestInput): CmpIcmaRuntimeResult {
     const configuration = getCmpRoleConfiguration("icma");
+    const materialKinds = input.ingest.materials.map((material) => material.kind);
     const fragmentKinds = normalizeFragmentKinds(input.ingest.metadata?.cmpSystemFragmentKinds);
-    const chunkId = `${input.loopId}:chunk:0`;
-    const fragmentIds = fragmentKinds.map((_, index) => `${input.loopId}:fragment:${index}`);
-    const chunk: CmpIntentChunkRecord = {
-      chunkId,
+    const detectedFragmentKinds = fragmentKinds.length > 0 ? fragmentKinds : inferAutoFragmentKinds(materialKinds);
+    const chunks: CmpIntentChunkRecord[] = input.ingest.materials.map((material, index) => ({
+      chunkId: `${input.loopId}:chunk:${index}`,
       agentId: input.ingest.agentId,
-      taskSummary: input.ingest.taskSummary,
-      materialRefs: input.ingest.materials.map((material) => material.ref),
+      taskSummary: `${input.ingest.taskSummary} :: ${material.kind}`,
+      materialRefs: [material.ref],
       createdAt: input.createdAt,
       metadata: {
         chunking: {
           strategy: "task_intent",
           granularity: "medium_semantic",
           preserveHighSignal: true,
+          mode: "multi_auto",
         },
+        detectedFragmentKinds,
+        operatorGuide: material.kind === "tool_result"
+          ? "先保留工具结果里的高信噪比状态、错误和依赖变化。"
+          : "先保留和当前任务直接相关的约束与目标。",
+        childGuide: "如果要给子任务播种，这一块仍然只能经由 child ICMA 进入子链。",
         fragmentPolicy: {
           systemPolicy: configuration.promptPack.systemPolicy,
           rootSystemMutationAllowed: false,
-          allowedKinds: fragmentKinds,
+          allowedKinds: detectedFragmentKinds,
+          strategy: fragmentKinds.length > 0 ? "metadata_explicit" : "material_auto_infer",
         },
         seedAssembly: {
           discipline: "child_seed_enters_child_icma_only",
@@ -76,8 +174,10 @@ export class CmpIcmaRuntime {
         capabilityContractId: configuration.capabilityContract.contractId,
         handoffContract: configuration.promptPack.handoffContract,
       },
-    };
-    const fragments = fragmentKinds.map((kind, index) => ({
+    }));
+    const chunkId = chunks[0]?.chunkId ?? `${input.loopId}:chunk:0`;
+    const fragmentIds = detectedFragmentKinds.map((_, index) => `${input.loopId}:fragment:${index}`);
+    const fragments = detectedFragmentKinds.map((kind, index) => ({
       fragmentId: fragmentIds[index]!,
       agentId: input.ingest.agentId,
       kind,
@@ -108,7 +208,7 @@ export class CmpIcmaRuntime {
           fragmentPolicy: {
             systemPolicy: configuration.promptPack.systemPolicy,
             rootSystemMutationAllowed: false,
-            allowedKinds: fragmentKinds,
+            allowedKinds: detectedFragmentKinds,
             templateIds: fragments.map((fragment) => fragment.metadata?.templateId),
             lifecycle: "task_phase",
           },
@@ -120,7 +220,7 @@ export class CmpIcmaRuntime {
           },
         },
       }),
-      chunkIds: [chunkId],
+      chunkIds: chunks.map((chunk) => chunk.chunkId),
       fragmentIds,
       structuredOutput: {
         requestId: typeof input.ingest.metadata?.cmpRequestId === "string"
@@ -134,6 +234,19 @@ export class CmpIcmaRuntime {
         preSectionIds: Array.isArray(input.ingest.metadata?.cmpPreSectionRecordIds)
           ? input.ingest.metadata.cmpPreSectionRecordIds.filter((value): value is string => typeof value === "string")
           : [],
+        chunkingMode: "multi_auto",
+        autoFragmentPolicy: {
+          strategy: "llm_infer_from_materials",
+          detectedKinds: detectedFragmentKinds,
+        },
+        intentChunks: chunks.map((chunk) => ({
+          chunkId: chunk.chunkId,
+          taskSummary: chunk.taskSummary,
+          materialRefs: chunk.materialRefs,
+          detectedFragmentKinds,
+          operatorGuide: typeof chunk.metadata?.operatorGuide === "string" ? chunk.metadata.operatorGuide : undefined,
+          childGuide: typeof chunk.metadata?.childGuide === "string" ? chunk.metadata.childGuide : undefined,
+        })),
         guide: {
           operatorGuide: "Preserve high-signal input and emit controlled pre-sections only.",
           childGuide: "Any child seed must enter child ICMA only.",
@@ -142,7 +255,9 @@ export class CmpIcmaRuntime {
     };
 
     this.#records.set(loop.loopId, loop);
-    this.#intentChunks.set(chunkId, chunk);
+    for (const chunk of chunks) {
+      this.#intentChunks.set(chunk.chunkId, chunk);
+    }
     for (const fragment of fragments) {
       this.#fragments.set(fragment.fragmentId, fragment);
     }
@@ -165,9 +280,163 @@ export class CmpIcmaRuntime {
 
     return {
       loop,
-      intentChunks: [chunk],
+      intentChunks: chunks,
       fragments,
       checkpoints,
+    };
+  }
+
+  async captureWithLlm(input: CmpIcmaIngestInput, options: {
+    mode?: CmpRoleLiveLlmMode;
+    executor?: CmpRoleLiveLlmExecutor<Record<string, unknown>, Record<string, unknown>>;
+  } = {}): Promise<CmpIcmaRuntimeResult> {
+    const captured = this.capture(input);
+    const configuration = getCmpRoleConfiguration("icma");
+    const liveResult = await executeCmpRoleLiveLlmStep({
+      role: "icma",
+      agentId: input.ingest.agentId,
+      mode: options.mode,
+      stage: "attach_fragment",
+      createdAt: input.createdAt,
+      configuration,
+      taskLabel: "shape ingress context and emit structured ICMA output",
+      schemaTitle: "CmpIcmaStructuredOutput",
+      schemaFields: ["intent", "sourceAnchorRefs", "candidateBodyRefs", "boundary", "chunkingMode", "intentChunks", "autoFragmentPolicy", "operatorGuide", "childGuide", "llmIntentRationale"],
+      requestInput: {
+        taskSummary: input.ingest.taskSummary,
+        materialRefs: input.ingest.materials.map((material) => material.ref),
+        fragmentKinds: captured.fragments.map((fragment) => fragment.kind),
+        intentChunks: captured.intentChunks.map((chunk) => ({
+          chunkId: chunk.chunkId,
+          taskSummary: chunk.taskSummary,
+          materialRefs: chunk.materialRefs,
+          detectedFragmentKinds: normalizeFragmentKinds(chunk.metadata?.detectedFragmentKinds),
+        })),
+        preSectionIds: captured.loop.structuredOutput.preSectionIds,
+      },
+      fallbackOutput: {
+        ...captured.loop.structuredOutput,
+        operatorGuide: captured.loop.structuredOutput.guide.operatorGuide,
+        childGuide: captured.loop.structuredOutput.guide.childGuide,
+      },
+      executor: options.executor,
+      metadata: {
+        promptId: configuration.promptPack.promptPackId,
+      },
+    });
+
+    const availableRefs = input.ingest.materials.map((material) => material.ref);
+    const output = liveResult.output;
+    const outputAutoFragmentPolicy = (
+      output.autoFragmentPolicy && typeof output.autoFragmentPolicy === "object" && !Array.isArray(output.autoFragmentPolicy)
+        ? output.autoFragmentPolicy
+        : undefined
+    ) as { detectedKinds?: unknown } | undefined;
+    const fallbackAutoFragmentPolicy = captured.loop.structuredOutput.autoFragmentPolicy as
+      | { detectedKinds?: CmpSystemFragmentKind[] }
+      | undefined;
+    const normalizedIntentChunks = normalizeIntentChunks(output.intentChunks, captured.intentChunks, availableRefs);
+    const nextIntentChunks = normalizedIntentChunks.map((chunk, index) => ({
+      ...(captured.intentChunks[index] ?? {
+        chunkId: `${captured.loop.loopId}:chunk:${index}`,
+        agentId: input.ingest.agentId,
+        createdAt: input.createdAt,
+      }),
+      taskSummary: chunk.taskSummary,
+      materialRefs: chunk.materialRefs,
+      metadata: attachCmpRoleLiveAudit({
+        metadata: {
+          ...((captured.intentChunks[index]?.metadata ?? {}) as Record<string, unknown>),
+          detectedFragmentKinds: chunk.detectedFragmentKinds,
+          operatorGuide: chunk.operatorGuide,
+          childGuide: chunk.childGuide,
+        },
+        audit: {
+          mode: liveResult.mode,
+          status: toLiveAuditStatus(liveResult.status),
+          provider: liveResult.trace.provider,
+          model: liveResult.trace.model,
+          requestId: liveResult.trace.requestId,
+          error: liveResult.trace.errorMessage,
+          fallbackApplied: liveResult.trace.fallbackApplied,
+        },
+      }),
+    }));
+    const nextLoop: CmpIcmaRecord = {
+      ...captured.loop,
+      chunkIds: nextIntentChunks.map((chunk) => chunk.chunkId),
+      structuredOutput: {
+        ...captured.loop.structuredOutput,
+        intent: typeof output.intent === "string" && output.intent.trim()
+          ? output.intent
+          : captured.loop.structuredOutput.intent,
+        sourceAnchorRefs: normalizeStringArray(output.sourceAnchorRefs, availableRefs).length > 0
+          ? normalizeStringArray(output.sourceAnchorRefs, availableRefs)
+          : captured.loop.structuredOutput.sourceAnchorRefs,
+        candidateBodyRefs: normalizeStringArray(output.candidateBodyRefs, availableRefs).length > 0
+          ? normalizeStringArray(output.candidateBodyRefs, availableRefs)
+          : captured.loop.structuredOutput.candidateBodyRefs,
+        boundary: typeof output.boundary === "string" && output.boundary.trim()
+          ? output.boundary
+          : captured.loop.structuredOutput.boundary,
+        llmIntentRationale: typeof output.llmIntentRationale === "string" ? output.llmIntentRationale : undefined,
+        chunkingMode: output.chunkingMode === "single_explicit" || output.chunkingMode === "multi_explicit" || output.chunkingMode === "multi_auto"
+          ? output.chunkingMode
+          : captured.loop.structuredOutput.chunkingMode,
+        autoFragmentPolicy: {
+          strategy: "llm_infer_from_materials",
+          detectedKinds: normalizeFragmentKinds(outputAutoFragmentPolicy?.detectedKinds).length > 0
+            ? normalizeFragmentKinds(outputAutoFragmentPolicy?.detectedKinds)
+            : (fallbackAutoFragmentPolicy?.detectedKinds ?? []),
+        },
+        intentChunks: nextIntentChunks.map((chunk) => ({
+          chunkId: chunk.chunkId,
+          taskSummary: chunk.taskSummary,
+          materialRefs: chunk.materialRefs,
+          detectedFragmentKinds: normalizeFragmentKinds(chunk.metadata?.detectedFragmentKinds),
+          operatorGuide: typeof chunk.metadata?.operatorGuide === "string" ? chunk.metadata.operatorGuide : undefined,
+          childGuide: typeof chunk.metadata?.childGuide === "string" ? chunk.metadata.childGuide : undefined,
+        })),
+        guide: {
+          operatorGuide: typeof output.operatorGuide === "string" && output.operatorGuide.trim()
+            ? output.operatorGuide
+          : captured.loop.structuredOutput.guide.operatorGuide,
+          childGuide: typeof output.childGuide === "string" && output.childGuide.trim()
+            ? output.childGuide
+            : captured.loop.structuredOutput.guide.childGuide,
+        },
+      },
+      liveTrace: liveResult.trace,
+      metadata: attachCmpRoleLiveAudit({
+        metadata: captured.loop.metadata,
+        audit: {
+          mode: liveResult.mode,
+          status: toLiveAuditStatus(liveResult.status),
+          provider: liveResult.trace.provider,
+          model: liveResult.trace.model,
+          requestId: liveResult.trace.requestId,
+          error: liveResult.trace.errorMessage,
+          fallbackApplied: liveResult.trace.fallbackApplied,
+        },
+        extras: {
+          structuredOutput: undefined,
+        },
+      }),
+    };
+
+    this.#records.set(nextLoop.loopId, nextLoop);
+    for (const chunk of captured.intentChunks) {
+      this.#intentChunks.delete(chunk.chunkId);
+    }
+    for (const chunk of nextIntentChunks) {
+      this.#intentChunks.set(chunk.chunkId, chunk);
+    }
+
+    return {
+      loop: nextLoop,
+      intentChunks: nextIntentChunks,
+      fragments: captured.fragments,
+      checkpoints: captured.checkpoints,
     };
   }
 

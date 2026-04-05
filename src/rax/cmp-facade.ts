@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type {
   BootstrapCmpProjectInfraInput,
   CommitContextDeltaResult,
+  CmpFiveAgentRole,
   CmpRuntimeSnapshot,
   DispatchContextPackageInput,
   DispatchContextPackageResult,
@@ -189,30 +190,81 @@ function createAcceptanceReadiness(input: {
     const roleCountsReady = Object.values(input.fiveAgentSummary.roleCounts).every((count) => count > 0);
     const latestStagesReady = Object.values(input.fiveAgentSummary.latestStages).every((stage) => Boolean(stage));
     const icmaOutput = input.fiveAgentSummary.latestRoleMetadata.icma?.structuredOutput as
-      | { intent?: string; sourceAnchorRefs?: string[] }
+      | {
+        intent?: string;
+        sourceAnchorRefs?: string[];
+        chunkingMode?: string;
+        intentChunks?: Array<{ chunkId?: string }>;
+      }
       | undefined;
     const iteratorOutput = input.fiveAgentSummary.latestRoleMetadata.iterator?.reviewOutput as
-      | { minimumReviewUnit?: string }
+      | { minimumReviewUnit?: string; progressionVerdict?: string; reviewRefAnnotation?: string }
       | undefined;
     const checkerOutput = input.fiveAgentSummary.latestRoleMetadata.checker?.reviewOutput as
-      | { trimSummary?: string; sourceSectionIds?: string[] }
+      | {
+        trimSummary?: string;
+        sourceSectionIds?: string[];
+        splitExecutions?: Array<{ decisionRef?: string }>;
+        mergeExecutions?: Array<{ decisionRef?: string }>;
+      }
       | undefined;
     const dbagentOutput = input.fiveAgentSummary.latestRoleMetadata.dbagent?.materializationOutput as
-      | { bundleSchemaVersion?: string; sourceRequestId?: string }
+      | {
+        bundleSchemaVersion?: string;
+        sourceRequestId?: string;
+        primaryPackageStrategy?: string;
+        timelinePackageStrategy?: string;
+        taskSnapshotStrategy?: string;
+        passivePackagingStrategy?: string;
+      }
       | undefined;
     const dispatcherBundle = input.fiveAgentSummary.latestRoleMetadata.dispatcher?.bundle as
-      | { target?: { targetIngress?: string }; body?: { primaryRef?: string } }
+      | {
+        target?: { targetIngress?: string };
+        body?: { primaryRef?: string; bodyStrategy?: string; slimExchangeFields?: string[] };
+        governance?: { scopePolicy?: string };
+      }
       | undefined;
 
-    const ioReady = Boolean(
+    const icmaSemanticsReady = Boolean(
       icmaOutput?.intent
       && (icmaOutput.sourceAnchorRefs?.length ?? 0) > 0
-      && iteratorOutput?.minimumReviewUnit
-      && checkerOutput?.trimSummary
+      && icmaOutput.chunkingMode
+      && (icmaOutput.intentChunks?.length ?? 0) > 0,
+    );
+    const iteratorSemanticsReady = Boolean(
+      iteratorOutput?.minimumReviewUnit
+      && iteratorOutput.progressionVerdict
+      && iteratorOutput.reviewRefAnnotation,
+    );
+    const checkerSemanticsReady = Boolean(
+      checkerOutput?.trimSummary
       && (checkerOutput.sourceSectionIds?.length ?? 0) > 0
-      && dbagentOutput?.bundleSchemaVersion
-      && dispatcherBundle?.target?.targetIngress
-      && dispatcherBundle?.body?.primaryRef,
+      && (
+        (checkerOutput.splitExecutions?.length ?? 0) > 0
+        || (checkerOutput.mergeExecutions?.length ?? 0) > 0
+      ),
+    );
+    const dbagentSemanticsReady = Boolean(
+      dbagentOutput?.bundleSchemaVersion
+      && dbagentOutput.primaryPackageStrategy
+      && dbagentOutput.timelinePackageStrategy
+      && dbagentOutput.taskSnapshotStrategy
+      && dbagentOutput.passivePackagingStrategy,
+    );
+    const dispatcherSemanticsReady = Boolean(
+      dispatcherBundle?.target?.targetIngress
+      && dispatcherBundle?.body?.primaryRef
+      && dispatcherBundle?.body?.bodyStrategy
+      && dispatcherBundle?.governance?.scopePolicy,
+    );
+
+    const ioReady = Boolean(
+      icmaSemanticsReady
+      && iteratorSemanticsReady
+      && checkerSemanticsReady
+      && dbagentSemanticsReady
+      && dispatcherSemanticsReady,
     );
 
     const status = roleCountsReady && latestStagesReady && ioReady
@@ -227,6 +279,60 @@ function createAcceptanceReadiness(input: {
       {
         latestStages: input.fiveAgentSummary.latestStages,
         checkpointCoverage: input.fiveAgentSummary.recovery.checkpointCoverage,
+        semanticReadiness: {
+          icma: icmaSemanticsReady,
+          iterator: iteratorSemanticsReady,
+          checker: checkerSemanticsReady,
+          dbagent: dbagentSemanticsReady,
+          dispatcher: dispatcherSemanticsReady,
+        },
+      },
+    );
+  })();
+
+  const liveLlm = (() => {
+    if (!input.fiveAgentSummary) {
+      return createReadinessCheck(
+        "degraded",
+        "CMP five-agent live LLM readiness is unavailable because five-agent summary is missing.",
+      );
+    }
+
+    const liveEntries = Object.entries(input.fiveAgentSummary.live) as Array<
+      [CmpFiveAgentRole, NonNullable<RaxCmpReadbackSummary["fiveAgentSummary"]>["live"][CmpFiveAgentRole]]
+    >;
+    const succeededRoles = liveEntries
+      .filter(([, summary]) => summary.status === "succeeded")
+      .map(([role]) => role);
+    const rulesOnlyRoles = liveEntries
+      .filter(([, summary]) => summary.status === "rules_only" || summary.mode === "rules_only")
+      .map(([role]) => role);
+    const fallbackRoles = liveEntries
+      .filter(([, summary]) => summary.status === "fallback")
+      .map(([role]) => role);
+    const failedRoles = liveEntries
+      .filter(([, summary]) => summary.status === "failed")
+      .map(([role]) => role);
+    const unknownRoles = liveEntries
+      .filter(([, summary]) => summary.status === "unknown" || summary.mode === "unknown")
+      .map(([role]) => role);
+
+    const status = failedRoles.length > 0
+      ? "failed"
+      : rulesOnlyRoles.length === 0 && fallbackRoles.length === 0 && unknownRoles.length === 0
+        ? "ready"
+        : "degraded";
+
+    return createReadinessCheck(
+      status,
+      `CMP five-agent live LLM status: succeeded=${succeededRoles.length}, rules_only=${rulesOnlyRoles.length}, fallback=${fallbackRoles.length}, failed=${failedRoles.length}, unknown=${unknownRoles.length}.`,
+      {
+        roles: Object.fromEntries(liveEntries),
+        succeededRoles,
+        rulesOnlyRoles,
+        fallbackRoles,
+        failedRoles,
+        unknownRoles,
       },
     );
   })();
@@ -240,14 +346,30 @@ function createAcceptanceReadiness(input: {
     }
 
     const dispatcherBundle = input.fiveAgentSummary.latestRoleMetadata.dispatcher?.bundle as
-      | { target?: { targetIngress?: string }; body?: { primaryRef?: string } }
+      | {
+        target?: { targetIngress?: string };
+        body?: { primaryRef?: string; bodyStrategy?: string; slimExchangeFields?: string[] };
+        governance?: { scopePolicy?: string };
+      }
       | undefined;
     const dbagentOutput = input.fiveAgentSummary.latestRoleMetadata.dbagent?.materializationOutput as
-      | { bundleSchemaVersion?: string; sourceRequestId?: string }
+      | {
+        bundleSchemaVersion?: string;
+        sourceRequestId?: string;
+        primaryPackageStrategy?: string;
+        timelinePackageStrategy?: string;
+        taskSnapshotStrategy?: string;
+        passivePackagingStrategy?: string;
+      }
       | undefined;
     const status = dispatcherBundle?.target?.targetIngress
       && dispatcherBundle?.body?.primaryRef
       && dbagentOutput?.bundleSchemaVersion
+      && dbagentOutput?.primaryPackageStrategy
+      && dbagentOutput?.timelinePackageStrategy
+      && dbagentOutput?.taskSnapshotStrategy
+      && dispatcherBundle?.body?.bodyStrategy
+      && dispatcherBundle?.governance?.scopePolicy
         ? "ready"
         : "degraded";
 
@@ -257,7 +379,14 @@ function createAcceptanceReadiness(input: {
       {
         targetIngress: dispatcherBundle?.target?.targetIngress,
         primaryRef: dispatcherBundle?.body?.primaryRef,
+        bodyStrategy: dispatcherBundle?.body?.bodyStrategy,
+        slimExchangeFields: dispatcherBundle?.body?.slimExchangeFields,
+        scopePolicy: dispatcherBundle?.governance?.scopePolicy,
         bundleSchemaVersion: dbagentOutput?.bundleSchemaVersion,
+        primaryPackageStrategy: dbagentOutput?.primaryPackageStrategy,
+        timelinePackageStrategy: dbagentOutput?.timelinePackageStrategy,
+        taskSnapshotStrategy: dbagentOutput?.taskSnapshotStrategy,
+        passivePackagingStrategy: dbagentOutput?.passivePackagingStrategy,
       },
     );
   })();
@@ -329,6 +458,7 @@ function createAcceptanceReadiness(input: {
   const readinessStatuses = [
     objectModel.status,
     fiveAgentLoop.status,
+    liveLlm.status,
     bundleSchema.status,
     tapExecutionBridge.status,
     liveInfra.status,
@@ -346,6 +476,7 @@ function createAcceptanceReadiness(input: {
   return {
     objectModel,
     fiveAgentLoop,
+    liveLlm,
     bundleSchema,
     tapExecutionBridge,
     liveInfra,
@@ -726,27 +857,81 @@ function createReadbackSummary(input: {
     roleCapabilityExecutionBridgeAvailable: input.roleCapabilityExecutionBridgeAvailable !== false,
   });
 
+  const latestIcmaStructuredForPanel = input.fiveAgentSummary?.latestRoleMetadata.icma?.structuredOutput as
+    | { intentChunks?: Array<unknown>; explicitFragmentIds?: string[]; chunkingMode?: string }
+    | undefined;
+  const latestIteratorReviewForPanel = input.fiveAgentSummary?.latestRoleMetadata.iterator?.reviewOutput as
+    | { progressionVerdict?: string; reviewRefAnnotation?: string }
+    | undefined;
+  const latestCheckerReviewForPanel = input.fiveAgentSummary?.latestRoleMetadata.checker?.reviewOutput as
+    | { splitExecutions?: Array<unknown>; mergeExecutions?: Array<unknown> }
+    | undefined;
+  const latestDbAgentOutputForPanel = input.fiveAgentSummary?.latestRoleMetadata.dbagent?.materializationOutput as
+    | { primaryPackageStrategy?: string; timelinePackageStrategy?: string; taskSnapshotStrategy?: string; passivePackagingStrategy?: string }
+    | undefined;
+  const latestDispatcherBundleForPanel = input.fiveAgentSummary?.latestRoleMetadata.dispatcher?.bundle as
+    | { body?: { bodyStrategy?: string; slimExchangeFields?: string[] }; governance?: { scopePolicy?: string }; target?: { targetIngress?: string }; }
+    | undefined;
+
+  if (input.fiveAgentSummary && acceptance.liveLlm.status !== "ready") {
+    if (acceptance.liveLlm.status === "failed") {
+      issues.push("CMP five-agent live LLM readiness contains failed role execution.");
+    } else {
+      issues.push("CMP five-agent live LLM readiness is incomplete.");
+    }
+  }
+
   const statusPanel: RaxCmpReadbackSummary["statusPanel"] = {
     roles: {
       icma: {
         count: input.fiveAgentSummary?.roleCounts.icma ?? 0,
         latestStage: input.fiveAgentSummary?.latestStages.icma,
+        liveMode: input.fiveAgentSummary?.live.icma.mode,
+        liveStatus: input.fiveAgentSummary?.live.icma.status,
+        fallbackApplied: input.fiveAgentSummary?.live.icma.fallbackApplied,
+        semanticSummary: latestIcmaStructuredForPanel
+          ? `chunking=${latestIcmaStructuredForPanel.chunkingMode ?? "unknown"}, chunks=${latestIcmaStructuredForPanel.intentChunks?.length ?? 0}, fragments=${latestIcmaStructuredForPanel.explicitFragmentIds?.length ?? 0}`
+          : undefined,
       },
       iterator: {
         count: input.fiveAgentSummary?.roleCounts.iterator ?? 0,
         latestStage: input.fiveAgentSummary?.latestStages.iterator,
+        liveMode: input.fiveAgentSummary?.live.iterator.mode,
+        liveStatus: input.fiveAgentSummary?.live.iterator.status,
+        fallbackApplied: input.fiveAgentSummary?.live.iterator.fallbackApplied,
+        semanticSummary: latestIteratorReviewForPanel
+          ? `verdict=${latestIteratorReviewForPanel.progressionVerdict ?? "unknown"}, annotation=${latestIteratorReviewForPanel.reviewRefAnnotation ?? "none"}`
+          : undefined,
       },
       checker: {
         count: input.fiveAgentSummary?.roleCounts.checker ?? 0,
         latestStage: input.fiveAgentSummary?.latestStages.checker,
+        liveMode: input.fiveAgentSummary?.live.checker.mode,
+        liveStatus: input.fiveAgentSummary?.live.checker.status,
+        fallbackApplied: input.fiveAgentSummary?.live.checker.fallbackApplied,
+        semanticSummary: latestCheckerReviewForPanel
+          ? `split=${latestCheckerReviewForPanel.splitExecutions?.length ?? 0}, merge=${latestCheckerReviewForPanel.mergeExecutions?.length ?? 0}`
+          : undefined,
       },
       dbagent: {
         count: input.fiveAgentSummary?.roleCounts.dbagent ?? 0,
         latestStage: input.fiveAgentSummary?.latestStages.dbagent,
+        liveMode: input.fiveAgentSummary?.live.dbagent.mode,
+        liveStatus: input.fiveAgentSummary?.live.dbagent.status,
+        fallbackApplied: input.fiveAgentSummary?.live.dbagent.fallbackApplied,
+        semanticSummary: latestDbAgentOutputForPanel
+          ? `primary=${latestDbAgentOutputForPanel.primaryPackageStrategy ?? "n/a"}, timeline=${latestDbAgentOutputForPanel.timelinePackageStrategy ?? "n/a"}, task=${latestDbAgentOutputForPanel.taskSnapshotStrategy ?? "n/a"}, passive=${latestDbAgentOutputForPanel.passivePackagingStrategy ?? "n/a"}`
+          : undefined,
       },
       dispatcher: {
         count: input.fiveAgentSummary?.roleCounts.dispatcher ?? 0,
         latestStage: input.fiveAgentSummary?.latestStages.dispatcher,
+        liveMode: input.fiveAgentSummary?.live.dispatcher.mode,
+        liveStatus: input.fiveAgentSummary?.live.dispatcher.status,
+        fallbackApplied: input.fiveAgentSummary?.live.dispatcher.fallbackApplied,
+        semanticSummary: latestDispatcherBundleForPanel
+          ? `body=${latestDispatcherBundleForPanel.body?.bodyStrategy ?? "n/a"}, ingress=${latestDispatcherBundleForPanel.target?.targetIngress ?? "n/a"}, slim=${latestDispatcherBundleForPanel.body?.slimExchangeFields?.length ?? 0}, scope=${latestDispatcherBundleForPanel.governance?.scopePolicy ?? "n/a"}`
+          : undefined,
       },
     },
     packageFlow: {
@@ -766,12 +951,22 @@ function createReadbackSummary(input: {
       deliveryDriftCount: input.deliverySummary?.driftCount ?? 0,
       expiredDeliveryCount: input.deliverySummary?.expiredCount ?? 0,
       liveInfraReady: truthLayers.every((layer) => layer.status === "ready"),
+      liveLlmReadyCount: input.fiveAgentSummary
+        ? Object.values(input.fiveAgentSummary.live).filter((entry) => entry.status === "succeeded").length
+        : 0,
+      liveLlmFallbackCount: input.fiveAgentSummary
+        ? Object.values(input.fiveAgentSummary.live).filter((entry) => entry.status === "fallback").length
+        : 0,
+      liveLlmFailedCount: input.fiveAgentSummary
+        ? Object.values(input.fiveAgentSummary.live).filter((entry) => entry.status === "failed").length
+        : 0,
       recoveryStatus: acceptance.recovery.status,
       finalAcceptanceStatus: acceptance.finalAcceptance.status,
     },
     readiness: {
       objectModel: acceptance.objectModel.status,
       fiveAgentLoop: acceptance.fiveAgentLoop.status,
+      liveLlm: acceptance.liveLlm.status,
       bundleSchema: acceptance.bundleSchema.status,
       tapExecutionBridge: acceptance.tapExecutionBridge.status,
       liveInfra: acceptance.liveInfra.status,
@@ -1238,6 +1433,11 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
         },
       ];
       if (readback.summary?.acceptance) {
+        const roleSemanticReadiness = (
+          readback.summary.acceptance.fiveAgentLoop.details as
+            | { semanticReadiness?: { icma?: boolean; checker?: boolean } }
+            | undefined
+        )?.semanticReadiness;
         checks.push({
           id: "cmp.object_model.readiness",
           gate: "object_model",
@@ -1253,10 +1453,56 @@ export function createRaxCmpFacade(input: CreateRaxCmpFacadeInput = {}): RaxCmpF
           metadata: readback.summary.acceptance.fiveAgentLoop.details,
         });
         checks.push({
+          id: "cmp.icma.multi_intent_chunking",
+          gate: "five_agent",
+          status: roleSemanticReadiness?.icma
+            ? "ready"
+            : "degraded",
+          summary: "CMP ICMA semantic readiness checks multi-intent chunking and auto fragment inference visibility.",
+          metadata: readback.summary.acceptance.fiveAgentLoop.details,
+        });
+        checks.push({
+          id: "cmp.checker.execution_semantics",
+          gate: "five_agent",
+          status: roleSemanticReadiness?.checker
+            ? "ready"
+            : "degraded",
+          summary: "CMP checker semantic readiness checks execution-grade split/merge semantics.",
+          metadata: readback.summary.acceptance.fiveAgentLoop.details,
+        });
+        checks.push({
+          id: "cmp.five_agent.live_llm",
+          gate: "role_live",
+          status: readback.summary.acceptance.liveLlm.status,
+          summary: readback.summary.acceptance.liveLlm.summary,
+          metadata: readback.summary.acceptance.liveLlm.details,
+        });
+        checks.push({
           id: "cmp.bundle_schema.readiness",
           gate: "bundle_schema",
           status: readback.summary.acceptance.bundleSchema.status,
           summary: readback.summary.acceptance.bundleSchema.summary,
+          metadata: readback.summary.acceptance.bundleSchema.details,
+        });
+        checks.push({
+          id: "cmp.package_strategy.readiness",
+          gate: "bundle_schema",
+          status: readback.summary.acceptance.bundleSchema.details?.primaryPackageStrategy
+            && readback.summary.acceptance.bundleSchema.details?.timelinePackageStrategy
+            && readback.summary.acceptance.bundleSchema.details?.taskSnapshotStrategy
+            ? "ready"
+            : "degraded",
+          summary: "CMP DBAgent package strategy surface checks primary/timeline/task snapshot separation.",
+          metadata: readback.summary.acceptance.bundleSchema.details,
+        });
+        checks.push({
+          id: "cmp.dispatcher.route_strategy",
+          gate: "delivery",
+          status: readback.summary.acceptance.bundleSchema.details?.bodyStrategy
+            && readback.summary.acceptance.bundleSchema.details?.scopePolicy
+            ? "ready"
+            : "degraded",
+          summary: "CMP dispatcher route strategy checks child/peer/passive body discipline visibility.",
           metadata: readback.summary.acceptance.bundleSchema.details,
         });
         checks.push({

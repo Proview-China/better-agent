@@ -8,6 +8,7 @@ import type {
   CmpFiveAgentConfiguration,
   CmpFiveAgentFlowSummary,
   CmpFiveAgentRecoverySummary,
+  CmpFiveAgentRoleLiveSummary,
   CmpFiveAgentRuntimeSnapshot,
   CmpFiveAgentSummary,
 } from "./types.js";
@@ -39,32 +40,94 @@ function createLatestRoleMetadata(snapshot: CmpFiveAgentRuntimeSnapshot): CmpFiv
       ? {
         ...(snapshot.icmaRecords.at(-1)?.metadata ?? {}),
         structuredOutput: snapshot.icmaRecords.at(-1)?.structuredOutput,
+        liveTrace: snapshot.icmaRecords.at(-1)?.liveTrace,
       }
       : undefined,
     iterator: snapshot.iteratorRecords.at(-1)
       ? {
         ...(snapshot.iteratorRecords.at(-1)?.metadata ?? {}),
         reviewOutput: snapshot.iteratorRecords.at(-1)?.reviewOutput,
+        liveTrace: snapshot.iteratorRecords.at(-1)?.liveTrace,
       }
       : undefined,
     checker: snapshot.checkerRecords.at(-1)
       ? {
         ...(snapshot.checkerRecords.at(-1)?.metadata ?? {}),
         reviewOutput: snapshot.checkerRecords.at(-1)?.reviewOutput,
+        liveTrace: snapshot.checkerRecords.at(-1)?.liveTrace,
       }
       : undefined,
     dbagent: snapshot.dbAgentRecords.at(-1)
       ? {
         ...(snapshot.dbAgentRecords.at(-1)?.metadata ?? {}),
         materializationOutput: snapshot.dbAgentRecords.at(-1)?.materializationOutput,
+        liveTrace: snapshot.dbAgentRecords.at(-1)?.liveTrace,
       }
       : undefined,
     dispatcher: snapshot.dispatcherRecords.at(-1)
       ? {
         ...(snapshot.dispatcherRecords.at(-1)?.metadata ?? {}),
         bundle: snapshot.dispatcherRecords.at(-1)?.bundle,
+        liveTrace: snapshot.dispatcherRecords.at(-1)?.liveTrace,
       }
       : undefined,
+  };
+}
+
+function createRoleLiveFallbackSummary(): CmpFiveAgentRoleLiveSummary {
+  return {
+    mode: "unknown",
+    status: "unknown",
+    fallbackApplied: false,
+  };
+}
+
+function normalizeRoleLiveSummary(value: unknown): CmpFiveAgentRoleLiveSummary {
+  if (!value || typeof value !== "object") {
+    return createRoleLiveFallbackSummary();
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return {
+    mode: candidate.mode === "rules_only" || candidate.mode === "llm_assisted" || candidate.mode === "llm_required"
+      ? candidate.mode
+      : "unknown",
+    status:
+      candidate.status === "rules_only" ? "rules_only"
+      : candidate.status === "live_applied" || candidate.status === "llm_applied" ? "succeeded"
+      : candidate.status === "fallback_rules" || candidate.status === "fallback_applied" ? "fallback"
+      : candidate.status === "failed" ? "failed"
+      : "unknown",
+    fallbackApplied: candidate.fallbackApplied === true,
+    provider: typeof candidate.provider === "string" ? candidate.provider : undefined,
+    model: typeof candidate.model === "string" ? candidate.model : undefined,
+    promptId: typeof candidate.promptId === "string" ? candidate.promptId : undefined,
+    errorMessage: typeof candidate.errorMessage === "string"
+      ? candidate.errorMessage
+      : typeof candidate.error === "string"
+        ? candidate.error
+        : undefined,
+  };
+}
+
+function createCmpFiveAgentLiveSummary(snapshot: CmpFiveAgentRuntimeSnapshot): Record<CmpFiveAgentRole, CmpFiveAgentRoleLiveSummary> {
+  const latestKnown = <T extends { liveTrace?: unknown; metadata?: Record<string, unknown> }>(records: T[]) => {
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      const candidate = records[index];
+      const summary = normalizeRoleLiveSummary(candidate?.liveTrace ?? candidate?.metadata?.liveLlm);
+      if (summary.status !== "unknown") {
+        return summary;
+      }
+    }
+    return createRoleLiveFallbackSummary();
+  };
+
+  return {
+    icma: latestKnown(snapshot.icmaRecords),
+    iterator: latestKnown(snapshot.iteratorRecords),
+    checker: latestKnown(snapshot.checkerRecords),
+    dbagent: latestKnown(snapshot.dbAgentRecords),
+    dispatcher: latestKnown(snapshot.dispatcherRecords),
   };
 }
 
@@ -187,5 +250,6 @@ export function createCmpFiveAgentSummary(input: {
     tapProfiles: createCmpFiveAgentTapProfileSummaryCatalog(),
     flow,
     recovery,
+    live: createCmpFiveAgentLiveSummary(input.snapshot),
   };
 }

@@ -1,3 +1,9 @@
+import { getCmpRoleConfiguration } from "./configuration.js";
+import {
+  attachCmpRoleLiveAudit,
+  executeCmpRoleLiveLlmStep,
+  toCmpRoleLiveAuditFromTrace,
+} from "./live-llm.js";
 import {
   createCmpReinterventionRequestRecord,
   createCmpFiveAgentLoopRecord,
@@ -17,6 +23,9 @@ import type {
   CmpRoleCheckpointRecord,
   CmpTaskSkillSnapshot,
 } from "./types.js";
+import type { CmpRoleLiveLlmExecutor, CmpRoleLiveLlmMode } from "./types.js";
+
+type CmpDbAgentLiveMaterializationOutput = Partial<CmpDbAgentRecord["materializationOutput"]>;
 
 export function createCmpTimelinePackageRef(contextPackageRef: string): string {
   return `${contextPackageRef}:timeline`;
@@ -104,6 +113,9 @@ export class CmpDbAgentRuntime {
           : [],
         packageTopology: "active_plus_timeline_plus_task_snapshots",
         bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+        primaryPackageStrategy: "materialize_active_context_as_primary_package",
+        timelinePackageStrategy: "attach_timeline_as_secondary_package",
+        taskSnapshotStrategy: "emit_task_snapshot_per_checked_context",
       },
     };
     this.#records.set(loop.loopId, loop);
@@ -128,6 +140,78 @@ export class CmpDbAgentRuntime {
       loop,
       family,
       taskSnapshots: [taskSnapshot],
+    };
+  }
+
+  async materializeWithLlm(
+    input: CmpDbAgentMaterializeInput,
+    options: {
+      mode?: CmpRoleLiveLlmMode;
+      executor?: CmpRoleLiveLlmExecutor<Record<string, unknown>, CmpDbAgentLiveMaterializationOutput>;
+    } = {},
+  ): Promise<CmpDbAgentMaterializeResult> {
+    const rulesResult = this.materialize(input);
+    const configuration = getCmpRoleConfiguration("dbagent");
+    const live = await executeCmpRoleLiveLlmStep<Record<string, unknown>, CmpDbAgentLiveMaterializationOutput>({
+      role: "dbagent",
+      agentId: rulesResult.loop.agentId,
+      mode: options.mode,
+      stage: "materialize_package",
+      createdAt: input.createdAt,
+      configuration,
+      taskLabel: "organize differentiated dbagent package materialization strategy for primary package timeline package and task snapshots",
+      schemaTitle: "CmpDbAgentMaterializationOutput",
+      schemaFields: [
+        "requestId",
+        "sourceSnapshotId",
+        "sourceSectionIds",
+        "packageTopology",
+        "bundleSchemaVersion",
+        "primaryPackageStrategy",
+        "timelinePackageStrategy",
+        "taskSnapshotStrategy",
+        "materializationRationale",
+      ],
+      requestInput: {
+        projectionId: input.projectionId,
+        packageId: input.contextPackage.packageId,
+        packageRef: input.contextPackage.packageRef,
+        checkedSnapshotId: input.checkedSnapshot.snapshotId,
+        materializationOutput: rulesResult.loop.materializationOutput,
+      },
+      fallbackOutput: {},
+      executor: options.executor,
+      metadata: {
+        loopId: rulesResult.loop.loopId,
+      },
+    });
+
+    const updatedLoop: CmpDbAgentRecord = {
+      ...rulesResult.loop,
+      materializationOutput: {
+        ...rulesResult.loop.materializationOutput,
+        ...live.output,
+        bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+      },
+      liveTrace: live.trace,
+        metadata: attachCmpRoleLiveAudit({
+          metadata: rulesResult.loop.metadata,
+          audit: toCmpRoleLiveAuditFromTrace(live.trace),
+          extras: live.output.materializationRationale
+            ? {
+            materializationRationale: live.output.materializationRationale,
+            primaryPackageStrategy: live.output.primaryPackageStrategy,
+            timelinePackageStrategy: live.output.timelinePackageStrategy,
+            taskSnapshotStrategy: live.output.taskSnapshotStrategy,
+          }
+          : undefined,
+      }),
+    };
+    this.#records.set(updatedLoop.loopId, updatedLoop);
+
+    return {
+      ...rulesResult,
+      loop: updatedLoop,
     };
   }
 
@@ -188,6 +272,10 @@ export class CmpDbAgentRuntime {
           : [],
         packageTopology: "passive_reply_plus_timeline_plus_task_snapshots",
         bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+        primaryPackageStrategy: "materialize_passive_reply_as_primary_package",
+        timelinePackageStrategy: "attach_timeline_for_historical_recall",
+        taskSnapshotStrategy: "emit_task_snapshot_for_passive_history",
+        passivePackagingStrategy: "historical_reply_clean_return",
       },
     };
     this.#records.set(loop.loopId, loop);
@@ -210,6 +298,80 @@ export class CmpDbAgentRuntime {
       loop,
       family,
       taskSnapshots: [taskSnapshot],
+    };
+  }
+
+  async servePassiveWithLlm(
+    input: CmpDbAgentPassiveInput,
+    options: {
+      mode?: CmpRoleLiveLlmMode;
+      executor?: CmpRoleLiveLlmExecutor<Record<string, unknown>, CmpDbAgentLiveMaterializationOutput>;
+    } = {},
+  ): Promise<CmpDbAgentMaterializeResult> {
+    const rulesResult = this.servePassive(input);
+    const configuration = getCmpRoleConfiguration("dbagent");
+    const live = await executeCmpRoleLiveLlmStep<Record<string, unknown>, CmpDbAgentLiveMaterializationOutput>({
+      role: "dbagent",
+      agentId: rulesResult.loop.agentId,
+      mode: options.mode,
+      stage: "serve_passive",
+      createdAt: input.createdAt,
+      configuration,
+      taskLabel: "organize differentiated dbagent passive reply packaging strategy",
+      schemaTitle: "CmpDbAgentPassiveMaterializationOutput",
+      schemaFields: [
+        "requestId",
+        "sourceSnapshotId",
+        "sourceSectionIds",
+        "packageTopology",
+        "bundleSchemaVersion",
+        "primaryPackageStrategy",
+        "timelinePackageStrategy",
+        "taskSnapshotStrategy",
+        "passivePackagingStrategy",
+        "materializationRationale",
+      ],
+      requestInput: {
+        requesterAgentId: input.request.requesterAgentId,
+        packageId: input.contextPackage.packageId,
+        packageRef: input.contextPackage.packageRef,
+        snapshotId: input.snapshot.snapshotId,
+        materializationOutput: rulesResult.loop.materializationOutput,
+      },
+      fallbackOutput: {},
+      executor: options.executor,
+      metadata: {
+        loopId: rulesResult.loop.loopId,
+      },
+    });
+
+    const updatedLoop: CmpDbAgentRecord = {
+      ...rulesResult.loop,
+      materializationOutput: {
+        ...rulesResult.loop.materializationOutput,
+        ...live.output,
+        bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+      },
+      liveTrace: live.trace,
+        metadata: attachCmpRoleLiveAudit({
+          metadata: rulesResult.loop.metadata,
+          audit: toCmpRoleLiveAuditFromTrace(live.trace),
+          extras: live.output.materializationRationale
+            ? {
+            materializationRationale: live.output.materializationRationale,
+            primaryPackageStrategy: live.output.primaryPackageStrategy,
+            timelinePackageStrategy: live.output.timelinePackageStrategy,
+            taskSnapshotStrategy: live.output.taskSnapshotStrategy,
+            passivePackagingStrategy: live.output.passivePackagingStrategy,
+          }
+          : undefined,
+      }),
+    };
+    this.#records.set(updatedLoop.loopId, updatedLoop);
+
+    return {
+      ...rulesResult,
+      loop: updatedLoop,
     };
   }
 
