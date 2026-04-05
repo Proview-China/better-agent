@@ -525,9 +525,9 @@ test("AgentCoreRuntime default TAP dispatch applies governance tool-policy overr
   assert.equal(runtime.listTaHumanGates().length, 1);
   const userSurface = runtime.createTapUserSurfaceSnapshot();
   assert.equal(userSurface.currentLayer, "reviewer");
-  assert.equal(userSurface.pendingHumanGateCount, 1);
+  assert.equal(userSurface.pendingHumanGateCount, 2);
   assert.deepEqual(userSurface.activeCapabilityKeys, []);
-  assert.match(userSurface.summary, /waiting for 1 human approval/i);
+  assert.match(userSurface.summary, /waiting for 2 human approval/i);
 });
 
 test("AgentCoreRuntime dispatches MCP read family capability packages through the default TAP path", async () => {
@@ -1117,7 +1117,9 @@ test("AgentCoreRuntime can assemble review -> provisioning through T/A pool for 
     (result.provisionBundle?.metadata?.tmaDeliveryReceipt as { completionTarget?: string } | undefined)?.completionTarget,
     "ready_bundle",
   );
-  assert.deepEqual(runtime.listTaResumeEnvelopes(), []);
+  const replayEnvelopes = runtime.listTaResumeEnvelopes();
+  assert.equal(replayEnvelopes.length, 1);
+  assert.equal(replayEnvelopes[0]?.source, "replay");
   const toolReviewSessionId = `tool-review:provision:${result.provisionRequest!.provisionId}`;
   const toolReviewPlan = runtime.getToolReviewerGovernancePlan(toolReviewSessionId);
   assert.equal(toolReviewPlan?.items.some((item) =>
@@ -1134,7 +1136,7 @@ test("AgentCoreRuntime can assemble review -> provisioning through T/A pool for 
   const workOrder = runtime.listToolReviewerTmaWorkOrders().find((entry) => entry.sessionId === toolReviewSessionId);
   assert.equal(
     workOrder?.sourceGovernanceKind,
-    "delivery",
+    "replay",
   );
 });
 
