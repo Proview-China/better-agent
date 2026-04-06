@@ -11,7 +11,7 @@ import {
   createCmpFiveAgentRuntime,
   createCmpRoleLiveLlmModelExecutor,
 } from "../agent_core/cmp-five-agent/index.js";
-import { loadLiveProviderConfig } from "./live-config.js";
+import { loadOpenAILiveConfig } from "./live-config.js";
 
 type ProviderTarget = "openai";
 type CmpLiveRole = "icma" | "iterator" | "checker" | "dbagent" | "dispatcher";
@@ -129,7 +129,7 @@ async function retryFallbackRow(fn: () => Promise<SmokeRow>): Promise<SmokeRow> 
 
 async function smokeOpenAI(roleTarget: CmpLiveRoleTarget): Promise<{ rows: SmokeRow[]; baseURL: string }> {
   const rows: SmokeRow[] = [];
-  const config = loadLiveProviderConfig().openai;
+  const config = loadOpenAILiveConfig();
   const runtime = createCmpFiveAgentRuntime();
   const executor = createCmpRoleLiveLlmModelExecutor({
     provider: "openai",

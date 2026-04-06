@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 export interface OpenAILiveConfig {
   apiKey: string;
@@ -86,10 +86,45 @@ function requireField(source: Record<string, string>, field: string): string {
   return value;
 }
 
+function resolveDefaultEnvPath(startDir = process.cwd()): string {
+  let current = resolve(startDir);
+
+  while (true) {
+    const candidate = resolve(current, ".env.local");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+
+    const parent = dirname(current);
+    if (parent === current) {
+      return resolve(startDir, ".env.local");
+    }
+    current = parent;
+  }
+}
+
+function readMergedLiveValues(
+  envPath = process.env.PRAXIS_LIVE_ENV_FILE ?? resolveDefaultEnvPath(),
+): Record<string, string> {
+  return mergeProcessEnv(parseEnvFile(envPath));
+}
+
+export function loadOpenAILiveConfig(
+  envPath = process.env.PRAXIS_LIVE_ENV_FILE ?? resolveDefaultEnvPath()
+): OpenAILiveConfig {
+  const values = readMergedLiveValues(envPath);
+  return {
+    apiKey: requireField(values, "OPENAI_API_KEY"),
+    baseURL: normalizeOpenAIBaseURL(requireField(values, "OPENAI_BASE_URL")),
+    model: requireField(values, "OPENAI_MODEL"),
+    reasoningEffort: values.OPENAI_REASONING_EFFORT
+  };
+}
+
 export function loadLiveProviderConfig(
-  envPath = process.env.PRAXIS_LIVE_ENV_FILE ?? resolve(process.cwd(), ".env.local")
+  envPath = process.env.PRAXIS_LIVE_ENV_FILE ?? resolveDefaultEnvPath()
 ): LiveProviderConfig {
-  const values = mergeProcessEnv(parseEnvFile(envPath));
+  const values = readMergedLiveValues(envPath);
 
   const anthropicAltConfigured =
     values.ANTHROPIC_ALT_API_KEY !== undefined &&

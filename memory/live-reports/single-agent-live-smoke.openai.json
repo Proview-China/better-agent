@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-04-06T03:44:33.663Z",
+  "provider": "openai",
+  "baseURL": "https://gmn.chuangzuoli.com/v1",
+  "rows": [
+    {
+      "provider": "openai",
+      "lane": "core",
+      "ok": false,
+      "model": "gpt-5.4",
+      "summary": "core live smoke reached model.infer through TAP, but the upstream model route returned failed.",
+      "details": {
+        "runStatus": "completed",
+        "dispatchStatus": "dispatched",
+        "capabilityKey": "model.infer",
+        "capabilityResultStatus": "failed"
+      }
+    },
+    {
+      "provider": "openai",
+      "lane": "tap",
+      "ok": false,
+      "model": "gpt-5.4",
+      "summary": "503 Service temporarily unavailable",
+      "details": {
+        "name": "Error",
+        "status": 503,
+        "code": null
+      }
+    },
+    {
+      "provider": "openai",
+      "lane": "cmp-bridge",
+      "ok": true,
+      "model": "gpt-5.4",
+      "summary": "dispatch=dispatched capability=docs.read",
+      "details": {
+        "tapProfileId": "cmp-five-agent/icma-tap-profile/v1",
+        "bridgeMetadata": {
+          "cmpRole": "icma",
+          "cmpAgentId": "cmp-live-smoke-icma",
+          "cmpCapabilityKey": "docs.read",
+          "cmpCapabilityReason": "Single-agent smoke should verify CMP role access can dispatch through TAP.",
+          "cmpTapBridge": {}
+        }
+      }
+    },
+    {
+      "provider": "openai",
+      "lane": "cmp-live",
+      "ok": false,
+      "model": "gpt-5.4",
+      "summary": "cmp live loop fell back before full live application: icma=fallback, dispatcher=fallback",
+      "details": {
+        "icmaLiveStatus": "fallback",
+        "iteratorLiveStatus": "fallback",
+        "checkerLiveStatus": "fallback",
+        "dbagentLiveStatus": "fallback",
+        "dispatcherLiveStatus": "fallback",
+        "operatorGuide": "Preserve high-signal input and emit controlled pre-sections only.",
+        "checkerReason": "section-level review completed"
+      }
+    }
+  ]
+}

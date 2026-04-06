@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { loadLiveProviderConfig } from "./live-config.js";
+import { loadLiveProviderConfig, loadOpenAILiveConfig } from "./live-config.js";
 
 async function writeEnvFile(contents: string): Promise<string> {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "praxis-live-config-"));
@@ -135,6 +135,88 @@ test("loadLiveProviderConfig can run from process env only when the env file is 
     assert.equal(config.anthropic.baseURL, "https://anthropic.example.com");
     assert.equal(config.deepmind.model, "gemini-3.1-pro-preview");
   } finally {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("loadOpenAILiveConfig only requires the OpenAI fields", async () => {
+  const envPath = await writeEnvFile(`
+OPENAI_API_KEY=test-openai
+OPENAI_BASE_URL=https://openai.example.com
+OPENAI_MODEL=gpt-5.4
+  `.trim());
+
+  const originalEnv = {
+    PRAXIS_LIVE_ENV_FILE: process.env.PRAXIS_LIVE_ENV_FILE,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    OPENAI_MODEL: process.env.OPENAI_MODEL,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    DEEPMIND_API_KEY: process.env.DEEPMIND_API_KEY,
+  };
+
+  try {
+    process.env.PRAXIS_LIVE_ENV_FILE = envPath;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_BASE_URL;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.DEEPMIND_API_KEY;
+
+    const config = loadOpenAILiveConfig();
+
+    assert.equal(config.apiKey, "test-openai");
+    assert.equal(config.baseURL, "https://openai.example.com/v1");
+    assert.equal(config.model, "gpt-5.4");
+  } finally {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("loadOpenAILiveConfig walks upward to the nearest parent .env.local", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "praxis-live-config-parent-"));
+  const nestedDir = path.join(rootDir, "a", "b", "c");
+  await mkdir(nestedDir, { recursive: true });
+  await writeFile(path.join(rootDir, ".env.local"), [
+    "OPENAI_API_KEY=test-openai-parent",
+    "OPENAI_BASE_URL=https://openai.parent.example.com",
+    "OPENAI_MODEL=gpt-5.4",
+  ].join("\n"), "utf8");
+
+  const originalCwd = process.cwd();
+  const originalEnv = {
+    PRAXIS_LIVE_ENV_FILE: process.env.PRAXIS_LIVE_ENV_FILE,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    OPENAI_MODEL: process.env.OPENAI_MODEL,
+  };
+
+  try {
+    process.chdir(nestedDir);
+    delete process.env.PRAXIS_LIVE_ENV_FILE;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_BASE_URL;
+    delete process.env.OPENAI_MODEL;
+
+    const config = loadOpenAILiveConfig();
+
+    assert.equal(config.apiKey, "test-openai-parent");
+    assert.equal(config.baseURL, "https://openai.parent.example.com/v1");
+    assert.equal(config.model, "gpt-5.4");
+  } finally {
+    process.chdir(originalCwd);
     for (const [key, value] of Object.entries(originalEnv)) {
       if (value === undefined) {
         delete process.env[key];

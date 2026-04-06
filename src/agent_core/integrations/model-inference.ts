@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 
 import type { OpenAIInvocationPayload } from "../../integrations/openai/api/index.js";
-import { loadLiveProviderConfig } from "../../rax/live-config.js";
+import { loadOpenAILiveConfig } from "../../rax/live-config.js";
 import type { ProviderId, SdkLayer } from "../../rax/index.js";
 import { rax } from "../../rax/index.js";
 import type { ModelInferenceIntent, KernelResult } from "../types/index.js";
@@ -174,7 +174,7 @@ export function shouldRetryOpenAIResponsesOnTransientGateway(input: {
 async function executeOpenAIInvocation(
   invocation: OpenAIModelInvocation,
 ): Promise<unknown> {
-  const config = loadLiveProviderConfig().openai;
+  const config = loadOpenAILiveConfig();
   const client = new OpenAI({
     apiKey: config.apiKey,
     baseURL: config.baseURL,
@@ -247,7 +247,7 @@ export async function executeModelInference(
   const facade = params.facade ?? (rax as unknown as GenerateFacade);
   const metadata = params.intent.frame.metadata;
   const provider = (readStringMetadata(metadata, "provider") as ProviderId | undefined) ?? "openai";
-  const model = readStringMetadata(metadata, "model") ?? loadLiveProviderConfig().openai.model;
+  const model = readStringMetadata(metadata, "model") ?? loadOpenAILiveConfig().model;
   const layer = (readStringMetadata(metadata, "layer") as SdkLayer | undefined) ?? "api";
   const variant = readStringMetadata(metadata, "variant") ?? "chat_completions_compat";
   const compatibilityProfileId = readStringMetadata(metadata, "compatibilityProfileId");
@@ -256,7 +256,7 @@ export async function executeModelInference(
     throw new Error(`Model inference integration currently only supports provider ${"openai"}, received ${provider}.`);
   }
 
-  const config = loadLiveProviderConfig().openai;
+  const config = loadOpenAILiveConfig();
   const invocation = facade.generate.create({
     provider,
     model,

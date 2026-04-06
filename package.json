@@ -26,6 +26,7 @@
     "smoke:mcp:playwright": "tsx src/rax/mcp-playwright-smoke.ts",
     "smoke:mcp:models": "tsx src/rax/mcp-model-live-smoke.ts",
     "smoke:mcp:native:live": "tsx src/rax/mcp-native-live-smoke.ts",
+    "smoke:single-agent:live": "tsx src/agent_core/single-agent-live-smoke.ts",
     "cmp:status:serve": "node scripts/cmp-status-panel-server.mjs",
     "start": "node dist/index.js"
   },
