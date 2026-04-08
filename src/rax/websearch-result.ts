@@ -391,6 +391,18 @@ function inferWebSearchStatus(
     };
   }
 
+  if (!hasAnswer && !hasEvidence) {
+    return {
+      status: "failed",
+      error: {
+        code: "websearch_empty",
+        message:
+          "search.ground returned neither answer text nor source evidence, so the search call did not produce a usable grounded result.",
+        raw
+      }
+    };
+  }
+
   return { status: "success" };
 }
 
