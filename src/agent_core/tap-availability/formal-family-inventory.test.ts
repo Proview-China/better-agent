@@ -7,7 +7,7 @@ import {
   listTapFormalFamilyInventoryEntries,
 } from "./formal-family-inventory.js";
 
-test("createTapFormalFamilyInventory freezes the four formal TAP families and capability keys", () => {
+test("createTapFormalFamilyInventory freezes the five formal TAP families and capability keys", () => {
   const inventory = createTapFormalFamilyInventory();
 
   assert.deepEqual(inventory.familyKeys, [
@@ -15,8 +15,9 @@ test("createTapFormalFamilyInventory freezes the four formal TAP families and ca
     "websearch",
     "skill",
     "mcp",
+    "mp",
   ]);
-  assert.equal(inventory.entries.length, 14);
+  assert.equal(inventory.entries.length, 22);
   assert.deepEqual(getTapFormalFamilyInventoryFamily("websearch")?.capabilityKeys, ["search.ground"]);
   assert.deepEqual(getTapFormalFamilyInventoryFamily("skill")?.capabilityKeys, [
     "skill.use",
@@ -29,12 +30,23 @@ test("createTapFormalFamilyInventory freezes the four formal TAP families and ca
     "mcp.call",
     "mcp.native.execute",
   ]);
+  assert.deepEqual(getTapFormalFamilyInventoryFamily("mp")?.capabilityKeys, [
+    "mp.search",
+    "mp.materialize",
+    "mp.promote",
+    "mp.archive",
+    "mp.split",
+    "mp.merge",
+    "mp.reindex",
+    "mp.compact",
+  ]);
 });
 
 test("inventory entries keep package source refs, register helpers, and activation factories attached", () => {
   const entries = listTapFormalFamilyInventoryEntries();
   const repoWrite = entries.find((entry) => entry.capabilityKey === "repo.write");
   const searchGround = entries.find((entry) => entry.capabilityKey === "search.ground");
+  const mpSearch = entries.find((entry) => entry.capabilityKey === "mp.search");
 
   assert.ok(repoWrite);
   assert.equal(
@@ -58,5 +70,18 @@ test("inventory entries keep package source refs, register helpers, and activati
   );
   assert.deepEqual(searchGround?.activationFactoryRefs, [
     "factory:search.ground.rax-websearch",
+  ]);
+
+  assert.ok(mpSearch);
+  assert.equal(
+    mpSearch?.registerHelperRef,
+    "integrations/rax-mp-adapter#registerRaxMpCapabilityFamily",
+  );
+  assert.equal(
+    mpSearch?.packageSourceRef,
+    "capability-package/mp-family-capability-package#createRaxMpCapabilityPackageCatalog",
+  );
+  assert.deepEqual(mpSearch?.activationFactoryRefs, [
+    "factory:rax.mp:search",
   ]);
 });

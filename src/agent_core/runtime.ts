@@ -228,6 +228,7 @@ import {
 } from "./ta-pool-context/context-aperture.js";
 import { formatPlainLanguageRisk } from "./ta-pool-context/plain-language-risk.js";
 import { toProvisionRequestFromReviewDecision, type ReviewDecisionEngineInventory } from "./ta-pool-review/index.js";
+import { registerRaxMpCapabilityFamily } from "./integrations/rax-mp-adapter.js";
 import type {
   CapabilityCallIntent,
   CmpActionIntent,
@@ -353,6 +354,7 @@ export interface AgentCoreRuntimeOptions {
     toolReviewer?: Partial<import("./integrations/tap-agent-model.js").TapAgentModelRoute>;
     provisioner?: Partial<import("./integrations/tap-agent-model.js").TapAgentModelRoute>;
   };
+  registerDefaultMpCapabilityFamily?: boolean;
 }
 
 export interface CreateTapTaskGovernanceInput {
@@ -1010,6 +1012,11 @@ export class AgentCoreRuntime {
         executor: this.#modelInferenceExecutor,
       }),
     );
+    if (options.registerDefaultMpCapabilityFamily !== false) {
+      registerRaxMpCapabilityFamily({
+        runtime: this,
+      });
+    }
     this.capabilityGateway.onResult((result) => {
       void this.#handleCapabilityResultEnvelope(result);
     });

@@ -1,5 +1,6 @@
 import {
   createCapabilityManifestFromPackage,
+  createRaxMpCapabilityPackageCatalog,
   createMcpCapabilityPackage,
   createMcpReadCapabilityPackage,
   createRaxSkillCapabilityPackageCatalog,
@@ -122,18 +123,30 @@ function buildMcpEntries(): TapFormalFamilyInventoryEntry[] {
   ];
 }
 
+function buildMpEntries(): TapFormalFamilyInventoryEntry[] {
+  return createRaxMpCapabilityPackageCatalog().map((capabilityPackage) =>
+    createEntry({
+      familyKey: "mp",
+      capabilityPackage,
+      packageSourceRef:
+        "capability-package/mp-family-capability-package#createRaxMpCapabilityPackageCatalog",
+      registerHelperRef: "integrations/rax-mp-adapter#registerRaxMpCapabilityFamily",
+    }));
+}
+
 export function listTapFormalFamilyInventoryEntries(): TapFormalFamilyInventoryEntry[] {
   return [
     ...buildFoundationEntries(),
     ...buildWebsearchEntries(),
     ...buildSkillEntries(),
     ...buildMcpEntries(),
+    ...buildMpEntries(),
   ];
 }
 
 export function createTapFormalFamilyInventory(): TapFormalFamilyInventory {
   const entries = listTapFormalFamilyInventoryEntries();
-  const familyKeys = ["foundation", "websearch", "skill", "mcp"] as const;
+  const familyKeys = ["foundation", "websearch", "skill", "mcp", "mp"] as const;
   const families = familyKeys.map((familyKey) => {
     const familyEntries = entries.filter((entry) => entry.familyKey === familyKey);
     return {

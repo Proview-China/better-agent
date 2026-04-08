@@ -11,12 +11,15 @@ import type { RegisterRaxSkillCapabilityFamilyInput } from "./rax-skill-adapter.
 import { registerRaxSkillCapabilityFamily } from "./rax-skill-adapter.js";
 import type { RegisterRaxMcpCapabilitiesInput } from "./rax-mcp-adapter.js";
 import { registerRaxMcpCapabilities } from "./rax-mcp-adapter.js";
+import type { RegisterRaxMpCapabilityFamilyInput } from "./rax-mp-adapter.js";
+import { registerRaxMpCapabilityFamily } from "./rax-mp-adapter.js";
 
 export const TAP_FORMAL_CAPABILITY_FAMILY_KEYS = [
   "foundation",
   "websearch",
   "skill",
   "mcp",
+  "mp",
 ] as const;
 export type TapFormalCapabilityFamilyKey =
   (typeof TAP_FORMAL_CAPABILITY_FAMILY_KEYS)[number];
@@ -42,6 +45,7 @@ export interface RegisterTapCapabilityFamilyAssemblyInput {
   websearch?: Omit<RaxWebsearchAdapterOptions, "capabilityKey">;
   skill?: Omit<RegisterRaxSkillCapabilityFamilyInput, "runtime">;
   mcp?: Omit<RegisterRaxMcpCapabilitiesInput, "runtime">;
+  mp?: Omit<RegisterRaxMpCapabilityFamilyInput, "runtime">;
   includeFamilies?: Partial<Record<TapFormalCapabilityFamilyKey, boolean>>;
 }
 
@@ -78,6 +82,7 @@ function createEmptyFamilyKeys(): Record<TapFormalCapabilityFamilyKey, string[]>
     websearch: [],
     skill: [],
     mcp: [],
+    mp: [],
   };
 }
 
@@ -103,6 +108,7 @@ export function registerTapCapabilityFamilyAssembly(
     websearch: input.includeFamilies?.websearch ?? true,
     skill: input.includeFamilies?.skill ?? true,
     mcp: input.includeFamilies?.mcp ?? true,
+    mp: input.includeFamilies?.mp ?? true,
   };
   const runtime: TapCapabilityFamilyAssemblyTarget = {
     registerCapabilityAdapter(manifest, adapter) {
@@ -180,6 +186,19 @@ export function registerTapCapabilityFamilyAssembly(
     packages.push(...registration.packages);
     bindings.push(...registration.bindings);
     familyKeys.mcp.push(...registration.capabilityKeys);
+    for (const ref of registration.activationFactoryRefs) {
+      activationFactoryRefs.add(ref);
+    }
+  }
+
+  if (includeFamilies.mp) {
+    const registration = registerRaxMpCapabilityFamily({
+      runtime,
+      ...input.mp,
+    });
+    packages.push(...registration.packages);
+    bindings.push(...registration.bindings);
+    familyKeys.mp.push(...registration.capabilityKeys);
     for (const ref of registration.activationFactoryRefs) {
       activationFactoryRefs.add(ref);
     }

@@ -35,6 +35,9 @@ function inferFamilyKey(capabilityKey: string): TapAvailabilityFamilyKey {
   if (capabilityKey === "search.ground") {
     return "websearch";
   }
+  if (capabilityKey.startsWith("mp.")) {
+    return "mp";
+  }
   if (capabilityKey.startsWith("skill.")) {
     return "skill";
   }
@@ -47,6 +50,7 @@ function inferFamilyKey(capabilityKey: string): TapAvailabilityFamilyKey {
 function inferHealthCheckSupport(capabilityPackage: CapabilityPackage): boolean {
   const capabilityKey = capabilityPackage.manifest.capabilityKey;
   return capabilityKey === "search.ground"
+    || capabilityKey.startsWith("mp.")
     || capabilityKey.startsWith("skill.")
     || capabilityKey.startsWith("mcp.");
 }

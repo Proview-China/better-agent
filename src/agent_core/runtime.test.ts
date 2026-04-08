@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
   createMcpReadCapabilityPackage,
+  createRaxMpCapabilityPackage,
+  RAX_MP_ACTIVATION_FACTORY_REFS,
   createRaxWebsearchCapabilityPackage,
 } from "./capability-package/index.js";
 import { createGoalSource } from "./goal/goal-source.js";
@@ -11,6 +13,7 @@ import type { ModelInferenceExecutionResult } from "./integrations/model-inferen
 import { createRaxMcpCapabilityManifest } from "./integrations/rax-mcp-adapter.js";
 import { createRaxSearchGroundCapabilityDefinition } from "./integrations/rax-port.js";
 import { createRaxMcpCapabilityAdapter } from "./integrations/rax-mcp-adapter.js";
+import { createRaxMpActivationFactory } from "./integrations/rax-mp-adapter.js";
 import { createRaxWebsearchActivationFactory } from "./integrations/rax-websearch-adapter.js";
 import { createAgentCoreRuntime } from "./runtime.js";
 import type { CapabilityAdapter, CapabilityCallIntent, CapabilityPackage } from "./index.js";
@@ -87,6 +90,97 @@ function createFakeRaxFacade() {
     new SkillRuntime(),
     new McpNativeRuntime(),
   );
+}
+
+function createFakeMpFacade() {
+  const facade: Pick<RaxFacade, "mp"> = {
+    mp: {
+      create() {
+        return {
+          sessionId: "mp-session-test",
+          projectId: "project.praxis",
+          createdAt: "2026-04-08T00:00:00.000Z",
+          config: {
+            projectId: "project.praxis",
+            profileId: "mp.default",
+            defaultAgentId: "main",
+            mode: "balanced" as const,
+            lance: {
+              kind: "lancedb" as const,
+              rootPath: "/tmp/praxis/mp/project.praxis",
+              schemaVersion: 1,
+              liveExecutionPreferred: false,
+            },
+            searchDefaults: {
+              limit: 10,
+              scopeLevels: ["agent_isolated", "project", "global"] as const,
+              preferSameAgent: true,
+            },
+          },
+          runtime: {} as never,
+        };
+      },
+      async bootstrap(input: Parameters<RaxFacade["mp"]["bootstrap"]>[0]) {
+        return {
+          status: "bootstrapped" as const,
+          receipt: {
+            projectId: input.session.projectId,
+          } as never,
+          session: input.session,
+        };
+      },
+      async materialize() {
+        return [];
+      },
+      async materializeBatch() {
+        return [];
+      },
+      async search() {
+        return {
+          projectId: "project.praxis",
+          queryText: "history answer",
+          hits: [{
+            memoryId: "memory-1",
+            tableName: "mp_project_project_praxis_memories",
+            score: 1,
+            record: {
+              memoryId: "memory-1",
+              projectId: "project.praxis",
+              agentId: "main",
+              scopeLevel: "project",
+              sessionMode: "shared",
+              visibilityState: "project_shared",
+              promotionState: "promoted_to_project",
+              lineagePath: ["main"],
+              payloadRefs: ["payload-1"],
+              tags: ["history"],
+              createdAt: "2026-04-08T00:00:00.000Z",
+              updatedAt: "2026-04-08T00:00:01.000Z",
+            },
+          }],
+        };
+      },
+      async archive() {
+        return undefined;
+      },
+      async promote() {
+        throw new Error("not used");
+      },
+      async split() {
+        throw new Error("not used");
+      },
+      async merge() {
+        throw new Error("not used");
+      },
+      async reindex() {
+        throw new Error("not used");
+      },
+      async compact() {
+        throw new Error("not used");
+      },
+    },
+  };
+  return facade;
 }
 
 function createFakeMcpFacade(): Pick<RaxFacade, "mcp"> {
@@ -191,6 +285,26 @@ test("AgentCoreRuntime wires session, run, and internal journal flow together", 
     runtime.readRunEvents(outcome.run.runId).map((entry) => entry.event.type),
     ["run.created", "state.delta_applied", "intent.queued"],
   );
+});
+
+test("AgentCoreRuntime registers the MP capability family by default and can opt out", () => {
+  const runtime = createAgentCoreRuntime();
+  const capabilityKeys = new Set(runtime.capabilityPool.listCapabilities().map((entry) => entry.capabilityKey));
+
+  assert.equal(capabilityKeys.has("mp.search"), true);
+  assert.equal(capabilityKeys.has("mp.materialize"), true);
+  assert.equal(capabilityKeys.has("mp.promote"), true);
+  assert.equal(capabilityKeys.has("mp.archive"), true);
+  assert.equal(capabilityKeys.has("mp.split"), true);
+  assert.equal(capabilityKeys.has("mp.merge"), true);
+  assert.equal(capabilityKeys.has("mp.reindex"), true);
+  assert.equal(capabilityKeys.has("mp.compact"), true);
+
+  const optOutRuntime = createAgentCoreRuntime({
+    registerDefaultMpCapabilityFamily: false,
+  });
+  const optOutKeys = new Set(optOutRuntime.capabilityPool.listCapabilities().map((entry) => entry.capabilityKey));
+  assert.equal(optOutKeys.has("mp.search"), false);
 });
 
 test("AgentCoreRuntime can dispatch a capability intent through the new gateway and pool path", async () => {
@@ -666,10 +780,26 @@ test("AgentCoreRuntime can dispatch search.ground through TAP after package-back
     bundleId: capabilityPackage.metadata?.bundleId as string,
     provisionId: provisionRequest.provisionId,
     status: "ready",
-    toolArtifact: capabilityPackage.artifacts?.toolArtifact,
-    bindingArtifact: capabilityPackage.artifacts?.bindingArtifact,
-    verificationArtifact: capabilityPackage.artifacts?.verificationArtifact,
-    usageArtifact: capabilityPackage.artifacts?.usageArtifact,
+    toolArtifact: capabilityPackage.artifacts?.toolArtifact ?? {
+      artifactId: "tool:mp.search",
+      kind: "tool",
+      ref: "tool:mp.search",
+    },
+    bindingArtifact: capabilityPackage.artifacts?.bindingArtifact ?? {
+      artifactId: "binding:mp.search",
+      kind: "binding",
+      ref: "binding:mp.search",
+    },
+    verificationArtifact: capabilityPackage.artifacts?.verificationArtifact ?? {
+      artifactId: "verification:mp.search",
+      kind: "verification",
+      ref: "verification:mp.search",
+    },
+    usageArtifact: capabilityPackage.artifacts?.usageArtifact ?? {
+      artifactId: "usage:mp.search",
+      kind: "usage",
+      ref: "usage:mp.search",
+    },
     activationSpec: capabilityPackage.activationSpec,
     replayPolicy: capabilityPackage.replayPolicy,
     completedAt: "2026-03-25T00:00:00.500Z",
@@ -730,6 +860,141 @@ test("AgentCoreRuntime can dispatch search.ground through TAP after package-back
       return entry.event.type === "capability.result_received";
     }),
   );
+});
+
+test("AgentCoreRuntime can dispatch mp.search through TAP after package-backed activation materialization", async () => {
+  const runtime = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.tap.mp-search-package",
+      agentClass: "main-agent",
+      baselineCapabilities: ["mp.search"],
+    }),
+  });
+  const session = runtime.createSession();
+  const goal = runtime.createCompiledGoal(
+    createGoalSource({
+      goalId: "goal-runtime-mp-search-package",
+      sessionId: session.sessionId,
+      userInput: "Package-backed mp.search should dispatch through TAP.",
+    }),
+  );
+  const created = await runtime.createRun({
+    sessionId: session.sessionId,
+    goal,
+  });
+
+  const capabilityPackage = createRaxMpCapabilityPackage({
+    capabilityKey: "mp.search",
+  });
+  runtime.registerTaActivationFactory(
+    RAX_MP_ACTIVATION_FACTORY_REFS["mp.search"],
+    createRaxMpActivationFactory({
+      facade: createFakeMpFacade(),
+    }),
+  );
+
+  const provisionRequest = createProvisionRequest({
+    provisionId: "provision-mp-search-package-1",
+    sourceRequestId: "source-mp-search-package-1",
+    requestedCapabilityKey: capabilityPackage.manifest.capabilityKey,
+    requestedTier: "B1",
+    reason: "Activate the package-backed mp.search capability through TAP runtime.",
+    replayPolicy: capabilityPackage.replayPolicy,
+    createdAt: "2026-04-08T00:00:00.000Z",
+  });
+  const provisionBundle = createProvisionArtifactBundle({
+    bundleId: capabilityPackage.metadata?.bundleId as string,
+    provisionId: provisionRequest.provisionId,
+    status: "ready",
+    toolArtifact: capabilityPackage.artifacts?.toolArtifact ?? {
+      artifactId: "tool:mp.search",
+      kind: "tool",
+      ref: "tool:mp.search",
+    },
+    bindingArtifact: capabilityPackage.artifacts?.bindingArtifact ?? {
+      artifactId: "binding:mp.search",
+      kind: "binding",
+      ref: "binding:mp.search",
+    },
+    verificationArtifact: capabilityPackage.artifacts?.verificationArtifact ?? {
+      artifactId: "verification:mp.search",
+      kind: "verification",
+      ref: "verification:mp.search",
+    },
+    usageArtifact: capabilityPackage.artifacts?.usageArtifact ?? {
+      artifactId: "usage:mp.search",
+      kind: "usage",
+      ref: "usage:mp.search",
+    },
+    activationSpec: capabilityPackage.activationSpec,
+    replayPolicy: capabilityPackage.replayPolicy,
+    completedAt: "2026-04-08T00:00:00.500Z",
+    metadata: {
+      source: "runtime-test",
+      packageKey: capabilityPackage.manifest.capabilityKey,
+    },
+  });
+  runtime.provisionerRuntime?.registry.registerRequest(provisionRequest);
+  runtime.provisionerRuntime?.registry.attachBundle(provisionBundle);
+  const provisionRecord = runtime.provisionerRuntime?.registry.get(provisionRequest.provisionId);
+  assert.ok(provisionRecord?.bundle);
+  runtime.provisionerRuntime?.assetIndex.ingest(provisionRecord);
+
+  const activation = await runtime.activateTaProvisionAsset(provisionRequest.provisionId);
+  assert.equal(activation.status, "activated");
+
+  const intent: CapabilityCallIntent = {
+    intentId: "intent-mp-search-package-1",
+    sessionId: session.sessionId,
+    runId: created.run.runId,
+    kind: "capability_call",
+    createdAt: "2026-04-08T00:00:01.000Z",
+    priority: "high",
+    request: {
+      requestId: "request-mp-search-package-1",
+      intentId: "intent-mp-search-package-1",
+      sessionId: session.sessionId,
+      runId: created.run.runId,
+      capabilityKey: "mp.search",
+      input: {
+        projectId: "project.praxis",
+        rootPath: "/tmp/praxis/mp/project.praxis",
+        agentIds: ["main"],
+        queryText: "history answer",
+        requesterLineage: {
+          projectId: "project.praxis",
+          agentId: "main",
+          depth: 0,
+        },
+        sourceLineages: [
+          {
+            projectId: "project.praxis",
+            agentId: "main",
+            depth: 0,
+          },
+        ],
+      },
+      priority: "high",
+    },
+  };
+
+  const dispatched = await runtime.dispatchCapabilityIntentViaTaPool(intent, {
+    agentId: "agent-main",
+    requestedTier: "B1",
+    mode: "standard",
+    reason: "Package-backed mp.search should dispatch as a first-class TAP capability.",
+  });
+
+  assert.equal(dispatched.status, "dispatched");
+  assert.equal(dispatched.grant?.capabilityKey, "mp.search");
+  assert.equal(dispatched.dispatch?.prepared.capabilityKey, "mp.search");
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const resultEvent = runtime
+    .readRunEvents(created.run.runId)
+    .find((entry) => entry.event.type === "capability.result_received");
+  assert.ok(resultEvent);
 });
 
 test("AgentCoreRuntime surfaces review-required T/A access when capability is not baseline", async () => {

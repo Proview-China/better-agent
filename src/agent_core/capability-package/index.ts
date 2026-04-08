@@ -46,6 +46,10 @@ export type {
   SkillFamilyCapabilityKey,
 } from "./skill-family-capability-package.js";
 export type {
+  CreateRaxMpCapabilityPackageInput,
+  MpFamilyCapabilityKey,
+} from "./mp-family-capability-package.js";
+export type {
   CreateRaxWebsearchCapabilityPackageOptions,
 } from "./search-ground-capability-package.js";
 export type {
@@ -114,6 +118,12 @@ export {
   isSkillFamilyCapabilityKey,
   SKILL_FAMILY_CAPABILITY_KEYS,
 } from "./skill-family-capability-package.js";
+export {
+  createRaxMpCapabilityPackage,
+  createRaxMpCapabilityPackageCatalog,
+  MP_FAMILY_CAPABILITY_KEYS,
+  RAX_MP_ACTIVATION_FACTORY_REFS,
+} from "./mp-family-capability-package.js";
 export {
   createRaxWebsearchCapabilityPackage,
   RAX_WEBSEARCH_ACTIVATION_FACTORY_REF,
