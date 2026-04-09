@@ -315,7 +315,7 @@
 - 五角色 capability contract
 - role-specific `AgentCapabilityProfile`
 - `resolveCmpFiveAgentCapabilityAccess(...)`
-- `rax.cmp.resolveRoleCapabilityAccess(...)`
+- `rax.cmp.roles.resolveCapabilityAccess(...)`
 
 ### 收尾阶段还要做的
 

@@ -305,11 +305,11 @@
 
 包含：
 
-- `rax.cmp.create(...)`
-- `rax.cmp.bootstrap(...)`
-- `rax.cmp.readback(...)`
-- `rax.cmp.recover(...)`
-- `rax.cmp.smoke(...)`
+- `rax.cmp.session.open(...)`
+- `rax.cmp.project.bootstrap(...)`
+- `rax.cmp.project.readback(...)`
+- `rax.cmp.project.recover(...)`
+- `rax.cmp.project.smoke(...)`
 
 ## 当前不要做错的事
 

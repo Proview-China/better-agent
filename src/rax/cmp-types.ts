@@ -1,22 +1,10 @@
 import type {
-  BootstrapCmpProjectInfraInput,
-  DispatchCmpFiveAgentCapabilityResult,
-  CmpFiveAgentCapabilityAccessResolution,
-  CmpFiveAgentRole,
-  CmpPeerExchangeApprovalRecord,
-  CmpFiveAgentSummary,
   CmpPackageRecord,
   CmpRequestRecord,
-  CmpRuntimeDeliveryTruthSummary,
-  CmpRuntimeProjectRecoverySummary,
-  CmpRuntimeRecoverySummary,
   CmpSectionRecord,
   CmpSnapshotRecord,
   CommitContextDeltaInput,
   CommitContextDeltaResult,
-  CmpProjectInfraBootstrapReceipt,
-  CmpRuntimeInfraProjectState,
-  CmpRuntimeSnapshot,
   DispatchContextPackageInput,
   DispatchContextPackageResult,
   IngestRuntimeContextInput,
@@ -27,11 +15,29 @@ import type {
   RequestHistoricalContextResult,
   ResolveCheckedSnapshotInput,
   ResolveCheckedSnapshotResult,
+} from "../agent_core/cmp-types/index.js";
+import type {
+  CmpFiveAgentCapabilityAccessResolution,
+  CmpFiveAgentRole,
+  CmpPeerExchangeApprovalRecord,
+  CmpFiveAgentSummary,
+} from "../agent_core/cmp-five-agent/index.js";
+import type {
+  BootstrapCmpProjectInfraInput,
+  CmpRuntimeDeliveryTruthSummary,
+  CmpRuntimeProjectRecoverySummary,
+  CmpRuntimeRecoverySummary,
+  DispatchCmpFiveAgentCapabilityResult,
+} from "../agent_core/runtime.js";
+import type { CmpProjectInfraBootstrapReceipt } from "../agent_core/cmp-runtime/infra-bootstrap.js";
+import type { CmpRuntimeInfraProjectState } from "../agent_core/cmp-runtime/infra-state.js";
+import type { CmpRuntimeSnapshot } from "../agent_core/cmp-runtime/runtime-snapshot.js";
+import type {
+  AccessRequestScope,
   TaCapabilityTier,
   TaPoolMode,
-  AccessRequestScope,
-  IntentPriority,
-} from "../agent_core/index.js";
+} from "../agent_core/ta-pool-types/index.js";
+import type { IntentPriority } from "../agent_core/types/index.js";
 import type { CreateRaxCmpConfigInput, RaxCmpConfig } from "./cmp-config.js";
 
 export type RaxCmpMode = "active_preferred" | "passive_only" | "mixed";
@@ -230,13 +236,13 @@ export interface RaxCmpSession {
   createdAt: string;
   config: RaxCmpConfig;
   control: RaxCmpManualControlSurface;
-  runtime: RaxCmpRuntimeLike;
+  runtime: RaxCmpPort;
   metadata?: Record<string, unknown>;
 }
 
 export interface RaxCmpCreateInput {
   config: CreateRaxCmpConfigInput | RaxCmpConfig;
-  runtime?: RaxCmpRuntimeLike;
+  runtime?: RaxCmpPort;
   control?: RaxCmpManualControlInput;
   metadata?: Record<string, unknown>;
 }
@@ -529,18 +535,52 @@ export interface RaxCmpPeerApprovalInput {
   note?: string;
 }
 
-export interface RaxCmpRuntimeLike {
-  bootstrapCmpProjectInfra(
+export interface RaxCmpProjectPort {
+  bootstrapProjectInfra(
     input: BootstrapCmpProjectInfraInput,
   ): Promise<CmpProjectInfraBootstrapReceipt> | CmpProjectInfraBootstrapReceipt;
-  getCmpProjectInfraBootstrapReceipt(projectId: string): CmpProjectInfraBootstrapReceipt | undefined;
-  getCmpRuntimeInfraProjectState?(projectId: string): CmpRuntimeInfraProjectState | undefined;
-  getCmpRuntimeRecoverySummary?(): CmpRuntimeRecoverySummary;
-  getCmpRuntimeProjectRecoverySummary?(projectId: string): CmpRuntimeProjectRecoverySummary | undefined;
-  getCmpRuntimeDeliveryTruthSummary?(projectId: string): CmpRuntimeDeliveryTruthSummary;
-  getCmpFiveAgentRuntimeSummary?(agentId?: string): CmpFiveAgentSummary;
-  getCmpRuntimeSnapshot?(): CmpRuntimeSnapshot;
-  resolveCmpFiveAgentCapabilityAccess?(input: {
+  getBootstrapReceipt(projectId: string): CmpProjectInfraBootstrapReceipt | undefined;
+  getInfraProjectState?(projectId: string): CmpRuntimeInfraProjectState | undefined;
+  getRecoverySummary?(): CmpRuntimeRecoverySummary;
+  getProjectRecoverySummary?(projectId: string): CmpRuntimeProjectRecoverySummary | undefined;
+  getDeliveryTruthSummary?(projectId: string): CmpRuntimeDeliveryTruthSummary;
+  createSnapshot?(): CmpRuntimeSnapshot;
+  recoverSnapshot(snapshot: CmpRuntimeSnapshot): Promise<void> | void;
+  advanceDeliveryTimeouts?(input?: { projectId?: string; now?: string }): {
+    projectId?: string;
+    processedCount: number;
+    retryScheduledCount: number;
+    expiredCount: number;
+  };
+}
+
+export interface RaxCmpFlowPort {
+  ingest(
+    input: IngestRuntimeContextInput,
+  ): Promise<IngestRuntimeContextResult> | IngestRuntimeContextResult;
+  commit(
+    input: CommitContextDeltaInput,
+  ): Promise<CommitContextDeltaResult> | CommitContextDeltaResult;
+  resolve(
+    input: ResolveCheckedSnapshotInput,
+  ): Promise<ResolveCheckedSnapshotResult> | ResolveCheckedSnapshotResult;
+  materialize(
+    input: MaterializeContextPackageInput,
+  ): Promise<MaterializeContextPackageResult> | MaterializeContextPackageResult;
+  dispatch(
+    input: DispatchContextPackageInput,
+  ): Promise<DispatchContextPackageResult> | DispatchContextPackageResult;
+  requestHistory(
+    input: RequestHistoricalContextInput,
+  ): Promise<RequestHistoricalContextResult> | RequestHistoricalContextResult;
+}
+
+export interface RaxCmpFiveAgentPort {
+  getSummary?(agentId?: string): CmpFiveAgentSummary;
+}
+
+export interface RaxCmpRolesPort {
+  resolveCapabilityAccess?(input: {
     role: CmpFiveAgentRole;
     sessionId: string;
     runId: string;
@@ -554,7 +594,7 @@ export interface RaxCmpRuntimeLike {
     requestedDurationMs?: number;
     metadata?: Record<string, unknown>;
   }): Promise<CmpFiveAgentCapabilityAccessResolution> | CmpFiveAgentCapabilityAccessResolution;
-  dispatchCmpFiveAgentCapability?(input: {
+  dispatchCapability?(input: {
     role: CmpFiveAgentRole;
     sessionId: string;
     runId: string;
@@ -572,52 +612,53 @@ export interface RaxCmpRuntimeLike {
     cmpContext?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   }): Promise<DispatchCmpFiveAgentCapabilityResult> | DispatchCmpFiveAgentCapabilityResult;
-  reviewCmpPeerExchangeApproval?(input: {
+  approvePeerExchange?(input: {
     approvalId: string;
     actorAgentId: string;
     decision: "approved" | "rejected";
     note?: string;
   }): Promise<CmpPeerExchangeApprovalRecord> | CmpPeerExchangeApprovalRecord;
-  advanceCmpMqDeliveryTimeouts?(input?: { projectId?: string; now?: string }): {
-    projectId?: string;
-    processedCount: number;
-    retryScheduledCount: number;
-    expiredCount: number;
-  };
-  recoverCmpRuntimeSnapshot(snapshot: CmpRuntimeSnapshot): Promise<void> | void;
-  ingestRuntimeContext(
-    input: IngestRuntimeContextInput,
-  ): Promise<IngestRuntimeContextResult> | IngestRuntimeContextResult;
-  commitContextDelta(
-    input: CommitContextDeltaInput,
-  ): Promise<CommitContextDeltaResult> | CommitContextDeltaResult;
-  resolveCheckedSnapshot(
-    input: ResolveCheckedSnapshotInput,
-  ): Promise<ResolveCheckedSnapshotResult> | ResolveCheckedSnapshotResult;
-  materializeContextPackage(
-    input: MaterializeContextPackageInput,
-  ): Promise<MaterializeContextPackageResult> | MaterializeContextPackageResult;
-  dispatchContextPackage(
-    input: DispatchContextPackageInput,
-  ): Promise<DispatchContextPackageResult> | DispatchContextPackageResult;
-  requestHistoricalContext(
-    input: RequestHistoricalContextInput,
-  ): Promise<RequestHistoricalContextResult> | RequestHistoricalContextResult;
 }
 
-export interface RaxCmpFacade {
-  create(input: RaxCmpCreateInput): RaxCmpSession;
+export interface RaxCmpPort {
+  readonly project: RaxCmpProjectPort;
+  readonly flow: RaxCmpFlowPort;
+  readonly fiveAgent: RaxCmpFiveAgentPort;
+  readonly roles: RaxCmpRolesPort;
+}
+
+export interface RaxCmpSessionApi {
+  open(input: RaxCmpCreateInput): RaxCmpSession;
+}
+
+export interface RaxCmpProjectApi {
   bootstrap(input: RaxCmpBootstrapInput): Promise<RaxCmpBootstrapResult>;
   readback(input: RaxCmpReadbackInput): Promise<RaxCmpReadbackResult>;
   recover(input: RaxCmpRecoverInput): Promise<RaxCmpRecoverResult>;
+  smoke(input: RaxCmpSmokeInput): Promise<RaxCmpSmokeResult>;
+}
+
+export interface RaxCmpFlowApi {
   ingest(input: RaxCmpIngestInput): Promise<IngestRuntimeContextResult>;
   commit(input: RaxCmpCommitInput): Promise<CommitContextDeltaResult>;
   resolve(input: RaxCmpResolveInput): Promise<ResolveCheckedSnapshotResult>;
   materialize(input: RaxCmpMaterializeInput): Promise<MaterializeContextPackageResult>;
   dispatch(input: RaxCmpDispatchInput): Promise<DispatchContextPackageResult>;
-  resolveRoleCapabilityAccess(input: RaxCmpRoleCapabilityAccessInput): Promise<CmpFiveAgentCapabilityAccessResolution>;
-  dispatchRoleCapability(input: RaxCmpRoleCapabilityDispatchInput): Promise<DispatchCmpFiveAgentCapabilityResult>;
-  approvePeerExchange(input: RaxCmpPeerApprovalInput): Promise<CmpPeerExchangeApprovalRecord>;
   requestHistory(input: RaxCmpRequestHistoryInput): Promise<RequestHistoricalContextResult>;
-  smoke(input: RaxCmpSmokeInput): Promise<RaxCmpSmokeResult>;
 }
+
+export interface RaxCmpRolesApi {
+  resolveCapabilityAccess(input: RaxCmpRoleCapabilityAccessInput): Promise<CmpFiveAgentCapabilityAccessResolution>;
+  dispatchCapability(input: RaxCmpRoleCapabilityDispatchInput): Promise<DispatchCmpFiveAgentCapabilityResult>;
+  approvePeerExchange(input: RaxCmpPeerApprovalInput): Promise<CmpPeerExchangeApprovalRecord>;
+}
+
+export interface RaxCmpApi {
+  readonly session: RaxCmpSessionApi;
+  readonly project: RaxCmpProjectApi;
+  readonly flow: RaxCmpFlowApi;
+  readonly roles: RaxCmpRolesApi;
+}
+
+export type RaxCmpRuntimeLike = RaxCmpPort;
+export type RaxCmpFacade = RaxCmpApi;

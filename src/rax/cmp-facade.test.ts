@@ -2,14 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type {
-  CmpFiveAgentCapabilityAccessResolution,
-  CmpFiveAgentSummary,
   CommitContextDeltaInput,
   CommitContextDeltaResult,
-  CmpProjectInfraBootstrapReceipt,
-  DispatchCmpFiveAgentCapabilityResult,
-  CmpRuntimeInfraProjectState,
-  CmpRuntimeSnapshot,
   DispatchContextPackageInput,
   DispatchContextPackageResult,
   IngestRuntimeContextInput,
@@ -20,7 +14,17 @@ import type {
   RequestHistoricalContextResult,
   ResolveCheckedSnapshotInput,
   ResolveCheckedSnapshotResult,
-} from "../agent_core/index.js";
+} from "../agent_core/cmp-types/index.js";
+import type {
+  CmpFiveAgentCapabilityAccessResolution,
+  CmpFiveAgentSummary,
+} from "../agent_core/cmp-five-agent/index.js";
+import type {
+  CmpRuntimeInfraProjectState,
+} from "../agent_core/cmp-runtime/infra-state.js";
+import type { CmpProjectInfraBootstrapReceipt } from "../agent_core/cmp-runtime/infra-bootstrap.js";
+import type { CmpRuntimeSnapshot } from "../agent_core/cmp-runtime/runtime-snapshot.js";
+import type { DispatchCmpFiveAgentCapabilityResult } from "../agent_core/runtime.js";
 import {
   createCmpGitAgentBranchRuntime,
   createCmpGitLineageNode,
@@ -28,6 +32,103 @@ import {
 } from "../agent_core/cmp-git/index.js";
 import { createCmpRedisProjectBootstrap } from "../agent_core/cmp-mq/redis-bootstrap.js";
 import { createRaxCmpFacade } from "./cmp-facade.js";
+import type { RaxCmpPort } from "./cmp-types.js";
+
+type LegacyCmpRuntimeStub = Record<string, ((...args: any[]) => any) | undefined>;
+
+function adaptLegacyCmpRuntimeStub(runtime: LegacyCmpRuntimeStub): RaxCmpPort {
+  return {
+    project: {
+      bootstrapProjectInfra(input) {
+        if (!runtime.bootstrapCmpProjectInfra) {
+          throw new Error("Legacy CMP runtime stub is missing bootstrapCmpProjectInfra.");
+        }
+        return runtime.bootstrapCmpProjectInfra(input);
+      },
+      getBootstrapReceipt(projectId) {
+        return runtime.getCmpProjectInfraBootstrapReceipt?.(projectId);
+      },
+      getInfraProjectState(projectId) {
+        return runtime.getCmpRuntimeInfraProjectState?.(projectId);
+      },
+      getRecoverySummary() {
+        return runtime.getCmpRuntimeRecoverySummary?.();
+      },
+      getProjectRecoverySummary(projectId) {
+        return runtime.getCmpRuntimeProjectRecoverySummary?.(projectId);
+      },
+      getDeliveryTruthSummary(projectId) {
+        return runtime.getCmpRuntimeDeliveryTruthSummary?.(projectId);
+      },
+      createSnapshot() {
+        return runtime.createCmpRuntimeSnapshot?.() ?? runtime.getCmpRuntimeSnapshot?.();
+      },
+      recoverSnapshot(snapshot) {
+        if (!runtime.recoverCmpRuntimeSnapshot) {
+          throw new Error("Legacy CMP runtime stub is missing recoverCmpRuntimeSnapshot.");
+        }
+        return runtime.recoverCmpRuntimeSnapshot(snapshot);
+      },
+      advanceDeliveryTimeouts(input) {
+        return runtime.advanceCmpMqDeliveryTimeouts?.(input);
+      },
+    },
+    flow: {
+      ingest(input) {
+        if (!runtime.ingestRuntimeContext) {
+          throw new Error("Legacy CMP runtime stub is missing ingestRuntimeContext.");
+        }
+        return runtime.ingestRuntimeContext(input);
+      },
+      commit(input) {
+        if (!runtime.commitContextDelta) {
+          throw new Error("Legacy CMP runtime stub is missing commitContextDelta.");
+        }
+        return runtime.commitContextDelta(input);
+      },
+      resolve(input) {
+        if (!runtime.resolveCheckedSnapshot) {
+          throw new Error("Legacy CMP runtime stub is missing resolveCheckedSnapshot.");
+        }
+        return runtime.resolveCheckedSnapshot(input);
+      },
+      materialize(input) {
+        if (!runtime.materializeContextPackage) {
+          throw new Error("Legacy CMP runtime stub is missing materializeContextPackage.");
+        }
+        return runtime.materializeContextPackage(input);
+      },
+      dispatch(input) {
+        if (!runtime.dispatchContextPackage) {
+          throw new Error("Legacy CMP runtime stub is missing dispatchContextPackage.");
+        }
+        return runtime.dispatchContextPackage(input);
+      },
+      requestHistory(input) {
+        if (!runtime.requestHistoricalContext) {
+          throw new Error("Legacy CMP runtime stub is missing requestHistoricalContext.");
+        }
+        return runtime.requestHistoricalContext(input);
+      },
+    },
+    fiveAgent: {
+      getSummary(agentId) {
+        return runtime.getCmpFiveAgentRuntimeSummary?.(agentId);
+      },
+    },
+    roles: {
+      resolveCapabilityAccess(input) {
+        return runtime.resolveCmpFiveAgentCapabilityAccess?.(input);
+      },
+      dispatchCapability(input) {
+        return runtime.dispatchCmpFiveAgentCapability?.(input);
+      },
+      approvePeerExchange(input) {
+        return runtime.reviewCmpPeerExchangeApproval?.(input);
+      },
+    },
+  };
+}
 
 function createCmpRedisNamespaceFixture(projectId: string, agentId: string) {
   const keyPrefix = `cmp:${projectId}:${agentId}`;
@@ -814,7 +915,7 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
   };
 
   const cmp = createRaxCmpFacade();
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-facade",
       git: {
@@ -824,17 +925,17 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
 
-  const bootstrap = await cmp.bootstrap({
+  const bootstrap = await cmp.project.bootstrap({
     session,
     payload: {
       agents: [{ agentId: "main", depth: 0 }],
     },
   });
-  const readback = await cmp.readback({ session });
-  const smoke = await cmp.smoke({ session });
+  const readback = await cmp.project.readback({ session });
+  const smoke = await cmp.project.smoke({ session });
 
   assert.equal(session.projectId, "proj-facade");
   assert.equal(bootstrap.status, "bootstrapped");
@@ -960,7 +1061,7 @@ test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime",
   };
 
   const cmp = createRaxCmpFacade();
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-facade-2",
       git: {
@@ -970,10 +1071,10 @@ test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime",
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
 
-  await cmp.ingest({
+  await cmp.flow.ingest({
     session,
     payload: {
       agentId: "main",
@@ -999,7 +1100,7 @@ test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime",
       ],
     },
   });
-  await cmp.commit({
+  await cmp.flow.commit({
     session,
     payload: {
       agentId: "main",
@@ -1009,14 +1110,14 @@ test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime",
       syncIntent: "local_record",
     },
   });
-  await cmp.resolve({
+  await cmp.flow.resolve({
     session,
     payload: {
       agentId: "main",
       projectId: "proj-facade-2",
     },
   });
-  await cmp.materialize({
+  await cmp.flow.materialize({
     session,
     payload: {
       agentId: "main",
@@ -1025,7 +1126,7 @@ test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime",
       packageKind: "child_seed",
     },
   });
-  await cmp.dispatch({
+  await cmp.flow.dispatch({
     session,
     payload: {
       agentId: "main",
@@ -1035,7 +1136,7 @@ test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime",
       targetKind: "child",
     },
   });
-  await cmp.requestHistory({
+  await cmp.flow.requestHistory({
     session,
     payload: {
       requesterAgentId: "main",
@@ -1201,7 +1302,7 @@ test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage 
   };
 
   const cmp = createRaxCmpFacade();
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-facade-3",
       git: {
@@ -1211,11 +1312,11 @@ test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage 
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
 
-  const readback = await cmp.readback({ session });
-  const smoke = await cmp.smoke({ session });
+  const readback = await cmp.project.readback({ session });
+  const smoke = await cmp.project.smoke({ session });
 
   assert.equal(readback.status, "found");
   assert.equal(readback.summary?.status, "degraded");
@@ -1272,7 +1373,7 @@ test("createRaxCmpFacade seeds default manual control surface and guided mode di
     },
   };
 
-  const automatic = cmp.create({
+  const automatic = cmp.session.open({
     config: {
       projectId: "proj-control-auto",
       git: {
@@ -1282,9 +1383,9 @@ test("createRaxCmpFacade seeds default manual control surface and guided mode di
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
-  const guided = cmp.create({
+  const guided = cmp.session.open({
     config: {
       projectId: "proj-control-guided",
       git: {
@@ -1297,9 +1398,9 @@ test("createRaxCmpFacade seeds default manual control surface and guided mode di
     control: {
       executionStyle: "guided",
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
-  const manual = cmp.create({
+  const manual = cmp.session.open({
     config: {
       projectId: "proj-control-manual",
       git: {
@@ -1312,7 +1413,7 @@ test("createRaxCmpFacade seeds default manual control surface and guided mode di
     control: {
       executionStyle: "manual",
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
 
   assert.equal(automatic.control.executionStyle, "automatic");
@@ -1373,7 +1474,7 @@ test("createRaxCmpFacade dispatch enforces auto-return, auto-seed and manual-tar
     },
   };
 
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-control-dispatch",
       git: {
@@ -1389,11 +1490,11 @@ test("createRaxCmpFacade dispatch enforces auto-return, auto-seed and manual-tar
         dispatch: "manual_targets",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
 
   await assert.rejects(
-    () => cmp.dispatch({
+    () => cmp.flow.dispatch({
       session,
       payload: {
         agentId: "main",
@@ -1406,7 +1507,7 @@ test("createRaxCmpFacade dispatch enforces auto-return, auto-seed and manual-tar
     /manual override|auto-seed|manual_targets/i,
   );
 
-  const manualDispatch = await cmp.dispatch({
+  const manualDispatch = await cmp.flow.dispatch({
     session,
     control: {
       executionStyle: "manual",
@@ -1428,7 +1529,7 @@ test("createRaxCmpFacade dispatch enforces auto-return, auto-seed and manual-tar
   assert.equal(manualDispatch.status, "dispatched");
 
   await assert.rejects(
-    () => cmp.dispatch({
+    () => cmp.flow.dispatch({
       session,
       payload: {
         agentId: "main",
@@ -1490,7 +1591,7 @@ test("createRaxCmpFacade requestHistory respects strict_not_found fallback polic
     },
   };
 
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-history-strict",
       git: {
@@ -1500,7 +1601,7 @@ test("createRaxCmpFacade requestHistory respects strict_not_found fallback polic
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
     control: {
       truth: {
         fallbackPolicy: "strict_not_found",
@@ -1508,7 +1609,7 @@ test("createRaxCmpFacade requestHistory respects strict_not_found fallback polic
     },
   });
 
-  const result = await cmp.requestHistory({
+  const result = await cmp.flow.requestHistory({
     session,
     payload: {
       requesterAgentId: "main",
@@ -1572,7 +1673,7 @@ test("createRaxCmpFacade can forward explicit peer approval to runtime", async (
     },
   };
 
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-peer-approval",
       git: {
@@ -1582,10 +1683,10 @@ test("createRaxCmpFacade can forward explicit peer approval to runtime", async (
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
 
-  const approval = await cmp.approvePeerExchange({
+  const approval = await cmp.roles.approvePeerExchange({
     session,
     approvalId: "approval-1",
     actorAgentId: "parent-a",
@@ -1668,7 +1769,7 @@ test("createRaxCmpFacade can resolve five-agent TAP capability access through ru
     },
   };
 
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-role-capability",
       git: {
@@ -1678,10 +1779,10 @@ test("createRaxCmpFacade can resolve five-agent TAP capability access through ru
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
 
-  const result = await cmp.resolveRoleCapabilityAccess({
+  const result = await cmp.roles.resolveCapabilityAccess({
     session,
     role: "iterator",
     payload: {
@@ -1786,7 +1887,7 @@ test("createRaxCmpFacade can dispatch five-agent TAP capability through runtime 
       } satisfies DispatchCmpFiveAgentCapabilityResult;
     },
   };
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-dispatch-role-capability",
       git: {
@@ -1796,10 +1897,10 @@ test("createRaxCmpFacade can dispatch five-agent TAP capability through runtime 
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
   });
 
-  const result = await cmp.dispatchRoleCapability({
+  const result = await cmp.roles.dispatchCapability({
     session,
     role: "dispatcher",
     payload: {
@@ -1894,7 +1995,7 @@ test("createRaxCmpFacade recover respects dry_run recovery preference", async ()
     },
   };
 
-  const session = cmp.create({
+  const session = cmp.session.open({
     config: {
       projectId: "proj-recover-dry-run",
       git: {
@@ -1904,7 +2005,7 @@ test("createRaxCmpFacade recover respects dry_run recovery preference", async ()
         defaultBranchName: "main",
       },
     },
-    runtime,
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
     control: {
       truth: {
         recoveryPreference: "dry_run",
@@ -1912,7 +2013,7 @@ test("createRaxCmpFacade recover respects dry_run recovery preference", async ()
     },
   });
 
-  const result = await cmp.recover({
+  const result = await cmp.project.recover({
     session,
     snapshot: {
       projectRepos: [],

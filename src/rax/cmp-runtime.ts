@@ -18,7 +18,7 @@ import {
 } from "../agent_core/cmp-mq/index.js";
 import { createCmpSharedInfraConnectors, type CmpSharedInfraConnectors } from "./cmp-connectors.js";
 import type { RaxCmpConfig } from "./cmp-config.js";
-import type { RaxCmpRuntimeLike } from "./cmp-types.js";
+import type { RaxCmpPort } from "./cmp-types.js";
 
 export interface CreateRaxCmpRuntimeInput {
   config: RaxCmpConfig;
@@ -29,7 +29,7 @@ export interface CreateRaxCmpRuntimeInput {
   mqAdapter?: CmpRedisMqAdapter;
 }
 
-export interface RaxCmpRuntime extends RaxCmpRuntimeLike {
+export interface RaxCmpRuntime extends RaxCmpPort {
   readonly config: RaxCmpConfig;
   readonly connectors: CmpSharedInfraConnectors;
   readonly agentCoreRuntime: AgentCoreRuntime;
@@ -79,62 +79,70 @@ export function createRaxCmpRuntime(input: CreateRaxCmpRuntimeInput): RaxCmpRunt
     config: input.config,
     connectors,
     agentCoreRuntime,
-    bootstrapCmpProjectInfra(params) {
-      return agentCoreRuntime.bootstrapCmpProjectInfra(params);
+    project: {
+      bootstrapProjectInfra(params) {
+        return agentCoreRuntime.cmp.project.bootstrapProjectInfra(params);
+      },
+      getBootstrapReceipt(projectId) {
+        return agentCoreRuntime.cmp.project.getBootstrapReceipt(projectId);
+      },
+      getInfraProjectState(projectId) {
+        return agentCoreRuntime.cmp.project.getInfraProjectState(projectId);
+      },
+      getRecoverySummary() {
+        return agentCoreRuntime.cmp.project.getRecoverySummary();
+      },
+      getProjectRecoverySummary(projectId) {
+        return agentCoreRuntime.cmp.project.getProjectRecoverySummary(projectId);
+      },
+      getDeliveryTruthSummary(projectId) {
+        return agentCoreRuntime.cmp.project.getDeliveryTruthSummary(projectId);
+      },
+      createSnapshot() {
+        return agentCoreRuntime.cmp.project.createSnapshot();
+      },
+      recoverSnapshot(snapshot) {
+        return agentCoreRuntime.cmp.project.recoverSnapshot(snapshot);
+      },
+      advanceDeliveryTimeouts(input) {
+        return agentCoreRuntime.cmp.project.advanceDeliveryTimeouts(input);
+      },
     },
-    getCmpProjectInfraBootstrapReceipt(projectId) {
-      return agentCoreRuntime.getCmpProjectInfraBootstrapReceipt(projectId);
+    flow: {
+      ingest(params) {
+        return agentCoreRuntime.cmp.workflow.ingest(params);
+      },
+      commit(params) {
+        return agentCoreRuntime.cmp.workflow.commit(params);
+      },
+      resolve(params) {
+        return agentCoreRuntime.cmp.workflow.resolve(params);
+      },
+      materialize(params) {
+        return agentCoreRuntime.cmp.workflow.materialize(params);
+      },
+      dispatch(params) {
+        return agentCoreRuntime.cmp.workflow.dispatch(params);
+      },
+      requestHistory(params) {
+        return agentCoreRuntime.cmp.workflow.requestHistory(params);
+      },
     },
-    getCmpRuntimeInfraProjectState(projectId) {
-      return agentCoreRuntime.getCmpRuntimeInfraProjectState(projectId);
+    fiveAgent: {
+      getSummary(agentId) {
+        return agentCoreRuntime.cmp.fiveAgent.getSummary(agentId);
+      },
     },
-    getCmpRuntimeRecoverySummary() {
-      return agentCoreRuntime.getCmpRuntimeRecoverySummary();
-    },
-    getCmpRuntimeProjectRecoverySummary(projectId) {
-      return agentCoreRuntime.getCmpRuntimeProjectRecoverySummary(projectId);
-    },
-    getCmpRuntimeDeliveryTruthSummary(projectId) {
-      return agentCoreRuntime.getCmpRuntimeDeliveryTruthSummary(projectId);
-    },
-    getCmpFiveAgentRuntimeSummary(agentId) {
-      return agentCoreRuntime.getCmpFiveAgentRuntimeSummary(agentId);
-    },
-    getCmpRuntimeSnapshot() {
-      return agentCoreRuntime.createCmpRuntimeSnapshot();
-    },
-    resolveCmpFiveAgentCapabilityAccess(input) {
-      return agentCoreRuntime.resolveCmpFiveAgentCapabilityAccess(input);
-    },
-    dispatchCmpFiveAgentCapability(input) {
-      return agentCoreRuntime.dispatchCmpFiveAgentCapability(input);
-    },
-    reviewCmpPeerExchangeApproval(input) {
-      return agentCoreRuntime.reviewCmpPeerExchangeApproval(input);
-    },
-    advanceCmpMqDeliveryTimeouts(input) {
-      return agentCoreRuntime.advanceCmpMqDeliveryTimeouts(input);
-    },
-    recoverCmpRuntimeSnapshot(snapshot) {
-      return agentCoreRuntime.recoverCmpRuntimeSnapshot(snapshot);
-    },
-    ingestRuntimeContext(params) {
-      return agentCoreRuntime.ingestRuntimeContext(params);
-    },
-    commitContextDelta(params) {
-      return agentCoreRuntime.commitContextDelta(params);
-    },
-    resolveCheckedSnapshot(params) {
-      return agentCoreRuntime.resolveCheckedSnapshot(params);
-    },
-    materializeContextPackage(params) {
-      return agentCoreRuntime.materializeContextPackage(params);
-    },
-    dispatchContextPackage(params) {
-      return agentCoreRuntime.dispatchContextPackage(params);
-    },
-    requestHistoricalContext(params) {
-      return agentCoreRuntime.requestHistoricalContext(params);
+    roles: {
+      resolveCapabilityAccess(input) {
+        return agentCoreRuntime.cmp.tapBridge.resolveCapabilityAccess(input);
+      },
+      dispatchCapability(input) {
+        return agentCoreRuntime.cmp.tapBridge.dispatchCapability(input);
+      },
+      approvePeerExchange(input) {
+        return agentCoreRuntime.cmp.tapBridge.reviewPeerExchangeApproval(input);
+      },
     },
   };
 }

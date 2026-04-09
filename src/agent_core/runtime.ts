@@ -163,6 +163,8 @@ import {
   type CmpFiveAgentRuntimeSnapshot,
   type CmpFiveAgentSummary,
 } from "./cmp-five-agent/index.js";
+import type { AgentCoreCmpApi } from "./cmp-api/index.js";
+import { createAgentCoreCmpServices } from "./cmp-service/index.js";
 import {
   activateProvisionAsset,
   applyTaHumanGateEvent,
@@ -903,6 +905,7 @@ export class AgentCoreRuntime {
   readonly runCoordinator: AgentRunCoordinator;
   readonly sessionManager: SessionManager;
   readonly cmpInfraBackends: CmpInfraBackends;
+  readonly cmp: AgentCoreCmpApi;
   readonly #taSafetyConfig?: TaSafetyInterceptorConfig;
   readonly #modelInferenceExecutor: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
   readonly #capabilityExecutionContext = new Map<string, DispatchCapabilityPlanInput>();
@@ -1004,6 +1007,7 @@ export class AgentCoreRuntime {
     });
     this.sessionManager = options.sessionManager ?? new SessionManager();
     this.cmpInfraBackends = createCmpInfraBackends(options.cmpInfraBackends);
+    this.cmp = createAgentCoreCmpServices(this).api;
     this.registerCapabilityAdapter(
       createModelInferenceCapabilityManifest(),
       createModelInferenceCapabilityAdapter({

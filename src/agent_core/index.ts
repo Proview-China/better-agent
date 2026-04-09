@@ -4,6 +4,7 @@ export * from "./cmp-types/index.js";
 export * from "./cmp-five-agent/index.js";
 export * from "./cmp-git/index.js";
 export * from "./cmp-runtime/index.js";
+export * from "./cmp-service/index.js";
 export {
   CMP_DB_AGENT_LOCAL_TABLE_KINDS,
   CMP_DB_SHARED_TABLE_KINDS,

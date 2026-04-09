@@ -1,6 +1,6 @@
 # Current Context
 
-更新时间：2026-04-07
+更新时间：2026-04-09
 
 ## 当前主线一句话
 
@@ -118,6 +118,33 @@ Praxis 当前可继续开发的总装主线已经形成，工作分支是：
 
 - 后面继续联调时，优先做断点测试
 - 不要再直接黑盒全链乱跑
+
+### 7. `CMP` 接口已经改成分组 API，后续不要再回到平铺 facade
+
+从这轮开始，`rax.cmp` 的主入口已经改成分组接口：
+
+- `rax.cmp.session.open(...)`
+- `rax.cmp.project.bootstrap/readback/recover/smoke(...)`
+- `rax.cmp.flow.ingest/commit/resolve/materialize/dispatch/requestHistory(...)`
+- `rax.cmp.roles.resolveCapabilityAccess/dispatchCapability/approvePeerExchange(...)`
+
+同时，`AgentCoreRuntime` 已新增 `runtime.cmp` 分组 port：
+
+- `runtime.cmp.project`
+- `runtime.cmp.workflow`
+- `runtime.cmp.fiveAgent`
+- `runtime.cmp.tapBridge`
+
+当前约束：
+
+- `rax` 不应再直接依赖 `agent_core/index.js` 的大 barrel 来获取 CMP 相关类型
+- `rax` 应优先依赖 `agent_core/cmp-api/*`、`cmp-runtime/*`、`cmp-types/*` 等明确子入口
+- `AgentCoreRuntime` 上旧的扁平 CMP 方法目前仍可作为内部兼容层存在，但新代码不要继续贴着这些平铺方法写
+
+白话：
+
+- 这轮已经把 `CMP` 的“接口形状”从一长串方法改成了结构化分组
+- 后面继续拆 `runtime.ts` 时，要顺着这个方向拆，不要再把新能力塞回 `rax.cmp.xxx(...)` 或 `runtime.xxxCmp...(...)` 这种平铺表面
 
 ## 当前已验证通过的基线
 

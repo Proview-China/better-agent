@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createAgentCoreRuntime, createInMemoryCmpGitBackend, createInMemoryCmpRedisMqAdapter } from "../agent_core/index.js";
+import { createAgentCoreRuntime } from "../agent_core/runtime.js";
+import { createInMemoryCmpGitBackend } from "../agent_core/cmp-git/index.js";
+import { createInMemoryCmpRedisMqAdapter } from "../agent_core/cmp-mq/index.js";
 import { createRaxCmpConfig } from "./cmp-config.js";
 import { createCmpSharedInfraConnectors } from "./cmp-connectors.js";
 import { createRaxCmpRuntime } from "./cmp-runtime.js";
@@ -89,10 +91,10 @@ test("createRaxCmpRuntime exposes full cmp workflow surface through agent_core r
     config,
   });
 
-  assert.equal(typeof runtime.resolveCheckedSnapshot, "function");
-  assert.equal(typeof runtime.materializeContextPackage, "function");
-  assert.equal(typeof runtime.dispatchContextPackage, "function");
-  assert.equal(typeof runtime.getCmpFiveAgentRuntimeSummary, "function");
-  assert.equal(typeof runtime.resolveCmpFiveAgentCapabilityAccess, "function");
-  assert.equal(typeof runtime.dispatchCmpFiveAgentCapability, "function");
+  assert.equal(typeof runtime.flow.resolve, "function");
+  assert.equal(typeof runtime.flow.materialize, "function");
+  assert.equal(typeof runtime.flow.dispatch, "function");
+  assert.equal(typeof runtime.fiveAgent.getSummary, "function");
+  assert.equal(typeof runtime.roles.resolveCapabilityAccess, "function");
+  assert.equal(typeof runtime.roles.dispatchCapability, "function");
 });
