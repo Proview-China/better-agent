@@ -57,6 +57,11 @@ export type {
   RaxCmpConfig,
 } from "./cmp-config.js";
 export type {
+  CreateRaxMpConfigInput,
+  RaxMpConfig,
+  RaxMpWorkflowConfig,
+} from "./mp-config.js";
+export type {
   CmpSection,
   CmpSectionFidelity,
   CmpSectionKind,
@@ -83,6 +88,56 @@ export type {
   CreateRaxCmpRuntimeInput,
   RaxCmpRuntime,
 } from "./cmp-runtime.js";
+export type {
+  CreateRaxMpRuntimeInput,
+  RaxMpRuntime,
+} from "./mp-runtime.js";
+export type {
+  MpConnectorOwnership,
+  MpLanceConnector,
+  MpSharedInfraConnectorMetadata,
+  MpSharedInfraConnectors,
+} from "./mp-connectors.js";
+export type {
+  RaxMpArchiveInput,
+  RaxMpAlignInput,
+  RaxMpAlignResult,
+  RaxMpAcceptanceReadiness,
+  RaxMpBootstrapInput,
+  RaxMpBootstrapResult,
+  RaxMpCompactInput,
+  RaxMpCreateInput,
+  RaxMpFacade,
+  RaxMpIngestInput,
+  RaxMpIngestResult,
+  RaxMpLanceConfig,
+  RaxMpMaterializeBatchInput,
+  RaxMpMaterializeInput,
+  RaxMpMergeInput,
+  RaxMpMergeResult,
+  RaxMpReadbackInput,
+  RaxMpReadbackResult,
+  RaxMpReadbackSummary,
+  RaxMpReadinessCheck,
+  RaxMpReadinessStatus,
+  RaxMpMode,
+  RaxMpPromoteInput,
+  RaxMpReindexInput,
+  RaxMpRequestHistoryInput,
+  RaxMpRequestHistoryResult,
+  RaxMpResolveInput,
+  RaxMpResolveResult,
+  RaxMpRuntimeLike,
+  RaxMpSearchDefaults,
+  RaxMpSearchInput,
+  RaxMpSession,
+  RaxMpSmokeCheck,
+  RaxMpSmokeInput,
+  RaxMpSmokeResult,
+  RaxMpStatusPanel,
+  RaxMpSplitInput,
+  RaxMpSplitResult,
+} from "./mp-types.js";
 export type { RaxCmpStatusPanelSection } from "./cmp-status-panel.js";
 export type {
   CapabilityAction,
@@ -226,6 +281,10 @@ export {
   loadRaxCmpConfigFromEnv,
 } from "./cmp-config.js";
 export {
+  createRaxMpConfig,
+  loadRaxMpConfigFromEnv,
+} from "./mp-config.js";
+export {
   createRaxCmpFacade,
 } from "./cmp-facade.js";
 export type {
@@ -233,11 +292,18 @@ export type {
   RaxCmpPort as RaxCmpRuntimeLike,
 } from "./cmp-types.js";
 export {
+  createRaxMpFacade,
+} from "./mp-facade.js";
+export {
   createCmpSharedGitInfraConnector,
   createCmpPostgresConnector,
   createCmpRedisConnector,
   createCmpSharedInfraConnectors,
 } from "./cmp-connectors.js";
+export {
+  createMpLanceConnector,
+  createMpSharedInfraConnectors,
+} from "./mp-connectors.js";
 export {
   CMP_RULE_ACTIONS,
   CMP_SECTION_FIDELITY,
@@ -269,6 +335,17 @@ export {
   RAX_CMP_READBACK_PRIORITIES,
   RAX_CMP_RECOVERY_PREFERENCES,
 } from "./cmp-types.js";
+export {
+  DEFAULT_RAX_MP_DEFAULT_AGENT_ID,
+  DEFAULT_RAX_MP_MODE,
+  DEFAULT_RAX_MP_PROFILE_ID,
+  DEFAULT_RAX_MP_SCHEMA_VERSION,
+  DEFAULT_RAX_MP_SCOPE_LEVELS,
+  DEFAULT_RAX_MP_SEARCH_LIMIT,
+} from "./mp-config.js";
+export {
+  createRaxMpRuntime,
+} from "./mp-runtime.js";
 export {
   createRaxCmpRuntime,
 } from "./cmp-runtime.js";

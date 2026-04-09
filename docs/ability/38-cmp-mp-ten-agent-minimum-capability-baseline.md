@@ -2,7 +2,7 @@
 
 状态：指导性总纲，不是冻结实现。
 
-更新时间：2026-03-25
+更新时间：2026-04-08
 
 ## 这份文档要回答什么
 
@@ -220,6 +220,42 @@
 
 - `CMP / MP` 十个小 agent` 只是能力消费者
 - `TAP` 仍然是能力总闸门
+
+## 截至 2026-04-08 的新增事实
+
+这份文档最初只在谈“后面要给 `CMP / MP` 十个小 agent 什么能力基线”。
+
+到当前阶段，`MP` 已经不再只是概念预留位，而是已经真实接入了当前总装线。
+
+当前已经新增并落地：
+
+- 真实本地 `LanceDB` adapter
+- `mp-types`
+- `mp-lancedb`
+- `mp-runtime`
+- `rax.mp`
+- `mp.*` capability family
+- 默认 `AgentCoreRuntime` workflow 注册
+
+当前 `MP` family 已包括：
+
+- `mp.search`
+- `mp.materialize`
+- `mp.promote`
+- `mp.archive`
+- `mp.split`
+- `mp.merge`
+- `mp.reindex`
+- `mp.compact`
+
+这意味着：
+
+- 后面的 `CMP / MP` worker 不再只是“未来某天可以用 MP”
+- 而是已经能在当前总装线上通过正式 capability workflow 使用 `MP`
+
+一句白话：
+
+- `MP` 当前已经从“待实现方向”进入“可继续开发与扩展的子系统”
 
 ## 为什么现在先补这套基线
 

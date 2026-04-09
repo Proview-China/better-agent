@@ -2,17 +2,18 @@ import {
   createCapabilityManifestFromPackage,
   createMcpCapabilityPackage,
   createMcpReadCapabilityPackage,
-  createTapVendorNetworkCapabilityPackageCatalog,
+  createRaxMpCapabilityPackageCatalog,
   createRaxSkillCapabilityPackageCatalog,
-  createTapVendorUserIoCapabilityPackageCatalog,
   createTapToolingBaselineCapabilityPackages,
+  createTapVendorNetworkCapabilityPackageCatalog,
+  createTapVendorUserIoCapabilityPackageCatalog,
   listFirstClassToolingBaselineCapabilityPackages,
   type CapabilityPackage,
 } from "../capability-package/index.js";
 import type {
-  TapFormalFamilyKey,
   TapFormalFamilyInventory,
   TapFormalFamilyInventoryEntry,
+  TapFormalFamilyKey,
 } from "./availability-types.js";
 
 const TAP_ASSEMBLY_REF =
@@ -121,6 +122,17 @@ function buildMcpEntries(): TapFormalFamilyInventoryEntry[] {
   ];
 }
 
+function buildMpEntries(): TapFormalFamilyInventoryEntry[] {
+  return createRaxMpCapabilityPackageCatalog().map((capabilityPackage) =>
+    createEntry({
+      familyKey: "mp",
+      capabilityPackage,
+      packageSourceRef:
+        "capability-package/mp-family-capability-package#createRaxMpCapabilityPackageCatalog",
+      registerHelperRef: "integrations/rax-mp-adapter#registerRaxMpCapabilityFamily",
+    }));
+}
+
 function buildUserIoEntries(): TapFormalFamilyInventoryEntry[] {
   return createTapVendorUserIoCapabilityPackageCatalog().map((capabilityPackage) =>
     createEntry({
@@ -138,13 +150,14 @@ export function listTapFormalFamilyInventoryEntries(): TapFormalFamilyInventoryE
     ...buildWebsearchEntries(),
     ...buildSkillEntries(),
     ...buildMcpEntries(),
+    ...buildMpEntries(),
     ...buildUserIoEntries(),
   ];
 }
 
 export function createTapFormalFamilyInventory(): TapFormalFamilyInventory {
   const entries = listTapFormalFamilyInventoryEntries();
-  const familyKeys = ["foundation", "websearch", "skill", "mcp", "userio"] as const;
+  const familyKeys = ["foundation", "websearch", "skill", "mcp", "mp", "userio"] as const;
   const families = familyKeys.map((familyKey) => {
     const familyEntries = entries.filter((entry) => entry.familyKey === familyKey);
     return {

@@ -16,6 +16,7 @@ import { createFoundationFamilyCheckReport } from "./foundation-family-check.js"
 import { createWebsearchFamilyCheckReport } from "./websearch-family-check.js";
 import { createSkillFamilyCheckReport } from "./skill-family-check.js";
 import { createMcpFamilyCheckReport } from "./mcp-family-check.js";
+import { createMpFamilyCheckReport } from "./mp-family-check.js";
 
 class RecordingTapAssemblyRuntime {
   readonly registrationAudit: TapCapabilityRegistrationAuditEntry[] = [];
@@ -97,5 +98,6 @@ export function createTapFormalFamilyCheckReports(
     websearch: createWebsearchFamilyCheckReport(report),
     skill: createSkillFamilyCheckReport(report),
     mcp: createMcpFamilyCheckReport(report),
+    mp: createMpFamilyCheckReport(report),
   };
 }

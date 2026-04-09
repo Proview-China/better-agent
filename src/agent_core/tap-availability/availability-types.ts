@@ -17,6 +17,7 @@ export const TAP_AVAILABILITY_FAMILY_KEYS = [
   "websearch",
   "skill",
   "mcp",
+  "mp",
   "userio",
 ] as const;
 export const TAP_FORMAL_FAMILY_KEYS = TAP_AVAILABILITY_FAMILY_KEYS;
