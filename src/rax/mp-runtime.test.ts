@@ -30,6 +30,9 @@ test("createRaxMpRuntime can assemble shared lance connector and mp workflow sur
   assert.equal(runtime.config.projectId, "proj-rax-mp-runtime");
   assert.equal(runtime.connectors.lance.kind, "shared_lancedb");
   assert.equal(receipt.status, "bootstrapped");
+  assert.equal(typeof runtime.ingestMemoryWorkflow, "function");
+  assert.equal(typeof runtime.resolveMemoryWorkflow, "function");
+  assert.equal(typeof runtime.getMpFiveAgentRuntimeSummary, "function");
   assert.equal(typeof runtime.materializeStoredSection, "function");
   assert.equal(typeof runtime.search, "function");
   assert.equal(typeof runtime.splitMemory, "function");

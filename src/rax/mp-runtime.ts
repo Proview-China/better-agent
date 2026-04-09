@@ -2,6 +2,7 @@ import {
   archiveMpMemoryRecord,
   buildMpSourceLineages,
   compactMpSemanticGroup,
+  createMpFiveAgentRuntime,
   createLanceDbMpLanceDbAdapter,
   createInMemoryMpLanceDbAdapter,
   createMpSearchPlan,
@@ -37,6 +38,10 @@ export function createRaxMpRuntime(input: CreateRaxMpRuntimeInput): RaxMpRuntime
         : createInMemoryMpLanceDbAdapter()
     ),
   });
+  const workflowRuntime = createMpFiveAgentRuntime({
+    adapter: connectors.lance.adapter,
+  });
+  let bootstrapReceipt: Awaited<ReturnType<typeof connectors.lance.bootstrapProject>> | undefined;
 
   return {
     config: input.config,
@@ -50,7 +55,8 @@ export function createRaxMpRuntime(input: CreateRaxMpRuntimeInput): RaxMpRuntime
         schemaVersion: input.config.lance.schemaVersion,
         metadata: params.metadata,
       });
-      return connectors.lance.bootstrapProject(plan);
+      bootstrapReceipt = await connectors.lance.bootstrapProject(plan);
+      return bootstrapReceipt;
     },
 
     async materializeStoredSection(payload) {
@@ -145,6 +151,91 @@ export function createRaxMpRuntime(input: CreateRaxMpRuntimeInput): RaxMpRuntime
         ...payload,
         adapter: connectors.lance.adapter,
       });
+    },
+
+    async ingestMemoryWorkflow(payload) {
+      const result = await workflowRuntime.ingest({
+        projectId: payload.scope.projectId,
+        storedSection: payload.storedSection,
+        checkedSnapshotRef: payload.checkedSnapshotRef,
+        branchRef: payload.branchRef,
+        scope: payload.scope,
+        observedAt: payload.observedAt,
+        capturedAt: payload.capturedAt,
+        sourceRefs: payload.sourceRefs,
+        memoryKind: payload.memoryKind,
+        confidence: payload.confidence,
+        metadata: payload.metadata,
+      });
+      return {
+        status: "ingested",
+        records: result.records,
+        supersededMemoryIds: result.alignment.supersededMemoryIds,
+        staleMemoryIds: result.alignment.staleMemoryIds,
+        summary: workflowRuntime.getSummary(),
+      };
+    },
+
+    async alignMemoryWorkflow(payload) {
+      const result = await workflowRuntime.align(payload);
+      return {
+        ...result,
+        summary: workflowRuntime.getSummary(),
+      };
+    },
+
+    async resolveMemoryWorkflow(payload) {
+      const result = await workflowRuntime.resolve({
+        projectId: payload.requesterLineage.projectId,
+        queryText: payload.queryText,
+        requesterLineage: payload.requesterLineage,
+        requesterSessionId: payload.requesterSessionId,
+        sourceLineages: payload.sourceLineages instanceof Map
+          ? payload.sourceLineages
+          : buildMpSourceLineages([...payload.sourceLineages.values()]),
+        agentTableNames: payload.agentTableNames,
+        scopeLevels: payload.scopeLevels ?? input.config.searchDefaults.scopeLevels,
+        limit: payload.limit ?? input.config.workflow.retrievalPolicy.primaryBundleLimit
+          + input.config.workflow.retrievalPolicy.supportingBundleLimit,
+        metadata: payload.metadata,
+      });
+      return {
+        ...result,
+        summary: workflowRuntime.getSummary(),
+      };
+    },
+
+    async requestMemoryHistory(payload) {
+      const result = await workflowRuntime.requestHistory({
+        projectId: payload.requesterLineage.projectId,
+        queryText: payload.queryText,
+        requesterLineage: payload.requesterLineage,
+        requesterSessionId: payload.requesterSessionId,
+        sourceLineages: payload.sourceLineages instanceof Map
+          ? payload.sourceLineages
+          : buildMpSourceLineages([...payload.sourceLineages.values()]),
+        agentTableNames: payload.agentTableNames,
+        scopeLevels: payload.scopeLevels ?? input.config.searchDefaults.scopeLevels,
+        limit: payload.limit ?? input.config.workflow.retrievalPolicy.primaryBundleLimit
+          + input.config.workflow.retrievalPolicy.supportingBundleLimit,
+        metadata: payload.metadata,
+      });
+      return {
+        ...result,
+        summary: workflowRuntime.getSummary(),
+      };
+    },
+
+    getMpFiveAgentRuntimeSummary() {
+      return workflowRuntime.getSummary();
+    },
+
+    getMpBootstrapReceipt() {
+      return bootstrapReceipt;
+    },
+
+    getMpManagedRecords() {
+      return [...workflowRuntime.getState().records.values()].map((record) => structuredClone(record));
     },
   };
 }

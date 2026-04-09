@@ -17,6 +17,11 @@ test("createRaxMpConfig fills stable defaults for lance-backed mp runtime", () =
   assert.equal(config.searchDefaults.limit, 10);
   assert.deepEqual(config.searchDefaults.scopeLevels, ["agent_isolated", "project", "global"]);
   assert.equal(config.searchDefaults.preferSameAgent, true);
+  assert.equal(config.workflow.enabled, true);
+  assert.equal(config.workflow.roleModes.icma, "llm_assisted");
+  assert.equal(config.workflow.freshnessPolicy.preferFresh, true);
+  assert.equal(config.workflow.alignmentPolicy.autoSupersede, true);
+  assert.equal(config.workflow.retrievalPolicy.primaryBundleLimit, 3);
 });
 
 test("loadRaxMpConfigFromEnv reads explicit environment overrides", () => {
@@ -31,6 +36,14 @@ test("loadRaxMpConfigFromEnv reads explicit environment overrides", () => {
     PRAXIS_MP_SEARCH_LIMIT: "15",
     PRAXIS_MP_SCOPE_LEVELS: "project,global",
     PRAXIS_MP_PREFER_SAME_AGENT: "0",
+    PRAXIS_MP_WORKFLOW_ENABLED: "1",
+    PRAXIS_MP_PREFER_FRESH: "0",
+    PRAXIS_MP_ALLOW_STALE_FALLBACK: "0",
+    PRAXIS_MP_AUTO_SUPERSEDE: "0",
+    PRAXIS_MP_MARK_OLDER_STALE: "0",
+    PRAXIS_MP_PRIMARY_BUNDLE_LIMIT: "4",
+    PRAXIS_MP_SUPPORTING_BUNDLE_LIMIT: "6",
+    PRAXIS_MP_OMIT_SUPERSEDED_PRIMARY: "0",
   });
 
   assert.equal(config.projectId, "proj-env");
@@ -43,4 +56,11 @@ test("loadRaxMpConfigFromEnv reads explicit environment overrides", () => {
   assert.equal(config.searchDefaults.limit, 15);
   assert.deepEqual(config.searchDefaults.scopeLevels, ["project", "global"]);
   assert.equal(config.searchDefaults.preferSameAgent, false);
+  assert.equal(config.workflow.freshnessPolicy.preferFresh, false);
+  assert.equal(config.workflow.freshnessPolicy.allowStaleFallback, false);
+  assert.equal(config.workflow.alignmentPolicy.autoSupersede, false);
+  assert.equal(config.workflow.alignmentPolicy.markOlderAsStale, false);
+  assert.equal(config.workflow.retrievalPolicy.primaryBundleLimit, 4);
+  assert.equal(config.workflow.retrievalPolicy.supportingBundleLimit, 6);
+  assert.equal(config.workflow.retrievalPolicy.omitSupersededFromPrimary, false);
 });

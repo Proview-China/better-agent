@@ -1,5 +1,23 @@
-import type { MpScopeLevel } from "../agent_core/index.js";
+import type { MpRoleLiveLlmMode, MpScopeLevel } from "../agent_core/index.js";
 import type { RaxMpLanceConfig, RaxMpMode, RaxMpSearchDefaults } from "./mp-types.js";
+
+export interface RaxMpWorkflowConfig {
+  enabled: boolean;
+  roleModes: Record<"icma" | "iterator" | "checker" | "dbagent" | "dispatcher", MpRoleLiveLlmMode>;
+  freshnessPolicy: {
+    preferFresh: boolean;
+    allowStaleFallback: boolean;
+  };
+  alignmentPolicy: {
+    autoSupersede: boolean;
+    markOlderAsStale: boolean;
+  };
+  retrievalPolicy: {
+    primaryBundleLimit: number;
+    supportingBundleLimit: number;
+    omitSupersededFromPrimary: boolean;
+  };
+}
 
 export interface RaxMpConfig {
   projectId: string;
@@ -8,6 +26,7 @@ export interface RaxMpConfig {
   mode: RaxMpMode;
   lance: RaxMpLanceConfig;
   searchDefaults: RaxMpSearchDefaults;
+  workflow: RaxMpWorkflowConfig;
   metadata?: Record<string, unknown>;
 }
 
@@ -18,6 +37,12 @@ export interface CreateRaxMpConfigInput {
   mode?: RaxMpMode;
   lance?: Partial<Omit<RaxMpLanceConfig, "kind">> & Pick<RaxMpLanceConfig, "rootPath">;
   searchDefaults?: Partial<RaxMpSearchDefaults>;
+  workflow?: Partial<RaxMpWorkflowConfig> & {
+    roleModes?: Partial<RaxMpWorkflowConfig["roleModes"]>;
+    freshnessPolicy?: Partial<RaxMpWorkflowConfig["freshnessPolicy"]>;
+    alignmentPolicy?: Partial<RaxMpWorkflowConfig["alignmentPolicy"]>;
+    retrievalPolicy?: Partial<RaxMpWorkflowConfig["retrievalPolicy"]>;
+  };
   metadata?: Record<string, unknown>;
 }
 
@@ -31,6 +56,13 @@ export const DEFAULT_RAX_MP_SCOPE_LEVELS: MpScopeLevel[] = [
   "project",
   "global",
 ];
+export const DEFAULT_RAX_MP_WORKFLOW_ROLE_MODES: RaxMpWorkflowConfig["roleModes"] = {
+  icma: "llm_assisted",
+  iterator: "llm_assisted",
+  checker: "llm_assisted",
+  dbagent: "llm_assisted",
+  dispatcher: "llm_assisted",
+};
 
 function assertNonEmpty(value: string, label: string): string {
   const normalized = value.trim();
@@ -70,6 +102,26 @@ export function createRaxMpConfig(input: CreateRaxMpConfigInput): RaxMpConfig {
       preferSameAgent: input.searchDefaults?.preferSameAgent ?? true,
       metadata: input.searchDefaults?.metadata,
     },
+    workflow: {
+      enabled: input.workflow?.enabled ?? true,
+      roleModes: {
+        ...DEFAULT_RAX_MP_WORKFLOW_ROLE_MODES,
+        ...(input.workflow?.roleModes ?? {}),
+      },
+      freshnessPolicy: {
+        preferFresh: input.workflow?.freshnessPolicy?.preferFresh ?? true,
+        allowStaleFallback: input.workflow?.freshnessPolicy?.allowStaleFallback ?? true,
+      },
+      alignmentPolicy: {
+        autoSupersede: input.workflow?.alignmentPolicy?.autoSupersede ?? true,
+        markOlderAsStale: input.workflow?.alignmentPolicy?.markOlderAsStale ?? true,
+      },
+      retrievalPolicy: {
+        primaryBundleLimit: input.workflow?.retrievalPolicy?.primaryBundleLimit ?? 3,
+        supportingBundleLimit: input.workflow?.retrievalPolicy?.supportingBundleLimit ?? 5,
+        omitSupersededFromPrimary: input.workflow?.retrievalPolicy?.omitSupersededFromPrimary ?? true,
+      },
+    },
     metadata: input.metadata,
   };
 }
@@ -97,6 +149,30 @@ export function loadRaxMpConfigFromEnv(
           .filter(Boolean) as MpScopeLevel[]
         : undefined,
       preferSameAgent: source.PRAXIS_MP_PREFER_SAME_AGENT !== "0",
+    },
+    workflow: {
+      enabled: source.PRAXIS_MP_WORKFLOW_ENABLED !== "0",
+      freshnessPolicy: {
+        preferFresh: source.PRAXIS_MP_PREFER_FRESH !== "0",
+        allowStaleFallback: source.PRAXIS_MP_ALLOW_STALE_FALLBACK !== "0",
+      },
+      alignmentPolicy: {
+        autoSupersede: source.PRAXIS_MP_AUTO_SUPERSEDE !== "0",
+        markOlderAsStale: source.PRAXIS_MP_MARK_OLDER_STALE !== "0",
+      },
+      retrievalPolicy: {
+        ...(source.PRAXIS_MP_PRIMARY_BUNDLE_LIMIT
+          ? {
+            primaryBundleLimit: Number(source.PRAXIS_MP_PRIMARY_BUNDLE_LIMIT),
+          }
+          : {}),
+        ...(source.PRAXIS_MP_SUPPORTING_BUNDLE_LIMIT
+          ? {
+            supportingBundleLimit: Number(source.PRAXIS_MP_SUPPORTING_BUNDLE_LIMIT),
+          }
+          : {}),
+        omitSupersededFromPrimary: source.PRAXIS_MP_OMIT_SUPERSEDED_PRIMARY !== "0",
+      } as NonNullable<CreateRaxMpConfigInput["workflow"]>["retrievalPolicy"],
     },
   });
 }
