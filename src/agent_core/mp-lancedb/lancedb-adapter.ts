@@ -29,6 +29,20 @@ interface RealMpLanceProjectState {
   tables: Set<string>;
 }
 
+interface LanceDbDynamicModule {
+  connect: (uri: string) => Promise<{
+    createEmptyTable: (name: string, schema: unknown, options: Record<string, unknown>) => Promise<unknown>;
+    openTable: (name: string) => Promise<{
+      delete: (predicate: string) => Promise<void>;
+      add: (rows: Record<string, unknown>[]) => Promise<void>;
+      query: () => {
+        where: (predicate: string) => { toArray: () => Promise<unknown[]> };
+        toArray: () => Promise<unknown[]>;
+      };
+    }>;
+  }>;
+}
+
 interface MpLanceStoredRow {
   memoryId: string;
   projectId: string;
@@ -46,13 +60,25 @@ interface MpLanceStoredRow {
   semanticGroupId: string | null;
   bodyRef: string | null;
   payloadRefsJson: string;
+  sourceRefsJson: string;
   tagsJson: string;
+  memoryKind: string;
+  observedAt: string | null;
+  capturedAt: string | null;
+  freshnessJson: string;
+  confidence: string;
+  supersedesJson: string | null;
+  supersededBy: string | null;
+  alignmentJson: string;
   embeddingJson: string | null;
   ancestryJson: string | null;
   createdAt: string;
   updatedAt: string;
   metadataJson: string | null;
 }
+
+const IN_MEMORY_TABLES = new Map<string, Map<string, MpMemoryRecord>>();
+const IN_MEMORY_PROJECT_TABLES = new Map<string, InMemoryMpLanceProjectState>();
 
 function assertNonEmpty(value: string, label: string): string {
   const normalized = value.trim();
@@ -79,6 +105,8 @@ function scoreMemoryAgainstQuery(record: MpMemoryRecord, queryText: string): num
   const corpus = [
     record.bodyRef ?? "",
     record.semanticGroupId ?? "",
+    record.memoryKind,
+    ...record.sourceRefs,
     ...record.tags,
     ...record.payloadRefs,
     typeof record.metadata?.sectionKind === "string" ? record.metadata.sectionKind : "",
@@ -135,7 +163,16 @@ function serializeMpMemoryRecord(record: MpMemoryRecord): MpLanceStoredRow {
     semanticGroupId: record.semanticGroupId ?? null,
     bodyRef: record.bodyRef ?? null,
     payloadRefsJson: JSON.stringify(record.payloadRefs),
+    sourceRefsJson: JSON.stringify(record.sourceRefs),
     tagsJson: JSON.stringify(record.tags),
+    memoryKind: record.memoryKind,
+    observedAt: record.observedAt ?? null,
+    capturedAt: record.capturedAt ?? null,
+    freshnessJson: JSON.stringify(record.freshness),
+    confidence: record.confidence,
+    supersedesJson: jsonOrNull(record.supersedes),
+    supersededBy: record.supersededBy ?? null,
+    alignmentJson: JSON.stringify(record.alignment),
     embeddingJson: jsonOrNull(record.embedding),
     ancestryJson: jsonOrNull(record.ancestry),
     createdAt: record.createdAt,
@@ -162,7 +199,22 @@ function deserializeMpMemoryRecord(row: Record<string, unknown>): MpMemoryRecord
     semanticGroupId: typeof row.semanticGroupId === "string" && row.semanticGroupId.length > 0 ? row.semanticGroupId : undefined,
     bodyRef: typeof row.bodyRef === "string" && row.bodyRef.length > 0 ? row.bodyRef : undefined,
     payloadRefs: parseJson<string[]>(typeof row.payloadRefsJson === "string" ? row.payloadRefsJson : null, []),
+    sourceRefs: parseJson<string[]>(typeof row.sourceRefsJson === "string" ? row.sourceRefsJson : null, []),
     tags: parseJson<string[]>(typeof row.tagsJson === "string" ? row.tagsJson : null, []),
+    memoryKind: String(row.memoryKind ?? "episodic") as MpMemoryRecord["memoryKind"],
+    observedAt: typeof row.observedAt === "string" && row.observedAt.length > 0 ? row.observedAt : undefined,
+    capturedAt: typeof row.capturedAt === "string" && row.capturedAt.length > 0 ? row.capturedAt : undefined,
+    freshness: parseJson(
+      typeof row.freshnessJson === "string" ? row.freshnessJson : null,
+      { status: "fresh" } as MpMemoryRecord["freshness"],
+    ),
+    confidence: String(row.confidence ?? "medium") as MpMemoryRecord["confidence"],
+    supersedes: parseJson<string[] | undefined>(row.supersedesJson as string | null, undefined),
+    supersededBy: typeof row.supersededBy === "string" && row.supersededBy.length > 0 ? row.supersededBy : undefined,
+    alignment: parseJson(
+      typeof row.alignmentJson === "string" ? row.alignmentJson : null,
+      { alignmentStatus: "unreviewed" } as MpMemoryRecord["alignment"],
+    ),
     embedding: parseJson(row.embeddingJson as string | null, undefined),
     ancestry: parseJson(row.ancestryJson as string | null, undefined),
     createdAt: String(row.createdAt ?? ""),
@@ -172,15 +224,12 @@ function deserializeMpMemoryRecord(row: Record<string, unknown>): MpMemoryRecord
 }
 
 export function createInMemoryMpLanceDbAdapter(): MpLanceDbAdapter {
-  const tables = new Map<string, Map<string, MpMemoryRecord>>();
-  const projectTables = new Map<string, InMemoryMpLanceProjectState>();
-
   function ensureTable(tableName: string): Map<string, MpMemoryRecord> {
     const normalized = assertNonEmpty(tableName, "MP Lance tableName");
-    let table = tables.get(normalized);
+    let table = IN_MEMORY_TABLES.get(normalized);
     if (!table) {
       table = new Map<string, MpMemoryRecord>();
-      tables.set(normalized, table);
+      IN_MEMORY_TABLES.set(normalized, table);
     }
     return table;
   }
@@ -195,7 +244,7 @@ export function createInMemoryMpLanceDbAdapter(): MpLanceDbAdapter {
         projectId: plan.projectId,
         tables: new Set(plan.tableDescriptors.map((descriptor) => descriptor.tableName)),
       };
-      projectTables.set(plan.projectId, state);
+      IN_MEMORY_PROJECT_TABLES.set(plan.projectId, state);
 
       return createMpLanceBootstrapReceipt({
         plan,
@@ -204,7 +253,7 @@ export function createInMemoryMpLanceDbAdapter(): MpLanceDbAdapter {
     },
 
     listProjectTables(projectId: string): string[] {
-      return [...(projectTables.get(assertNonEmpty(projectId, "MP Lance projectId"))?.tables ?? [])];
+      return [...(IN_MEMORY_PROJECT_TABLES.get(assertNonEmpty(projectId, "MP Lance projectId"))?.tables ?? [])];
     },
 
     upsertMemories(input: MpLanceUpsertMemoriesInput): void {
@@ -251,14 +300,14 @@ export function createInMemoryMpLanceDbAdapter(): MpLanceDbAdapter {
     searchMemories(input: MpLanceSearchRequest): MpLanceSearchResult {
       const tableNames = input.tableNames?.length
         ? [...new Set(input.tableNames.map((tableName) => tableName.trim()).filter(Boolean))]
-        : [...(projectTables.get(assertNonEmpty(input.projectId, "MP Lance projectId"))?.tables ?? [])];
+        : [...(IN_MEMORY_PROJECT_TABLES.get(assertNonEmpty(input.projectId, "MP Lance projectId"))?.tables ?? [])];
       const scopeLevels = input.scopeLevels?.length
         ? new Set(input.scopeLevels)
         : undefined;
       const hits: MpLanceSearchHit[] = [];
 
       for (const tableName of tableNames) {
-        const table = tables.get(tableName);
+        const table = IN_MEMORY_TABLES.get(tableName);
         if (!table) {
           continue;
         }
@@ -306,8 +355,8 @@ export function createLanceDbMpLanceDbAdapter(): MpLanceDbAdapter {
   const projectTables = new Map<string, RealMpLanceProjectState>();
   const tableRoots = new Map<string, string>();
   const connectionCache = new Map<string, Promise<{
-    connect: typeof import("@lancedb/lancedb").connect;
-    connection: import("@lancedb/lancedb").Connection;
+    connect: LanceDbDynamicModule["connect"];
+    connection: Awaited<ReturnType<LanceDbDynamicModule["connect"]>>;
   }>>();
 
   async function loadConnection(rootPath: string) {
@@ -316,7 +365,7 @@ export function createLanceDbMpLanceDbAdapter(): MpLanceDbAdapter {
     if (!cached) {
       cached = (async () => {
         await mkdir(normalizedRoot, { recursive: true });
-        const lancedb = await import("@lancedb/lancedb");
+        const lancedb = await import("@lancedb/lancedb") as LanceDbDynamicModule;
         return {
           connect: lancedb.connect,
           connection: await lancedb.connect(normalizedRoot),
@@ -328,7 +377,7 @@ export function createLanceDbMpLanceDbAdapter(): MpLanceDbAdapter {
   }
 
   async function createEmptySchema() {
-    const arrow = await import("apache-arrow");
+    const arrow = await import("apache-arrow") as Record<string, new (...args: unknown[]) => unknown>;
     const {
       Schema,
       Field,
@@ -352,13 +401,22 @@ export function createLanceDbMpLanceDbAdapter(): MpLanceDbAdapter {
       new Field("semanticGroupId", new Utf8(), true),
       new Field("bodyRef", new Utf8(), true),
       new Field("payloadRefsJson", new Utf8(), false),
+      new Field("sourceRefsJson", new Utf8(), false),
       new Field("tagsJson", new Utf8(), false),
+      new Field("memoryKind", new Utf8(), false),
+      new Field("observedAt", new Utf8(), true),
+      new Field("capturedAt", new Utf8(), true),
+      new Field("freshnessJson", new Utf8(), false),
+      new Field("confidence", new Utf8(), false),
+      new Field("supersedesJson", new Utf8(), true),
+      new Field("supersededBy", new Utf8(), true),
+      new Field("alignmentJson", new Utf8(), false),
       new Field("embeddingJson", new Utf8(), true),
       new Field("ancestryJson", new Utf8(), true),
       new Field("createdAt", new Utf8(), false),
       new Field("updatedAt", new Utf8(), false),
       new Field("metadataJson", new Utf8(), true),
-    ]);
+    ]) as unknown;
   }
 
   async function openTable(tableName: string) {

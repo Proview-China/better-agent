@@ -25,7 +25,21 @@ test("mp memory record keeps scope, ancestry, and source references intact", () 
     semanticGroupId: "semantic-group-1",
     bodyRef: "body:memory-1",
     payloadRefs: ["payload-1", "payload-1"],
+    sourceRefs: ["source:1", "source:1", "source:2"],
     tags: ["tag-a", "tag-a", "tag-b"],
+    memoryKind: "summary",
+    observedAt: "2026-04-08T00:00:00.000Z",
+    capturedAt: "2026-04-08T00:00:00.500Z",
+    freshness: {
+      status: "aging",
+      reason: "awaiting alignment",
+    },
+    confidence: "high",
+    supersedes: ["memory-legacy", "memory-legacy"],
+    alignment: {
+      alignmentStatus: "aligned",
+      lastAlignedAt: "2026-04-08T00:00:01.000Z",
+    },
     ancestry: {
       parentMemoryId: "memory-root",
       splitFromIds: ["memory-root"],
@@ -37,7 +51,13 @@ test("mp memory record keeps scope, ancestry, and source references intact", () 
 
   assert.deepEqual(record.lineagePath, ["agent.root", "agent.main"]);
   assert.deepEqual(record.payloadRefs, ["payload-1"]);
+  assert.deepEqual(record.sourceRefs, ["source:1", "source:2"]);
   assert.deepEqual(record.tags, ["tag-a", "tag-b"]);
+  assert.equal(record.memoryKind, "summary");
+  assert.equal(record.freshness.status, "aging");
+  assert.equal(record.confidence, "high");
+  assert.deepEqual(record.supersedes, ["memory-legacy"]);
+  assert.equal(record.alignment.alignmentStatus, "aligned");
   assert.equal(record.ancestry?.parentMemoryId, "memory-root");
   assert.deepEqual(record.ancestry?.splitFromIds, ["memory-root"]);
   assert.deepEqual(record.ancestry?.mergedFromIds, ["memory-peer"]);
@@ -54,7 +74,16 @@ test("mp semantic chunk enforces stable chunk bounds", () => {
     promotionState: "local_only",
     lineagePath: ["agent.main"],
     payloadRefs: ["payload-1"],
+    sourceRefs: ["source-1"],
     tags: [],
+    memoryKind: "semantic",
+    freshness: {
+      status: "fresh",
+    },
+    confidence: "medium",
+    alignment: {
+      alignmentStatus: "unreviewed",
+    },
     createdAt: "2026-04-08T00:00:00.000Z",
     updatedAt: "2026-04-08T00:00:01.000Z",
     chunkIndex: 0,

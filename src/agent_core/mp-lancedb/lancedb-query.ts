@@ -53,10 +53,34 @@ export function rerankMpLanceSearchResult(input: {
     "global",
   ];
   const scopeRank = new Map(preferredScopeOrder.map((scope, index) => [scope, index]));
+  const freshnessRank = new Map<MpMemoryRecord["freshness"]["status"], number>([
+    ["fresh", 0],
+    ["aging", 1],
+    ["stale", 2],
+    ["superseded", 3],
+  ]);
+  const alignmentRank = new Map<MpMemoryRecord["alignment"]["alignmentStatus"], number>([
+    ["aligned", 0],
+    ["unreviewed", 1],
+    ["drifted", 2],
+  ]);
+  const visibleHits = input.result.hits.filter((hit) => hit.record.freshness.status !== "superseded");
 
   return {
     ...input.result,
-    hits: [...input.result.hits].sort((left, right) => {
+    hits: [...visibleHits].sort((left, right) => {
+      const leftFreshnessRank = freshnessRank.get(left.record.freshness.status) ?? Number.MAX_SAFE_INTEGER;
+      const rightFreshnessRank = freshnessRank.get(right.record.freshness.status) ?? Number.MAX_SAFE_INTEGER;
+      if (leftFreshnessRank !== rightFreshnessRank) {
+        return leftFreshnessRank - rightFreshnessRank;
+      }
+
+      const leftAlignmentRank = alignmentRank.get(left.record.alignment.alignmentStatus) ?? Number.MAX_SAFE_INTEGER;
+      const rightAlignmentRank = alignmentRank.get(right.record.alignment.alignmentStatus) ?? Number.MAX_SAFE_INTEGER;
+      if (leftAlignmentRank !== rightAlignmentRank) {
+        return leftAlignmentRank - rightAlignmentRank;
+      }
+
       const leftPreferred = input.preferredAgentId && left.record.agentId === input.preferredAgentId ? 1 : 0;
       const rightPreferred = input.preferredAgentId && right.record.agentId === input.preferredAgentId ? 1 : 0;
       if (rightPreferred !== leftPreferred) {

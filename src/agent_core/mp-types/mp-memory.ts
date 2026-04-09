@@ -27,6 +27,48 @@ export interface MpEmbeddingPayload {
   metadata?: Record<string, unknown>;
 }
 
+export const MP_MEMORY_KINDS = [
+  "episodic",
+  "semantic",
+  "summary",
+  "directive",
+  "status_snapshot",
+] as const;
+export type MpMemoryKind = (typeof MP_MEMORY_KINDS)[number];
+
+export const MP_MEMORY_CONFIDENCE_LEVELS = [
+  "low",
+  "medium",
+  "high",
+] as const;
+export type MpMemoryConfidenceLevel = (typeof MP_MEMORY_CONFIDENCE_LEVELS)[number];
+
+export const MP_MEMORY_FRESHNESS_STATUSES = [
+  "fresh",
+  "aging",
+  "stale",
+  "superseded",
+] as const;
+export type MpMemoryFreshnessStatus = (typeof MP_MEMORY_FRESHNESS_STATUSES)[number];
+
+export const MP_MEMORY_ALIGNMENT_STATUSES = [
+  "unreviewed",
+  "aligned",
+  "drifted",
+] as const;
+export type MpMemoryAlignmentStatus = (typeof MP_MEMORY_ALIGNMENT_STATUSES)[number];
+
+export interface MpMemoryFreshness {
+  status: MpMemoryFreshnessStatus;
+  reason?: string;
+}
+
+export interface MpMemoryAlignment {
+  alignmentStatus: MpMemoryAlignmentStatus;
+  lastAlignedAt?: string;
+  reason?: string;
+}
+
 export interface MpMemoryRecord {
   memoryId: string;
   projectId: string;
@@ -44,7 +86,16 @@ export interface MpMemoryRecord {
   semanticGroupId?: string;
   bodyRef?: string;
   payloadRefs: string[];
+  sourceRefs: string[];
   tags: string[];
+  memoryKind: MpMemoryKind;
+  observedAt?: string;
+  capturedAt?: string;
+  freshness: MpMemoryFreshness;
+  confidence: MpMemoryConfidenceLevel;
+  supersedes?: string[];
+  supersededBy?: string;
+  alignment: MpMemoryAlignment;
   embedding?: MpEmbeddingPayload;
   ancestry?: MpChunkAncestry;
   createdAt: string;
@@ -52,10 +103,15 @@ export interface MpMemoryRecord {
   metadata?: Record<string, unknown>;
 }
 
-export interface CreateMpMemoryRecordInput extends Omit<MpMemoryRecord, "lineagePath" | "payloadRefs" | "tags"> {
+export interface CreateMpMemoryRecordInput extends Omit<MpMemoryRecord, "lineagePath" | "payloadRefs" | "sourceRefs" | "tags" | "memoryKind" | "freshness" | "confidence" | "alignment"> {
   lineagePath: string[];
   payloadRefs?: string[];
+  sourceRefs?: string[];
   tags?: string[];
+  memoryKind?: MpMemoryKind;
+  freshness?: MpMemoryFreshness;
+  confidence?: MpMemoryConfidenceLevel;
+  alignment?: MpMemoryAlignment;
 }
 
 export interface MpSemanticChunk extends MpMemoryRecord {
@@ -89,6 +145,14 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
   return normalized ? normalized : undefined;
 }
 
+function normalizeOptionalStringArray(values: string[] | undefined): string[] | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+  const normalized = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function normalizeStringArray(values: string[] | undefined, label: string, minimum = 0): string[] {
   const normalized = [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))];
   if (normalized.length < minimum) {
@@ -111,6 +175,49 @@ export function createMpChunkAncestry(input: MpChunkAncestry = {}): MpChunkAnces
     || ancestry.mergedFromIds?.length
     ? ancestry
     : undefined;
+}
+
+export function isMpMemoryKind(value: string): value is MpMemoryKind {
+  return MP_MEMORY_KINDS.includes(value as MpMemoryKind);
+}
+
+export function isMpMemoryConfidenceLevel(value: string): value is MpMemoryConfidenceLevel {
+  return MP_MEMORY_CONFIDENCE_LEVELS.includes(value as MpMemoryConfidenceLevel);
+}
+
+export function isMpMemoryFreshnessStatus(value: string): value is MpMemoryFreshnessStatus {
+  return MP_MEMORY_FRESHNESS_STATUSES.includes(value as MpMemoryFreshnessStatus);
+}
+
+export function isMpMemoryAlignmentStatus(value: string): value is MpMemoryAlignmentStatus {
+  return MP_MEMORY_ALIGNMENT_STATUSES.includes(value as MpMemoryAlignmentStatus);
+}
+
+export function createMpMemoryFreshness(input: MpMemoryFreshness = {
+  status: "fresh",
+}): MpMemoryFreshness {
+  const freshness: MpMemoryFreshness = {
+    status: input.status,
+    reason: normalizeOptionalString(input.reason),
+  };
+  if (!isMpMemoryFreshnessStatus(freshness.status)) {
+    throw new Error(`Unsupported MP memory freshness status: ${freshness.status}.`);
+  }
+  return freshness;
+}
+
+export function createMpMemoryAlignment(input: MpMemoryAlignment = {
+  alignmentStatus: "unreviewed",
+}): MpMemoryAlignment {
+  const alignment: MpMemoryAlignment = {
+    alignmentStatus: input.alignmentStatus,
+    lastAlignedAt: normalizeOptionalString(input.lastAlignedAt),
+    reason: normalizeOptionalString(input.reason),
+  };
+  if (!isMpMemoryAlignmentStatus(alignment.alignmentStatus)) {
+    throw new Error(`Unsupported MP memory alignment status: ${alignment.alignmentStatus}.`);
+  }
+  return alignment;
 }
 
 export function validateMpEmbeddingPayload(payload: MpEmbeddingPayload): void {
@@ -157,6 +264,15 @@ export function validateMpMemoryRecord(record: MpMemoryRecord): void {
   }
   normalizeStringArray(record.lineagePath, "MP memory lineagePath", 1);
   normalizeStringArray(record.payloadRefs, "MP memory payloadRefs", 1);
+  normalizeStringArray(record.sourceRefs, "MP memory sourceRefs", 1);
+  if (!isMpMemoryKind(record.memoryKind)) {
+    throw new Error(`Unsupported MP memory memoryKind: ${record.memoryKind}.`);
+  }
+  if (!isMpMemoryConfidenceLevel(record.confidence)) {
+    throw new Error(`Unsupported MP memory confidence: ${record.confidence}.`);
+  }
+  createMpMemoryFreshness(record.freshness);
+  createMpMemoryAlignment(record.alignment);
   if (record.branchRef !== undefined) {
     assertNonEmpty(record.branchRef, "MP memory branchRef");
   }
@@ -175,6 +291,16 @@ export function validateMpMemoryRecord(record: MpMemoryRecord): void {
   if (record.bodyRef !== undefined) {
     assertNonEmpty(record.bodyRef, "MP memory bodyRef");
   }
+  if (record.observedAt !== undefined) {
+    assertNonEmpty(record.observedAt, "MP memory observedAt");
+  }
+  if (record.capturedAt !== undefined) {
+    assertNonEmpty(record.capturedAt, "MP memory capturedAt");
+  }
+  if (record.supersededBy !== undefined) {
+    assertNonEmpty(record.supersededBy, "MP memory supersededBy");
+  }
+  normalizeOptionalStringArray(record.supersedes);
   if (record.embedding) {
     validateMpEmbeddingPayload(record.embedding);
   }
@@ -208,7 +334,20 @@ export function createMpMemoryRecord(input: CreateMpMemoryRecordInput): MpMemory
     semanticGroupId: normalizeOptionalString(input.semanticGroupId),
     bodyRef: normalizeOptionalString(input.bodyRef),
     payloadRefs: normalizeStringArray(input.payloadRefs, "MP memory payloadRefs", 1),
+    sourceRefs: normalizeStringArray(
+      input.sourceRefs ?? input.payloadRefs,
+      "MP memory sourceRefs",
+      1,
+    ),
     tags: normalizeStringArray(input.tags, "MP memory tags"),
+    memoryKind: input.memoryKind ?? "episodic",
+    observedAt: normalizeOptionalString(input.observedAt),
+    capturedAt: normalizeOptionalString(input.capturedAt),
+    freshness: createMpMemoryFreshness(input.freshness),
+    confidence: input.confidence ?? "medium",
+    supersedes: normalizeOptionalStringArray(input.supersedes),
+    supersededBy: normalizeOptionalString(input.supersededBy),
+    alignment: createMpMemoryAlignment(input.alignment),
     embedding: input.embedding,
     ancestry: createMpChunkAncestry(input.ancestry),
     createdAt: assertNonEmpty(input.createdAt, "MP memory createdAt"),

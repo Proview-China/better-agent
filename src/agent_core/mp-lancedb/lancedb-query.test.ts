@@ -56,7 +56,7 @@ test("mp lancedb query searches across bootstrap tables and dedupes by memory id
   assert.equal(result.dedupedCount, 1);
 });
 
-test("mp lancedb query rerank prefers same-agent hits before broader scope hits", () => {
+test("mp lancedb query rerank prefers fresh aligned same-agent hits before broader stale hits", () => {
   const reranked = rerankMpLanceSearchResult({
     result: {
       projectId: "project.praxis",
@@ -77,6 +77,12 @@ test("mp lancedb query rerank prefers same-agent hits before broader scope hits"
             lineagePath: ["agent.peer"],
             payloadRefs: ["payload-1"],
             tags: ["history"],
+            freshness: {
+              status: "stale",
+            },
+            alignment: {
+              alignmentStatus: "drifted",
+            },
             createdAt: "2026-04-08T00:00:00.000Z",
             updatedAt: "2026-04-08T00:00:01.000Z",
           }),
@@ -96,6 +102,12 @@ test("mp lancedb query rerank prefers same-agent hits before broader scope hits"
             lineagePath: ["agent.main"],
             payloadRefs: ["payload-2"],
             tags: ["history"],
+            freshness: {
+              status: "fresh",
+            },
+            alignment: {
+              alignmentStatus: "aligned",
+            },
             createdAt: "2026-04-08T00:00:00.000Z",
             updatedAt: "2026-04-08T00:00:01.000Z",
           }),

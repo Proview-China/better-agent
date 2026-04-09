@@ -83,6 +83,21 @@ function createMemoryId(storedSection: CmpStoredSection): string {
   return `memory:${storedSection.id}`;
 }
 
+function inferMpMemoryKind(storedSection: CmpStoredSection): MpMemoryRecord["memoryKind"] {
+  switch (storedSection.metadata?.sectionKind) {
+    case "instruction":
+      return "directive";
+    case "summary":
+      return "summary";
+    case "status_snapshot":
+      return "status_snapshot";
+    case "runtime_context":
+      return "episodic";
+    default:
+      return "semantic";
+  }
+}
+
 export function inferMpScopeFromStoredSection(storedSection: CmpStoredSection): MpScopeLevel {
   const metadataScope = readMetadataScopeLevel(storedSection);
   if (metadataScope) {
@@ -216,7 +231,22 @@ export function createMpMemoryRecordFromStoredSection(
       input.storedSection.storageRef,
       assertNonEmpty(input.checkedSnapshotRef, "MP lowering checkedSnapshotRef"),
     ],
+    sourceRefs: [
+      input.storedSection.storageRef,
+      assertNonEmpty(input.checkedSnapshotRef, "MP lowering checkedSnapshotRef"),
+    ],
     tags: deriveMpChunkTags(input.storedSection, input.policy),
+    memoryKind: inferMpMemoryKind(input.storedSection),
+    observedAt: input.storedSection.persistedAt,
+    capturedAt: input.createdAt ?? input.storedSection.persistedAt,
+    freshness: {
+      status: "fresh",
+      reason: "materialized from stored section",
+    },
+    confidence: input.storedSection.metadata?.sectionFidelity === "checked" ? "high" : "medium",
+    alignment: {
+      alignmentStatus: "unreviewed",
+    },
     ancestry: deriveMpChunkAncestry(input.storedSection),
     createdAt: input.createdAt ?? input.storedSection.persistedAt,
     updatedAt: input.updatedAt ?? input.storedSection.updatedAt,

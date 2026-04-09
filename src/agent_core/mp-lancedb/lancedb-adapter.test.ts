@@ -51,6 +51,8 @@ test("mp in-memory lancedb adapter bootstraps project tables and upserts memory 
   assert(tables.includes(projectTable));
   assert.equal(stored?.memoryId, "memory-1");
   assert.equal(stored?.scopeLevel, "project");
+  assert.equal(stored?.freshness.status, "fresh");
+  assert.equal(stored?.alignment.alignmentStatus, "unreviewed");
 });
 
 test("mp in-memory lancedb adapter archives a memory in place", async () => {
@@ -142,4 +144,5 @@ test("mp real lancedb adapter can bootstrap local tables and round-trip a record
   assert.equal(stored?.memoryId, "memory-real");
   assert.equal(stored?.metadata?.sectionKind, "runtime_context");
   assert.equal(search.hits[0]?.memoryId, "memory-real");
+  assert.equal(stored?.memoryKind, "episodic");
 });
