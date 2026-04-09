@@ -393,6 +393,7 @@ async function collectScopedFiles(params: {
   allowedPathPatterns: readonly string[];
 }): Promise<Array<{ absolutePath: string; relativePath: string }>> {
   const target = await resolveWorkspaceTarget(params.workspaceRoot, params.basePath);
+  const workspaceReal = await realpath(params.workspaceRoot);
   const targetStats = await stat(target.absolutePath);
   const candidates = targetStats.isDirectory()
     ? await walkWorkspaceFiles(target.absolutePath)
@@ -400,7 +401,7 @@ async function collectScopedFiles(params: {
 
   return candidates
     .map((absolutePath) => {
-      const relativePath = normalizePathForMatch(path.relative(params.workspaceRoot, absolutePath));
+      const relativePath = normalizePathForMatch(path.relative(workspaceReal, absolutePath));
       return { absolutePath, relativePath };
     })
     .filter((entry) => matchesPathPattern(entry.relativePath, params.allowedPathPatterns));
@@ -459,9 +460,15 @@ function isTypeScriptSourceFile(filePath: string): boolean {
 }
 
 interface TypeScriptWorkspaceContext {
+  workspaceRoot: string;
   service: import("typescript").LanguageService;
   compilerOptions: import("typescript").CompilerOptions;
   fileNames: string[];
+}
+
+function canonicalizeWorkspacePath(filePath: string): string {
+  const resolvedPath = path.resolve(filePath);
+  return ts.sys.realpath?.(resolvedPath) ?? resolvedPath;
 }
 
 function loadTypeScriptCompilerOptions(
@@ -476,7 +483,7 @@ function loadTypeScriptCompilerOptions(
     return {
       allowJs: true,
       target: ts.ScriptTarget.ESNext,
-      module: ts.ModuleKind.ESNext,
+      module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext,
       jsx: ts.JsxEmit.Preserve,
     };
@@ -487,7 +494,7 @@ function loadTypeScriptCompilerOptions(
     return {
       allowJs: true,
       target: ts.ScriptTarget.ESNext,
-      module: ts.ModuleKind.ESNext,
+      module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext,
       jsx: ts.JsxEmit.Preserve,
     };
@@ -509,18 +516,19 @@ function createTypeScriptWorkspaceContext(params: {
   files: Array<{ absolutePath: string; relativePath: string }>;
   extraFiles?: string[];
 }): TypeScriptWorkspaceContext | undefined {
+  const workspaceRoot = canonicalizeWorkspacePath(params.workspaceRoot);
   const baseFileNames = params.files
-    .map((entry) => entry.absolutePath)
+    .map((entry) => canonicalizeWorkspacePath(entry.absolutePath))
     .filter(isTypeScriptSourceFile);
   const extraFileNames = (params.extraFiles ?? [])
-    .map((filePath) => path.resolve(params.workspaceRoot, filePath))
+    .map((filePath) => canonicalizeWorkspacePath(path.resolve(workspaceRoot, filePath)))
     .filter(isTypeScriptSourceFile);
   const fileNames = [...new Set([...baseFileNames, ...extraFileNames])];
   if (fileNames.length === 0) {
     return undefined;
   }
 
-  const compilerOptions = loadTypeScriptCompilerOptions(params.workspaceRoot);
+  const compilerOptions = loadTypeScriptCompilerOptions(workspaceRoot);
   const versions = new Map<string, string>();
   const host: import("typescript").LanguageServiceHost = {
     getCompilationSettings: () => compilerOptions,
@@ -532,7 +540,7 @@ function createTypeScriptWorkspaceContext(params: {
         ? ts.ScriptSnapshot.fromString(content)
         : undefined;
     },
-    getCurrentDirectory: () => params.workspaceRoot,
+    getCurrentDirectory: () => workspaceRoot,
     getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
     fileExists: ts.sys.fileExists,
     readFile: ts.sys.readFile,
@@ -543,6 +551,7 @@ function createTypeScriptWorkspaceContext(params: {
   };
 
   return {
+    workspaceRoot,
     service: ts.createLanguageService(host, ts.createDocumentRegistry()),
     compilerOptions,
     fileNames,
@@ -1501,7 +1510,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
                   item.fileName,
                 );
                 const relativePath = normalizePathForMatch(
-                  path.relative(this.#workspaceRoot, item.fileName),
+                  path.relative(typeScriptContext.workspaceRoot, item.fileName),
                 );
                 const location = sourceFile
                   ? toLineCharacter(sourceFile, item.textSpan.start)
@@ -1634,7 +1643,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
                   entry.fileName,
                 );
                 const relativePath = normalizePathForMatch(
-                  path.relative(this.#workspaceRoot, entry.fileName),
+                  path.relative(typeScriptContext.workspaceRoot, entry.fileName),
                 );
                 const location = definitionSource
                   ? toLineCharacter(definitionSource, entry.textSpan.start)
@@ -1675,7 +1684,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
                   entry.fileName,
                 );
                 const relativePath = normalizePathForMatch(
-                  path.relative(this.#workspaceRoot, entry.fileName),
+                  path.relative(typeScriptContext.workspaceRoot, entry.fileName),
                 );
                 const location = referenceSource
                   ? toLineCharacter(referenceSource, entry.textSpan.start)
