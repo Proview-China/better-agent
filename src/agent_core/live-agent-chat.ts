@@ -1092,6 +1092,190 @@ async function executeCoreCapabilityRequestFast(
   });
 }
 
+function extractFirstHttpUrl(text: string): string | undefined {
+  const match = text.match(/https?:\/\/[^\s)\]}>"'`]+/iu);
+  return match?.[0];
+}
+
+function buildGoogleSearchQueryFromUserMessage(userMessage: string): string | undefined {
+  const normalized = userMessage.replace(/\s+/gu, " ").trim();
+  const searchMatch = normalized.match(/搜索(?:一下|下)?(.+?)(?:[,，。]|并且|而且|然后|同时|$)/u);
+  const rawQuery = searchMatch?.[1]?.trim()
+    ?? normalized.match(/查(?:一下|下)?(.+?)(?:[,，。]|并且|而且|然后|同时|$)/u)?.[1]?.trim();
+  const cleaned = rawQuery
+    ?.replace(/^(给我|帮我|请|一下|一下子)\s*/u, "")
+    .replace(/\s*(给我|帮我|请)$/u, "")
+    .trim();
+  if (!cleaned) {
+    return undefined;
+  }
+  const needsUsdPerOunce = /(美元\/盎司|美刀\/盎司|usd\/oz|USD\/oz|XAU\/USD)/u.test(normalized);
+  if (needsUsdPerOunce && !/(美元\/盎司|美刀\/盎司|usd\/oz|USD\/oz|XAU\/USD)/u.test(cleaned)) {
+    return `${cleaned} 美元/盎司`;
+  }
+  return cleaned;
+}
+
+interface HeuristicBrowserIntent {
+  url: string;
+  allowedDomains?: string[];
+  responseText: string;
+  reason: string;
+}
+
+function inferHeuristicBrowserIntent(userMessage: string): HeuristicBrowserIntent | undefined {
+  const normalized = userMessage.trim();
+  const asksForBrowser = /(浏览器|browser|自动化|打开|点开|网页|google\.com|截图|可视化)/iu.test(normalized);
+  if (!asksForBrowser) {
+    return undefined;
+  }
+
+  const explicitUrl = extractFirstHttpUrl(normalized);
+  if (explicitUrl) {
+    let allowedDomains: string[] | undefined;
+    try {
+      const parsed = new URL(explicitUrl);
+      allowedDomains = parsed.hostname ? [parsed.hostname] : undefined;
+    } catch {
+      allowedDomains = undefined;
+    }
+    return {
+      url: explicitUrl,
+      allowedDomains,
+      responseText: "我先按你的要求打开目标网页。",
+      reason: "User explicitly requested browser automation for a concrete URL.",
+    };
+  }
+
+  if (/google\.com/iu.test(normalized) && /(搜索|查一下|查下|检索)/u.test(normalized)) {
+    const query = buildGoogleSearchQueryFromUserMessage(normalized) ?? "国际金价 美元/盎司";
+    return {
+      url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+      allowedDomains: ["google.com", "www.google.com"],
+      responseText: "我先打开 Google 并按你的要求搜索。",
+      reason: "User explicitly requested browser automation on google.com with a concrete search intent.",
+    };
+  }
+
+  return undefined;
+}
+
+function inferDeterministicCoreActionEnvelope(
+  state: LiveCliState,
+  userMessage: string,
+): CoreActionEnvelope | undefined {
+  const available = new Set(
+    state.runtime.capabilityPool.listCapabilities().map((manifest) => manifest.capabilityKey),
+  );
+  if (available.has("browser.playwright")) {
+    const browserIntent = inferHeuristicBrowserIntent(userMessage);
+    if (browserIntent) {
+      return {
+        action: "capability_call",
+        responseText: browserIntent.responseText,
+        capabilityRequest: {
+          capabilityKey: "browser.playwright",
+          reason: browserIntent.reason,
+          requestedTier: "B2",
+          timeoutMs: 20_000,
+          input: {
+            action: "navigate",
+            url: browserIntent.url,
+            ...(browserIntent.allowedDomains
+              ? { allowedDomains: browserIntent.allowedDomains }
+              : {}),
+          },
+        },
+      };
+    }
+  }
+  return undefined;
+}
+
+function isEmptyCorePlaceholderAnswer(text: string | undefined): boolean {
+  if (!text) {
+    return true;
+  }
+  return text.trim() === "" || /^Core 没有返回正文，但链路已经跑完。?$/u.test(text.trim());
+}
+
+function extractFirstMatch(text: string, pattern: RegExp): string | undefined {
+  const match = text.match(pattern);
+  return match?.[1]?.trim();
+}
+
+function synthesizeUserFacingToolAnswer(
+  capabilityKey: string,
+  output: unknown,
+  executionStatus?: string,
+  executionError?: unknown,
+): string | undefined {
+  const normalized = output && typeof output === "object"
+    ? output as Record<string, unknown>
+    : undefined;
+  if (capabilityKey !== "browser.playwright") {
+    return undefined;
+  }
+  const errorRecord = executionError && typeof executionError === "object"
+    ? executionError as Record<string, unknown>
+    : undefined;
+  const errorMessage = typeof errorRecord?.message === "string" ? errorRecord.message : "";
+  const toolText = typeof normalized?.text === "string" ? normalized.text : "";
+  const action = typeof normalized?.action === "string" ? normalized.action : "browser.playwright";
+  const launchEvidence = normalized?.launchEvidence && typeof normalized.launchEvidence === "object"
+    ? normalized.launchEvidence as Record<string, unknown>
+    : undefined;
+  const processVerifiedHeaded = typeof launchEvidence?.processVerifiedHeaded === "boolean"
+    ? launchEvidence.processVerifiedHeaded
+    : undefined;
+  const requestedHeadless = typeof launchEvidence?.requestedHeadless === "boolean"
+    ? launchEvidence.requestedHeadless
+    : (typeof normalized?.headless === "boolean" ? normalized.headless : undefined);
+  const pageUrl = typeof normalized?.pageUrl === "string"
+    ? normalized.pageUrl
+    : extractFirstMatch(toolText, /^- Page URL:\s+(.+)$/mu);
+  const pageTitle = typeof normalized?.pageTitle === "string"
+    ? normalized.pageTitle
+    : extractFirstMatch(toolText, /^- Page Title:\s+(.+)$/mu);
+  const snapshotRef = extractFirstMatch(toolText, /^- \[Snapshot\]\((.+)\)$/mu);
+  const imageCount = typeof normalized?.imageCount === "number" ? normalized.imageCount : 0;
+  const snapshotCaptured = Boolean(normalized?.snapshotCaptured);
+  const interstitialRecovered = Boolean(normalized?.interstitialRecovered);
+
+  if (executionStatus && executionStatus !== "success" && executionStatus !== "partial") {
+    return [
+      `浏览器自动化这一步没有成功完成。`,
+      errorMessage ? `失败原因：${errorMessage}` : undefined,
+    ].filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+  if (pageUrl?.includes("/sorry/")) {
+    return [
+      `浏览器自动化没有完成用户要的业务目标。`,
+      `当前打开到的页面是 Google 的拦截/验证页，而不是正常搜索结果页。`,
+      pageUrl ? `页面地址：${pageUrl}` : undefined,
+      pageTitle ? `页面标题：${pageTitle}` : undefined,
+      snapshotRef ? `已生成页面快照：${snapshotRef}` : undefined,
+      imageCount > 0 ? `已返回 ${imageCount} 张截图。` : undefined,
+    ].filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+  return [
+    `浏览器自动化已经执行成功，这一步实际完成了 \`${action}\`。`,
+    requestedHeadless === false
+      ? processVerifiedHeaded === true
+        ? "这次走的是有头路径，并且进程级证据表明实际 Chrome 命令行不含 `--headless`。"
+        : "这次请求了有头路径，但当前还没有拿到足够的进程级证据来证明浏览器一定是可见窗口。"
+      : undefined,
+    pageUrl ? `页面地址：${pageUrl}` : undefined,
+    pageTitle ? `页面标题：${pageTitle}` : undefined,
+    interstitialRecovered ? "初始导航曾短暂落到拦截页，但后续快照已经恢复到正常页面。" : undefined,
+    snapshotCaptured ? "导航后已自动补抓一次页面快照，便于后续继续读取结果。" : undefined,
+    snapshotRef ? `已生成页面快照：${snapshotRef}` : undefined,
+    imageCount > 0 ? `已返回 ${imageCount} 张截图。` : undefined,
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
 async function runCoreTurn(
   state: LiveCliState,
   userMessage: string,
@@ -1104,7 +1288,8 @@ async function runCoreTurn(
     actionEnvelope = await runCoreActionPlanner(state, userMessage);
     rawAnswer = JSON.stringify(actionEnvelope);
   } catch {
-    actionEnvelope = undefined;
+    actionEnvelope = inferDeterministicCoreActionEnvelope(state, userMessage);
+    rawAnswer = actionEnvelope ? JSON.stringify(actionEnvelope) : "";
   }
   if (!actionEnvelope) {
     const fallback = await runCoreModelPass({
@@ -1122,7 +1307,7 @@ async function runCoreTurn(
     try {
       actionEnvelope = parseCoreActionEnvelope(rawAnswer);
     } catch {
-      actionEnvelope = undefined;
+      actionEnvelope = inferDeterministicCoreActionEnvelope(state, userMessage);
     }
     if (actionEnvelope?.action === "reply") {
       return {
@@ -1137,25 +1322,27 @@ async function runCoreTurn(
         ],
       };
     }
-    const tapRequest = parseTapRequest(rawAnswer);
-    if (!tapRequest) {
-      return {
-        ...fallback,
-        answer: extractResponseTextMaybe(rawAnswer),
-        plannerRawAnswer: rawAnswer,
+    if (!(actionEnvelope?.action === "capability_call" && actionEnvelope.capabilityRequest)) {
+      const tapRequest = parseTapRequest(rawAnswer);
+      if (!tapRequest) {
+        return {
+          ...fallback,
+          answer: extractResponseTextMaybe(rawAnswer),
+          plannerRawAnswer: rawAnswer || (actionEnvelope ? JSON.stringify(actionEnvelope) : rawAnswer),
+        };
+      }
+      actionEnvelope = {
+        action: "capability_call",
+        responseText: rawAnswer,
+        capabilityRequest: {
+          capabilityKey: tapRequest.capabilityKey,
+          reason: `Core requested ${tapRequest.capabilityKey} from live CLI bridge.`,
+          input: tapRequest.input,
+          requestedTier: "B0",
+          timeoutMs: readPositiveInteger(tapRequest.input.timeoutMs),
+        },
       };
     }
-    actionEnvelope = {
-      action: "capability_call",
-      responseText: rawAnswer,
-      capabilityRequest: {
-        capabilityKey: tapRequest.capabilityKey,
-        reason: `Core requested ${tapRequest.capabilityKey} from live CLI bridge.`,
-        input: tapRequest.input,
-        requestedTier: "B0",
-        timeoutMs: readPositiveInteger(tapRequest.input.timeoutMs),
-      },
-    };
   }
 
   if (actionEnvelope?.action === "capability_call" && actionEnvelope.capabilityRequest) {
@@ -1222,9 +1409,18 @@ async function runCoreTurn(
       config,
       inputImageUrls,
     });
-    const followupAnswer = extractResponseTextMaybe(followup.answer?.trim() ?? "")
-      || actionEnvelope.responseText
-      || rawAnswer;
+    const modelFollowupAnswer = extractResponseTextMaybe(followup.answer?.trim() ?? "");
+    const synthesizedToolAnswer = synthesizeUserFacingToolAnswer(
+      toolResultCapabilityKey,
+      resolvedToolExecution.output,
+      resolvedToolExecution.status,
+      resolvedToolExecution.error,
+    );
+    const followupAnswer = !isEmptyCorePlaceholderAnswer(modelFollowupAnswer)
+      ? modelFollowupAnswer
+      : synthesizedToolAnswer
+        || actionEnvelope.responseText
+        || rawAnswer;
       return {
         runId: followup.runId,
         answer: followupAnswer,

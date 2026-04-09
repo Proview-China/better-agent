@@ -275,6 +275,7 @@ export interface BrowserPlaywrightRouteContext {
 
 export interface BrowserPlaywrightConnectInput {
   connectionId?: string;
+  workspaceRoot: string;
   headless: boolean;
   browser: "chrome" | "chromium" | "firefox" | "webkit";
   isolated: boolean;
@@ -303,11 +304,25 @@ export interface BrowserPlaywrightSessionLike {
     toolName: string;
     arguments?: Record<string, unknown>;
   }): Promise<BrowserPlaywrightToolCallResult>;
+  getLaunchEvidence?(): Promise<BrowserPlaywrightLaunchEvidence | undefined>;
   disconnect(): Promise<void>;
 }
 
 export interface BrowserPlaywrightRuntimeLike {
   use(input: BrowserPlaywrightConnectInput): Promise<BrowserPlaywrightSessionLike>;
+}
+
+export interface BrowserPlaywrightLaunchEvidence {
+  requestedHeadless: boolean;
+  appliedHeadless: boolean;
+  requestedIsolated: boolean;
+  appliedIsolated: boolean;
+  verification: "process" | "config" | "unverified";
+  processVerifiedHeaded?: boolean;
+  processSample?: string[];
+  configPath?: string;
+  userDataDir?: string;
+  proxyServer?: string;
 }
 
 export interface PreparedRepoWriteState {
@@ -433,10 +448,18 @@ export interface NormalizedBrowserPlaywrightInput {
     | "list_tools"
     | "disconnect"
     | "navigate"
+    | "navigate_back"
     | "snapshot"
     | "screenshot"
     | "click"
+    | "hover"
     | "type"
+    | "press_key"
+    | "select_option"
+    | "drag"
+    | "fill_form"
+    | "handle_dialog"
+    | "resize"
     | "wait_for"
     | "console_messages"
     | "network_requests"
@@ -459,6 +482,16 @@ export interface NormalizedBrowserPlaywrightInput {
 export interface PreparedBrowserPlaywrightState {
   input: NormalizedBrowserPlaywrightInput;
   scope?: AccessRequestScope;
+}
+
+export interface NormalizedBrowserPlaywrightToolResult {
+  text?: string;
+  truncated: boolean;
+  imageUrls: string[];
+  imageCount: number;
+  pageUrl?: string;
+  pageTitle?: string;
+  blockedByInterstitial: boolean;
 }
 
 export interface TodoEntry {

@@ -51,6 +51,7 @@ function createPlan(overrides: Partial<CapabilityInvocationPlan>): CapabilityInv
 function createFakeBrowserPlaywrightRuntime() {
   const calls: Array<{ toolName: string; arguments?: Record<string, unknown> }> = [];
   const uses: unknown[] = [];
+  let lastNavigateUrl = "";
 
   return {
     calls,
@@ -71,6 +72,58 @@ function createFakeBrowserPlaywrightRuntime() {
           },
           async call(toolInput: { toolName: string; arguments?: Record<string, unknown> }) {
             calls.push(toolInput);
+            if (toolInput.toolName === "browser_navigate" && String(toolInput.arguments?.url ?? "").includes("google.com")) {
+              lastNavigateUrl = String(toolInput.arguments?.url ?? "");
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: [
+                      "### Page",
+                      "- Page URL: https://www.google.com/sorry/index?continue=https://www.google.com/search?q=test",
+                      "- Page Title: Google sorry",
+                      "### Snapshot",
+                      "- [Snapshot](.playwright-mcp/page-google-sorry.yml)",
+                    ].join("\n"),
+                  },
+                ],
+              };
+            }
+            if (toolInput.toolName === "browser_navigate") {
+              lastNavigateUrl = String(toolInput.arguments?.url ?? "");
+            }
+            if (toolInput.toolName === "browser_snapshot") {
+              if (lastNavigateUrl.includes("google.com")) {
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: [
+                        "### Page",
+                        "- Page URL: https://www.google.com/sorry/index?continue=https://www.google.com/search?q=test",
+                        "- Page Title: Google sorry",
+                        "### Snapshot",
+                        "- checkbox \"I'm not a robot\"",
+                      ].join("\n"),
+                    },
+                  ],
+                };
+              }
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: [
+                      "### Page",
+                      "- Page URL: https://example.com/",
+                      "- Page Title: Example Domain",
+                      "### Snapshot",
+                      "- heading \"Example Domain\" [level=1]",
+                    ].join("\n"),
+                  },
+                ],
+              };
+            }
             if (toolInput.toolName === "browser_take_screenshot") {
               return {
                 content: [
@@ -755,6 +808,9 @@ test("browser.playwright adapter normalizes navigate and screenshot actions thro
   assert.equal((navigated.output as { toolName?: string }).toolName, "browser_navigate");
   assert.equal((navigated.output as { selectedBackend?: string }).selectedBackend, "openai-codex-browser-mcp-style");
   assert.equal(fake.calls[0]?.toolName, "browser_navigate");
+  assert.equal(fake.calls[1]?.toolName, "browser_snapshot");
+  assert.equal((navigated.output as { snapshotCaptured?: boolean }).snapshotCaptured, true);
+  assert.match(String((navigated.output as { text?: string }).text), /Post-navigation snapshot/u);
 
   const screenshot = await adapter.execute(await adapter.prepare(
     createPlan({
@@ -776,7 +832,7 @@ test("browser.playwright adapter normalizes navigate and screenshot actions thro
   ));
   assert.equal(screenshot.status, "success");
   assert.match(String((screenshot.output as { imageUrls?: string[] }).imageUrls?.[0]), /^data:image\/png;base64,/);
-  assert.equal(fake.calls[1]?.toolName, "browser_take_screenshot");
+  assert.equal(fake.calls[2]?.toolName, "browser_take_screenshot");
 });
 
 test("browser.playwright adapter blocks disallowed domains and file uploads by default", async () => {
@@ -832,6 +888,242 @@ test("browser.playwright adapter blocks disallowed domains and file uploads by d
     ),
     /blocks file uploads/i,
   );
+
+  await assert.rejects(
+    () => adapter.prepare(
+      createPlan({
+        capabilityKey: "browser.playwright",
+        operation: "raw",
+        input: {
+          action: "raw",
+          toolName: "browser_run_code",
+          arguments: {
+            code: "async (page) => page.goto('https://example.com')",
+          },
+        },
+        metadata: {
+          grantedScope: {
+            pathPatterns: ["workspace/**"],
+            allowedOperations: ["read", "exec", "browser.playwright"],
+          },
+        },
+      }),
+      createLease("binding.browser.playwright.blocked-raw"),
+    ),
+    /blocked unreviewed MCP tool/i,
+  );
+});
+
+test("browser.playwright adapter surfaces anti-bot interstitials as failed business outcomes", async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-browser-interstitial-"));
+  const fake = createFakeBrowserPlaywrightRuntime();
+  const adapter = createTapToolingCapabilityAdapter("browser.playwright", {
+    workspaceRoot,
+    browserPlaywrightRuntime: fake.runtime,
+  });
+
+  const result = await adapter.execute(await adapter.prepare(
+    createPlan({
+      capabilityKey: "browser.playwright",
+      operation: "navigate",
+      input: {
+        action: "navigate",
+        url: "https://www.google.com/search?q=test",
+        allowedDomains: ["google.com", "www.google.com"],
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["read", "exec", "browser.playwright"],
+        },
+      },
+    }),
+    createLease("binding.browser.playwright.interstitial"),
+  ));
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.code, "browser_playwright_navigation_interstitial");
+  assert.match(String((result.output as { pageUrl?: string }).pageUrl), /google\.com\/sorry/);
+});
+
+test("browser.playwright adapter can recover if an interstitial clears before the follow-up snapshot", async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-browser-interstitial-recovery-"));
+  let navigateHitInterstitial = false;
+  const adapter = createTapToolingCapabilityAdapter("browser.playwright", {
+    workspaceRoot,
+    browserPlaywrightRuntime: {
+      async use() {
+        return {
+          connectionId: "browser-playwright-recovery",
+          async tools() {
+            return { tools: [] };
+          },
+          async call(toolInput) {
+            if (toolInput.toolName === "browser_navigate") {
+              navigateHitInterstitial = true;
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: [
+                      "### Page",
+                      "- Page URL: https://www.google.com/sorry/index?continue=https://www.google.com/search?q=test",
+                      "- Page Title: Google sorry",
+                    ].join("\n"),
+                  },
+                ],
+              };
+            }
+            if (toolInput.toolName === "browser_wait_for") {
+              return {
+                content: [{ type: "text", text: "waited" }],
+              };
+            }
+            if (toolInput.toolName === "browser_snapshot" && navigateHitInterstitial) {
+              navigateHitInterstitial = false;
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: [
+                      "### Page",
+                      "- Page URL: https://www.google.com/search?q=test",
+                      "- Page Title: 国际金价 美元/盎司 - Google 搜索",
+                      "### Snapshot",
+                      "- heading \"国际金价 美元/盎司\" [level=1]",
+                    ].join("\n"),
+                  },
+                ],
+              };
+            }
+            return {
+              content: [{ type: "text", text: "ok" }],
+            };
+          },
+          async disconnect() {
+            return;
+          },
+        };
+      },
+    },
+  });
+
+  const result = await adapter.execute(await adapter.prepare(
+    createPlan({
+      capabilityKey: "browser.playwright",
+      operation: "navigate",
+      input: {
+        action: "navigate",
+        url: "https://www.google.com/search?q=test",
+        allowedDomains: ["google.com", "www.google.com"],
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["read", "exec", "browser.playwright"],
+        },
+      },
+    }),
+    createLease("binding.browser.playwright.interstitial-recovery"),
+  ));
+
+  assert.equal(result.status, "success");
+  assert.equal((result.output as { interstitialRecovered?: boolean }).interstitialRecovered, true);
+  assert.match(String((result.output as { pageUrl?: string }).pageUrl), /google\.com\/search/);
+});
+
+test("browser.playwright raw still allows reviewed MCP tools", async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-browser-raw-"));
+  const fake = createFakeBrowserPlaywrightRuntime();
+  const adapter = createTapToolingCapabilityAdapter("browser.playwright", {
+    workspaceRoot,
+    browserPlaywrightRuntime: fake.runtime,
+  });
+
+  const hovered = await adapter.execute(await adapter.prepare(
+    createPlan({
+      capabilityKey: "browser.playwright",
+      operation: "raw",
+      input: {
+        action: "raw",
+        toolName: "browser_hover",
+        arguments: {
+          ref: "node-1",
+        },
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["read", "exec", "browser.playwright"],
+        },
+      },
+    }),
+    createLease("binding.browser.playwright.raw-hover"),
+  ));
+
+  assert.equal(hovered.status, "success");
+  assert.equal(fake.calls[0]?.toolName, "browser_hover");
+});
+
+test("browser.playwright adapter promotes reviewed actions out of raw mode", async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-browser-actions-"));
+  const fake = createFakeBrowserPlaywrightRuntime();
+  const adapter = createTapToolingCapabilityAdapter("browser.playwright", {
+    workspaceRoot,
+    browserPlaywrightRuntime: fake.runtime,
+  });
+
+  const scope = {
+    pathPatterns: ["workspace/**"],
+    allowedOperations: ["read", "exec", "browser.playwright"],
+  };
+
+  const press = await adapter.execute(await adapter.prepare(
+    createPlan({
+      capabilityKey: "browser.playwright",
+      operation: "press_key",
+      input: {
+        action: "press_key",
+        key: "Enter",
+      },
+      metadata: { grantedScope: scope },
+    }),
+    createLease("binding.browser.playwright.press"),
+  ));
+  assert.equal(press.status, "success");
+  assert.equal(fake.calls[0]?.toolName, "browser_press_key");
+
+  const resize = await adapter.execute(await adapter.prepare(
+    createPlan({
+      capabilityKey: "browser.playwright",
+      operation: "resize",
+      input: {
+        action: "resize",
+        width: 1440,
+        height: 900,
+      },
+      metadata: { grantedScope: scope },
+    }),
+    createLease("binding.browser.playwright.resize"),
+  ));
+  assert.equal(resize.status, "success");
+  assert.equal(fake.calls[1]?.toolName, "browser_resize");
+
+  const select = await adapter.execute(await adapter.prepare(
+    createPlan({
+      capabilityKey: "browser.playwright",
+      operation: "select_option",
+      input: {
+        action: "select_option",
+        ref: "select-1",
+        values: ["openai"],
+      },
+      metadata: { grantedScope: scope },
+    }),
+    createLease("binding.browser.playwright.select"),
+  ));
+  assert.equal(select.status, "success");
+  assert.equal(fake.calls[2]?.toolName, "browser_select_option");
 });
 
 test("skill.doc.generate adapter writes repo-local markdown content", async () => {

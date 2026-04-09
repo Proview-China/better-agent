@@ -14,6 +14,9 @@ import { createCapabilityResultEnvelope } from "../../capability-result/index.js
 import type { TapToolingBaselineCapabilityKey } from "../../capability-package/index.js";
 import {
   buildBrowserPlaywrightSessionFingerprint,
+  maybeCaptureBrowserPlaywrightPostNavigateSnapshot,
+  maybeRecoverBrowserPlaywrightInterstitial,
+  mergeBrowserPlaywrightToolResults,
   normalizeBrowserPlaywrightToolResult,
   SharedBrowserPlaywrightRuntime,
 } from "./browser-playwright.js";
@@ -1950,7 +1953,7 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
   readonly #prepared = new Map<string, PreparedBrowserPlaywrightState>();
 
   constructor(private readonly options: TapToolingAdapterOptions) {
-    this.#runtime = options.browserPlaywrightRuntime ?? new SharedBrowserPlaywrightRuntime();
+    this.#runtime = options.browserPlaywrightRuntime ?? new SharedBrowserPlaywrightRuntime(options.workspaceRoot);
   }
 
   supports(plan: CapabilityInvocationPlan): boolean {
@@ -2035,6 +2038,7 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
       }
       this.#session = await this.#runtime.use({
         connectionId: "browser-playwright-shared",
+        workspaceRoot: this.options.workspaceRoot,
         headless: state.input.headless,
         browser: state.input.browser,
         isolated: state.input.isolated,
@@ -2046,6 +2050,7 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
 
     if (state.input.action === "connect" || state.input.action === "list_tools") {
       const tools = await session.tools();
+      const launchEvidence = await session.getLaunchEvidence?.();
       return createCapabilityResultEnvelope({
         executionId: prepared.preparedId,
         status: "success",
@@ -2059,6 +2064,7 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
           headless: state.input.headless,
           browser: state.input.browser,
           isolated: state.input.isolated,
+          launchEvidence,
         },
         metadata: {
           capabilityKey: "browser.playwright",
@@ -2082,6 +2088,26 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
       result,
       state.input.maxOutputChars,
     );
+    const recoveredInterstitialResult = !result.isError && normalizedResult.blockedByInterstitial
+      ? await maybeRecoverBrowserPlaywrightInterstitial(session, state.input)
+      : undefined;
+    const effectivePrimaryResult = recoveredInterstitialResult && !recoveredInterstitialResult.blockedByInterstitial
+      ? {
+        ...mergeBrowserPlaywrightToolResults(normalizedResult, recoveredInterstitialResult, state.input.maxOutputChars),
+        blockedByInterstitial: false,
+        pageUrl: recoveredInterstitialResult.pageUrl ?? normalizedResult.pageUrl,
+        pageTitle: recoveredInterstitialResult.pageTitle ?? normalizedResult.pageTitle,
+      }
+      : normalizedResult;
+    const snapshotResult = !result.isError && !effectivePrimaryResult.blockedByInterstitial
+      ? await maybeCaptureBrowserPlaywrightPostNavigateSnapshot(session, state.input)
+      : undefined;
+    const mergedResult = mergeBrowserPlaywrightToolResults(
+      effectivePrimaryResult,
+      snapshotResult,
+      state.input.maxOutputChars,
+    );
+    const launchEvidence = await session.getLaunchEvidence?.();
 
     if (result.isError) {
       return createCapabilityResultEnvelope({
@@ -2091,12 +2117,56 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
           action: state.input.action,
           toolName,
           connectionId: session.connectionId,
-          text: normalizedResult.text,
-          imageUrls: normalizedResult.imageUrls,
+          arguments: state.input.arguments,
+          text: mergedResult.text,
+          imageUrls: mergedResult.imageUrls,
+          imageCount: mergedResult.imageCount,
+          headless: state.input.headless,
+          browser: state.input.browser,
+          isolated: state.input.isolated,
+          pageUrl: mergedResult.pageUrl,
+          pageTitle: mergedResult.pageTitle,
+          interstitialRecovered: Boolean(recoveredInterstitialResult && !recoveredInterstitialResult.blockedByInterstitial),
+          launchEvidence,
         },
         error: {
           code: "browser_playwright_tool_error",
-          message: normalizedResult.text ?? result.errorMessage ?? `${toolName} failed.`,
+          message: mergedResult.text ?? result.errorMessage ?? `${toolName} failed.`,
+        },
+        metadata: {
+          capabilityKey: "browser.playwright",
+          runtimeKind: this.runtimeKind,
+          selectedBackend: state.input.selectedBackend,
+          resolvedBackend: state.input.resolvedBackend,
+        },
+      });
+    }
+
+    if (mergedResult.blockedByInterstitial) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        output: {
+          action: state.input.action,
+          toolName,
+          connectionId: session.connectionId,
+          arguments: state.input.arguments,
+          text: mergedResult.text,
+          imageUrls: mergedResult.imageUrls,
+          imageCount: mergedResult.imageCount,
+          pageUrl: mergedResult.pageUrl,
+          pageTitle: mergedResult.pageTitle,
+          selectedBackend: state.input.selectedBackend,
+          resolvedBackend: state.input.resolvedBackend,
+          headless: state.input.headless,
+          browser: state.input.browser,
+          isolated: state.input.isolated,
+          interstitialRecovered: Boolean(recoveredInterstitialResult && !recoveredInterstitialResult.blockedByInterstitial),
+          launchEvidence,
+        },
+        error: {
+          code: "browser_playwright_navigation_interstitial",
+          message: `browser.playwright reached an interstitial or anti-bot page at ${mergedResult.pageUrl ?? "the target URL"}.`,
         },
         metadata: {
           capabilityKey: "browser.playwright",
@@ -2109,20 +2179,25 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
 
     return createCapabilityResultEnvelope({
       executionId: prepared.preparedId,
-      status: normalizedResult.truncated ? "partial" : "success",
+      status: mergedResult.truncated ? "partial" : "success",
       output: {
         action: state.input.action,
         toolName,
         connectionId: session.connectionId,
         arguments: state.input.arguments,
-        text: normalizedResult.text,
-        imageUrls: normalizedResult.imageUrls,
-        imageCount: normalizedResult.imageCount,
+        text: mergedResult.text,
+        imageUrls: mergedResult.imageUrls,
+        imageCount: mergedResult.imageCount,
         selectedBackend: state.input.selectedBackend,
         resolvedBackend: state.input.resolvedBackend,
         headless: state.input.headless,
         browser: state.input.browser,
         isolated: state.input.isolated,
+        pageUrl: mergedResult.pageUrl,
+        pageTitle: mergedResult.pageTitle,
+        snapshotCaptured: Boolean(snapshotResult),
+        interstitialRecovered: Boolean(recoveredInterstitialResult && !recoveredInterstitialResult.blockedByInterstitial),
+        launchEvidence,
       },
       metadata: {
         capabilityKey: "browser.playwright",

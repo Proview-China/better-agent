@@ -465,6 +465,11 @@ export function summarizeToolOutputForCore(
       resolvedBackend: normalized?.resolvedBackend,
       browser: normalized?.browser,
       headless: normalized?.headless,
+      pageUrl: normalized?.pageUrl,
+      pageTitle: normalized?.pageTitle,
+      snapshotCaptured: normalized?.snapshotCaptured,
+      interstitialRecovered: normalized?.interstitialRecovered,
+      launchEvidence: trimStructuredValue(normalized?.launchEvidence, 2_000),
       text: typeof normalized?.text === "string"
         ? excerptText(normalized.text, 3_500).text
         : undefined,
@@ -542,6 +547,21 @@ export async function applyCliDefaultsToCapabilityRequest(
   userMessage: string,
 ): Promise<CoreCapabilityRequest> {
   if (request.capabilityKey !== "search.ground" && request.capabilityKey !== "search.web") {
+    if (request.capabilityKey === "browser.playwright") {
+      const rewrittenRequest = rewriteBrowserNavigateRequestForConcreteSearch(request, userMessage);
+      const preferredHeadless = inferBrowserHeadlessPreference(userMessage);
+      return {
+        ...rewrittenRequest,
+        input: {
+          ...rewrittenRequest.input,
+          ...(typeof rewrittenRequest.input.headless === "boolean"
+            ? {}
+            : preferredHeadless !== undefined
+              ? { headless: preferredHeadless }
+              : { headless: false }),
+        },
+      };
+    }
     const routeDefaults = resolveCliDefaultCarrierRoute(config);
     if (
       request.capabilityKey === "skill.use"
@@ -878,12 +898,14 @@ export function summarizeCapabilityRequestForLog(request: CoreCapabilityRequest)
   }
 
   if (request.capabilityKey === "browser.playwright") {
-    return summarizeForLog(
-      readString(input.url)
+    const summary = readString(input.url)
       ?? readString(input.action)
       ?? readString(input.toolName)
-      ?? request.reason,
-    );
+      ?? request.reason;
+    const headless = typeof input.headless === "boolean"
+      ? (input.headless ? "headless" : "headed")
+      : "headless:auto";
+    return summarizeForLog(`${summary} [requested:${headless}]`);
   }
 
   if (
@@ -975,6 +997,82 @@ export function formatNowStamp(date = new Date()): string {
 export function createLiveChatLogPath(): string {
   const timestamp = new Date().toISOString().replace(/[:.]/gu, "-");
   return resolve(process.cwd(), "memory/live-reports", `live-agent-chat.${timestamp}.jsonl`);
+}
+
+function extractFirstHttpUrl(text: string): string | undefined {
+  const match = text.match(/https?:\/\/[^\s)\]}>"'`]+/iu);
+  return match?.[0];
+}
+
+function buildGoogleSearchQueryFromUserMessage(userMessage: string): string | undefined {
+  const normalized = userMessage.replace(/\s+/gu, " ").trim();
+  const searchMatch = normalized.match(/搜索(?:一下|下)?(.+?)(?:[,，。]|并且|而且|然后|同时|$)/u);
+  const rawQuery = searchMatch?.[1]?.trim()
+    ?? normalized.match(/查(?:一下|下)?(.+?)(?:[,，。]|并且|而且|然后|同时|$)/u)?.[1]?.trim();
+  const cleaned = rawQuery
+    ?.replace(/^(给我|帮我|请|一下|一下子)\s*/u, "")
+    .replace(/\s*(给我|帮我|请)$/u, "")
+    .trim();
+  if (!cleaned) {
+    return undefined;
+  }
+  const needsUsdPerOunce = /(美元\/盎司|美刀\/盎司|usd\/oz|USD\/oz|XAU\/USD)/u.test(normalized);
+  if (needsUsdPerOunce && !/(美元\/盎司|美刀\/盎司|usd\/oz|USD\/oz|XAU\/USD)/u.test(cleaned)) {
+    return `${cleaned} 美元/盎司`;
+  }
+  return cleaned;
+}
+
+function rewriteBrowserNavigateRequestForConcreteSearch(
+  request: CoreCapabilityRequest,
+  userMessage: string,
+): CoreCapabilityRequest {
+  if (request.capabilityKey !== "browser.playwright") {
+    return request;
+  }
+  const action = typeof request.input.action === "string" ? request.input.action : undefined;
+  if (action !== "navigate") {
+    return request;
+  }
+  const query = buildGoogleSearchQueryFromUserMessage(userMessage);
+  if (!query) {
+    return request;
+  }
+  const rawUrl = typeof request.input.url === "string" ? request.input.url : undefined;
+  const isGoogleHome = (() => {
+    if (!rawUrl) {
+      return true;
+    }
+    try {
+      const parsed = new URL(rawUrl);
+      return /(^|\.)google\.com$/iu.test(parsed.hostname)
+        && (parsed.pathname === "/" || parsed.pathname === "");
+    } catch {
+      return false;
+    }
+  })();
+  if (!isGoogleHome) {
+    return request;
+  }
+  return {
+    ...request,
+    input: {
+      ...request.input,
+      url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+      allowedDomains: ["google.com", "www.google.com"],
+    },
+  };
+}
+
+function inferBrowserHeadlessPreference(userMessage: string): boolean | undefined {
+  const normalized = userMessage.trim();
+  if (/(有头|可视化|可见|让我看|给我看|看着|展示过程|实际呈现|visible|headed|show (?:me )?the browser)/iu.test(normalized)) {
+    return false;
+  }
+  if (/(无头|后台跑|静默运行|headless|hidden browser)/iu.test(normalized)) {
+    return true;
+  }
+  return undefined;
 }
 
 export function formatTapMatrixRows(matrix: Array<{
