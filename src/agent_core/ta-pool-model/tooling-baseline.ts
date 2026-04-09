@@ -19,6 +19,8 @@ export const TAP_BOOTSTRAP_TMA_BASELINE_CAPABILITY_KEYS = [
   "shell.session",
   "git.status",
   "git.diff",
+  "git.commit",
+  "git.push",
   "code.diff",
   "test.run",
   "write_todos",

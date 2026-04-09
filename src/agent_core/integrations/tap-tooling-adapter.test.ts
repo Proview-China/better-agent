@@ -317,7 +317,7 @@ test("git.status and git.diff adapters inspect workspace git state in bounded fo
       operation: "exec",
       input: {
         command: "git",
-        args: ["init"],
+        args: ["init", "-b", "main"],
         cwd: ".",
       },
       metadata: {
@@ -404,6 +404,224 @@ test("git.status and git.diff adapters inspect workspace git state in bounded fo
   ));
   assert.equal(diff.status, "success");
   assert.match(String((diff.output as { diff?: string }).diff), /answer = 42/);
+});
+
+test("git.commit adapter stages explicit paths and creates a new commit with safety guards", async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-git-commit-"));
+  await mkdir(path.join(workspaceRoot, "src"), { recursive: true });
+  await writeFile(path.join(workspaceRoot, "src", "sample.ts"), "export const answer = 41;\n", "utf8");
+  const shell = createTapToolingCapabilityAdapter("shell.restricted", { workspaceRoot });
+  await shell.execute(await shell.prepare(
+    createPlan({
+      capabilityKey: "shell.restricted",
+      operation: "exec",
+      input: {
+        command: "git",
+        args: ["init", "-b", "main"],
+        cwd: ".",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["exec", "shell.restricted"],
+        },
+      },
+    }),
+    createLease("binding.git.commit.init"),
+  ));
+  await shell.execute(await shell.prepare(
+    createPlan({
+      planId: "plan-git-commit-bootstrap",
+      capabilityKey: "shell.restricted",
+      operation: "exec",
+      input: {
+        command: "git",
+        args: ["add", "."],
+        cwd: ".",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["exec", "shell.restricted"],
+        },
+      },
+    }),
+    createLease("binding.git.commit.bootstrap.add"),
+  ));
+  await shell.execute(await shell.prepare(
+    createPlan({
+      planId: "plan-git-commit-bootstrap-commit",
+      capabilityKey: "shell.restricted",
+      operation: "exec",
+      input: {
+        command: "git",
+        args: ["-c", "user.name=Praxis", "-c", "user.email=praxis@example.com", "commit", "-m", "init"],
+        cwd: ".",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["exec", "shell.restricted"],
+        },
+      },
+    }),
+    createLease("binding.git.commit.bootstrap.commit"),
+  ));
+
+  await writeFile(path.join(workspaceRoot, "src", "sample.ts"), "export const answer = 42;\n", "utf8");
+  const adapter = createTapToolingCapabilityAdapter("git.commit", { workspaceRoot });
+  const committed = await adapter.execute(await adapter.prepare(
+    createPlan({
+      capabilityKey: "git.commit",
+      operation: "commit",
+      input: {
+        cwd: ".",
+        paths: ["src/sample.ts"],
+        message: "Update answer constant for tooling test",
+        authorName: "Praxis",
+        authorEmail: "praxis@example.com",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["read", "write", "exec", "git.commit"],
+        },
+      },
+    }),
+    createLease("binding.git.commit"),
+  ));
+  assert.equal(committed.status, "success");
+  assert.match(String((committed.output as { commitHash?: string }).commitHash), /^[0-9a-f]{40}$/);
+  assert.equal((committed.output as { committedFiles?: string[] }).committedFiles?.[0], "src/sample.ts");
+
+  const statusAdapter = createTapToolingCapabilityAdapter("git.status", { workspaceRoot });
+  const status = await statusAdapter.execute(await statusAdapter.prepare(
+    createPlan({
+      planId: "plan-git-commit-post-status",
+      capabilityKey: "git.status",
+      operation: "status",
+      input: { cwd: "." },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["read", "git.status"],
+        },
+      },
+    }),
+    createLease("binding.git.commit.status"),
+  ));
+  assert.equal(status.status, "success");
+  assert.equal((status.output as { clean?: boolean }).clean, true);
+});
+
+test("git.push adapter pushes the current branch without force semantics", async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-git-push-"));
+  const remoteRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-git-remote-"));
+  await mkdir(path.join(workspaceRoot, "src"), { recursive: true });
+  await writeFile(path.join(workspaceRoot, "src", "sample.ts"), "export const answer = 41;\n", "utf8");
+  const shell = createTapToolingCapabilityAdapter("shell.restricted", { workspaceRoot });
+  await shell.execute(await shell.prepare(
+    createPlan({
+      capabilityKey: "shell.restricted",
+      operation: "exec",
+      input: {
+        command: "git",
+        args: ["init", "-b", "main"],
+        cwd: ".",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["exec", "shell.restricted"],
+        },
+      },
+    }),
+    createLease("binding.git.push.init"),
+  ));
+  await shell.execute(await shell.prepare(
+    createPlan({
+      planId: "plan-git-push-remote-init",
+      capabilityKey: "shell.restricted",
+      operation: "exec",
+      input: {
+        command: "git",
+        args: ["init", "--bare", remoteRoot],
+        cwd: ".",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["exec", "shell.restricted"],
+        },
+      },
+    }),
+    createLease("binding.git.push.remote.init"),
+  ));
+  await shell.execute(await shell.prepare(
+    createPlan({
+      planId: "plan-git-push-remote-add",
+      capabilityKey: "shell.restricted",
+      operation: "exec",
+      input: {
+        command: "git",
+        args: ["remote", "add", "origin", remoteRoot],
+        cwd: ".",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["exec", "shell.restricted"],
+        },
+      },
+    }),
+    createLease("binding.git.push.remote.add"),
+  ));
+
+  const commitAdapter = createTapToolingCapabilityAdapter("git.commit", { workspaceRoot });
+  await commitAdapter.execute(await commitAdapter.prepare(
+    createPlan({
+      capabilityKey: "git.commit",
+      operation: "commit",
+      input: {
+        cwd: ".",
+        paths: ["src/sample.ts"],
+        message: "Initial pushable commit",
+        authorName: "Praxis",
+        authorEmail: "praxis@example.com",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["read", "write", "exec", "git.commit"],
+        },
+      },
+    }),
+    createLease("binding.git.push.commit"),
+  ));
+
+  const pushAdapter = createTapToolingCapabilityAdapter("git.push", { workspaceRoot });
+  const pushed = await pushAdapter.execute(await pushAdapter.prepare(
+    createPlan({
+      capabilityKey: "git.push",
+      operation: "push",
+      input: {
+        cwd: ".",
+        remote: "origin",
+        branch: "main",
+        setUpstream: true,
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["read", "write", "exec", "git.push"],
+        },
+      },
+    }),
+    createLease("binding.git.push"),
+  ));
+  assert.equal(pushed.status, "success");
+  assert.equal((pushed.output as { remote?: string }).remote, "origin");
+  assert.equal((pushed.output as { branch?: string }).branch, "main");
 });
 
 test("code.diff adapter returns unified diff for before/after text and write_todos stores structured list", async () => {
@@ -638,14 +856,16 @@ test("registerTapToolingBaseline makes B-group capabilities available to bootstr
     "test.run",
     "git.status",
     "git.diff",
+    "git.commit",
+    "git.push",
     "code.diff",
     "skill.doc.generate",
     "write_todos",
   ]);
-  assert.equal(result.packages.length, 11);
-  assert.equal(result.manifests.length, 11);
-  assert.equal(result.bindings.length, 11);
-  assert.equal(result.activationFactoryRefs.length, 11);
+  assert.equal(result.packages.length, 13);
+  assert.equal(result.manifests.length, 13);
+  assert.equal(result.bindings.length, 13);
+  assert.equal(result.activationFactoryRefs.length, 13);
 
   const reviewer = createTapReviewerProfile();
   assert.equal(reviewer.baselineCapabilities?.includes("repo.write"), false);

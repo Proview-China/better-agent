@@ -25,6 +25,8 @@ test("first-class tooling baseline exposes the frozen A-group capability keys", 
     "code.read_many",
     "code.symbol_search",
     "code.lsp",
+    "read_pdf",
+    "read_notebook",
     "docs.read",
   ]);
   assert.deepEqual(FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS, [
@@ -40,6 +42,8 @@ test("first-class tooling baseline exposes the frozen A-group capability keys", 
     "definition",
     "references",
     "hover",
+    "read_pdf",
+    "read_notebook",
   ]);
 });
 
@@ -88,10 +92,10 @@ test("docs.read package carries docs-oriented scope and activation metadata", ()
 
 test("first-class tooling baseline package listing stays stable and complete", () => {
   const packages = listFirstClassToolingBaselineCapabilityPackages();
-  assert.equal(packages.length, 8);
+  assert.equal(packages.length, 10);
   assert.deepEqual(
     packages.map((entry) => entry.manifest.capabilityKey),
-    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "docs.read"],
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "read_pdf", "read_notebook", "docs.read"],
   );
 });
 
@@ -99,7 +103,7 @@ test("first-class tooling capability descriptors expose reviewer-readable scope 
   const descriptors = listFirstClassToolingCapabilityBaselineDescriptors();
   assert.deepEqual(
     descriptors.map((entry) => entry.capabilityKey),
-    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "docs.read"],
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "read_pdf", "read_notebook", "docs.read"],
   );
 
   const codeRead =
@@ -135,6 +139,14 @@ test("new first-class code discovery packages expose the expected operation fami
   assert.deepEqual(
     getFirstClassToolingCapabilityBaselineDescriptor("code.lsp").allowedOperations,
     ["workspace_symbol", "document_symbol", "definition", "references", "hover"],
+  );
+  assert.deepEqual(
+    getFirstClassToolingCapabilityBaselineDescriptor("read_pdf").allowedOperations,
+    ["read_pdf"],
+  );
+  assert.deepEqual(
+    getFirstClassToolingCapabilityBaselineDescriptor("read_notebook").allowedOperations,
+    ["read_notebook"],
   );
 });
 

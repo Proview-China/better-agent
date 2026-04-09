@@ -17,7 +17,7 @@ test("createTapFormalFamilyInventory freezes the five formal TAP families and ca
     "mcp",
     "userio",
   ]);
-  assert.equal(inventory.entries.length, 32);
+  assert.equal(inventory.entries.length, 36);
   assert.deepEqual(getTapFormalFamilyInventoryFamily("foundation")?.capabilityKeys, [
     "code.read",
     "code.ls",
@@ -26,6 +26,8 @@ test("createTapFormalFamilyInventory freezes the five formal TAP families and ca
     "code.read_many",
     "code.symbol_search",
     "code.lsp",
+    "read_pdf",
+    "read_notebook",
     "docs.read",
     "repo.write",
     "code.edit",
@@ -35,6 +37,8 @@ test("createTapFormalFamilyInventory freezes the five formal TAP families and ca
     "test.run",
     "git.status",
     "git.diff",
+    "git.commit",
+    "git.push",
     "code.diff",
     "skill.doc.generate",
     "write_todos",

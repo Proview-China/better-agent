@@ -138,6 +138,37 @@ export interface GitDiffInput {
   maxOutputChars?: number;
 }
 
+export interface GitCommitInput {
+  path?: string;
+  paths?: string[];
+  cwd?: string;
+  workdir?: string;
+  dir_path?: string;
+  message?: string;
+  commitMessage?: string;
+  authorName?: string;
+  author_name?: string;
+  authorEmail?: string;
+  author_email?: string;
+  all?: boolean;
+  amend?: boolean;
+  noVerify?: boolean;
+  no_verify?: boolean;
+}
+
+export interface GitPushInput {
+  cwd?: string;
+  workdir?: string;
+  dir_path?: string;
+  remote?: string;
+  branch?: string;
+  setUpstream?: boolean;
+  set_upstream?: boolean;
+  force?: boolean;
+  forceWithLease?: boolean;
+  force_with_lease?: boolean;
+}
+
 export interface CodeDiffInput {
   leftPath?: string;
   rightPath?: string;
@@ -276,6 +307,24 @@ interface PreparedGitDiffState {
   paths?: string[];
   staged: boolean;
   base?: string;
+  maxOutputChars: number;
+}
+
+interface PreparedGitCommitState {
+  cwd: { absolutePath: string; relativeWorkspacePath: string };
+  paths?: string[];
+  stageAll: boolean;
+  message: string;
+  authorName?: string;
+  authorEmail?: string;
+  maxOutputChars: number;
+}
+
+interface PreparedGitPushState {
+  cwd: { absolutePath: string; relativeWorkspacePath: string };
+  remote: string;
+  branch?: string;
+  setUpstream: boolean;
   maxOutputChars: number;
 }
 
@@ -1254,6 +1303,97 @@ function normalizeGitDiffInput(
   };
 }
 
+const SECRET_LIKE_GIT_PATH_PATTERNS = [
+  /(^|\/)\.env(\.|$|\/)/i,
+  /(^|\/)\.npmrc$/i,
+  /(^|\/)\.pypirc$/i,
+  /(^|\/)credentials(\.[^.\/]+)?\.json$/i,
+  /(^|\/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/i,
+  /\.pem$/i,
+  /\.key$/i,
+];
+
+function normalizeGitCommitInput(
+  plan: CapabilityInvocationPlan,
+  workspaceRoot: string,
+): PreparedGitCommitState {
+  const record = asRecord(plan.input) ?? {};
+  if (asBoolean(record.amend) === true) {
+    throw new Error("git.commit does not allow amend; create a new commit instead.");
+  }
+  if ((asBoolean(record.noVerify) ?? asBoolean(record.no_verify)) === true) {
+    throw new Error("git.commit does not allow skipping hooks or verification.");
+  }
+
+  const scope = getGrantedScope(plan);
+  const rawPaths = asStringArray(record.paths) ?? (asString(record.path) ? [asString(record.path)!] : undefined);
+  const stageAll = asBoolean(record.all) === true;
+  if (!stageAll && (!rawPaths || rawPaths.length === 0)) {
+    throw new Error("git.commit requires explicit path(s) unless all=true is provided.");
+  }
+
+  const paths = rawPaths?.map((candidatePath) =>
+    resolvePathWithinWorkspace({
+      workspaceRoot,
+      candidatePath,
+      scope,
+      operationCandidates: ["read", "write", "exec", "git.commit"],
+      label: "git.commit path",
+    }).relativeWorkspacePath,
+  );
+
+  for (const candidate of paths ?? []) {
+    if (SECRET_LIKE_GIT_PATH_PATTERNS.some((pattern) => pattern.test(candidate))) {
+      throw new Error(`git.commit blocks secret-like path ${candidate}.`);
+    }
+  }
+
+  const message = asString(record.message) ?? asString(record.commitMessage);
+  if (!message || message.trim().length === 0) {
+    throw new Error("git.commit requires a non-empty commit message.");
+  }
+
+  return {
+    cwd: normalizeGitCwd(plan, workspaceRoot, ["read", "write", "exec", "git.commit"], "git.commit cwd"),
+    paths,
+    stageAll,
+    message: message.trim(),
+    authorName: asString(record.authorName) ?? asString(record.author_name),
+    authorEmail: asString(record.authorEmail) ?? asString(record.author_email),
+    maxOutputChars:
+      asNumber(record.maxOutputChars)
+      ?? (() => {
+        const tokenBudget = asNumber(record.max_output_tokens);
+        return tokenBudget ? Math.max(1000, tokenBudget * 4) : undefined;
+      })()
+      ?? 10_000,
+  };
+}
+
+function normalizeGitPushInput(
+  plan: CapabilityInvocationPlan,
+  workspaceRoot: string,
+): PreparedGitPushState {
+  const record = asRecord(plan.input) ?? {};
+  if (asBoolean(record.force) === true || (asBoolean(record.forceWithLease) ?? asBoolean(record.force_with_lease)) === true) {
+    throw new Error("git.push does not allow force push or force-with-lease.");
+  }
+
+  return {
+    cwd: normalizeGitCwd(plan, workspaceRoot, ["read", "write", "exec", "git.push"], "git.push cwd"),
+    remote: asString(record.remote)?.trim() || "origin",
+    branch: asString(record.branch)?.trim() || undefined,
+    setUpstream: asBoolean(record.setUpstream) ?? asBoolean(record.set_upstream) ?? false,
+    maxOutputChars:
+      asNumber(record.maxOutputChars)
+      ?? (() => {
+        const tokenBudget = asNumber(record.max_output_tokens);
+        return tokenBudget ? Math.max(1000, tokenBudget * 4) : undefined;
+      })()
+      ?? 10_000,
+  };
+}
+
 function normalizeCodeDiffInput(
   plan: CapabilityInvocationPlan,
   workspaceRoot: string,
@@ -1350,7 +1490,7 @@ async function runSimpleCommand(
 
 function createGitCommandInput(params: {
   cwd: { absolutePath: string; relativeWorkspacePath: string };
-  capabilityKey: "git.status" | "git.diff" | "code.diff";
+  capabilityKey: "git.status" | "git.diff" | "git.commit" | "git.push" | "code.diff";
   args: string[];
   maxOutputChars: number;
 }): NormalizedCommandInput {
@@ -2361,6 +2501,364 @@ class GitDiffCapabilityAdapter implements CapabilityAdapter {
   }
 }
 
+class GitCommitCapabilityAdapter implements CapabilityAdapter {
+  readonly id = "adapter.git.commit";
+  readonly runtimeKind = "local-tooling";
+  readonly #workspaceRoot: string;
+  readonly #commandRunner: (
+    input: NormalizedCommandInput,
+  ) => Promise<CommandExecutionResult>;
+  readonly #prepared = new Map<string, PreparedGitCommitState>();
+
+  constructor(options: TapToolingAdapterOptions) {
+    this.#workspaceRoot = path.resolve(options.workspaceRoot);
+    this.#commandRunner = options.commandRunner ?? createDefaultCommandRunner();
+  }
+
+  supports(plan: CapabilityInvocationPlan): boolean {
+    if (plan.capabilityKey !== "git.commit") {
+      return false;
+    }
+    try {
+      normalizeGitCommitInput(plan, this.#workspaceRoot);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async prepare(plan: CapabilityInvocationPlan, lease: CapabilityLease): Promise<PreparedCapabilityCall> {
+    const input = normalizeGitCommitInput(plan, this.#workspaceRoot);
+    const prepared = createPreparedCapabilityCall({
+      lease,
+      plan,
+      executionMode: "direct",
+      preparedPayloadRef: `git-commit:${plan.planId}`,
+      metadata: {
+        planId: plan.planId,
+        workspaceRoot: this.#workspaceRoot,
+      },
+    });
+    this.#prepared.set(prepared.preparedId, input);
+    return prepared;
+  }
+
+  async execute(prepared: PreparedCapabilityCall) {
+    const state = this.#prepared.get(prepared.preparedId);
+    if (!state) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        error: {
+          code: "git_commit_prepared_state_missing",
+          message: `Prepared git.commit state for ${prepared.preparedId} was not found.`,
+        },
+      });
+    }
+    this.#prepared.delete(prepared.preparedId);
+
+    const addArgs = ["add"];
+    if (state.stageAll) {
+      addArgs.push("--all");
+    } else if (state.paths?.length) {
+      addArgs.push("--", ...state.paths);
+    }
+    const addResult = await runSimpleCommand(
+      this.#commandRunner,
+      createGitCommandInput({
+        cwd: state.cwd,
+        capabilityKey: "git.commit",
+        args: addArgs,
+        maxOutputChars: state.maxOutputChars,
+      }),
+    );
+    if (addResult.timedOut) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "timeout",
+        output: { stdout: addResult.stdout, stderr: addResult.stderr },
+        error: {
+          code: "git_commit_stage_timeout",
+          message: "git.commit timed out while staging files.",
+        },
+      });
+    }
+    if (addResult.exitCode !== 0) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        output: { stdout: addResult.stdout, stderr: addResult.stderr },
+        error: {
+          code: "git_commit_stage_failed",
+          message: `git.commit could not stage files (exit ${String(addResult.exitCode)}).`,
+        },
+      });
+    }
+
+    const stagedNameOnly = await runSimpleCommand(
+      this.#commandRunner,
+      createGitCommandInput({
+        cwd: state.cwd,
+        capabilityKey: "git.commit",
+        args: ["diff", "--cached", "--name-only"],
+        maxOutputChars: state.maxOutputChars,
+      }),
+    );
+    const stagedFiles = normalizeNewlines(stagedNameOnly.stdout)
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (stagedFiles.length === 0) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "blocked",
+        output: {
+          cwd: state.cwd.relativeWorkspacePath,
+          stagedFiles: [],
+          message: state.message,
+        },
+        error: {
+          code: "git_commit_no_changes",
+          message: "git.commit found no staged changes to commit.",
+        },
+      });
+    }
+    const secretLike = stagedFiles.find((candidate) =>
+      SECRET_LIKE_GIT_PATH_PATTERNS.some((pattern) => pattern.test(candidate))
+    );
+    if (secretLike) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "blocked",
+        output: {
+          cwd: state.cwd.relativeWorkspacePath,
+          stagedFiles,
+          blockedPath: secretLike,
+        },
+        error: {
+          code: "git_commit_secret_like_path_blocked",
+          message: `git.commit blocked secret-like path ${secretLike}.`,
+        },
+      });
+    }
+
+    const commitArgs = [];
+    if (state.authorName) {
+      commitArgs.push("-c", `user.name=${state.authorName}`);
+    }
+    if (state.authorEmail) {
+      commitArgs.push("-c", `user.email=${state.authorEmail}`);
+    }
+    commitArgs.push("commit", "-m", state.message);
+    const commitResult = await runSimpleCommand(
+      this.#commandRunner,
+      createGitCommandInput({
+        cwd: state.cwd,
+        capabilityKey: "git.commit",
+        args: commitArgs,
+        maxOutputChars: state.maxOutputChars,
+      }),
+    );
+    const stdout = trimCommandOutput(commitResult.stdout, state.maxOutputChars);
+    const stderr = trimCommandOutput(commitResult.stderr, state.maxOutputChars);
+    if (commitResult.timedOut) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "timeout",
+        output: { stdout: stdout.text, stderr: stderr.text, stagedFiles },
+        error: {
+          code: "git_commit_timeout",
+          message: "git.commit timed out during commit creation.",
+        },
+      });
+    }
+    if (commitResult.exitCode !== 0) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        output: { stdout: stdout.text, stderr: stderr.text, stagedFiles },
+        error: {
+          code: "git_commit_non_zero_exit",
+          message: `git.commit exited with code ${String(commitResult.exitCode)}.`,
+        },
+      });
+    }
+
+    const commitHashResult = await runSimpleCommand(
+      this.#commandRunner,
+      createGitCommandInput({
+        cwd: state.cwd,
+        capabilityKey: "git.commit",
+        args: ["rev-parse", "HEAD"],
+        maxOutputChars: 256,
+      }),
+    );
+    const commitHash = normalizeNewlines(commitHashResult.stdout).trim() || undefined;
+
+    return createCapabilityResultEnvelope({
+      executionId: prepared.preparedId,
+      status: "success",
+      output: {
+        cwd: state.cwd.relativeWorkspacePath,
+        message: state.message,
+        stagedFiles,
+        committedFiles: stagedFiles,
+        commitHash,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        truncated: stdout.truncated || stderr.truncated,
+      },
+      metadata: {
+        capabilityKey: "git.commit",
+        runtimeKind: this.runtimeKind,
+      },
+    });
+  }
+}
+
+class GitPushCapabilityAdapter implements CapabilityAdapter {
+  readonly id = "adapter.git.push";
+  readonly runtimeKind = "local-tooling";
+  readonly #workspaceRoot: string;
+  readonly #commandRunner: (
+    input: NormalizedCommandInput,
+  ) => Promise<CommandExecutionResult>;
+  readonly #prepared = new Map<string, PreparedGitPushState>();
+
+  constructor(options: TapToolingAdapterOptions) {
+    this.#workspaceRoot = path.resolve(options.workspaceRoot);
+    this.#commandRunner = options.commandRunner ?? createDefaultCommandRunner();
+  }
+
+  supports(plan: CapabilityInvocationPlan): boolean {
+    if (plan.capabilityKey !== "git.push") {
+      return false;
+    }
+    try {
+      normalizeGitPushInput(plan, this.#workspaceRoot);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async prepare(plan: CapabilityInvocationPlan, lease: CapabilityLease): Promise<PreparedCapabilityCall> {
+    const input = normalizeGitPushInput(plan, this.#workspaceRoot);
+    const prepared = createPreparedCapabilityCall({
+      lease,
+      plan,
+      executionMode: "direct",
+      preparedPayloadRef: `git-push:${plan.planId}`,
+      metadata: {
+        planId: plan.planId,
+        workspaceRoot: this.#workspaceRoot,
+      },
+    });
+    this.#prepared.set(prepared.preparedId, input);
+    return prepared;
+  }
+
+  async execute(prepared: PreparedCapabilityCall) {
+    const state = this.#prepared.get(prepared.preparedId);
+    if (!state) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        error: {
+          code: "git_push_prepared_state_missing",
+          message: `Prepared git.push state for ${prepared.preparedId} was not found.`,
+        },
+      });
+    }
+    this.#prepared.delete(prepared.preparedId);
+
+    let branch = state.branch;
+    if (!branch) {
+      const branchResult = await runSimpleCommand(
+        this.#commandRunner,
+        createGitCommandInput({
+          cwd: state.cwd,
+          capabilityKey: "git.push",
+          args: ["branch", "--show-current"],
+          maxOutputChars: 256,
+        }),
+      );
+      branch = normalizeNewlines(branchResult.stdout).trim() || undefined;
+    }
+    if (!branch) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        output: {
+          cwd: state.cwd.relativeWorkspacePath,
+          remote: state.remote,
+        },
+        error: {
+          code: "git_push_missing_branch",
+          message: "git.push could not determine the current branch.",
+        },
+      });
+    }
+
+    const args = ["push"];
+    if (state.setUpstream) {
+      args.push("--set-upstream");
+    }
+    args.push(state.remote, branch);
+    const result = await runSimpleCommand(
+      this.#commandRunner,
+      createGitCommandInput({
+        cwd: state.cwd,
+        capabilityKey: "git.push",
+        args,
+        maxOutputChars: state.maxOutputChars,
+      }),
+    );
+    const stdout = trimCommandOutput(result.stdout, state.maxOutputChars);
+    const stderr = trimCommandOutput(result.stderr, state.maxOutputChars);
+    if (result.timedOut) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "timeout",
+        output: { stdout: stdout.text, stderr: stderr.text, remote: state.remote, branch },
+        error: {
+          code: "git_push_timeout",
+          message: "git.push timed out.",
+        },
+      });
+    }
+    if (result.exitCode !== 0) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        output: { stdout: stdout.text, stderr: stderr.text, remote: state.remote, branch },
+        error: {
+          code: "git_push_non_zero_exit",
+          message: `git.push exited with code ${String(result.exitCode)}.`,
+        },
+      });
+    }
+
+    return createCapabilityResultEnvelope({
+      executionId: prepared.preparedId,
+      status: "success",
+      output: {
+        cwd: state.cwd.relativeWorkspacePath,
+        remote: state.remote,
+        branch,
+        setUpstream: state.setUpstream,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        truncated: stdout.truncated || stderr.truncated,
+      },
+      metadata: {
+        capabilityKey: "git.push",
+        runtimeKind: this.runtimeKind,
+      },
+    });
+  }
+}
+
 class WriteTodosCapabilityAdapter implements CapabilityAdapter {
   readonly id = "adapter.write_todos";
   readonly runtimeKind = "local-tooling";
@@ -2988,6 +3486,10 @@ export function createTapToolingCapabilityAdapter(
       return new GitStatusCapabilityAdapter(options);
     case "git.diff":
       return new GitDiffCapabilityAdapter(options);
+    case "git.commit":
+      return new GitCommitCapabilityAdapter(options);
+    case "git.push":
+      return new GitPushCapabilityAdapter(options);
     case "code.diff":
       return new CodeDiffCapabilityAdapter(options);
     case "write_todos":

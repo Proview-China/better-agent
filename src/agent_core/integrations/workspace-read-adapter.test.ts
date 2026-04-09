@@ -15,10 +15,36 @@ import {
   registerFirstClassToolingBaselineCapabilities,
 } from "./workspace-read-adapter.js";
 
+function createMinimalPdfBuffer(text: string): Buffer {
+  const stream = `BT\n/F1 18 Tf\n72 96 Td\n(${text.replace(/[()\\]/g, "\\$&")}) Tj\nET`;
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
+    `4 0 obj\n<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream\nendobj\n`,
+    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+  ];
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    pdf += object;
+  }
+  const xrefOffset = Buffer.byteLength(pdf, "utf8");
+  pdf += "xref\n0 6\n0000000000 65535 f \n";
+  for (let index = 1; index <= objects.length; index += 1) {
+    pdf += `${String(offsets[index]!).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf, "utf8");
+}
+
 async function createWorkspaceFixture() {
   const root = await mkdtemp(path.join(tmpdir(), "praxis-workspace-read-"));
   await mkdir(path.join(root, "src"), { recursive: true });
   await mkdir(path.join(root, "docs"), { recursive: true });
+  await mkdir(path.join(root, "notebooks"), { recursive: true });
   await writeFile(
     path.join(root, "src", "sample.ts"),
     [
@@ -51,6 +77,48 @@ async function createWorkspaceFixture() {
   await writeFile(
     path.join(root, "docs", "multibyte.md"),
     "你好世界，reviewer baseline。\n",
+    "utf8",
+  );
+  await writeFile(
+    path.join(root, "docs", "sample.pdf"),
+    createMinimalPdfBuffer("Hello PDF from Praxis tests"),
+  );
+  await writeFile(
+    path.join(root, "notebooks", "demo.ipynb"),
+    JSON.stringify({
+      cells: [
+        {
+          cell_type: "markdown",
+          id: "intro",
+          source: ["# Demo Notebook\n", "\n", "This is a notebook fixture.\n"],
+          metadata: {},
+        },
+        {
+          cell_type: "code",
+          id: "calc",
+          execution_count: 1,
+          source: ["answer = 42\n", "answer\n"],
+          outputs: [
+            {
+              output_type: "execute_result",
+              data: {
+                "text/plain": ["42"],
+              },
+              metadata: {},
+              execution_count: 1,
+            },
+          ],
+          metadata: {},
+        },
+      ],
+      metadata: {
+        language_info: {
+          name: "python",
+        },
+      },
+      nbformat: 4,
+      nbformat_minor: 5,
+    }, null, 2),
     "utf8",
   );
   await writeFile(path.join(root, "README.md"), "# Fixture\n", "utf8");
@@ -368,6 +436,81 @@ test("workspace read adapter supports code.read_many via include globs", async (
   );
 });
 
+test("workspace read adapter supports read_pdf via bounded text extraction", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "read_pdf",
+    allowedPathPatterns: ["docs", "docs/**", "*.pdf", "**/*.pdf"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-read-pdf-1",
+      sessionId: "session-read-pdf-1",
+      runId: "run-read-pdf-1",
+      capabilityKey: "read_pdf",
+      input: {
+        path: "docs/sample.pdf",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-read-pdf-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-read-pdf-1",
+    bindingId: "binding-read-pdf-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-read-pdf-1",
+    clock: { now: () => new Date("2026-04-09T00:04:30.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "success");
+  assert.match(String((envelope.output as { content?: string }).content), /Hello PDF/);
+  assert.equal((envelope.output as { pageCount?: number }).pageCount, 1);
+});
+
+test("workspace read adapter supports read_notebook via structured cell summaries", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "read_notebook",
+    allowedPathPatterns: ["notebooks", "notebooks/**", "*.ipynb", "**/*.ipynb"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-read-notebook-1",
+      sessionId: "session-read-notebook-1",
+      runId: "run-read-notebook-1",
+      capabilityKey: "read_notebook",
+      input: {
+        path: "notebooks/demo.ipynb",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-read-notebook-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-read-notebook-1",
+    bindingId: "binding-read-notebook-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-read-notebook-1",
+    clock: { now: () => new Date("2026-04-09T00:04:45.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "success");
+  assert.equal((envelope.output as { cellCount?: number }).cellCount, 2);
+  assert.equal((envelope.output as { cells?: Array<{ cellId: string }> }).cells?.[0]?.cellId, "intro");
+  assert.equal((envelope.output as { cells?: Array<{ outputs?: string[] }> }).cells?.[1]?.outputs?.[0], "42");
+});
+
 test("workspace read adapter supports code.symbol_search via TypeScript workspace symbol search", async () => {
   const workspaceRoot = await createWorkspaceFixture();
   const adapter = createWorkspaceReadCapabilityAdapter({
@@ -576,11 +719,11 @@ test("workspace read baseline registration lets TAP dispatch docs.read through t
   assert.equal(result.grant?.capabilityKey, "docs.read");
   assert.deepEqual(
     registration.capabilityKeys,
-    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "docs.read"],
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "read_pdf", "read_notebook", "docs.read"],
   );
   assert.deepEqual(
     registration.descriptors.map((entry) => entry.capabilityKey),
-    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "docs.read"],
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "read_pdf", "read_notebook", "docs.read"],
   );
   assert.equal(
     registration.descriptors.find((entry) => entry.capabilityKey === "docs.read")?.scopeKind,

@@ -16,6 +16,8 @@ export const FIRST_CLASS_TOOLING_BASELINE_CAPABILITY_KEYS = [
   "code.read_many",
   "code.symbol_search",
   "code.lsp",
+  "read_pdf",
+  "read_notebook",
   "docs.read",
 ] as const;
 export type FirstClassToolingBaselineCapabilityKey =
@@ -34,6 +36,8 @@ export const FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS = [
   "definition",
   "references",
   "hover",
+  "read_pdf",
+  "read_notebook",
 ] as const;
 export type FirstClassToolingAllowedOperation =
   (typeof FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS)[number];
@@ -316,6 +320,77 @@ const FIRST_CLASS_TOOLING_BASELINE_DESCRIPTORS: Record<
     ],
     workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
   },
+  "read_pdf": {
+    capabilityKey: "read_pdf",
+    scopeKind: "workspace-docs",
+    scopeSummary:
+      "Repo-local PDF documents that can be read through bounded text extraction with page-aware semantics.",
+    description:
+      "Read repo-local PDF documents through bounded extracted text instead of raw binary dumps.",
+    reviewerSummary:
+      "Core or reviewer can inspect PDF content and page metadata, but cannot edit the file or execute document-side effects through this capability.",
+    pathPatterns: [
+      "docs",
+      "docs/**",
+      "*.pdf",
+      "**/*.pdf",
+      "memory",
+      "memory/**",
+    ],
+    allowedOperations: ["read_pdf"],
+    usageDocRef:
+      "docs/ability/tap-runtime-completion-task-pack/11-first-class-tooling-baseline-for-reviewer-and-tma.md",
+    examplePath: "docs/spec.pdf",
+    exampleOperation: "read_pdf",
+    routeHints: [
+      { key: "scope", value: "workspace-docs" },
+      { key: "baseline", value: "reviewer-tma" },
+      { key: "toolKind", value: "pdf-read" },
+    ],
+    tags: ["tap", "baseline", "read", "pdf", "docs", "reviewer", "tma"],
+    knownLimits: [
+      "Read-only capability; it returns extracted text and metadata rather than raw PDF bytes.",
+      "Extraction quality depends on the PDF containing selectable text.",
+      "Large PDFs are bounded by page ranges and byte budgets to keep context transfer stable.",
+    ],
+    workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
+  },
+  "read_notebook": {
+    capabilityKey: "read_notebook",
+    scopeKind: "workspace-code",
+    scopeSummary:
+      "Repo-local Jupyter notebooks that can be read as bounded structured cells instead of raw JSON blobs.",
+    description:
+      "Read repo-local notebooks with cell-aware structure, bounded outputs, and lightweight execution metadata.",
+    reviewerSummary:
+      "Core or reviewer can inspect notebook cells and selected outputs, but cannot execute or edit notebook cells through this capability.",
+    pathPatterns: [
+      "src",
+      "src/**",
+      "*.ipynb",
+      "**/*.ipynb",
+      "notebooks",
+      "notebooks/**",
+      "docs",
+      "docs/**",
+    ],
+    allowedOperations: ["read_notebook"],
+    usageDocRef: "docs/ability/01-basic-implementation.md",
+    examplePath: "notebooks/demo.ipynb",
+    exampleOperation: "read_notebook",
+    routeHints: [
+      { key: "scope", value: "workspace-code" },
+      { key: "baseline", value: "reviewer-tma" },
+      { key: "toolKind", value: "notebook-read" },
+    ],
+    tags: ["tap", "baseline", "read", "notebook", "code", "reviewer", "tma"],
+    knownLimits: [
+      "Read-only capability; it returns bounded cell structure instead of the full raw notebook JSON.",
+      "Large notebook outputs are summarized rather than fully expanded.",
+      "Notebook binary attachments are not inlined as full multimodal payloads here.",
+    ],
+    workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
+  },
   "docs.read": {
     capabilityKey: "docs.read",
     scopeKind: "workspace-docs",
@@ -583,6 +658,14 @@ export function createCodeSymbolSearchCapabilityPackage(): CapabilityPackage {
 
 export function createCodeLspCapabilityPackage(): CapabilityPackage {
   return createFirstClassToolingCapabilityPackage("code.lsp");
+}
+
+export function createReadPdfCapabilityPackage(): CapabilityPackage {
+  return createFirstClassToolingCapabilityPackage("read_pdf");
+}
+
+export function createReadNotebookCapabilityPackage(): CapabilityPackage {
+  return createFirstClassToolingCapabilityPackage("read_notebook");
 }
 
 export function createDocsReadCapabilityPackage(): CapabilityPackage {

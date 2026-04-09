@@ -148,6 +148,8 @@ export {
   createCodeReadManyCapabilityPackage,
   createCodeSymbolSearchCapabilityPackage,
   createCodeLspCapabilityPackage,
+  createReadPdfCapabilityPackage,
+  createReadNotebookCapabilityPackage,
   createDocsReadCapabilityPackage,
   FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS,
   FIRST_CLASS_TOOLING_BASELINE_CAPABILITY_KEYS,

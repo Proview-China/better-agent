@@ -33,6 +33,8 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
     "code.read_many",
     "code.symbol_search",
     "code.lsp",
+    "read_pdf",
+    "read_notebook",
     "docs.read",
     "repo.write",
     "code.edit",
@@ -42,6 +44,8 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
     "test.run",
     "git.status",
     "git.diff",
+    "git.commit",
+    "git.push",
     "code.diff",
     "skill.doc.generate",
     "write_todos",
@@ -67,10 +71,10 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
     "request_user_input",
     "request_permissions",
   ]);
-  assert.equal(result.packages.length, 32);
-  assert.equal(result.bindings.length, 32);
+  assert.equal(result.packages.length, 36);
+  assert.equal(result.bindings.length, 36);
   assert.equal(result.activationFactoryRefs.length, activationFactories.size);
-  assert.equal(result.registrationAudit.length, 32);
+  assert.equal(result.registrationAudit.length, 36);
   assert.equal(result.activationFactoryAudit.length, activationFactories.size);
   assert.equal(registeredCapabilityKeys.includes("search.web"), true);
   assert.equal(registeredCapabilityKeys.includes("search.fetch"), true);

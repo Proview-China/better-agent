@@ -13,6 +13,8 @@ export const TAP_TOOLING_BASELINE_CAPABILITY_KEYS = [
   "test.run",
   "git.status",
   "git.diff",
+  "git.commit",
+  "git.push",
   "code.diff",
   "skill.doc.generate",
   "write_todos",
@@ -1037,6 +1039,258 @@ export function createTapToolingCapabilityPackage(
           rollbackStrategy: "restore prior binding or disable capability key",
           deprecateStrategy: "freeze new git diff dispatch before removal",
           cleanupStrategy: "drain in-flight git diff calls before replacement",
+          generationPolicy: "create_next_generation",
+        },
+        activationSpec,
+        replayPolicy: "re_review_then_dispatch",
+        metadata: {
+          packageKind: "tap-tooling-baseline",
+        },
+      });
+    }
+    case "git.commit": {
+      const activationSpec = {
+        targetPool: "ta-capability-pool",
+        activationMode: "activate_after_verify" as const,
+        registerOrReplace: "register_or_replace" as const,
+        generationStrategy: "create_next_generation" as const,
+        drainStrategy: "graceful" as const,
+        manifestPayload: {
+          capabilityKey,
+          capabilityId: "capability:git.commit:1",
+          version: "1.0.0",
+          generation: 1,
+          kind: "tool",
+          description: "Create a new git commit from explicitly staged workspace paths with official CLI style safety guards.",
+          tags: ["tap", "bootstrap", "git", "commit"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        bindingPayload: {
+          adapterId: "adapter.git.commit",
+          runtimeKind: "local-tooling",
+          workspaceScope: "workspace-only",
+        },
+        adapterFactoryRef: "factory:tap-tooling:git.commit",
+      };
+
+      return createCapabilityPackage({
+        manifest: {
+          capabilityKey,
+          capabilityKind: "tool",
+          tier: "B0",
+          version: "1.0.0",
+          generation: 1,
+          description: "Create a new git commit from explicitly staged workspace paths with official CLI style safety guards.",
+          dependencies: ["git.status", "git.diff"],
+          tags: ["tap", "bootstrap", "git", "commit"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          supportedPlatforms: ["linux", "macos", "windows"],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        adapter: {
+          adapterId: "adapter.git.commit",
+          runtimeKind: "local-tooling",
+          supports: ["commit"],
+          prepare: { ref: "adapter.prepare:git.commit" },
+          execute: { ref: "adapter.execute:git.commit" },
+          cancel: { ref: "adapter.cancel:git.commit" },
+          resultMapping: {
+            successStatuses: ["success"],
+            artifactKinds: ["verification", "usage"],
+          },
+        },
+        policy: {
+          defaultBaseline: {
+            grantedTier: "B0",
+            mode: "balanced",
+            scope: createWorkspaceScope(["read", "write", "exec", "git.commit"]),
+          },
+          recommendedMode: "standard",
+          riskLevel: "risky",
+          defaultScope: createWorkspaceScope(["read", "write", "exec", "git.commit"]),
+          reviewRequirements: ["allow"],
+          safetyFlags: ["workspace_git_only", "no_amend", "no_no_verify", "secret_path_guard"],
+          humanGateRequirements: ["shared_or_remote_git_side_effects_require_review"],
+        },
+        builder: {
+          builderId: "builder.git.commit",
+          buildStrategy: "builtin-bootstrap-tooling",
+          requiresNetwork: false,
+          requiresInstall: false,
+          requiresSystemWrite: false,
+          allowedWorkdirScope: ["workspace/**"],
+          activationSpecRef: createCapabilityPackageActivationSpecRef(activationSpec),
+          replayCapability: "re_review_then_dispatch",
+        },
+        verification: {
+          smokeEntry: "smoke:git.commit",
+          healthEntry: "health:git.commit",
+          successCriteria: ["git commit creates a new commit hash", "no-op or unsafe commit requests are rejected cleanly"],
+          failureSignals: ["empty commit attempt", "amend requested", "secret-like paths included", "cwd escapes workspace"],
+          evidenceOutput: ["commit-hash", "committed-files", "commit-summary"],
+        },
+        usage: {
+          usageDocRef: "docs/ability/25-tap-capability-package-template.md",
+          bestPractices: [
+            "Pass explicit paths whenever possible so unrelated dirty files do not get swept into the commit.",
+            "Create new commits instead of amending unless the user explicitly requests amend elsewhere.",
+          ],
+          knownLimits: [
+            "Rejects --amend and --no-verify style behavior.",
+            "Will block obvious secret-like paths such as .env or credentials files.",
+          ],
+          exampleInvocations: [
+            {
+              exampleId: "git.commit.explicit-paths",
+              capabilityKey,
+              operation: "commit",
+              input: {
+                cwd: ".",
+                paths: ["src/agent_core/live-agent-chat.ts"],
+                message: "Add direct CLI capability guidance",
+              },
+            },
+          ],
+        },
+        lifecycle: {
+          installStrategy: "built-in bootstrap registration",
+          replaceStrategy: "register_or_replace",
+          rollbackStrategy: "restore prior binding or revert the created commit explicitly if requested",
+          deprecateStrategy: "freeze new git commit dispatch before removal",
+          cleanupStrategy: "drain in-flight git commit calls before replacement",
+          generationPolicy: "create_next_generation",
+        },
+        activationSpec,
+        replayPolicy: "re_review_then_dispatch",
+        metadata: {
+          packageKind: "tap-tooling-baseline",
+        },
+      });
+    }
+    case "git.push": {
+      const activationSpec = {
+        targetPool: "ta-capability-pool",
+        activationMode: "activate_after_verify" as const,
+        registerOrReplace: "register_or_replace" as const,
+        generationStrategy: "create_next_generation" as const,
+        drainStrategy: "graceful" as const,
+        manifestPayload: {
+          capabilityKey,
+          capabilityId: "capability:git.push:1",
+          version: "1.0.0",
+          generation: 1,
+          kind: "tool",
+          description: "Push the current branch to a remote with normal non-force git semantics.",
+          tags: ["tap", "bootstrap", "git", "push"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        bindingPayload: {
+          adapterId: "adapter.git.push",
+          runtimeKind: "local-tooling",
+          workspaceScope: "workspace-only",
+        },
+        adapterFactoryRef: "factory:tap-tooling:git.push",
+      };
+
+      return createCapabilityPackage({
+        manifest: {
+          capabilityKey,
+          capabilityKind: "tool",
+          tier: "B0",
+          version: "1.0.0",
+          generation: 1,
+          description: "Push the current branch to a remote with normal non-force git semantics.",
+          dependencies: ["git.commit"],
+          tags: ["tap", "bootstrap", "git", "push"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          supportedPlatforms: ["linux", "macos", "windows"],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        adapter: {
+          adapterId: "adapter.git.push",
+          runtimeKind: "local-tooling",
+          supports: ["push"],
+          prepare: { ref: "adapter.prepare:git.push" },
+          execute: { ref: "adapter.execute:git.push" },
+          cancel: { ref: "adapter.cancel:git.push" },
+          resultMapping: {
+            successStatuses: ["success"],
+            artifactKinds: ["verification", "usage"],
+          },
+        },
+        policy: {
+          defaultBaseline: {
+            grantedTier: "B0",
+            mode: "balanced",
+            scope: createWorkspaceScope(["read", "write", "exec", "git.push"]),
+          },
+          recommendedMode: "standard",
+          riskLevel: "risky",
+          defaultScope: createWorkspaceScope(["read", "write", "exec", "git.push"]),
+          reviewRequirements: ["allow"],
+          safetyFlags: ["workspace_git_only", "no_force_push", "remote_side_effect"],
+          humanGateRequirements: ["shared_or_remote_git_side_effects_require_review"],
+        },
+        builder: {
+          builderId: "builder.git.push",
+          buildStrategy: "builtin-bootstrap-tooling",
+          requiresNetwork: true,
+          requiresInstall: false,
+          requiresSystemWrite: false,
+          allowedWorkdirScope: ["workspace/**"],
+          activationSpecRef: createCapabilityPackageActivationSpecRef(activationSpec),
+          replayCapability: "re_review_then_dispatch",
+        },
+        verification: {
+          smokeEntry: "smoke:git.push",
+          healthEntry: "health:git.push",
+          successCriteria: ["git push succeeds without force flags", "remote and branch are reported back in bounded form"],
+          failureSignals: ["force push requested", "remote missing", "push rejected by remote"],
+          evidenceOutput: ["remote", "branch", "push-output"],
+        },
+        usage: {
+          usageDocRef: "docs/ability/25-tap-capability-package-template.md",
+          bestPractices: [
+            "Prefer explicit remote and branch names when the current branch may be ambiguous.",
+            "Use normal push semantics only; escalation for force push should live elsewhere.",
+          ],
+          knownLimits: [
+            "Rejects force and force-with-lease requests.",
+            "Pushing affects shared remote state and should stay visible in the activity log.",
+          ],
+          exampleInvocations: [
+            {
+              exampleId: "git.push.origin-head",
+              capabilityKey,
+              operation: "push",
+              input: {
+                cwd: ".",
+                remote: "origin",
+                branch: "integrate/dev-master-cmp",
+              },
+            },
+          ],
+        },
+        lifecycle: {
+          installStrategy: "built-in bootstrap registration",
+          replaceStrategy: "register_or_replace",
+          rollbackStrategy: "restore prior binding; any remote rollback remains explicit git work",
+          deprecateStrategy: "freeze new git push dispatch before removal",
+          cleanupStrategy: "drain in-flight git push calls before replacement",
           generationPolicy: "create_next_generation",
         },
         activationSpec,

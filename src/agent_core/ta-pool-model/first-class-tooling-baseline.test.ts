@@ -20,11 +20,13 @@ test("tooling baseline helper returns the same A-group read capabilities for rev
     "code.read_many",
     "code.symbol_search",
     "code.lsp",
+    "read_pdf",
+    "read_notebook",
     "docs.read",
   ]);
   assert.deepEqual(
-    getFirstClassToolingBaselineCapabilities("bootstrap_tma").slice(0, 8),
-    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "docs.read"],
+    getFirstClassToolingBaselineCapabilities("bootstrap_tma").slice(0, 10),
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "read_pdf", "read_notebook", "docs.read"],
   );
   assert.equal(
     getFirstClassToolingBaselineCapabilities("bootstrap_tma").includes(
@@ -39,8 +41,8 @@ test("tooling baseline helper returns the same A-group read capabilities for rev
     true,
   );
   assert.deepEqual(
-    getFirstClassToolingBaselineCapabilities("extended_tma").slice(0, 8),
-    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "docs.read"],
+    getFirstClassToolingBaselineCapabilities("extended_tma").slice(0, 10),
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "read_pdf", "read_notebook", "docs.read"],
   );
   assert.equal(
     getFirstClassToolingBaselineCapabilities("extended_tma").includes(
@@ -80,6 +82,8 @@ test("tooling baseline descriptors explain reviewer vs TMA scope in plain terms"
     "code.read_many",
     "code.symbol_search",
     "code.lsp",
+    "read_pdf",
+    "read_notebook",
     "docs.read",
   ]);
 
@@ -109,6 +113,8 @@ test("tooling baseline helper can build and extend capability profiles without d
     "code.read_many",
     "code.symbol_search",
     "code.lsp",
+    "read_pdf",
+    "read_notebook",
   ]);
   assert.deepEqual(created.allowedCapabilityPatterns, ["search.*"]);
 

@@ -1,6 +1,8 @@
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { promisify } from "node:util";
 
 import {
   createCapabilityManifestFromPackage,
@@ -11,6 +13,8 @@ import {
   createCodeReadManyCapabilityPackage,
   createCodeSymbolSearchCapabilityPackage,
   createCodeLspCapabilityPackage,
+  createReadPdfCapabilityPackage,
+  createReadNotebookCapabilityPackage,
   createDocsReadCapabilityPackage,
   FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS,
   FIRST_CLASS_TOOLING_BASELINE_CAPABILITY_KEYS,
@@ -33,6 +37,7 @@ import type { ActivationAdapterFactory } from "../ta-pool-runtime/index.js";
 
 const require = createRequire(import.meta.url);
 const ts: typeof import("typescript") = require("typescript");
+const execFileAsync = promisify(execFile);
 
 export interface WorkspaceReadAdapterOptions {
   workspaceRoot: string;
@@ -78,6 +83,8 @@ interface PreparedWorkspaceReadInput {
   paths?: string[];
   pattern?: string;
   query?: string;
+  pages?: string;
+  cellId?: string;
   include?: string[];
   exclude?: string[];
   lineStart?: number;
@@ -235,6 +242,10 @@ function parsePreparedWorkspaceReadInput(
               ? "workspace_symbol"
               : capabilityKey === "code.lsp"
                 ? "document_symbol"
+                : capabilityKey === "read_pdf"
+                  ? "read_pdf"
+                  : capabilityKey === "read_notebook"
+                    ? "read_notebook"
             : "read_file");
   const requestedPath = asString(input.path)
     ?? asString(input.file_path)
@@ -250,6 +261,8 @@ function parsePreparedWorkspaceReadInput(
     ?? asString(input.symbol)
     ?? asString(input.name)
     ?? pattern;
+  const pages = asString(input.pages);
+  const cellId = asString(input.cellId) ?? asString(input.cell_id);
   const include = asStringArray(input.include);
   const exclude = asStringArray(input.exclude);
   const requiresPath = !(
@@ -277,6 +290,8 @@ function parsePreparedWorkspaceReadInput(
     paths: asStringArray(input.paths),
     pattern,
     query,
+    pages,
+    cellId,
     include,
     exclude,
     lineStart: asPositiveInteger(input.lineStart),
@@ -629,6 +644,178 @@ async function fallbackTextSymbolSearch(params: {
   return results;
 }
 
+function parsePageRange(
+  value: string | undefined,
+): { firstPage?: number; lastPage?: number } {
+  if (!value || value.trim().length === 0) {
+    return {};
+  }
+
+  const normalized = value.trim();
+  const rangeMatch = normalized.match(/^(\d+)\s*-\s*(\d+)$/u);
+  if (rangeMatch) {
+    const firstPage = Number.parseInt(rangeMatch[1]!, 10);
+    const lastPage = Number.parseInt(rangeMatch[2]!, 10);
+    if (firstPage <= 0 || lastPage <= 0 || lastPage < firstPage) {
+      throw new Error(`Invalid PDF page range: ${value}`);
+    }
+    return { firstPage, lastPage };
+  }
+
+  const singlePage = Number.parseInt(normalized, 10);
+  if (Number.isInteger(singlePage) && singlePage > 0) {
+    return { firstPage: singlePage, lastPage: singlePage };
+  }
+
+  throw new Error(`Invalid PDF page range: ${value}`);
+}
+
+async function runWorkspaceCommand(params: {
+  command: string;
+  args: string[];
+}): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const result = await execFileAsync(params.command, params.args, {
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    return {
+      stdout: typeof result.stdout === "string" ? result.stdout : "",
+      stderr: typeof result.stderr === "string" ? result.stderr : "",
+    };
+  } catch (error) {
+    const details = error as {
+      stdout?: string;
+      stderr?: string;
+      message?: string;
+    };
+    throw new Error(details.stderr?.trim() || details.message || `Failed to run ${params.command}.`);
+  }
+}
+
+async function readPdfSummary(params: {
+  absolutePath: string;
+  relativePath: string;
+  maxBytes: number;
+  pages?: string;
+}) {
+  const pageRange = parsePageRange(params.pages);
+  const info = await runWorkspaceCommand({
+    command: "pdfinfo",
+    args: [params.absolutePath],
+  });
+  const pageCountMatch = info.stdout.match(/^Pages:\s+(\d+)/mu);
+  const pageCount = pageCountMatch
+    ? Number.parseInt(pageCountMatch[1]!, 10)
+    : undefined;
+  const args = ["-layout", "-nopgbrk"];
+  if (pageRange.firstPage) {
+    args.push("-f", String(pageRange.firstPage));
+  }
+  if (pageRange.lastPage) {
+    args.push("-l", String(pageRange.lastPage));
+  }
+  args.push(params.absolutePath, "-");
+  const extraction = await runWorkspaceCommand({
+    command: "pdftotext",
+    args,
+  });
+  const text = extraction.stdout.trim();
+  const content = truncateUtf8ByBytes(text, params.maxBytes);
+  return {
+    capabilityKey: "read_pdf",
+    operation: "read_pdf",
+    path: params.relativePath,
+    pageCount,
+    pages: params.pages,
+    content,
+    truncated: Buffer.byteLength(text, "utf8") > params.maxBytes,
+    extractedBytes: Buffer.byteLength(text, "utf8"),
+  };
+}
+
+function summarizeNotebookOutput(output: Record<string, unknown>): string | undefined {
+  const outputType = asString(output.output_type) ?? "unknown";
+  if (outputType === "stream") {
+    const text = output.text;
+    if (typeof text === "string") {
+      return text;
+    }
+    if (Array.isArray(text)) {
+      return text.filter((entry): entry is string => typeof entry === "string").join("");
+    }
+  }
+  if (outputType === "error") {
+    const ename = asString(output.ename) ?? "Error";
+    const evalue = asString(output.evalue) ?? "";
+    return `${ename}: ${evalue}`.trim();
+  }
+  const data = isRecord(output.data) ? output.data : undefined;
+  const plain = data?.["text/plain"];
+  if (typeof plain === "string") {
+    return plain;
+  }
+  if (Array.isArray(plain)) {
+    return plain.filter((entry): entry is string => typeof entry === "string").join("");
+  }
+  if (data && (typeof data["image/png"] === "string" || typeof data["image/jpeg"] === "string")) {
+    return "[image output]";
+  }
+  return undefined;
+}
+
+async function readNotebookSummary(params: {
+  absolutePath: string;
+  relativePath: string;
+  maxBytes: number;
+  maxEntries: number;
+  cellId?: string;
+}) {
+  const raw = await readFile(params.absolutePath, "utf8");
+  const notebook = JSON.parse(raw) as {
+    cells?: Array<Record<string, unknown>>;
+    metadata?: Record<string, unknown>;
+  };
+  const allCells = Array.isArray(notebook.cells) ? notebook.cells : [];
+  const selectedCells = params.cellId
+    ? allCells.filter((cell) => asString(cell.id) === params.cellId)
+    : allCells;
+  const cells = selectedCells.slice(0, params.maxEntries).map((cell, index) => {
+    const source = cell.source;
+    const sourceText = Array.isArray(source)
+      ? source.filter((entry): entry is string => typeof entry === "string").join("")
+      : typeof source === "string"
+        ? source
+        : "";
+    const outputs = Array.isArray(cell.outputs)
+      ? cell.outputs
+        .filter(isRecord)
+        .slice(0, 3)
+        .map(summarizeNotebookOutput)
+        .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [];
+    return {
+      cellId: asString(cell.id) ?? `cell-${index}`,
+      cellType: asString(cell.cell_type) ?? "unknown",
+      executionCount: typeof cell.execution_count === "number" ? cell.execution_count : undefined,
+      source: truncateUtf8ByBytes(sourceText, Math.max(512, Math.floor(params.maxBytes / Math.max(1, params.maxEntries)))),
+      outputs: outputs.map((entry) => truncateUtf8ByBytes(entry, 400)),
+    };
+  });
+  return {
+    capabilityKey: "read_notebook",
+    operation: "read_notebook",
+    path: params.relativePath,
+    cellCount: allCells.length,
+    returnedCellCount: cells.length,
+    language: isRecord(notebook.metadata?.language_info)
+      ? asString((notebook.metadata?.language_info as Record<string, unknown>).name)
+      : undefined,
+    cells,
+    truncated: selectedCells.length > params.maxEntries,
+  };
+}
+
 export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
   readonly id: string;
   readonly runtimeKind = "workspace-read";
@@ -959,6 +1146,51 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
               documents,
               count: documents.length,
             },
+            metadata: this.#createResultMetadata(),
+          });
+        }
+        case "read_pdf": {
+          if (!target) {
+            return createFailureEnvelope({
+              prepared,
+              status: "failed",
+              code: "workspace_read_missing_path",
+              message: `${this.#capabilityKey} requires a non-empty file path.`,
+            });
+          }
+          const summary = await readPdfSummary({
+            absolutePath: target.absolutePath,
+            relativePath: target.relativePath,
+            maxBytes: parsed.maxBytes,
+            pages: parsed.pages,
+          });
+          return createCapabilityResultEnvelope({
+            executionId: prepared.preparedId,
+            status: summary.truncated ? "partial" : "success",
+            output: summary,
+            metadata: this.#createResultMetadata(),
+          });
+        }
+        case "read_notebook": {
+          if (!target) {
+            return createFailureEnvelope({
+              prepared,
+              status: "failed",
+              code: "workspace_read_missing_path",
+              message: `${this.#capabilityKey} requires a non-empty file path.`,
+            });
+          }
+          const summary = await readNotebookSummary({
+            absolutePath: target.absolutePath,
+            relativePath: target.relativePath,
+            maxBytes: parsed.maxBytes,
+            maxEntries: parsed.maxEntries,
+            cellId: parsed.cellId,
+          });
+          return createCapabilityResultEnvelope({
+            executionId: prepared.preparedId,
+            status: summary.truncated ? "partial" : "success",
+            output: summary,
             metadata: this.#createResultMetadata(),
           });
         }
@@ -1349,11 +1581,15 @@ export function registerFirstClassToolingBaselineCapabilities(
           : capabilityKey === "code.grep"
             ? createCodeGrepCapabilityPackage()
             : capabilityKey === "code.read_many"
-              ? createCodeReadManyCapabilityPackage()
-              : capabilityKey === "code.symbol_search"
-                ? createCodeSymbolSearchCapabilityPackage()
-                : capabilityKey === "code.lsp"
-                  ? createCodeLspCapabilityPackage()
+            ? createCodeReadManyCapabilityPackage()
+            : capabilityKey === "code.symbol_search"
+              ? createCodeSymbolSearchCapabilityPackage()
+              : capabilityKey === "code.lsp"
+                ? createCodeLspCapabilityPackage()
+                : capabilityKey === "read_pdf"
+                  ? createReadPdfCapabilityPackage()
+                  : capabilityKey === "read_notebook"
+                    ? createReadNotebookCapabilityPackage()
                   : createDocsReadCapabilityPackage(),
   );
   const manifests = packages.map((capabilityPackage) =>
