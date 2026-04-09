@@ -92,6 +92,13 @@ function buildMcpEntries(): TapFormalFamilyInventoryEntry[] {
     }),
     createEntry({
       familyKey: "mcp",
+      capabilityPackage: createMcpReadCapabilityPackage({ capabilityKey: "mcp.listResources" }),
+      packageSourceRef:
+        "capability-package/mcp-read-family-package#createMcpReadCapabilityPackage",
+      registerHelperRef: "integrations/rax-mcp-adapter#registerRaxMcpCapabilities",
+    }),
+    createEntry({
+      familyKey: "mcp",
       capabilityPackage: createMcpReadCapabilityPackage({ capabilityKey: "mcp.readResource" }),
       packageSourceRef:
         "capability-package/mcp-read-family-package#createMcpReadCapabilityPackage",

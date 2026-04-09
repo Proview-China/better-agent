@@ -73,6 +73,8 @@ export interface McpCallInput {
   connectionId: string;
   toolName: string;
   arguments?: Record<string, unknown>;
+  serverName?: string;
+  qualifiedToolName?: string;
 }
 
 export interface McpServeToolDefinition {
@@ -172,9 +174,12 @@ export interface McpGetPromptResult {
 export interface McpCallResult {
   connectionId: string;
   toolName: string;
+  serverName?: string;
+  qualifiedToolName?: string;
   content?: unknown[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
+  _meta?: Record<string, unknown>;
   errorMessage?: string;
   raw?: unknown;
 }

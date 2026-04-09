@@ -10,6 +10,10 @@ import {
 
 export const FIRST_CLASS_TOOLING_BASELINE_CAPABILITY_KEYS = [
   "code.read",
+  "code.ls",
+  "code.glob",
+  "code.grep",
+  "code.read_many",
   "docs.read",
 ] as const;
 export type FirstClassToolingBaselineCapabilityKey =
@@ -20,6 +24,9 @@ export const FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS = [
   "read_lines",
   "list_dir",
   "stat_path",
+  "glob",
+  "grep",
+  "read_many",
 ] as const;
 export type FirstClassToolingAllowedOperation =
   (typeof FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS)[number];
@@ -77,6 +84,150 @@ const FIRST_CLASS_TOOLING_BASELINE_DESCRIPTORS: Record<
       "Read-only capability; it never writes or patches files.",
       "Scope stays inside repo-local code and build files only.",
       "Binary or oversized files may be truncated for safe context transfer.",
+    ],
+    workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
+  },
+  "code.ls": {
+    capabilityKey: "code.ls",
+    scopeKind: "workspace-code",
+    scopeSummary:
+      "Repo-local source trees and build-support directories that core can list safely for structure discovery.",
+    description:
+      "List repo-local code and build directories without mutating the workspace.",
+    reviewerSummary:
+      "Core or reviewer can inspect directory structure inside the repo, but cannot read file bodies or write changes through this capability alone.",
+    pathPatterns: [
+      "src",
+      "src/**",
+      "scripts",
+      "scripts/**",
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "tsconfig.json",
+    ],
+    allowedOperations: ["list_dir", "stat_path"],
+    usageDocRef: "docs/ability/01-basic-implementation.md",
+    examplePath: "src",
+    exampleOperation: "list_dir",
+    routeHints: [
+      { key: "scope", value: "workspace-code" },
+      { key: "baseline", value: "reviewer-tma" },
+      { key: "toolKind", value: "directory-discovery" },
+    ],
+    tags: ["tap", "baseline", "read", "code", "list", "reviewer", "tma"],
+    knownLimits: [
+      "Read-only capability; it never reads full file bodies.",
+      "Large directories may be truncated to a bounded entry count.",
+      "Scope stays inside repo-local code and build directories only.",
+    ],
+    workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
+  },
+  "code.glob": {
+    capabilityKey: "code.glob",
+    scopeKind: "workspace-code",
+    scopeSummary:
+      "Repo-local source and build files that can be discovered by glob pattern for planning or targeted follow-up reads.",
+    description:
+      "Find repo-local code and build files by glob pattern inside the allowed workspace scope.",
+    reviewerSummary:
+      "Core or reviewer can discover candidate files by glob pattern, but cannot read or write file bodies through this capability alone.",
+    pathPatterns: [
+      "src",
+      "src/**",
+      "scripts",
+      "scripts/**",
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "tsconfig.json",
+    ],
+    allowedOperations: ["glob"],
+    usageDocRef: "docs/ability/01-basic-implementation.md",
+    examplePath: "src/**/*.ts",
+    exampleOperation: "glob",
+    routeHints: [
+      { key: "scope", value: "workspace-code" },
+      { key: "baseline", value: "reviewer-tma" },
+      { key: "toolKind", value: "glob-search" },
+    ],
+    tags: ["tap", "baseline", "read", "code", "glob", "reviewer", "tma"],
+    knownLimits: [
+      "Read-only capability; it returns path matches only.",
+      "Pattern matching stays inside the configured workspace scope.",
+      "Result sets may be truncated for bounded context transfer.",
+    ],
+    workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
+  },
+  "code.grep": {
+    capabilityKey: "code.grep",
+    scopeKind: "workspace-code",
+    scopeSummary:
+      "Repo-local source and build files that can be searched by content pattern for codebase investigation.",
+    description:
+      "Search repo-local code and build files by textual or regex-like pattern inside the allowed workspace scope.",
+    reviewerSummary:
+      "Core or reviewer can search code content for symbols, strings, or patterns, but cannot mutate files through this capability.",
+    pathPatterns: [
+      "src",
+      "src/**",
+      "scripts",
+      "scripts/**",
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "tsconfig.json",
+    ],
+    allowedOperations: ["grep"],
+    usageDocRef: "docs/ability/01-basic-implementation.md",
+    examplePath: "src",
+    exampleOperation: "grep",
+    routeHints: [
+      { key: "scope", value: "workspace-code" },
+      { key: "baseline", value: "reviewer-tma" },
+      { key: "toolKind", value: "content-search" },
+    ],
+    tags: ["tap", "baseline", "read", "code", "grep", "reviewer", "tma"],
+    knownLimits: [
+      "Read-only capability; it returns bounded search hits rather than full project dumps.",
+      "Binary files and oversized files may be skipped.",
+      "Result sets may be truncated for bounded context transfer.",
+    ],
+    workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
+  },
+  "code.read_many": {
+    capabilityKey: "code.read_many",
+    scopeKind: "workspace-code",
+    scopeSummary:
+      "Repo-local source and build files that can be batch-read by explicit paths or glob patterns for higher-signal codebase context.",
+    description:
+      "Batch-read multiple repo-local code or build files inside the allowed workspace scope.",
+    reviewerSummary:
+      "Core or reviewer can collect bounded multi-file context, but still cannot write or patch files through this capability.",
+    pathPatterns: [
+      "src",
+      "src/**",
+      "scripts",
+      "scripts/**",
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "tsconfig.json",
+    ],
+    allowedOperations: ["read_many"],
+    usageDocRef: "docs/ability/01-basic-implementation.md",
+    examplePath: "src/**/*.ts",
+    exampleOperation: "read_many",
+    routeHints: [
+      { key: "scope", value: "workspace-code" },
+      { key: "baseline", value: "reviewer-tma" },
+      { key: "toolKind", value: "batch-read" },
+    ],
+    tags: ["tap", "baseline", "read", "code", "batch", "reviewer", "tma"],
+    knownLimits: [
+      "Read-only capability; each file body is still bounded.",
+      "Result sets may be truncated by file count or byte budget.",
+      "Binary files and unsupported assets may be skipped.",
     ],
     workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
   },
@@ -323,6 +474,22 @@ function createFirstClassToolingCapabilityPackage(
 
 export function createCodeReadCapabilityPackage(): CapabilityPackage {
   return createFirstClassToolingCapabilityPackage("code.read");
+}
+
+export function createCodeLsCapabilityPackage(): CapabilityPackage {
+  return createFirstClassToolingCapabilityPackage("code.ls");
+}
+
+export function createCodeGlobCapabilityPackage(): CapabilityPackage {
+  return createFirstClassToolingCapabilityPackage("code.glob");
+}
+
+export function createCodeGrepCapabilityPackage(): CapabilityPackage {
+  return createFirstClassToolingCapabilityPackage("code.grep");
+}
+
+export function createCodeReadManyCapabilityPackage(): CapabilityPackage {
+  return createFirstClassToolingCapabilityPackage("code.read_many");
 }
 
 export function createDocsReadCapabilityPackage(): CapabilityPackage {

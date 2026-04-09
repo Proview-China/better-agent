@@ -105,6 +105,11 @@ interface LiveCliState {
   lastTurn?: TurnArtifacts;
 }
 
+interface DirectFallbackReader {
+  readline: ReturnType<typeof createInterface>;
+  iterator: AsyncIterator<string>;
+}
+
 type LiveChatLogEvent =
   | "session_start"
   | "session_end"
@@ -343,7 +348,7 @@ function summarizeToolOutputForCore(
     ? output as Record<string, unknown>
     : undefined;
 
-  if (capabilityKey === "shell.restricted" || capabilityKey === "test.run") {
+  if (capabilityKey === "shell.restricted" || capabilityKey === "test.run" || capabilityKey === "shell.session") {
     const stdout = typeof normalized?.stdout === "string" ? normalized.stdout : "";
     const stderr = typeof normalized?.stderr === "string" ? normalized.stderr : "";
     const stdoutExcerpt = excerptText(stdout, 6_000);
@@ -361,7 +366,7 @@ function summarizeToolOutputForCore(
     }, null, 2);
   }
 
-  if (capabilityKey === "search.ground") {
+  if (capabilityKey === "search.ground" || capabilityKey === "search.web") {
     const sources = Array.isArray(normalized?.sources)
       ? normalized.sources.slice(0, 6)
       : [];
@@ -379,6 +384,44 @@ function summarizeToolOutputForCore(
       sources: trimStructuredValue(sources, 3_500),
       citations: trimStructuredValue(citations, 2_500),
       evidence: trimStructuredValue(normalized?.evidence, 3_500),
+    }, null, 2);
+  }
+
+  if (capabilityKey === "search.fetch") {
+    const pages = Array.isArray(normalized?.pages)
+      ? normalized.pages.slice(0, 3)
+      : [];
+    return JSON.stringify({
+      capabilityKey,
+      prompt: typeof normalized?.prompt === "string"
+        ? excerptText(normalized.prompt, 600).text
+        : undefined,
+      urlCount: normalized?.urlCount,
+      pages: trimStructuredValue(pages, 6_000),
+    }, null, 2);
+  }
+
+  if (capabilityKey === "git.status" || capabilityKey === "git.diff" || capabilityKey === "code.diff") {
+    return JSON.stringify({
+      capabilityKey,
+      cwd: typeof normalized?.cwd === "string" ? normalized.cwd : undefined,
+      branch: normalized?.branch,
+      clean: normalized?.clean,
+      changedFiles: trimStructuredValue(normalized?.changedFiles, 2_000),
+      entries: trimStructuredValue(normalized?.entries, 2_000),
+      diff: typeof normalized?.diff === "string"
+        ? excerptText(normalized.diff, 6_000).text
+        : typeof normalized?.raw === "string"
+          ? excerptText(normalized.raw, 6_000).text
+          : undefined,
+    }, null, 2);
+  }
+
+  if (capabilityKey === "write_todos") {
+    return JSON.stringify({
+      capabilityKey,
+      count: normalized?.count,
+      todos: trimStructuredValue(normalized?.todos, 3_000),
     }, null, 2);
   }
 
@@ -437,29 +480,12 @@ function resolveCliDefaultCarrierRoute(
   };
 }
 
-async function resolveDefaultMcpConnectionId(input: {
-  provider: "openai";
-  model: string;
-  layer: "api";
-}): Promise<string | undefined> {
-  const connections = rax.mcp.listConnections({
-    provider: input.provider,
-    model: input.model,
-    layer: input.layer,
-    input: {},
-  });
-  if (connections.length === 1) {
-    return connections[0]?.connectionId;
-  }
-  return undefined;
-}
-
 async function applyCliDefaultsToCapabilityRequest(
   request: CoreCapabilityRequest,
   config: ReturnType<typeof loadOpenAILiveConfig>,
   userMessage: string,
 ): Promise<CoreCapabilityRequest> {
-  if (request.capabilityKey !== "search.ground") {
+  if (request.capabilityKey !== "search.ground" && request.capabilityKey !== "search.web") {
     const routeDefaults = resolveCliDefaultCarrierRoute(config);
     if (
       request.capabilityKey === "skill.use"
@@ -479,6 +505,7 @@ async function applyCliDefaultsToCapabilityRequest(
 
     if (
       request.capabilityKey === "mcp.listTools"
+      || request.capabilityKey === "mcp.listResources"
       || request.capabilityKey === "mcp.readResource"
       || request.capabilityKey === "mcp.call"
       || request.capabilityKey === "mcp.native.execute"
@@ -495,20 +522,12 @@ async function applyCliDefaultsToCapabilityRequest(
         layer: routeDefaults.layer,
         ...route,
       };
-      const maybeConnectionId = typeof normalizedInput.connectionId === "string" && normalizedInput.connectionId.trim()
-        ? normalizedInput.connectionId
-        : await resolveDefaultMcpConnectionId(routeDefaults);
       return {
         ...request,
         input: {
           ...request.input,
           route: mergedRoute,
-          input: maybeConnectionId
-            ? {
-                connectionId: maybeConnectionId,
-                ...normalizedInput,
-              }
-            : normalizedInput,
+          input: normalizedInput,
         },
       };
     }
@@ -522,6 +541,10 @@ async function applyCliDefaultsToCapabilityRequest(
     ?? userMessage;
   const fallbackRoute = resolveCliSearchGroundDefaults();
 
+  const citations = request.capabilityKey === "search.ground"
+    ? "required"
+    : "preferred";
+
   return {
     ...request,
     requestedTier: request.requestedTier ?? "B1",
@@ -530,7 +553,7 @@ async function applyCliDefaultsToCapabilityRequest(
       provider: fallbackRoute.provider,
       model: fallbackRoute.model,
       layer: fallbackRoute.layer,
-      citations: "required",
+      citations,
       freshness: "day",
       searchContextSize: "medium",
       maxSources: 6,
@@ -610,19 +633,21 @@ function padRight(value: string, width: number): string {
 
 function printDirectBox(title: string, lines: string[]): void {
   const maxWidth = Math.min(process.stdout.columns ?? 72, 88);
+  const wrapWidth = Math.max(36, Math.min(maxWidth - 3, 82));
+  const wrappedLines = lines.flatMap((line) => wrapComposerLine(line, wrapWidth));
   const innerWidth = Math.max(
     38,
     Math.min(
       maxWidth - 2,
-      Math.max(title.length, ...lines.map((line) => line.length), 38) + 2,
+      Math.max(title.length, ...wrappedLines.map((line) => line.length), 38) + 2,
     ),
   );
   console.log(`╭${"─".repeat(innerWidth)}╮`);
   console.log(`│ ${padRight(title, innerWidth - 1)}│`);
-  if (lines.length > 0) {
+  if (wrappedLines.length > 0) {
     console.log(`│ ${padRight("", innerWidth - 1)}│`);
   }
-  for (const line of lines) {
+  for (const line of wrappedLines) {
     console.log(`│ ${padRight(line, innerWidth - 1)}│`);
   }
   console.log(`╰${"─".repeat(innerWidth)}╯`);
@@ -675,16 +700,7 @@ function buildComposerFrame(buffer: string): string[] {
 
 async function promptDirectInputBox(): Promise<string | null> {
   if (!input.isTTY || !output.isTTY) {
-    const readline = createInterface({
-      input,
-      output,
-      terminal: true,
-    });
-    try {
-      return await readline.question("\nYou> ");
-    } finally {
-      readline.close();
-    }
+    return null;
   }
 
   const ttyInput = input as ReadStream;
@@ -770,6 +786,16 @@ async function promptDirectInputBox(): Promise<string | null> {
     ttyInput.resume();
     ttyInput.on("data", onData);
   });
+}
+
+async function readDirectFallbackLine(
+  reader: DirectFallbackReader,
+): Promise<string | null> {
+  const next = await reader.iterator.next();
+  if (next.done) {
+    return null;
+  }
+  return next.value;
 }
 
 function formatElapsed(ms: number): string {
@@ -908,6 +934,131 @@ function readPositiveInteger(value: unknown): number | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const normalized = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function summarizeForLog(value: string, max = 180): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  if (normalized.length <= max) {
+    return normalized;
+  }
+  return `${normalized.slice(0, max - 1)}…`;
+}
+
+function summarizeCapabilityRequestForLog(request: CoreCapabilityRequest): string {
+  const input = request.input;
+  if (request.capabilityKey === "shell.session") {
+    const action = readString(input.action) ?? "start";
+    const sessionId = readString(input.sessionId) ?? readString(input.session_id);
+    if (action !== "start") {
+      return summarizeForLog(`${action}${sessionId ? ` ${sessionId}` : ""}`);
+    }
+    const commandArray = readStringArray(input.command);
+    const command = commandArray?.[0] ?? readString(input.command) ?? "(missing command)";
+    const args = [
+      ...(commandArray?.slice(1) ?? []),
+      ...(readStringArray(input.args) ?? []),
+    ];
+    const cwd = readString(input.cwd) ?? readString(input.workdir) ?? readString(input.dir_path) ?? ".";
+    return summarizeForLog(`${command}${args.length > 0 ? ` ${args.join(" ")}` : ""} @ ${cwd}`);
+  }
+
+  if (request.capabilityKey === "shell.restricted" || request.capabilityKey === "test.run") {
+    const commandArray = readStringArray(input.command);
+    const command = commandArray?.[0] ?? readString(input.command) ?? "(missing command)";
+    const args = [
+      ...(commandArray?.slice(1) ?? []),
+      ...(readStringArray(input.args) ?? []),
+    ];
+    const cwd = readString(input.cwd) ?? readString(input.workdir) ?? readString(input.dir_path) ?? ".";
+    return summarizeForLog(`${command}${args.length > 0 ? ` ${args.join(" ")}` : ""} @ ${cwd}`);
+  }
+
+  if (request.capabilityKey === "search.ground" || request.capabilityKey === "search.web") {
+    return summarizeForLog(readString(input.query)
+      ?? readString(input.question)
+      ?? readString(input.prompt)
+      ?? request.reason);
+  }
+
+  if (request.capabilityKey === "search.fetch") {
+    return summarizeForLog(readString(input.url)
+      ?? (Array.isArray(input.urls)
+        ? input.urls.filter((entry): entry is string => typeof entry === "string").join(", ")
+        : "")
+      ?? readString(input.prompt)
+      ?? request.reason);
+  }
+
+  if (
+    request.capabilityKey === "code.read"
+    || request.capabilityKey === "code.ls"
+    || request.capabilityKey === "code.glob"
+    || request.capabilityKey === "code.grep"
+    || request.capabilityKey === "code.read_many"
+    || request.capabilityKey === "code.edit"
+    || request.capabilityKey === "code.patch"
+    || request.capabilityKey === "code.diff"
+    || request.capabilityKey === "docs.read"
+    || request.capabilityKey === "repo.write"
+    || request.capabilityKey === "git.status"
+    || request.capabilityKey === "git.diff"
+  ) {
+    return summarizeForLog(readString(input.path)
+      ?? readString(input.file_path)
+      ?? readString(input.filePath)
+      ?? readString(input.target)
+      ?? readString(input.pattern)
+      ?? request.reason);
+  }
+
+  if (request.capabilityKey === "write_todos") {
+    return summarizeForLog(
+      Array.isArray(input.todos)
+        ? input.todos
+          .map((entry) => typeof entry === "object" && entry
+            ? `${readString((entry as Record<string, unknown>).status) ?? "pending"}:${readString((entry as Record<string, unknown>).description) ?? "?"}`
+            : "?")
+          .join(" | ")
+        : request.reason,
+    );
+  }
+
+  if (
+    request.capabilityKey === "mcp.listTools"
+    || request.capabilityKey === "mcp.listResources"
+    || request.capabilityKey === "mcp.readResource"
+    || request.capabilityKey === "mcp.call"
+    || request.capabilityKey === "mcp.native.execute"
+  ) {
+    const route = typeof input.route === "object" && input.route
+      ? input.route as Record<string, unknown>
+      : {};
+    const routeModel = readString(route.model) ?? readString(input.model);
+    const routeProvider = readString(route.provider) ?? readString(input.provider);
+    return summarizeForLog(`${request.capabilityKey}${routeProvider || routeModel ? ` via ${[routeProvider, routeModel].filter(Boolean).join("/")}` : ""}`);
+  }
+
+  if (
+    request.capabilityKey === "skill.use"
+    || request.capabilityKey === "skill.mount"
+    || request.capabilityKey === "skill.prepare"
+    || request.capabilityKey === "skill.doc.generate"
+  ) {
+    return summarizeForLog(readString(input.skillName)
+      ?? readString(input.name)
+      ?? readString(input.target)
+      ?? request.reason);
+  }
+
+  return summarizeForLog(request.reason);
 }
 
 function formatNowStamp(date = new Date()): string {
@@ -1340,6 +1491,20 @@ function printStartupDirect(config: ReturnType<typeof loadOpenAILiveConfig>): vo
 }
 
 function printHelp(): void {
+  if (CURRENT_UI_MODE === "direct") {
+    console.log("");
+    printDirectBox("Commands", [
+      "/help         查看命令",
+      "/status       查看最近一轮 CMP / TAP / core 总览",
+      "/capabilities 查看当前 TAP 池中已注册能力",
+      "/history      查看当前 CLI 内部对话历史摘要",
+      "/cmp          查看最近一轮 CMP 摘要",
+      "/tap          查看当前 TAP 治理视图",
+      "/events       查看最近一轮 core run 事件类型",
+      "/exit         退出",
+    ]);
+    return;
+  }
   printDivider("Commands");
   console.log("/help    查看命令");
   console.log("/status  查看最近一轮 CMP/TAP/core 总览");
@@ -1430,11 +1595,12 @@ function printDirectCapabilities(runtime: LiveCliState["runtime"]): void {
     bucket.push(capability);
     grouped.set(family, bucket);
   }
-  console.log("");
-  printDirectBullet(`Capabilities (${capabilities.length} registered)`);
+  const lines = [`${capabilities.length} registered`];
   for (const [family, items] of grouped.entries()) {
-    printDirectSub(`${family}: ${items.join(", ")}`);
+    lines.push(`${family}: ${items.join(", ")}`);
   }
+  console.log("");
+  printDirectBox("Capabilities", lines);
 }
 
 function printDirectStatus(state: LiveCliState): void {
@@ -1447,10 +1613,11 @@ function printDirectStatus(state: LiveCliState): void {
   });
   const snapshot = state.runtime.createTapGovernanceSnapshot();
   console.log("");
-  printDirectBullet("Status");
-  printDirectSub(`core: ${state.lastTurn.core.dispatchStatus} / ${state.lastTurn.core.capabilityKey ?? "no capability"} / ${state.lastTurn.core.capabilityResultStatus ?? "success"}`);
-  printDirectSub(`cmp: ${state.latestCmp ? "synced" : "warming"} / ${truncate(state.lastTurn.cmp.intent, 96)}`);
-  printDirectSub(`tap: ${governance.taskPolicy.effectiveMode} / ${state.runtime.capabilityPool.listCapabilities().length} registered / ${snapshot.blockingCapabilityKeys.length} blocked`);
+  printDirectBox("Status", [
+    `core: ${state.lastTurn.core.dispatchStatus} / ${state.lastTurn.core.capabilityKey ?? "no capability"} / ${state.lastTurn.core.capabilityResultStatus ?? "success"}`,
+    `cmp: ${state.latestCmp ? "synced" : "warming"} / ${truncate(state.lastTurn.cmp.intent, 96)}`,
+    `tap: ${governance.taskPolicy.effectiveMode} / ${state.runtime.capabilityPool.listCapabilities().length} registered / ${snapshot.blockingCapabilityKeys.length} blocked`,
+  ]);
 }
 
 function printStatus(state: LiveCliState): void {
@@ -1472,8 +1639,7 @@ function printStatus(state: LiveCliState): void {
 
 function printDirectAnswer(turn: CoreTurnArtifacts): void {
   console.log("");
-  printDirectBullet("Assistant");
-  console.log(turn.answer);
+  printDirectBox("Assistant", turn.answer.split("\n"));
 }
 
 function printEvents(state: LiveCliState): void {
@@ -1533,19 +1699,19 @@ function buildCoreUserInput(input: {
       : "If the user asks to inspect or operate the local workspace/system, or asks for current online information, emit a structured action envelope immediately whenever a fitting capability exists.",
     input.forceFinalAnswer
       ? "Summarize the actual tool result and continue the task."
-      : "Exact JSON schema: {\"action\":\"reply|capability_call\",\"responseText\":\"短中文句子\",\"capabilityRequest\":{\"capabilityKey\":\"shell.restricted|test.run|repo.write|code.read|docs.read|search.ground|skill.use|skill.mount|skill.prepare|mcp.listTools|mcp.readResource|mcp.call|mcp.native.execute\",\"reason\":\"为什么要用\",\"requestedTier\":\"B0|B1|B2|B3\",\"timeoutMs\":15000,\"input\":{}}}",
+      : "Exact JSON schema: {\"action\":\"reply|capability_call\",\"responseText\":\"短中文句子\",\"capabilityRequest\":{\"capabilityKey\":\"shell.restricted|shell.session|test.run|repo.write|code.edit|code.patch|code.diff|git.status|git.diff|write_todos|code.read|code.ls|code.glob|code.grep|code.read_many|docs.read|search.web|search.fetch|search.ground|skill.use|skill.mount|skill.prepare|mcp.listTools|mcp.listResources|mcp.readResource|mcp.call|mcp.native.execute\",\"reason\":\"为什么要用\",\"requestedTier\":\"B0|B1|B2|B3\",\"timeoutMs\":15000,\"input\":{}}}",
     input.forceFinalAnswer
       ? "Do not return JSON in the final answer."
       : "Return strict JSON only. No markdown fences. No prose outside JSON.",
     input.forceFinalAnswer
       ? ""
-      : "For shell.restricted/test.run, use structured input like {\"command\":\"zsh\",\"args\":[\"--version\"],\"cwd\":\".\",\"timeoutMs\":15000}. Do not use shell operators like ||, &&, pipes, redirects, or inline shell strings.",
+      : "For shell.restricted/test.run, use structured input like {\"command\":\"zsh\",\"args\":[\"--version\"],\"cwd\":\".\",\"timeoutMs\":15000}. For shell.session, use {\"action\":\"start\",\"command\":\"python3\",\"args\":[\"-i\"],\"cwd\":\".\",\"yield_time_ms\":500} and later {\"action\":\"write\",\"sessionId\":\"...\",\"chars\":\"print(1)\\n\"}. For code.edit, use {\"path\":\"src/file.ts\",\"old_string\":\"旧文本\",\"new_string\":\"新文本\",\"allow_multiple\":false}. For code.patch, use {\"patch\":\"*** Begin Patch\\n*** Update File: path\\n@@\\n-旧\\n+新\\n*** End Patch\\n\"}. For git.status/git.diff use bounded cwd/path inputs. For write_todos use {\"todos\":[{\"description\":\"...\",\"status\":\"pending|in_progress|completed|blocked|cancelled\"}]}. Do not use shell operators like ||, &&, pipes, redirects, or inline shell strings. For code.glob/code.grep/code.read_many, prefer bounded path/pattern inputs instead of huge raw dumps.",
     input.forceFinalAnswer
       ? ""
-      : "If the user asks for latest/current web information, browsing, live situation, or anything explicitly requiring the internet, prefer search.ground instead of replying that you cannot browse.",
+      : "If the user asks for latest/current web information, browsing, live situation, or anything explicitly requiring the internet, prefer search.ground; use search.web for broad discovery and search.fetch for targeted page retrieval.",
     input.forceFinalAnswer
       ? ""
-      : "For search.ground, use input like {\"query\":\"问题本体\",\"freshness\":\"day\",\"citations\":\"required\"}. Provider/model defaults will be supplied by the CLI.",
+      : "For search.web/search.ground, use input like {\"query\":\"问题本体\",\"freshness\":\"day\",\"citations\":\"preferred|required\"}. Provider/model defaults will be supplied by the CLI. For search.fetch, use input like {\"url\":\"https://...\",\"prompt\":\"要抽取什么\"}.",
     input.forceFinalAnswer
       ? ""
       : "When using shell.restricted, prefer bounded output. Avoid commands that dump an entire large tree or huge raw search results in one go.",
@@ -1554,10 +1720,10 @@ function buildCoreUserInput(input: {
       : "For skill.use / skill.mount / skill.prepare, provide route fields like provider/model and include the skill source or container in input.",
     input.forceFinalAnswer
       ? ""
-      : "For MCP capabilities, provide route.provider, route.model, and structured input. Examples: mcp.listTools => {\"route\":{...},\"input\":{\"connectionId\":\"...\"}}, mcp.call => {\"route\":{...},\"input\":{\"connectionId\":\"...\",\"toolName\":\"...\",\"arguments\":{}}}.",
+      : "For MCP capabilities, provide route.provider, route.model, and structured input. Examples: mcp.listTools => {\"route\":{...},\"input\":{\"connectionId\":\"...\"}}, mcp.listResources => {\"route\":{...},\"input\":{\"connectionId\":\"...\"}}, mcp.call => {\"route\":{...},\"input\":{\"connectionId\":\"...\",\"toolName\":\"...\",\"arguments\":{}}}.",
     input.forceFinalAnswer
       ? ""
-      : "If shell.restricted, test.run, repo.write, or search.ground is already registered, treat it as ready-to-use TAP inventory rather than something that still needs user approval.",
+      : "If shell.restricted, shell.session, test.run, repo.write, code.edit, code.patch, code.diff, git.status, git.diff, write_todos, search.web, search.fetch, or search.ground is already registered, treat it as ready-to-use TAP inventory rather than something that still needs user approval.",
     `Currently registered TAP capabilities: ${availableCapabilities || "(none)"}.`,
     "",
     "Latest user message:",
@@ -1735,6 +1901,7 @@ async function runCoreActionPlanner(
   const availableCapabilities = state.runtime.capabilityPool
     .listCapabilities()
     .map((manifest) => manifest.capabilityKey);
+  const recentTranscript = state.transcript.slice(-6);
   const intent = {
     intentId: randomUUID(),
     sessionId: state.sessionId,
@@ -1756,14 +1923,17 @@ async function runCoreActionPlanner(
         "Do not say you cannot act if the capability window already contains a matching tool.",
         "If the user asks what you can do, what abilities you have, or what is currently in the TAP pool, answer directly from the available capability inventory instead of calling any tool.",
         "Do not use mcp.* just to inspect your own registered inventory.",
-        "If the user asks for current, latest, online, web, or live information and search.ground is available, choose capability_call with search.ground instead of saying you cannot browse.",
+        "If the user asks for current, latest, online, web, or live information and search.ground is available, choose capability_call with search.ground instead of saying you cannot browse. Use search.web for broad discovery and search.fetch for targeted page reads.",
         "For shell.restricted and test.run, prefer bounded output and avoid commands likely to dump an entire large repository or massive raw result in one step.",
         "Schema:",
-        '{"action":"reply|capability_call","responseText":"user-facing text","capabilityRequest":{"capabilityKey":"shell.restricted|test.run|repo.write|search.ground|skill.use|skill.mount|skill.prepare|mcp.listTools|mcp.readResource|mcp.call|mcp.native.execute|...","reason":"short reason","input":{"command":"...","args":["..."],"cwd":"."},"requestedTier":"B0|B1|B2|B3","timeoutMs":20000}}',
+        '{"action":"reply|capability_call","responseText":"user-facing text","capabilityRequest":{"capabilityKey":"shell.restricted|shell.session|test.run|repo.write|code.edit|code.patch|code.diff|git.status|git.diff|write_todos|code.read|code.ls|code.glob|code.grep|code.read_many|search.web|search.fetch|search.ground|skill.use|skill.mount|skill.prepare|mcp.listTools|mcp.listResources|mcp.readResource|mcp.call|mcp.native.execute|...","reason":"short reason","input":{"command":"...","args":["..."],"cwd":"."},"requestedTier":"B0|B1|B2|B3","timeoutMs":20000}}',
         "If action=reply, omit capabilityRequest.",
         "If action=capability_call, responseText should briefly tell the user what tool you are using and then proceed.",
-        "For search.ground, emit input like {\"query\":\"...\",\"freshness\":\"day\",\"citations\":\"required\"}. The CLI will supply provider/model defaults.",
+        "For search.web/search.ground, emit input like {\"query\":\"...\",\"freshness\":\"day\",\"citations\":\"preferred|required\"}. The CLI will supply provider/model defaults. For search.fetch, emit input like {\"url\":\"https://...\",\"prompt\":\"extract the needed facts\"}.",
         "For skill.* and mcp.* capabilities, include structured route/input objects rather than vague prose.",
+        "Recent transcript window:",
+        formatTranscript(recentTranscript),
+        "If the recent transcript shows a capability failure and the user asks you to retry, try another suitable available capability or a revised retry, rather than asking them to restate the request.",
         "User message:",
         userMessage,
       ].join("\n"),
@@ -2285,26 +2455,29 @@ async function runCoreTurn(
       stage: "core/capability_bridge",
       capabilityKey: capabilityRequest.capabilityKey,
       reason: capabilityRequest.reason,
+      inputSummary: summarizeCapabilityRequestForLog(capabilityRequest),
     });
     const toolExecution = await executeCoreCapabilityRequest(
       state,
       capabilityRequest,
     );
+    const resolvedToolExecution = toolExecution;
     if (state.uiMode === "direct") {
-      printDirectSub(`能力返回 ${toolExecution.status}`);
+      printDirectSub(`能力返回 ${resolvedToolExecution.status}`);
     }
     await state.logger.log("stage_end", {
       turnIndex: state.turnIndex,
       stage: "core/capability_bridge",
-      status: toolExecution.status,
-      capabilityKey: toolExecution.capabilityKey,
-      output: toolExecution.output,
-      error: toolExecution.error,
+      status: resolvedToolExecution.status,
+      capabilityKey: resolvedToolExecution.capabilityKey,
+      output: resolvedToolExecution.output,
+      error: resolvedToolExecution.error,
     });
 
-    const toolResultText = toolExecution.error
-      ? JSON.stringify({ error: toolExecution.error }, null, 2)
-      : summarizeToolOutputForCore(capabilityRequest.capabilityKey, toolExecution.output ?? {});
+    const toolResultCapabilityKey = resolvedToolExecution.capabilityKey || capabilityRequest.capabilityKey;
+    const toolResultText = resolvedToolExecution.error
+      ? JSON.stringify({ error: resolvedToolExecution.error }, null, 2)
+      : summarizeToolOutputForCore(toolResultCapabilityKey, resolvedToolExecution.output ?? {});
 
     const followup = await runCoreModelPass({
       state,
@@ -2327,9 +2500,9 @@ async function runCoreTurn(
         answer: followupAnswer,
         dispatchStatus: "capability_executed",
         capabilityKey: capabilityRequest.capabilityKey,
-        capabilityResultStatus: toolExecution.status,
+        capabilityResultStatus: resolvedToolExecution.status,
         plannerRawAnswer: rawAnswer,
-        toolExecution,
+        toolExecution: resolvedToolExecution,
       eventTypes: [
         ...followup.eventTypes,
         "core.action_planner.capability_call",
@@ -2485,16 +2658,30 @@ function createRuntime(config: ReturnType<typeof loadOpenAILiveConfig>) {
       baselineCapabilities: [
         "model.infer",
         "code.read",
+        "code.ls",
+        "code.glob",
+        "code.grep",
+        "code.read_many",
         "docs.read",
         "repo.write",
+        "code.edit",
+        "code.patch",
+        "code.diff",
         "shell.restricted",
+        "shell.session",
         "test.run",
+        "git.status",
+        "git.diff",
+        "write_todos",
         "skill.doc.generate",
+        "search.web",
+        "search.fetch",
         "search.ground",
         "skill.use",
         "skill.mount",
         "skill.prepare",
         "mcp.listTools",
+        "mcp.listResources",
         "mcp.readResource",
         "mcp.call",
         "mcp.native.execute",
@@ -2638,11 +2825,26 @@ async function main(): Promise<void> {
           output,
           terminal: true,
         });
+    const directFallbackReader = options.uiMode === "direct" && (!input.isTTY || !output.isTTY)
+      ? (() => {
+          const fallbackReadline = createInterface({
+            input,
+            crlfDelay: Infinity,
+            terminal: false,
+          });
+          return {
+            readline: fallbackReadline,
+            iterator: fallbackReadline[Symbol.asyncIterator](),
+          } satisfies DirectFallbackReader;
+        })()
+      : undefined;
 
     try {
       while (true) {
         const raw = options.uiMode === "direct"
-          ? await promptDirectInputBox()
+          ? (directFallbackReader
+              ? await readDirectFallbackLine(directFallbackReader)
+              : await promptDirectInputBox())
           : await readline!.question("\nYou> ");
         if (raw === null) {
           break;
@@ -2692,6 +2894,7 @@ async function main(): Promise<void> {
         await handleUserTurn(state, line, config);
       }
     } finally {
+      directFallbackReader?.readline.close();
       readline?.close();
     }
   } finally {
@@ -2703,4 +2906,7 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+void main().catch((error: unknown) => {
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
+  process.exitCode = 1;
+});

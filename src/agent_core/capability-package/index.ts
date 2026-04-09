@@ -142,6 +142,10 @@ export {
 export {
   createCapabilityManifestFromPackage,
   createCodeReadCapabilityPackage,
+  createCodeLsCapabilityPackage,
+  createCodeGlobCapabilityPackage,
+  createCodeGrepCapabilityPackage,
+  createCodeReadManyCapabilityPackage,
   createDocsReadCapabilityPackage,
   FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS,
   FIRST_CLASS_TOOLING_BASELINE_CAPABILITY_KEYS,

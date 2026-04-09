@@ -8,6 +8,7 @@ import {
 
 export const MCP_READ_FAMILY_CAPABILITY_KEYS = [
   "mcp.listTools",
+  "mcp.listResources",
   "mcp.readResource",
 ] as const;
 
@@ -81,6 +82,44 @@ const MCP_READ_FAMILY_DEFAULTS: Record<
         },
       },
       exampleNotes: "Enumerate the available MCP tools before choosing a tool invocation.",
+    },
+  },
+  "mcp.listResources": {
+    description: "Read-only MCP capability for enumerating resource metadata on an active connection.",
+    tags: ["mcp", "read-family", "resource-discovery"],
+    verification: {
+      smokeEntry: "smoke:mcp:list-resources",
+      healthEntry: "health:mcp:list-resources",
+      successCriteria: [
+        "resource inventory returned",
+        "result metadata records resourceCount",
+      ],
+      failureSignals: [
+        "connection not found",
+        "resource enumeration failed",
+      ],
+      evidenceOutput: ["resource-list", "metadata.resourceCount"],
+    },
+    usage: {
+      bestPractices: [
+        "Call this before mcp.readResource when the available resource surface is unknown.",
+        "Treat the returned resource descriptors as read-only inventory.",
+      ],
+      knownLimits: [
+        "Requires an existing MCP connection.",
+        "Does not read the resource body itself.",
+      ],
+      exampleOperation: "list_resources",
+      exampleInput: {
+        route: {
+          provider: "openai",
+          model: "gpt-5.4",
+        },
+        input: {
+          connectionId: "conn-demo",
+        },
+      },
+      exampleNotes: "Enumerate the available MCP resources before choosing a URI to read.",
     },
   },
   "mcp.readResource": {

@@ -8,7 +8,7 @@ import type {
   TapFamilyCheckSeverity,
 } from "./family-check-types.js";
 
-const MCP_READ_KEYS = new Set(["mcp.listTools", "mcp.readResource"]);
+const MCP_READ_KEYS = new Set(["mcp.listTools", "mcp.listResources", "mcp.readResource"]);
 const MCP_CALL_KEY = "mcp.call";
 const MCP_NATIVE_EXECUTE_KEY = "mcp.native.execute";
 

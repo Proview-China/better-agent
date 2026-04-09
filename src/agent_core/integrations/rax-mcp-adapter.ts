@@ -12,6 +12,8 @@ import type { ProviderId, SdkLayer } from "../../rax/types.js";
 import type {
   McpCallInput,
   McpCallResult,
+  McpListResourcesInput,
+  McpListResourcesResult,
   McpListToolsInput,
   McpListToolsResult,
   McpReadResourceInput,
@@ -40,6 +42,7 @@ import type {
 
 export const MCP_READ_FAMILY_ACTIONS = [
   "mcp.listTools",
+  "mcp.listResources",
   "mcp.readResource",
 ] as const;
 
@@ -69,9 +72,16 @@ interface McpRouteSelection {
 interface McpActionPayloadMap {
   "mcp.call": McpCallInput;
   "mcp.listTools": McpListToolsInput;
+  "mcp.listResources": McpListResourcesInput;
   "mcp.readResource": McpReadResourceInput;
   "mcp.native.execute": McpConnectInput;
 }
+
+type McpCallBackendKind =
+  | "openai-codex-style-mcp-call"
+  | "anthropic-claude-code-mcp-call"
+  | "gemini-cli-mcp-call"
+  | "shared-runtime-mcp-call";
 
 type SupportedMcpPreparedPayload = {
   action: SupportedMcpAction;
@@ -189,6 +199,53 @@ function asArrayOfStrings(value: unknown): string[] | undefined {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+function sanitizeMcpNamePart(value: string): string {
+  return value.trim().replace(/[^a-zA-Z0-9_-]+/g, "_");
+}
+
+function parseQualifiedMcpToolName(value: string): { serverName?: string; toolName: string } {
+  if (value.startsWith("mcp_")) {
+    const withoutPrefix = value.slice("mcp_".length);
+    const match = withoutPrefix.match(/^([^_]+)_(.+)$/u);
+    if (match) {
+      return {
+        serverName: match[1],
+        toolName: match[2],
+      };
+    }
+  }
+
+  const colonSplit = value.match(/^([^:]+)::(.+)$/u);
+  if (colonSplit) {
+    return {
+      serverName: colonSplit[1],
+      toolName: colonSplit[2],
+    };
+  }
+
+  return { toolName: value };
+}
+
+function formatQualifiedMcpToolName(serverName: string | undefined, toolName: string): string | undefined {
+  if (!serverName) {
+    return undefined;
+  }
+  return `mcp_${sanitizeMcpNamePart(serverName)}_${toolName}`;
+}
+
+function selectMcpCallBackend(route: McpRouteSelection): McpCallBackendKind {
+  if (route.provider === "openai") {
+    return "openai-codex-style-mcp-call";
+  }
+  if (route.provider === "anthropic") {
+    return "anthropic-claude-code-mcp-call";
+  }
+  if (route.provider === "deepmind") {
+    return "gemini-cli-mcp-call";
+  }
+  return "shared-runtime-mcp-call";
+}
+
 function getCapabilityPackageMetadata(
   action: SupportedMcpAction,
 ): Record<string, unknown> | undefined {
@@ -237,43 +294,52 @@ function parseRouteSelection(input: Record<string, unknown>): McpRouteSelection 
   };
 }
 
-function parseCallInput(input: Record<string, unknown>): McpCallInput {
+function readOptionalCallInput(input: Record<string, unknown>): Omit<McpCallInput, "connectionId"> & { connectionId?: string } {
   const payload = asObject(input.input);
-  const connectionId = asString(payload?.connectionId);
-  const toolName = asString(payload?.toolName);
-  if (!connectionId) {
-    throw new Error("MCP call input is missing connectionId.");
-  }
-  if (!toolName) {
+  const rawToolName =
+    asString(payload?.toolName)
+    ?? asString(payload?.qualifiedToolName)
+    ?? asString(payload?.name);
+  if (!rawToolName) {
     throw new Error("MCP call input is missing toolName.");
   }
+  const parsedToolIdentity = parseQualifiedMcpToolName(rawToolName);
+  const serverName = asString(payload?.serverName) ?? parsedToolIdentity.serverName;
+  const toolName = parsedToolIdentity.toolName;
+  const connectionId = asString(payload?.connectionId);
   return {
     connectionId,
     toolName,
     arguments: asObject(payload?.arguments),
+    serverName,
+    qualifiedToolName: formatQualifiedMcpToolName(serverName, toolName),
   };
 }
 
-function parseListToolsInput(input: Record<string, unknown>): McpListToolsInput {
+function readOptionalListToolsInput(input: Record<string, unknown>): { connectionId?: string } {
   const payload = asObject(input.input);
-  const connectionId = asString(payload?.connectionId);
-  if (!connectionId) {
-    throw new Error("MCP listTools input is missing connectionId.");
-  }
-  return { connectionId };
+  return {
+    connectionId: asString(payload?.connectionId),
+  };
 }
 
-function parseReadResourceInput(input: Record<string, unknown>): McpReadResourceInput {
+function readOptionalListResourcesInput(input: Record<string, unknown>): { connectionId?: string } {
   const payload = asObject(input.input);
-  const connectionId = asString(payload?.connectionId);
+  return {
+    connectionId: asString(payload?.connectionId),
+  };
+}
+
+function readOptionalReadResourceInput(input: Record<string, unknown>): Omit<McpReadResourceInput, "connectionId"> & { connectionId?: string } {
+  const payload = asObject(input.input);
   const uri = asString(payload?.uri);
-  if (!connectionId) {
-    throw new Error("MCP readResource input is missing connectionId.");
-  }
   if (!uri) {
     throw new Error("MCP readResource input is missing uri.");
   }
-  return { connectionId, uri };
+  return {
+    connectionId: asString(payload?.connectionId),
+    uri,
+  };
 }
 
 function parseNativeExecuteInput(input: Record<string, unknown>): McpConnectInput {
@@ -348,36 +414,6 @@ function parseNativeExecuteInput(input: Record<string, unknown>): McpConnectInpu
   }
 }
 
-function parsePreparedPayload(action: SupportedMcpAction, input: Record<string, unknown>): SupportedMcpPreparedPayload {
-  const route = parseRouteSelection(input);
-  switch (action) {
-    case "mcp.call":
-      return {
-        action,
-        route,
-        input: parseCallInput(input),
-      };
-    case "mcp.listTools":
-      return {
-        action,
-        route,
-        input: parseListToolsInput(input),
-      };
-    case "mcp.readResource":
-      return {
-        action,
-        route,
-        input: parseReadResourceInput(input),
-      };
-    case "mcp.native.execute":
-      return {
-        action,
-        route,
-        input: parseNativeExecuteInput(input),
-      };
-  }
-}
-
 function createFailureEnvelope(params: {
   executionId: string;
   code: string;
@@ -407,6 +443,48 @@ function createExecutionMetadata(action: SupportedMcpAction, route: McpRouteSele
   };
 }
 
+function normalizeMcpCallResult(
+  route: McpRouteSelection,
+  input: McpCallInput,
+  result: McpCallResult,
+): McpCallResult {
+  const backend = selectMcpCallBackend(route);
+  const rawRecord = asObject(result.raw);
+  const content = Array.isArray(result.content)
+    ? result.content
+    : Array.isArray(rawRecord?.content)
+      ? (rawRecord.content as unknown[])
+      : [];
+  const structuredCandidate = result.structuredContent ?? asObject(rawRecord?.structuredContent);
+  const structuredContent =
+    structuredCandidate && typeof structuredCandidate === "object"
+      ? structuredCandidate
+      : {};
+  const meta = asObject(result._meta) ?? asObject(rawRecord?._meta);
+  const serverName = input.serverName ?? result.serverName;
+  const qualifiedToolName =
+    input.qualifiedToolName
+    ?? result.qualifiedToolName
+    ?? formatQualifiedMcpToolName(serverName, input.toolName);
+
+  return {
+    ...result,
+    connectionId: input.connectionId,
+    toolName: input.toolName,
+    serverName,
+    qualifiedToolName,
+    content,
+    structuredContent,
+    isError: result.isError === true,
+    _meta: meta,
+    raw: {
+      ...(rawRecord ?? {}),
+      backend,
+      qualifiedToolName,
+    },
+  };
+}
+
 function readCapabilityKeyFromActivationContext(
   context: ActivationAdapterFactoryContext,
 ): SupportedMcpAction {
@@ -426,7 +504,7 @@ function readCapabilityKeyFromActivationContext(
   }
 
   throw new Error(
-    "RAX MCP activation factory requires one of mcp.listTools, mcp.readResource, mcp.call, or mcp.native.execute.",
+    "RAX MCP activation factory requires one of mcp.listTools, mcp.listResources, mcp.readResource, mcp.call, or mcp.native.execute.",
   );
 }
 
@@ -476,13 +554,97 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
     return isSupportedAction(plan.capabilityKey);
   }
 
+  async #resolveImplicitConnectionId(route: McpRouteSelection): Promise<string | undefined> {
+    const connections = this.#facade.mcp.listConnections({
+      provider: route.provider,
+      model: route.model,
+      layer: route.layer,
+      input: {},
+    });
+    return connections.length === 1 ? connections[0]?.connectionId : undefined;
+  }
+
   async prepare(plan: CapabilityInvocationPlan, lease: CapabilityLease): Promise<PreparedCapabilityCall> {
     if (!this.supports(plan)) {
       throw new Error(`Unsupported MCP capability action: ${plan.capabilityKey}.`);
     }
 
     const action = plan.capabilityKey as SupportedMcpAction;
-    const parsed = parsePreparedPayload(action, plan.input);
+    const route = parseRouteSelection(plan.input);
+    const inputRecord = asObject(plan.input) ?? {};
+    let parsed: SupportedMcpPreparedPayload;
+
+    switch (action) {
+      case "mcp.call": {
+        const partial = readOptionalCallInput(inputRecord);
+        const connectionId = partial.connectionId ?? await this.#resolveImplicitConnectionId(route);
+        if (!connectionId) {
+          throw new Error("MCP call input is missing connectionId.");
+        }
+        parsed = {
+          action,
+          route,
+          input: {
+            ...partial,
+            connectionId,
+          },
+        };
+        break;
+      }
+      case "mcp.listTools": {
+        const partial = readOptionalListToolsInput(inputRecord);
+        const connectionId = partial.connectionId ?? await this.#resolveImplicitConnectionId(route);
+        if (!connectionId) {
+          throw new Error("MCP listTools input is missing connectionId.");
+        }
+        parsed = {
+          action,
+          route,
+          input: {
+            connectionId,
+          },
+        };
+        break;
+      }
+      case "mcp.listResources": {
+        const partial = readOptionalListResourcesInput(inputRecord);
+        const connectionId = partial.connectionId ?? await this.#resolveImplicitConnectionId(route);
+        if (!connectionId) {
+          throw new Error("MCP listResources input is missing connectionId.");
+        }
+        parsed = {
+          action,
+          route,
+          input: {
+            connectionId,
+          },
+        };
+        break;
+      }
+      case "mcp.readResource": {
+        const partial = readOptionalReadResourceInput(inputRecord);
+        const connectionId = partial.connectionId ?? await this.#resolveImplicitConnectionId(route);
+        if (!connectionId) {
+          throw new Error("MCP readResource input is missing connectionId.");
+        }
+        parsed = {
+          action,
+          route,
+          input: {
+            ...partial,
+            connectionId,
+          },
+        };
+        break;
+      }
+      case "mcp.native.execute":
+        parsed = {
+          action,
+          route,
+          input: parseNativeExecuteInput(inputRecord),
+        };
+        break;
+    }
 
     let preparedPayload: SupportedMcpPreparedPayload;
     if (parsed.action === "mcp.native.execute") {
@@ -530,6 +692,8 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
           return this.#executeCall(prepared.preparedId, payload.route, payload.input as McpCallInput);
         case "mcp.listTools":
           return this.#executeListTools(prepared.preparedId, payload.route, payload.input as McpListToolsInput);
+        case "mcp.listResources":
+          return this.#executeListResources(prepared.preparedId, payload.route, payload.input as McpListResourcesInput);
         case "mcp.readResource":
           return this.#executeReadResource(prepared.preparedId, payload.route, payload.input as McpReadResourceInput);
         case "mcp.native.execute":
@@ -554,7 +718,7 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
     route: McpRouteSelection,
     input: McpCallInput,
   ): Promise<CapabilityResultEnvelope> {
-    const result = await this.#facade.mcp.call({
+    const rawResult = await this.#facade.mcp.call({
       provider: route.provider,
       model: route.model,
       layer: route.layer,
@@ -562,6 +726,8 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
       compatibilityProfileId: route.compatibilityProfileId,
       input,
     });
+    const result = normalizeMcpCallResult(route, input, rawResult);
+    const selectedBackend = selectMcpCallBackend(route);
 
     return createCapabilityResultEnvelope({
         executionId,
@@ -570,6 +736,13 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
         metadata: createExecutionMetadata("mcp.call", route, {
           connectionId: input.connectionId,
           toolName: input.toolName,
+          serverName: input.serverName,
+          qualifiedToolName: result.qualifiedToolName,
+          selectedBackend,
+          resolvedBackend: selectedBackend,
+          resultContentCount: result.content?.length ?? 0,
+          hasStructuredContent:
+            !!result.structuredContent && Object.keys(result.structuredContent).length > 0,
         }),
         error: result.isError
           ? {
@@ -601,6 +774,31 @@ export class RaxMcpCapabilityAdapter implements CapabilityAdapter {
       metadata: createExecutionMetadata("mcp.listTools", route, {
         connectionId: input.connectionId,
         toolCount: result.tools.length,
+      }),
+    });
+  }
+
+  async #executeListResources(
+    executionId: string,
+    route: McpRouteSelection,
+    input: McpListResourcesInput,
+  ): Promise<CapabilityResultEnvelope> {
+    const result = await this.#facade.mcp.listResources({
+      provider: route.provider,
+      model: route.model,
+      layer: route.layer,
+      variant: route.variant,
+      compatibilityProfileId: route.compatibilityProfileId,
+      input,
+    });
+
+    return createCapabilityResultEnvelope({
+      executionId,
+      status: "success",
+      output: result,
+      metadata: createExecutionMetadata("mcp.listResources", route, {
+        connectionId: input.connectionId,
+        resourceCount: result.resources.length,
       }),
     });
   }

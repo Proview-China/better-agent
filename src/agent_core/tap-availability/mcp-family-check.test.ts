@@ -58,6 +58,7 @@ function createLiveMcpAvailabilityReport() {
     registrationAudit,
     activationFactoryAudit: [
       { ref: "factory:rax.mcp.adapter", capabilityKey: "mcp.listTools", familyKey: "mcp" },
+      { ref: "factory:rax.mcp.adapter", capabilityKey: "mcp.listResources", familyKey: "mcp" },
       { ref: "factory:rax.mcp.adapter", capabilityKey: "mcp.readResource", familyKey: "mcp" },
       { ref: "factory:rax.mcp.adapter", capabilityKey: "mcp.call", familyKey: "mcp" },
       { ref: "factory:rax.mcp.adapter", capabilityKey: "mcp.native.execute", familyKey: "mcp" },
@@ -79,6 +80,7 @@ test("createMcpFamilyCheckReport marks MCP family ready on live formal-family as
   assert.equal(familyReport.productionLikeReady, true);
   assert.deepEqual(familyReport.capabilityKeys, [
     "mcp.listTools",
+    "mcp.listResources",
     "mcp.readResource",
     "mcp.call",
     "mcp.native.execute",

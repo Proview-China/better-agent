@@ -27,11 +27,22 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
 
   assert.deepEqual(result.familyKeys.foundation, [
     "code.read",
+    "code.ls",
+    "code.glob",
+    "code.grep",
+    "code.read_many",
     "docs.read",
     "repo.write",
+    "code.edit",
+    "code.patch",
     "shell.restricted",
+    "shell.session",
     "test.run",
+    "git.status",
+    "git.diff",
+    "code.diff",
     "skill.doc.generate",
+    "write_todos",
   ]);
   assert.deepEqual(result.familyKeys.websearch, [
     "search.web",
@@ -45,6 +56,7 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
   ]);
   assert.deepEqual(result.familyKeys.mcp, [
     "mcp.listTools",
+    "mcp.listResources",
     "mcp.readResource",
     "mcp.call",
     "mcp.native.execute",
@@ -53,10 +65,10 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
     "request_user_input",
     "request_permissions",
   ]);
-  assert.equal(result.packages.length, 18);
-  assert.equal(result.bindings.length, 18);
+  assert.equal(result.packages.length, 30);
+  assert.equal(result.bindings.length, 30);
   assert.equal(result.activationFactoryRefs.length, activationFactories.size);
-  assert.equal(result.registrationAudit.length, 18);
+  assert.equal(result.registrationAudit.length, 30);
   assert.equal(result.activationFactoryAudit.length, activationFactories.size);
   assert.equal(registeredCapabilityKeys.includes("search.web"), true);
   assert.equal(registeredCapabilityKeys.includes("search.fetch"), true);

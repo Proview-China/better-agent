@@ -72,6 +72,12 @@ export type SearchFetchBackendKind =
   | "gemini-cli-native"
   | "portable-fallback";
 
+export type SearchWebBackendKind =
+  | "openai-codex-style-web-search"
+  | "anthropic-claude-code-web-search"
+  | "gemini-cli-web-search"
+  | "portable-search-fallback";
+
 export interface TapVendorNetworkAdapterOptions {
   capabilityKey?: TapVendorNetworkCapabilityKey;
   facade?: TapVendorNetworkFacade;
@@ -128,6 +134,15 @@ interface SearchRouteContext {
 
 interface SearchWebExecutionInput extends WebSearchCreateInput {
   route: SearchRouteContext;
+}
+
+interface SearchWebExecutionResult {
+  selectedBackend: SearchWebBackendKind;
+  resolvedBackend: SearchWebBackendKind;
+  layer: "native" | "portable";
+  fallbackApplied: boolean;
+  result: Awaited<ReturnType<TapVendorNetworkFacade["websearch"]["create"]>>;
+  normalizedOutput: ReturnType<typeof toSearchWebOutput>;
 }
 
 interface SearchFetchExecutionInput {
@@ -490,6 +505,10 @@ function isGeminiLikeRoute(route: SearchRouteContext | undefined): boolean {
   return route?.provider === "deepmind" || Boolean(route?.model && /gemini/iu.test(route.model));
 }
 
+function isOpenAILikeRoute(route: SearchRouteContext | undefined): boolean {
+  return route?.provider === "openai" || Boolean(route?.model && /^gpt|o[13-9]/iu.test(route.model));
+}
+
 function selectSearchFetchBackend(route: SearchRouteContext | undefined): SearchFetchBackendKind {
   if (isAnthropicLikeRoute(route)) {
     return "anthropic-claude-code-native";
@@ -498,6 +517,89 @@ function selectSearchFetchBackend(route: SearchRouteContext | undefined): Search
     return "gemini-cli-native";
   }
   return "portable-fallback";
+}
+
+function selectSearchWebBackend(route: SearchRouteContext | undefined): SearchWebBackendKind {
+  if (isOpenAILikeRoute(route)) {
+    return "openai-codex-style-web-search";
+  }
+  if (isAnthropicLikeRoute(route)) {
+    return "anthropic-claude-code-web-search";
+  }
+  if (isGeminiLikeRoute(route)) {
+    return "gemini-cli-web-search";
+  }
+  return "portable-search-fallback";
+}
+
+function mergeProviderOptions(
+  current: Partial<Record<ProviderId, Record<string, unknown>>> | undefined,
+  provider: ProviderId,
+  patch: Record<string, unknown>,
+): Partial<Record<ProviderId, Record<string, unknown>>> {
+  return {
+    ...(current ?? {}),
+    [provider]: {
+      ...(current?.[provider] ?? {}),
+      ...patch,
+    },
+  };
+}
+
+function shapeSearchInputForBackend(
+  capabilityKey: "search.web" | "search.ground",
+  input: SearchWebExecutionInput,
+  backend: SearchWebBackendKind,
+): SearchWebExecutionInput {
+  if (backend === "openai-codex-style-web-search") {
+    return {
+      ...input,
+      citations:
+        input.citations
+        ?? (capabilityKey === "search.ground" ? "required" : "preferred"),
+      searchContextSize: input.searchContextSize ?? "medium",
+      route: {
+        ...input.route,
+        providerOptions: mergeProviderOptions(input.route.providerOptions, "openai", {
+          external_web_access: true,
+        }),
+      },
+    };
+  }
+
+  if (backend === "anthropic-claude-code-web-search") {
+    return {
+      ...input,
+      citations:
+        input.citations
+        ?? (capabilityKey === "search.ground" ? "required" : "preferred"),
+      maxSources: Math.min(input.maxSources ?? 8, 8),
+      route: {
+        ...input.route,
+        providerOptions: mergeProviderOptions(input.route.providerOptions, "anthropic", {
+          max_uses: Math.min(input.maxSources ?? 8, 8),
+          search_tool: "web_search_20260209",
+          fetch_tool: input.urls?.length ? "web_fetch_20260209" : undefined,
+        }),
+      },
+    };
+  }
+
+  if (backend === "gemini-cli-web-search") {
+    return {
+      ...input,
+      searchContextSize: input.searchContextSize ?? "medium",
+      route: {
+        ...input.route,
+        providerOptions: mergeProviderOptions(input.route.providerOptions, "deepmind", {
+          googleSearch: true,
+          urlContext: Array.isArray(input.urls) && input.urls.length > 0,
+        }),
+      },
+    };
+  }
+
+  return input;
 }
 
 function validateFetchUrl(url: string): URL {
@@ -924,6 +1026,32 @@ async function defaultSearchWeb(query: string): Promise<PortableSearchResult[]> 
   return results;
 }
 
+function hostnameMatchesDomain(hostname: string, domain: string): boolean {
+  const normalizedHost = sanitizeHostname(hostname);
+  const normalizedDomain = sanitizeHostname(domain);
+  return normalizedHost === normalizedDomain || normalizedHost.endsWith(`.${normalizedDomain}`);
+}
+
+function filterPortableSearchResults(
+  results: PortableSearchResult[],
+  input: Pick<SearchWebExecutionInput, "allowedDomains" | "blockedDomains">,
+): PortableSearchResult[] {
+  return results.filter((entry) => {
+    try {
+      const hostname = new URL(entry.url).hostname;
+      if (input.blockedDomains?.some((domain) => hostnameMatchesDomain(hostname, domain))) {
+        return false;
+      }
+      if (input.allowedDomains?.length) {
+        return input.allowedDomains.some((domain) => hostnameMatchesDomain(hostname, domain));
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
 function selectPortableSearchTargets(results: PortableSearchResult[]): PortableSearchResult[] {
   const preferred = results.filter((entry) => {
     const lowered = entry.url.toLowerCase();
@@ -988,6 +1116,67 @@ function isUsefulVendorSearchOutput(output: unknown): boolean {
   const sources = Array.isArray(record.sources) ? record.sources : [];
   const citations = Array.isArray(record.citations) ? record.citations : [];
   return Boolean(answer?.trim()) || sources.length > 0 || citations.length > 0;
+}
+
+async function executeSearchWebBackend(
+  capabilityKey: "search.web" | "search.ground",
+  input: SearchWebExecutionInput,
+  facade: TapVendorNetworkFacade,
+): Promise<SearchWebExecutionResult> {
+  const selectedBackend = selectSearchWebBackend(input.route);
+  const shapedInput = shapeSearchInputForBackend(capabilityKey, input, selectedBackend);
+
+  if (selectedBackend === "portable-search-fallback") {
+    return {
+      selectedBackend,
+      resolvedBackend: selectedBackend,
+      layer: "portable",
+      fallbackApplied: false,
+      result: {
+        status: "failed",
+        provider: shapedInput.route.provider,
+        model: shapedInput.route.model,
+        layer:
+          shapedInput.route.layer === "api" || shapedInput.route.layer === "agent"
+            ? shapedInput.route.layer
+            : "api",
+      },
+      normalizedOutput: capabilityKey === "search.ground"
+        ? { answer: "", citations: [], sources: [] }
+        : { query: shapedInput.query, answer: "", citations: [], sources: [] },
+    };
+  }
+
+  const result = await facade.websearch.create({
+    provider: shapedInput.route.provider,
+    model: shapedInput.route.model,
+    layer: shapedInput.route.layer,
+    variant: shapedInput.route.variant,
+    compatibilityProfileId: shapedInput.route.compatibilityProfileId,
+    providerOptions: shapedInput.route.providerOptions,
+    input: {
+      query: shapedInput.query,
+      goal: shapedInput.goal,
+      urls: shapedInput.urls,
+      allowedDomains: shapedInput.allowedDomains,
+      blockedDomains: shapedInput.blockedDomains,
+      maxSources: shapedInput.maxSources,
+      maxOutputTokens: shapedInput.maxOutputTokens,
+      searchContextSize: shapedInput.searchContextSize,
+      citations: shapedInput.citations,
+      freshness: shapedInput.freshness,
+      userLocation: shapedInput.userLocation,
+    },
+  });
+
+  return {
+    selectedBackend,
+    resolvedBackend: selectedBackend,
+    layer: "native",
+    fallbackApplied: false,
+    normalizedOutput: toSearchWebOutput(capabilityKey, shapedInput, result),
+    result,
+  };
 }
 
 function toSearchWebOutput(
@@ -1136,34 +1325,21 @@ export class TapVendorNetworkAdapter implements CapabilityAdapter {
         });
       }
 
-      const result = await this.#facade.websearch.create({
-        provider: state.input.route.provider,
-        model: state.input.route.model,
-        layer: state.input.route.layer,
-        variant: state.input.route.variant,
-        compatibilityProfileId: state.input.route.compatibilityProfileId,
-        providerOptions: state.input.route.providerOptions,
-        input: {
-          query: state.input.query,
-          goal: state.input.goal,
-          urls: state.input.urls,
-          allowedDomains: state.input.allowedDomains,
-          blockedDomains: state.input.blockedDomains,
-          maxSources: state.input.maxSources,
-          maxOutputTokens: state.input.maxOutputTokens,
-          searchContextSize: state.input.searchContextSize,
-          citations: state.input.citations,
-          freshness: state.input.freshness,
-          userLocation: state.input.userLocation,
-        },
-      });
-      const status = mapSearchStatus(result.status);
-      const normalizedOutput = toSearchWebOutput(state.capabilityKey, state.input, result);
+      const execution = await executeSearchWebBackend(
+        state.capabilityKey,
+        state.input,
+        this.#facade,
+      );
+      const status = mapSearchStatus(execution.result.status);
+      const normalizedOutput = execution.normalizedOutput;
       if (
         (status === "failed" || status === "blocked" || status === "timeout" || !isUsefulVendorSearchOutput(normalizedOutput))
       ) {
         try {
-          const portableResults = await defaultSearchWeb(state.input.query);
+          const portableResults = filterPortableSearchResults(
+            await defaultSearchWeb(state.input.query),
+            state.input,
+          );
           const selectedTargets = selectPortableSearchTargets(portableResults);
           const pages = selectedTargets.length > 0
             ? await fetchPortableSearchPages(this.#fetcher, this.#backendFetchers, {
@@ -1196,7 +1372,9 @@ export class TapVendorNetworkAdapter implements CapabilityAdapter {
                 runtimeKind: this.runtimeKind,
                 provider: state.input.route.provider,
                 model: state.input.route.model,
-                layer: state.input.route.layer ?? "api",
+                layer: "portable",
+                selectedBackend: execution.selectedBackend,
+                resolvedBackend: "portable-search-fallback",
                 fallbackApplied: true,
               },
             });
@@ -1209,21 +1387,24 @@ export class TapVendorNetworkAdapter implements CapabilityAdapter {
         executionId: prepared.preparedId,
         status,
         output: normalizedOutput,
-        evidence: result.evidence,
+        evidence: execution.result.evidence,
         error:
           status === "failed" || status === "blocked" || status === "timeout"
             ? {
                 code: "tap_vendor_network_search_failed",
                 message: `${state.capabilityKey} did not complete successfully.`,
-                details: asRecord(result.error) ?? { raw: result.error },
+                details: asRecord(execution.result.error) ?? { raw: execution.result.error },
               }
             : undefined,
         metadata: {
           capabilityKey: state.capabilityKey,
           runtimeKind: this.runtimeKind,
-          provider: result.provider,
-          model: result.model,
-          layer: result.layer,
+          provider: execution.result.provider,
+          model: execution.result.model,
+          layer: execution.layer === "native" ? execution.result.layer : "portable",
+          selectedBackend: execution.selectedBackend,
+          resolvedBackend: execution.resolvedBackend,
+          fallbackApplied: execution.fallbackApplied,
         },
       });
     } catch (error) {

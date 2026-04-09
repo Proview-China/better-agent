@@ -4,6 +4,10 @@ import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import {
   createCapabilityManifestFromPackage,
   createCodeReadCapabilityPackage,
+  createCodeLsCapabilityPackage,
+  createCodeGlobCapabilityPackage,
+  createCodeGrepCapabilityPackage,
+  createCodeReadManyCapabilityPackage,
   createDocsReadCapabilityPackage,
   FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS,
   FIRST_CLASS_TOOLING_BASELINE_CAPABILITY_KEYS,
@@ -65,10 +69,16 @@ interface PreparedWorkspaceReadInput {
   capabilityKey: FirstClassToolingBaselineCapabilityKey;
   operation?: string;
   path?: string;
+  paths?: string[];
+  pattern?: string;
+  include?: string[];
+  exclude?: string[];
   lineStart?: number;
   lineEnd?: number;
   maxBytes: number;
   maxEntries: number;
+  namesOnly?: boolean;
+  maxMatchesPerFile?: number;
   invalidReason?: {
     status: "failed" | "blocked";
     code: string;
@@ -95,6 +105,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const normalized = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function asPositiveInteger(value: unknown): number | undefined {
@@ -127,8 +145,14 @@ function pathPatternToRegex(pattern: string): RegExp {
     const char = normalized[index];
     const next = normalized[index + 1];
     if (char === "*" && next === "*") {
-      regex += ".*";
-      index += 1;
+      const nextAfterGlob = normalized[index + 2];
+      if (nextAfterGlob === "/") {
+        regex += "(?:.*/)?";
+        index += 2;
+      } else {
+        regex += ".*";
+        index += 1;
+      }
       continue;
     }
     if (char === "*") {
@@ -189,8 +213,25 @@ function parsePreparedWorkspaceReadInput(
   capabilityKey: FirstClassToolingBaselineCapabilityKey,
   input: Record<string, unknown>,
 ): PreparedWorkspaceReadInput {
-  const operation = asString(input.operation) ?? "read_file";
-  const requestedPath = asString(input.path);
+  const operation = asString(input.operation)
+    ?? (capabilityKey === "code.ls"
+      ? "list_dir"
+      : capabilityKey === "code.glob"
+        ? "glob"
+        : capabilityKey === "code.grep"
+          ? "grep"
+          : capabilityKey === "code.read_many"
+            ? "read_many"
+            : "read_file");
+  const requestedPath = asString(input.path)
+    ?? asString(input.dir_path)
+    ?? asString(input.cwd)
+    ?? (capabilityKey === "code.ls" || capabilityKey === "code.glob" || capabilityKey === "code.grep" || capabilityKey === "code.read_many"
+      ? "."
+      : undefined);
+  const pattern = asString(input.pattern) ?? asString(input.glob);
+  const include = asStringArray(input.include);
+  const exclude = asStringArray(input.exclude);
   if (!requestedPath) {
     return {
       capabilityKey,
@@ -209,10 +250,16 @@ function parsePreparedWorkspaceReadInput(
     capabilityKey,
     operation,
     path: requestedPath,
+    paths: asStringArray(input.paths),
+    pattern,
+    include,
+    exclude,
     lineStart: asPositiveInteger(input.lineStart),
     lineEnd: asPositiveInteger(input.lineEnd),
     maxBytes: asPositiveInteger(input.maxBytes) ?? 64 * 1024,
     maxEntries: asPositiveInteger(input.maxEntries) ?? 100,
+    namesOnly: input.namesOnly === true,
+    maxMatchesPerFile: asPositiveInteger(input.maxMatchesPerFile) ?? 20,
   };
 }
 
@@ -264,6 +311,82 @@ function createFailureEnvelope(params: {
       runtimeKind: "workspace-read",
     },
   });
+}
+
+async function walkWorkspaceFiles(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const absolutePath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await walkWorkspaceFiles(absolutePath));
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push(absolutePath);
+    }
+  }
+  return files;
+}
+
+function matchesAnyPattern(candidate: string, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) => pathPatternToRegex(pattern).test(candidate));
+}
+
+async function collectScopedFiles(params: {
+  workspaceRoot: string;
+  basePath: string;
+  allowedPathPatterns: readonly string[];
+}): Promise<Array<{ absolutePath: string; relativePath: string }>> {
+  const target = await resolveWorkspaceTarget(params.workspaceRoot, params.basePath);
+  const targetStats = await stat(target.absolutePath);
+  const candidates = targetStats.isDirectory()
+    ? await walkWorkspaceFiles(target.absolutePath)
+    : [target.absolutePath];
+
+  return candidates
+    .map((absolutePath) => {
+      const relativePath = normalizePathForMatch(path.relative(params.workspaceRoot, absolutePath));
+      return { absolutePath, relativePath };
+    })
+    .filter((entry) => matchesPathPattern(entry.relativePath, params.allowedPathPatterns));
+}
+
+function normalizeGlobLikePattern(value: string): string {
+  return normalizePathForMatch(value.trim()).replace(/^\.\//, "");
+}
+
+function matchesGlobLikePattern(candidate: string, pattern: string): boolean {
+  return pathPatternToRegex(normalizeGlobLikePattern(pattern)).test(candidate);
+}
+
+function buildReadManyFileSelection(params: {
+  files: Array<{ absolutePath: string; relativePath: string }>;
+  include?: string[];
+  exclude?: string[];
+  maxEntries: number;
+}): Array<{ absolutePath: string; relativePath: string }> {
+  const includePatterns = params.include?.map(normalizeGlobLikePattern);
+  const excludePatterns = params.exclude?.map(normalizeGlobLikePattern) ?? [];
+
+  return params.files
+    .filter((entry) =>
+      includePatterns && includePatterns.length > 0
+        ? matchesAnyPattern(entry.relativePath, includePatterns)
+        : true)
+    .filter((entry) =>
+      excludePatterns.length > 0
+        ? !matchesAnyPattern(entry.relativePath, excludePatterns)
+        : true)
+    .slice(0, params.maxEntries);
+}
+
+function buildGrepRegex(pattern: string): RegExp {
+  try {
+    return new RegExp(pattern, "gm");
+  } catch {
+    return new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
+  }
 }
 
 export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
@@ -440,6 +563,152 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
             metadata: this.#createResultMetadata(),
           });
         }
+        case "glob": {
+          if (!parsed.pattern) {
+            return createFailureEnvelope({
+              prepared,
+              status: "failed",
+              code: "workspace_read_missing_pattern",
+              message: `${this.#capabilityKey} requires a glob pattern.`,
+            });
+          }
+          const files = await collectScopedFiles({
+            workspaceRoot: this.#workspaceRoot,
+            basePath: parsed.path!,
+            allowedPathPatterns: this.#allowedPathPatterns,
+          });
+          const matches = files
+            .filter((entry) => matchesGlobLikePattern(entry.relativePath, parsed.pattern!))
+            .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+            .slice(0, parsed.maxEntries)
+            .map((entry) => entry.relativePath);
+          return createCapabilityResultEnvelope({
+            executionId: prepared.preparedId,
+            status: "success",
+            output: {
+              capabilityKey: this.#capabilityKey,
+              operation: parsed.operation,
+              path: normalizePathForMatch(parsed.path!),
+              pattern: parsed.pattern,
+              matches,
+              truncated: files.length > matches.length,
+            },
+            metadata: this.#createResultMetadata(),
+          });
+        }
+        case "grep": {
+          const pattern = parsed.pattern;
+          if (!pattern) {
+            return createFailureEnvelope({
+              prepared,
+              status: "failed",
+              code: "workspace_read_missing_pattern",
+              message: `${this.#capabilityKey} requires a grep pattern.`,
+            });
+          }
+          const regex = buildGrepRegex(pattern);
+          const files = buildReadManyFileSelection({
+            files: await collectScopedFiles({
+              workspaceRoot: this.#workspaceRoot,
+              basePath: parsed.path!,
+              allowedPathPatterns: this.#allowedPathPatterns,
+            }),
+            include: parsed.include,
+            exclude: parsed.exclude,
+            maxEntries: parsed.maxEntries,
+          });
+          const matches: Array<Record<string, unknown>> = [];
+          for (const file of files) {
+            const content = await readFile(file.absolutePath, "utf8");
+            const lines = content.split(/\r?\n/u);
+            let matchCountForFile = 0;
+            for (let index = 0; index < lines.length; index += 1) {
+              const line = lines[index]!;
+              regex.lastIndex = 0;
+              if (!regex.test(line)) {
+                continue;
+              }
+              matches.push({
+                path: file.relativePath,
+                lineNumber: index + 1,
+                line,
+              });
+              matchCountForFile += 1;
+              if (matchCountForFile >= (parsed.maxMatchesPerFile ?? 20)) {
+                break;
+              }
+              if (matches.length >= parsed.maxEntries) {
+                break;
+              }
+            }
+            if (matches.length >= parsed.maxEntries) {
+              break;
+            }
+          }
+          const normalizedMatches = parsed.namesOnly
+            ? [...new Set(matches.map((entry) => String(entry.path)))].map((filePath) => ({ path: filePath }))
+            : matches;
+          return createCapabilityResultEnvelope({
+            executionId: prepared.preparedId,
+            status: "success",
+            output: {
+              capabilityKey: this.#capabilityKey,
+              operation: parsed.operation,
+              path: normalizePathForMatch(parsed.path!),
+              pattern,
+              matches: normalizedMatches,
+              namesOnly: parsed.namesOnly === true,
+            },
+            metadata: this.#createResultMetadata(),
+          });
+        }
+        case "read_many": {
+          const explicitPaths = parsed.paths;
+          const scopedFiles = explicitPaths && explicitPaths.length > 0
+            ? await Promise.all(explicitPaths.map(async (item) => {
+              const resolved = await resolveWorkspaceTarget(this.#workspaceRoot, item);
+              return {
+                absolutePath: resolved.absolutePath,
+                relativePath: resolved.relativePath,
+              };
+            }))
+            : buildReadManyFileSelection({
+              files: await collectScopedFiles({
+                workspaceRoot: this.#workspaceRoot,
+                basePath: parsed.path!,
+                allowedPathPatterns: this.#allowedPathPatterns,
+              }),
+              include: parsed.include,
+              exclude: parsed.exclude,
+              maxEntries: parsed.maxEntries,
+            });
+          const documents = [];
+          for (const file of scopedFiles.slice(0, parsed.maxEntries)) {
+            if (!matchesPathPattern(file.relativePath, this.#allowedPathPatterns)) {
+              continue;
+            }
+            const raw = await readFile(file.absolutePath, "utf8");
+            const content = Buffer.byteLength(raw, "utf8") > parsed.maxBytes
+              ? truncateUtf8ByBytes(raw, parsed.maxBytes)
+              : raw;
+            documents.push({
+              path: file.relativePath,
+              content,
+              truncated: Buffer.byteLength(raw, "utf8") > parsed.maxBytes,
+            });
+          }
+          return createCapabilityResultEnvelope({
+            executionId: prepared.preparedId,
+            status: "success",
+            output: {
+              capabilityKey: this.#capabilityKey,
+              operation: parsed.operation,
+              documents,
+              count: documents.length,
+            },
+            metadata: this.#createResultMetadata(),
+          });
+        }
         case "read_lines":
         case "read_file": {
           const raw = await readFile(target.absolutePath, "utf8");
@@ -559,7 +828,15 @@ export function registerFirstClassToolingBaselineCapabilities(
   const packages = capabilityKeys.map((capabilityKey) =>
     capabilityKey === "code.read"
       ? createCodeReadCapabilityPackage()
-      : createDocsReadCapabilityPackage(),
+      : capabilityKey === "code.ls"
+        ? createCodeLsCapabilityPackage()
+        : capabilityKey === "code.glob"
+          ? createCodeGlobCapabilityPackage()
+          : capabilityKey === "code.grep"
+            ? createCodeGrepCapabilityPackage()
+            : capabilityKey === "code.read_many"
+              ? createCodeReadManyCapabilityPackage()
+              : createDocsReadCapabilityPackage(),
   );
   const manifests = packages.map((capabilityPackage) =>
     createCapabilityManifestFromPackage(capabilityPackage),

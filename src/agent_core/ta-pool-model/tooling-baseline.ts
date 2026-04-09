@@ -13,8 +13,15 @@ export const TAP_BOOTSTRAP_TMA_BASELINE_CAPABILITY_KEYS = [
   "code.read",
   "docs.read",
   "repo.write",
+  "code.edit",
+  "code.patch",
   "shell.restricted",
+  "shell.session",
+  "git.status",
+  "git.diff",
+  "code.diff",
   "test.run",
+  "write_todos",
   "skill.doc.generate",
 ] as const;
 
@@ -32,8 +39,12 @@ export const TAP_EXTENDED_TMA_BASELINE_CAPABILITY_KEYS = [
 
 export const TAP_REVIEWER_DENIED_EXECUTION_PATTERNS = [
   "repo.write",
+  "code.edit",
+  "code.patch",
   "shell.*",
+  "git.*",
   "test.run",
+  "write_todos",
   "skill.doc.generate",
   "dependency.install",
   "mcp.configure",
@@ -74,7 +85,7 @@ export function createTapBootstrapTmaProfile(
     defaultMode: overrides.defaultMode ?? "balanced",
     baselineTier: overrides.baselineTier ?? "B0",
     baselineCapabilities: [...TAP_BOOTSTRAP_TMA_BASELINE_CAPABILITY_KEYS],
-    notes: overrides.notes ?? "Bootstrap TMA can read, write repo-local files, run restricted shell, run tests, and generate repo-local docs.",
+    notes: overrides.notes ?? "Bootstrap TMA can read, edit, patch, diff, inspect git state, run restricted shell or shell sessions, run tests, manage todos, and generate repo-local docs.",
     metadata: {
       baselineFamily: "tap-bootstrap-tma",
       baselineVersion: "v1",

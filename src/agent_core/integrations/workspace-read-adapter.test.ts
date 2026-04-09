@@ -191,6 +191,155 @@ test("workspace read adapter truncates multibyte content by byte budget and clea
   );
 });
 
+test("workspace read adapter supports code.ls for bounded directory listing", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "code.ls",
+    allowedPathPatterns: ["src", "src/**"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-code-ls-1",
+      sessionId: "session-code-ls-1",
+      runId: "run-code-ls-1",
+      capabilityKey: "code.ls",
+      input: {
+        path: "src",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-code-ls-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-code-ls-1",
+    bindingId: "binding-code-ls-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-code-ls-1",
+    clock: { now: () => new Date("2026-04-09T00:00:00.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "success");
+  assert.equal((envelope.output as { operation?: string }).operation, "list_dir");
+  assert.equal((envelope.output as { entries?: Array<{ name: string }> }).entries?.[0]?.name, "sample.ts");
+});
+
+test("workspace read adapter supports code.glob pattern discovery", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "code.glob",
+    allowedPathPatterns: ["src", "src/**"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-code-glob-1",
+      sessionId: "session-code-glob-1",
+      runId: "run-code-glob-1",
+      capabilityKey: "code.glob",
+      input: {
+        path: "src",
+        pattern: "src/**/*.ts",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-code-glob-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-code-glob-1",
+    bindingId: "binding-code-glob-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-code-glob-1",
+    clock: { now: () => new Date("2026-04-09T00:01:00.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "success");
+  assert.deepEqual((envelope.output as { matches?: string[] }).matches, ["src/sample.ts"]);
+});
+
+test("workspace read adapter supports code.grep with bounded content hits", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "code.grep",
+    allowedPathPatterns: ["src", "src/**"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-code-grep-1",
+      sessionId: "session-code-grep-1",
+      runId: "run-code-grep-1",
+      capabilityKey: "code.grep",
+      input: {
+        path: "src",
+        pattern: "answer",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-code-grep-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-code-grep-1",
+    bindingId: "binding-code-grep-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-code-grep-1",
+    clock: { now: () => new Date("2026-04-09T00:02:00.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "success");
+  assert.equal((envelope.output as { matches?: Array<{ path: string }> }).matches?.[0]?.path, "src/sample.ts");
+});
+
+test("workspace read adapter supports code.read_many via include globs", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "code.read_many",
+    allowedPathPatterns: ["src", "src/**"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-code-read-many-1",
+      sessionId: "session-code-read-many-1",
+      runId: "run-code-read-many-1",
+      capabilityKey: "code.read_many",
+      input: {
+        path: "src",
+        include: ["src/**/*.ts"],
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-code-read-many-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-code-read-many-1",
+    bindingId: "binding-code-read-many-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-code-read-many-1",
+    clock: { now: () => new Date("2026-04-09T00:03:00.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "success");
+  assert.equal((envelope.output as { count?: number }).count, 1);
+  assert.equal((envelope.output as { documents?: Array<{ path: string }> }).documents?.[0]?.path, "src/sample.ts");
+});
+
 test("workspace read baseline registration lets TAP dispatch docs.read through the pooled baseline path", async () => {
   const workspaceRoot = await createWorkspaceFixture();
   const runtime = createAgentCoreRuntime({
@@ -248,12 +397,18 @@ test("workspace read baseline registration lets TAP dispatch docs.read through t
 
   assert.equal(result.status, "dispatched");
   assert.equal(result.grant?.capabilityKey, "docs.read");
-  assert.deepEqual(registration.capabilityKeys, ["code.read", "docs.read"]);
+  assert.deepEqual(
+    registration.capabilityKeys,
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "docs.read"],
+  );
   assert.deepEqual(
     registration.descriptors.map((entry) => entry.capabilityKey),
-    ["code.read", "docs.read"],
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "docs.read"],
   );
-  assert.equal(registration.descriptors[1]?.scopeKind, "workspace-docs");
+  assert.equal(
+    registration.descriptors.find((entry) => entry.capabilityKey === "docs.read")?.scopeKind,
+    "workspace-docs",
+  );
   await new Promise((resolve) => setTimeout(resolve, 30));
   const resultEvent = runtime
     .readRunEvents(created.run.runId)

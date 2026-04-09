@@ -123,6 +123,8 @@ test("tap vendor network adapter executes search.web through the injected websea
     "https://example.com/a",
   );
   assert.equal(envelope.metadata?.provider, "openai");
+  assert.equal(envelope.metadata?.selectedBackend, "openai-codex-style-web-search");
+  assert.equal(envelope.metadata?.resolvedBackend, "openai-codex-style-web-search");
 });
 
 test("tap vendor network adapter executes search.fetch through the injected fetcher", async () => {
@@ -374,6 +376,67 @@ test("tap vendor network adapter falls back to portable search when native groun
       "https://example.com/article",
     );
     assert.equal(envelope.metadata?.fallbackApplied, true);
+    assert.equal(envelope.metadata?.selectedBackend, "openai-codex-style-web-search");
+    assert.equal(envelope.metadata?.resolvedBackend, "portable-search-fallback");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("tap vendor network adapter applies allowed and blocked domains during portable search fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("duckduckgo.com/html/?q=")) {
+      return new Response(
+        [
+          "## [Blocked Result](https://blocked.example.com/post)",
+          "## [Allowed Result](https://allowed.example.com/post)",
+          "## [Other Result](https://other.example.com/post)",
+        ].join("\n"),
+        { status: 200, headers: { "content-type": "text/markdown" } },
+      );
+    }
+    if (url.includes("r.jina.ai/http://allowed.example.com/post")) {
+      return new Response("Allowed evidence content", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+    }
+    return new Response("", { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const facade = {
+      websearch: {
+        async create() {
+          return {
+            status: "failed",
+            provider: "openai",
+            model: "gpt-5.4",
+            layer: "api",
+            error: { code: "websearch_empty" },
+          };
+        },
+      },
+    } as TapVendorNetworkAdapterOptions["facade"];
+
+    const envelope = await executePlan(
+      "search.web",
+      {
+        provider: "openai",
+        model: "gpt-5.4",
+        query: "Praxis search",
+        allowedDomains: ["allowed.example.com"],
+        blockedDomains: ["blocked.example.com"],
+      },
+      { facade },
+    );
+
+    assert.equal(envelope.status, "partial");
+    const sources = (envelope.output as { sources?: Array<{ url: string }> }).sources ?? [];
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0]?.url, "https://allowed.example.com/post");
   } finally {
     globalThis.fetch = originalFetch;
   }

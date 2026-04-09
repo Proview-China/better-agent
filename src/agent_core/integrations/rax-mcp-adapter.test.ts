@@ -54,6 +54,11 @@ function createInputForCapability(
         route: { provider: "openai", model: "gpt-5.4" },
         input: { connectionId: "conn-list" },
       };
+    case "mcp.listResources":
+      return {
+        route: { provider: "openai", model: "gpt-5.4" },
+        input: { connectionId: "conn-resources" },
+      };
     case "mcp.readResource":
       return {
         route: { provider: "anthropic", model: "claude-opus-4-6-thinking" },
@@ -133,9 +138,10 @@ function createFacadeDouble(): Pick<RaxFacade, "mcp"> {
         connectionId: options.input.connectionId,
         tools: [{ name: "browser.search" }],
       }),
-      listResources: async () => {
-        throw new Error("not used");
-      },
+      listResources: async (options) => ({
+        connectionId: options.input.connectionId,
+        resources: [{ uri: "memory://guide", name: "Guide" }],
+      }),
       readResource: async (options) => ({
         connectionId: options.input.connectionId,
         uri: options.input.uri,
@@ -173,6 +179,10 @@ test("mcp adapter supports the first-wave MCP actions", () => {
     route: { provider: "anthropic", model: "claude-opus-4-6-thinking" },
     input: { connectionId: "conn-1" },
   })), true);
+  assert.equal(adapter.supports(createPlan("mcp.listResources", {
+    route: { provider: "anthropic", model: "claude-opus-4-6-thinking" },
+    input: { connectionId: "conn-1" },
+  })), true);
   assert.equal(adapter.supports(createPlan("mcp.readResource", {
     route: { provider: "deepmind", model: "gemini-2.5-flash" },
     input: { connectionId: "conn-1", uri: "memory://resource" },
@@ -206,9 +216,10 @@ test("mcp adapter supports the first-wave MCP actions", () => {
   })), false);
 });
 
-test("mcp adapter groups listTools and readResource into the read family", () => {
-  assert.deepEqual(MCP_READ_FAMILY_ACTIONS, ["mcp.listTools", "mcp.readResource"]);
+test("mcp adapter groups listTools, listResources, and readResource into the read family", () => {
+  assert.deepEqual(MCP_READ_FAMILY_ACTIONS, ["mcp.listTools", "mcp.listResources", "mcp.readResource"]);
   assert.equal(isMcpReadFamilyAction("mcp.listTools"), true);
+  assert.equal(isMcpReadFamilyAction("mcp.listResources"), true);
   assert.equal(isMcpReadFamilyAction("mcp.readResource"), true);
   assert.equal(isMcpReadFamilyAction("mcp.call"), false);
 });
@@ -223,6 +234,7 @@ test("mcp adapter prepares and executes shared-runtime MCP actions", async () =>
       route: { provider: "openai", model: "gpt-5.4" },
       input: {
         connectionId: "conn-1",
+        serverName: "browser",
         toolName: "browser.search",
         arguments: { q: "Praxis" },
       },
@@ -236,8 +248,156 @@ test("mcp adapter prepares and executes shared-runtime MCP actions", async () =>
   const result = await adapter.execute(prepared);
   assert.equal(result.status, "success");
   assert.equal((result.output as { toolName: string }).toolName, "browser.search");
+  assert.equal((result.output as { qualifiedToolName?: string }).qualifiedToolName, "mcp_browser_browser.search");
   assert.equal(result.metadata?.provider, "openai");
   assert.equal(result.metadata?.riskLevel, "risky");
+  assert.equal(result.metadata?.selectedBackend, "openai-codex-style-mcp-call");
+});
+
+test("mcp adapter accepts Gemini-style qualified tool names and preserves normalized tool identity", async () => {
+  const adapter = createRaxMcpCapabilityAdapter({
+    facade: createFacadeDouble(),
+  });
+  const prepared = await adapter.prepare(
+    createPlan("mcp.call", {
+      route: { provider: "deepmind", model: "gemini-2.5-flash" },
+      input: {
+        connectionId: "conn-1",
+        toolName: "mcp_playwright_browser_snapshot",
+        arguments: { depth: 2 },
+      },
+    }),
+    createLease(),
+  );
+
+  const result = await adapter.execute(prepared);
+  assert.equal(result.status, "success");
+  assert.equal((result.output as { toolName: string }).toolName, "browser_snapshot");
+  assert.equal((result.output as { serverName?: string }).serverName, "playwright");
+  assert.equal((result.output as { qualifiedToolName?: string }).qualifiedToolName, "mcp_playwright_browser_snapshot");
+  assert.equal(result.metadata?.selectedBackend, "gemini-cli-mcp-call");
+});
+
+test("mcp adapter normalizes MCP call results into stable structured envelopes", async () => {
+  const facade = createFacadeDouble();
+  facade.mcp.call = async (options) => ({
+    connectionId: options.input.connectionId,
+    toolName: options.input.toolName,
+    raw: {
+      content: [{ type: "text", text: "ok" }],
+      structuredContent: { value: 1 },
+      _meta: { source: "test" },
+    },
+  });
+
+  const adapter = createRaxMcpCapabilityAdapter({ facade });
+  const prepared = await adapter.prepare(
+    createPlan("mcp.call", {
+      route: { provider: "anthropic", model: "claude-opus-4-6-thinking" },
+      input: {
+        connectionId: "conn-1",
+        serverName: "playwright",
+        toolName: "browser.snapshot",
+        arguments: {},
+      },
+    }),
+    createLease(),
+  );
+
+  const result = await adapter.execute(prepared);
+  assert.equal(result.status, "success");
+  assert.deepEqual((result.output as { content?: unknown[] }).content, [{ type: "text", text: "ok" }]);
+  assert.deepEqual(
+    (result.output as { structuredContent?: Record<string, unknown> }).structuredContent,
+    { value: 1 },
+  );
+  assert.deepEqual((result.output as { _meta?: Record<string, unknown> })._meta, { source: "test" });
+  assert.equal(result.metadata?.selectedBackend, "anthropic-claude-code-mcp-call");
+});
+
+test("mcp adapter auto-resolves the only connection for mcp.call when connectionId is omitted", async () => {
+  const facade = createFacadeDouble();
+  facade.mcp.listConnections = () => [{
+    connectionId: "conn-only",
+    provider: "openai",
+    model: "gpt-5.4",
+    layer: "api",
+    shellId: "shell-openai-api",
+    officialCarrier: "openai-responses",
+    carrierKind: "shared-runtime",
+    loweringMode: "shared-runtime",
+    transportKind: "stdio",
+  }];
+
+  const adapter = createRaxMcpCapabilityAdapter({ facade });
+  const prepared = await adapter.prepare(
+    createPlan("mcp.call", {
+      route: { provider: "openai", model: "gpt-5.4" },
+      input: {
+        serverName: "browser",
+        toolName: "browser.search",
+        arguments: { q: "Praxis" },
+      },
+    }),
+    createLease(),
+  );
+
+  const result = await adapter.execute(prepared);
+  assert.equal(result.status, "success");
+  assert.equal((result.output as { connectionId?: string }).connectionId, "conn-only");
+});
+
+test("mcp adapter auto-resolves the only connection for mcp.listTools when connectionId is omitted", async () => {
+  const facade = createFacadeDouble();
+  facade.mcp.listConnections = () => [{
+    connectionId: "conn-tools",
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    layer: "api",
+    shellId: "shell-anthropic-api",
+    officialCarrier: "anthropic-messages",
+    carrierKind: "shared-runtime",
+    loweringMode: "shared-runtime",
+    transportKind: "streamable-http",
+  }];
+
+  const adapter = createRaxMcpCapabilityAdapter({ facade });
+  const prepared = await adapter.prepare(
+    createPlan("mcp.listTools", {
+      route: { provider: "anthropic", model: "claude-opus-4-6-thinking" },
+      input: {},
+    }),
+    createLease(),
+  );
+
+  const result = await adapter.execute(prepared);
+  assert.equal(result.status, "success");
+  assert.equal((result.output as { connectionId?: string }).connectionId, "conn-tools");
+});
+
+test("mcp adapter prepares and executes mcp.listResources through the shared runtime", async () => {
+  const adapter = createRaxMcpCapabilityAdapter({
+    facade: createFacadeDouble(),
+  });
+  const prepared = await adapter.prepare(
+    createPlan("mcp.listResources", {
+      route: { provider: "openai", model: "gpt-5.4" },
+      input: {
+        connectionId: "conn-resources",
+      },
+    }),
+    createLease(),
+  );
+
+  const result = await adapter.execute(prepared);
+  assert.equal(result.status, "success");
+  assert.equal(
+    (result.output as { resources: Array<{ uri: string }> }).resources[0]?.uri,
+    "memory://guide",
+  );
+  assert.equal(result.metadata?.capability, "mcp.listResources");
+  assert.equal(result.metadata?.actionFamily, "read");
+  assert.equal((result.metadata as { resourceCount?: number } | undefined)?.resourceCount, 1);
 });
 
 test("mcp adapter prepares and executes the MCP read family through the shared runtime", async () => {
@@ -389,7 +549,7 @@ test("mcp activation factory rejects unsupported capability surfaces", () => {
           description: "unsupported",
         },
       }),
-    /requires one of mcp\.listTools, mcp\.readResource, mcp\.call, or mcp\.native\.execute/i,
+    /requires one of mcp\.listTools, mcp\.listResources, mcp\.readResource, mcp\.call, or mcp\.native\.execute/i,
   );
 });
 
@@ -420,9 +580,9 @@ test("registerRaxMcpCapabilities registers the full MCP family with shared truth
   });
 
   assert.deepEqual(result.capabilityKeys, [...RAX_MCP_CAPABILITY_KEYS]);
-  assert.equal(result.packages.length, 4);
-  assert.equal(result.manifests.length, 4);
-  assert.equal(result.bindings.length, 4);
+  assert.equal(result.packages.length, 5);
+  assert.equal(result.manifests.length, 5);
+  assert.equal(result.bindings.length, 5);
   assert.equal(result.adapter.id, "rax.mcp.adapter");
   assert.deepEqual(
     registrations.map((entry) => entry.capabilityKey),
@@ -435,9 +595,9 @@ test("registerRaxMcpCapabilities registers the full MCP family with shared truth
   );
   assert.deepEqual(result.activationFactoryRefs, [...factories.keys()]);
   assert.equal(registrations[0]?.metadata?.riskProfile, "read-only");
-  assert.equal(registrations[2]?.metadata?.truthfulness, "shared-runtime-call");
+  assert.equal(registrations[3]?.metadata?.truthfulness, "shared-runtime-call");
   assert.equal(
-    registrations[3]?.metadata?.truthfulness,
+    registrations[4]?.metadata?.truthfulness,
     "provider-native-execute",
   );
 });

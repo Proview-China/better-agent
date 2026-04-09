@@ -5467,6 +5467,11 @@ export class AgentCoreRuntime {
     return this.journal.readRunEvents(runId);
   }
 
+  readKernelResult(runId: string): KernelResult | undefined {
+    const result = this.#kernelResultsByRun.get(runId);
+    return result ? structuredClone(result) : undefined;
+  }
+
   async #handleCapabilityResultEnvelope(result: CapabilityResultEnvelope): Promise<void> {
     const preparedId = typeof result.metadata?.preparedId === "string"
       ? result.metadata.preparedId
