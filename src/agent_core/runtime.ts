@@ -1007,7 +1007,153 @@ export class AgentCoreRuntime {
     });
     this.sessionManager = options.sessionManager ?? new SessionManager();
     this.cmpInfraBackends = createCmpInfraBackends(options.cmpInfraBackends);
-    this.cmp = createAgentCoreCmpServices(this).api;
+    this.cmp = createAgentCoreCmpServices({
+      runtime: this,
+      activeFlow: {
+        commitContextDelta: (input) => this.commitContextDelta(input),
+        ensureProjectRepo: (lineage) => {
+          this.#ensureCmpProjectRepo(lineage);
+        },
+        setLineage: (lineage) => {
+          this.#cmpLineages.set(lineage.agentId, lineage);
+        },
+        createSectionRulePack: () => createCmpRuntimeDefaultSectionRulePack(),
+        captureIcma: (input) => this.#cmpFiveAgentRuntime.icma.capture(input),
+        emitIcma: (input) => this.#cmpFiveAgentRuntime.icma.emit(input),
+        storeIngressRecord: (record) => {
+          this.#cmpIngressRecords.set(record.ingressId, record);
+        },
+        storeRequestRecord: (record) => {
+          this.#cmpRequests.set(record.requestId, record);
+        },
+        storeSectionRecord: (record) => {
+          this.#cmpSectionRecords.set(record.sectionId, record);
+        },
+        storeEvent: (event) => {
+          this.#storeCmpEvent(event);
+        },
+        listCheckedSnapshots: () => this.listCmpCheckedSnapshots(),
+        toEventKind: (kind) => this.#toCmpEventKind(kind),
+        recordNeighborhoodSyncs: (input) => {
+          this.#recordCmpNeighborhoodSyncs(input);
+        },
+      },
+      project: {
+        cmpInfraBackends: this.cmpInfraBackends,
+        createBootstrapPlan: (input) => this.createCmpProjectInfraBootstrapPlan(input),
+        applyBootstrapReceipt: (receipt) => {
+          this.#cmpProjectRepos.set(receipt.git.projectRepo.projectId, receipt.git.projectRepo);
+          for (const lineage of receipt.lineages) {
+            this.#cmpGitOrchestrator.registry.register(lineage);
+            this.#cmpLineages.set(lineage.agentId, createAgentLineage({
+              agentId: lineage.agentId,
+              parentAgentId: lineage.parentAgentId,
+              depth: lineage.depth,
+              projectId: lineage.projectId,
+              branchFamily: {
+                workBranch: lineage.branchFamily.work.branchName,
+                cmpBranch: lineage.branchFamily.cmp.branchName,
+                mpBranch: lineage.branchFamily.mp.branchName,
+                tapBranch: lineage.branchFamily.tap.branchName,
+              },
+              childAgentIds: lineage.childAgentIds,
+              status: "active",
+              metadata: lineage.metadata,
+            }));
+          }
+          this.#cmpProjectInfraBootstrapReceipts.set(receipt.git.projectRepo.projectId, receipt);
+          this.#cmpRuntimeInfraState = recordCmpProjectInfraBootstrapReceipt({
+            state: this.#cmpRuntimeInfraState,
+            receipt,
+            updatedAt: new Date().toISOString(),
+          });
+        },
+        getBootstrapReceipt: (projectId) => this.#cmpProjectInfraBootstrapReceipts.get(projectId),
+        getInfraProjectState: (projectId) => getCmpRuntimeInfraProjectState(this.#cmpRuntimeInfraState, projectId),
+        createRuntimeSnapshot: () => this.createCmpRuntimeSnapshot(),
+        recoverSnapshot: (snapshot) => this.recoverCmpRuntimeSnapshot(snapshot),
+        getInfraProjects: () => this.#cmpRuntimeInfraState.projects,
+        listDispatchReceipts: () => this.listCmpDispatchReceipts(),
+        getDispatchProjectId: (sourceAgentId) => this.#cmpLineages.get(sourceAgentId)?.projectId,
+        getDeliveryRecord: (dispatchId) => this.#cmpDbRuntimeSync.deliveries.get(dispatchId),
+        applyDeliveryTimeoutMutation: ({ receipt, projectionPatch, outcome, state, now }) => {
+          const deliveryRecord = this.#cmpDbRuntimeSync.deliveries.get(receipt.dispatchId);
+          if (!deliveryRecord) {
+            return;
+          }
+          this.#cmpDbRuntimeSync.deliveries.set(
+            deliveryRecord.deliveryId,
+            applyCmpMqDeliveryProjectionPatchToRecord({
+              record: deliveryRecord,
+              patch: projectionPatch,
+              metadata: {
+                source: "cmp-runtime-delivery-timeout-sweep",
+              },
+            }),
+          );
+          const nextReceipt = createDispatchReceipt({
+            ...receipt,
+            status: outcome === "expired" ? "expired" : receipt.status,
+            metadata: {
+              ...(receipt.metadata ?? {}),
+              mqTruthState: state.status,
+              cmpMqProjectionPatch: projectionPatch,
+            },
+          });
+          this.#cmpDispatchReceipts.set(nextReceipt.dispatchId, nextReceipt);
+          this.#recordCmpSyncEvent(createSyncEvent({
+            syncEventId: randomUUID(),
+            agentId: receipt.sourceAgentId,
+            channel: "mq",
+            direction: this.#mapDispatchTargetKindToDirection(this.#mapDispatchTargetKindFromReceipt(receipt)),
+            objectRef: receipt.dispatchId,
+            createdAt: now,
+            metadata: {
+              source: "cmp-runtime-delivery-timeout-sweep",
+              outcome,
+              nextRetryAt: state.nextRetryAt,
+              acknowledgedAt: state.acknowledgedAt,
+            },
+          }));
+        },
+      },
+      tapBridge: {
+        dispatchCapabilityIntentViaTaPool: this.dispatchCapabilityIntentViaTaPool.bind(this),
+        hasLineage: (agentId) => this.#cmpLineages.has(agentId),
+        recordDispatchSyncEvent: (input) => {
+          this.#recordCmpSyncEvent(createSyncEvent({
+            syncEventId: randomUUID(),
+            agentId: input.agentId,
+            channel: "db",
+            direction: "local",
+            objectRef: input.objectRef,
+            createdAt: new Date().toISOString(),
+            metadata: {
+              source: "cmp-five-agent-tap-bridge",
+              cmpRole: input.role,
+              capabilityKey: input.capabilityKey,
+              tapProfileId: input.profileId,
+              dispatchStatus: input.dispatchStatus,
+              grantId: input.grantId,
+              reviewDecisionId: input.reviewDecisionId,
+              provisionId: input.provisionId,
+              bridgeMetadata: input.bridgeMetadata,
+            },
+          }));
+        },
+        approvePeerExchange: (input) => this.#cmpFiveAgentRuntime.dispatcher.approvePeerExchange({
+          approvalId: input.approvalId,
+          actorAgentId: input.actorAgentId,
+          decision: input.decision,
+          note: input.note,
+          decidedAt: input.decidedAt ?? new Date().toISOString(),
+        }),
+        listDispatchReceipts: () => this.listCmpDispatchReceipts(),
+        setDispatchReceipt: (dispatchId, receipt) => {
+          this.#cmpDispatchReceipts.set(dispatchId, receipt);
+        },
+      },
+    }).api;
     this.registerCapabilityAdapter(
       createModelInferenceCapabilityManifest(),
       createModelInferenceCapabilityAdapter({
@@ -2425,29 +2571,7 @@ export class AgentCoreRuntime {
     requestedDurationMs?: number;
     metadata?: Record<string, unknown>;
   }): CmpFiveAgentCapabilityAccessResolution {
-    const profile = createCmpRoleTapProfile(input.role);
-    const gateway = new TaControlPlaneGateway({ profile });
-    const resolution: ResolveCapabilityAccessResult = gateway.resolveCapabilityAccess({
-      sessionId: input.sessionId,
-      runId: input.runId,
-      agentId: input.agentId,
-      capabilityKey: input.capabilityKey,
-      reason: input.reason,
-      requestedTier: input.requestedTier,
-      mode: input.mode,
-      taskContext: input.taskContext,
-      requestedScope: input.requestedScope,
-      requestedDurationMs: input.requestedDurationMs,
-      metadata: {
-        cmpRole: input.role,
-        ...(input.metadata ?? {}),
-      },
-    });
-    return {
-      role: input.role,
-      profile,
-      resolution,
-    };
+    return this.cmp.tapBridge.resolveCapabilityAccess(input) as CmpFiveAgentCapabilityAccessResolution;
   }
 
   async dispatchCmpFiveAgentCapability(input: {
@@ -2468,59 +2592,7 @@ export class AgentCoreRuntime {
     cmpContext?: CmpFiveAgentTapBridgeContext;
     metadata?: Record<string, unknown>;
   }): Promise<DispatchCmpFiveAgentCapabilityResult> {
-    const compiled = createCmpFiveAgentTapBridgeCompiled({
-      role: input.role,
-      sessionId: input.sessionId,
-      runId: input.runId,
-      agentId: input.agentId,
-      capabilityKey: input.capabilityKey,
-      reason: input.reason,
-      capabilityInput: input.capabilityInput,
-      priority: input.priority,
-      timeoutMs: input.timeoutMs,
-      requestedTier: input.requestedTier,
-      mode: input.mode,
-      taskContext: input.taskContext,
-      requestedScope: input.requestedScope,
-      requestedDurationMs: input.requestedDurationMs,
-      cmpContext: input.cmpContext,
-      metadata: input.metadata,
-    });
-    const dispatch = await this.dispatchCapabilityIntentViaTaPool(
-      compiled.intent,
-      compiled.dispatchOptions,
-    );
-    const lineage = this.#cmpLineages.get(input.agentId);
-    if (lineage) {
-      this.#recordCmpSyncEvent(createSyncEvent({
-        syncEventId: randomUUID(),
-        agentId: input.agentId,
-        channel: "db",
-        direction: "local",
-        objectRef: dispatch.accessRequest?.requestId
-          ?? dispatch.reviewDecision?.requestId
-          ?? compiled.intent.request.requestId,
-        createdAt: new Date().toISOString(),
-        metadata: {
-          source: "cmp-five-agent-tap-bridge",
-          cmpRole: input.role,
-          capabilityKey: input.capabilityKey,
-          tapProfileId: compiled.profile.profileId,
-          dispatchStatus: dispatch.status,
-          grantId: dispatch.grant?.grantId,
-          reviewDecisionId: dispatch.reviewDecision?.decisionId,
-          provisionId: dispatch.provisionRequest?.provisionId,
-          bridgeMetadata: compiled.bridgeMetadata,
-        },
-      }));
-    }
-    return {
-      role: input.role,
-      profile: compiled.profile,
-      intent: compiled.intent,
-      bridgeMetadata: compiled.bridgeMetadata,
-      dispatch,
-    };
+    return this.cmp.tapBridge.dispatchCapability(input);
   }
 
   reviewCmpPeerExchangeApproval(input: {
@@ -2530,30 +2602,7 @@ export class AgentCoreRuntime {
     note?: string;
     decidedAt?: string;
   }) {
-    const approval = this.#cmpFiveAgentRuntime.dispatcher.approvePeerExchange({
-      approvalId: input.approvalId,
-      actorAgentId: input.actorAgentId,
-      decision: input.decision,
-      note: input.note,
-      decidedAt: input.decidedAt ?? new Date().toISOString(),
-    });
-
-    for (const [dispatchId, receipt] of this.#cmpDispatchReceipts.entries()) {
-      if (receipt.metadata?.cmpPeerExchangeApprovalId !== approval.approvalId) {
-        continue;
-      }
-      this.#cmpDispatchReceipts.set(dispatchId, createDispatchReceipt({
-        ...receipt,
-        metadata: {
-          ...(receipt.metadata ?? {}),
-          cmpPeerExchangeApprovalStatus: approval.status,
-          cmpPeerExchangeApprovedAt: approval.approvedAt,
-          cmpPeerExchangeApprovedBy: approval.approvedByAgentId,
-        },
-      }));
-    }
-
-    return approval;
+    return this.cmp.tapBridge.reviewPeerExchangeApproval(input);
   }
 
   createCmpProjectInfraBootstrapPlan(
@@ -2565,47 +2614,7 @@ export class AgentCoreRuntime {
   async bootstrapCmpProjectInfra(
     input: BootstrapCmpProjectInfraInput,
   ): Promise<CmpProjectInfraBootstrapReceipt> {
-    if (!this.cmpInfraBackends.git) {
-      throw new Error("CMP git backend is not configured on this runtime.");
-    }
-    if (!this.cmpInfraBackends.mq) {
-      throw new Error("CMP mq backend is not configured on this runtime.");
-    }
-
-    const receipt = await executeCmpProjectInfraBootstrap({
-      plan: this.createCmpProjectInfraBootstrapPlan(input),
-      gitBackend: this.cmpInfraBackends.git,
-      dbExecutor: this.cmpInfraBackends.dbExecutor,
-      mqAdapter: this.cmpInfraBackends.mq,
-    });
-
-    this.#cmpProjectRepos.set(receipt.git.projectRepo.projectId, receipt.git.projectRepo);
-    for (const lineage of receipt.lineages) {
-      this.#cmpGitOrchestrator.registry.register(lineage);
-      this.#cmpLineages.set(lineage.agentId, createAgentLineage({
-        agentId: lineage.agentId,
-        parentAgentId: lineage.parentAgentId,
-        depth: lineage.depth,
-        projectId: lineage.projectId,
-        branchFamily: {
-          workBranch: lineage.branchFamily.work.branchName,
-          cmpBranch: lineage.branchFamily.cmp.branchName,
-          mpBranch: lineage.branchFamily.mp.branchName,
-          tapBranch: lineage.branchFamily.tap.branchName,
-        },
-        childAgentIds: lineage.childAgentIds,
-        status: "active",
-        metadata: lineage.metadata,
-      }));
-    }
-    this.#cmpProjectInfraBootstrapReceipts.set(receipt.git.projectRepo.projectId, receipt);
-    this.#cmpRuntimeInfraState = recordCmpProjectInfraBootstrapReceipt({
-      state: this.#cmpRuntimeInfraState,
-      receipt,
-      updatedAt: new Date().toISOString(),
-    });
-
-    return receipt;
+    return this.cmp.project.bootstrapProjectInfra(input);
   }
 
   getCmpGitBranchHead(branchRef: string) {
@@ -2653,205 +2662,21 @@ export class AgentCoreRuntime {
   }
 
   getCmpRuntimeRecoverySummary(): CmpRuntimeRecoverySummary {
-    const recovery = hydrateCmpRuntimeSnapshotWithReconciliation({
-      snapshot: this.createCmpRuntimeSnapshot(),
-      projects: this.#cmpRuntimeInfraState.projects,
-    });
-    return recovery.summary;
+    return this.cmp.project.getRecoverySummary();
   }
 
   getCmpRuntimeProjectRecoverySummary(projectId: string): CmpRuntimeProjectRecoverySummary | undefined {
-    const recovery = hydrateCmpRuntimeSnapshotWithReconciliation({
-      snapshot: this.createCmpRuntimeSnapshot(),
-      projects: this.#cmpRuntimeInfraState.projects,
-    });
-    const projectRecovery = getCmpRuntimeRecoveryReconciliation({
-      recovery,
-      projectId,
-    });
-    if (!projectRecovery) {
-      return undefined;
-    }
-    return {
-      projectId,
-      status: projectRecovery.status,
-      recommendedAction: projectRecovery.recommendedAction,
-      issues: [...projectRecovery.issues],
-    };
+    return this.cmp.project.getProjectRecoverySummary(projectId);
   }
 
   getCmpRuntimeDeliveryTruthSummary(projectId: string): CmpRuntimeDeliveryTruthSummary {
-    const receipts = this.listCmpDispatchReceipts().filter((receipt) => {
-      const sourceLineage = this.#cmpLineages.get(receipt.sourceAgentId);
-      return sourceLineage?.projectId === projectId;
-    });
-    let publishedCount = 0;
-    let acknowledgedCount = 0;
-    let retryScheduledCount = 0;
-    let expiredCount = 0;
-    let driftCount = 0;
-    let pendingAckCount = 0;
-    const issues: string[] = [];
-
-    for (const receipt of receipts) {
-      const deliveryRecord = this.#cmpDbRuntimeSync.deliveries.get(receipt.dispatchId);
-      const truthStatus: "published" | "acknowledged" | "retry_scheduled" | "expired" =
-        typeof deliveryRecord?.metadata?.truthStatus === "string"
-          && ["published", "acknowledged", "retry_scheduled", "expired"].includes(deliveryRecord.metadata.truthStatus)
-          ? deliveryRecord.metadata.truthStatus as "published" | "acknowledged" | "retry_scheduled" | "expired"
-          : mapCmpDeliveryRecordStateToTruthStatus(deliveryRecord?.state ?? "pending_delivery");
-
-      if (truthStatus === "acknowledged") {
-        acknowledgedCount += 1;
-      } else if (truthStatus === "retry_scheduled") {
-        retryScheduledCount += 1;
-      } else if (truthStatus === "expired") {
-        expiredCount += 1;
-      } else {
-        publishedCount += 1;
-      }
-
-      if (truthStatus === "published") {
-        pendingAckCount += 1;
-      }
-
-      const expectedStatus = mapCmpMqTruthStatusToDispatchStatus(
-        truthStatus === "retry_scheduled" ? "published" : truthStatus,
-      );
-      if (receipt.status !== expectedStatus) {
-        driftCount += 1;
-      }
-      if (truthStatus === "retry_scheduled") {
-        issues.push(`CMP delivery ${receipt.dispatchId} is waiting for retry.`);
-      }
-      if (truthStatus === "expired") {
-        issues.push(`CMP delivery ${receipt.dispatchId} has expired.`);
-      }
-    }
-
-    return {
-      projectId,
-      totalDispatches: receipts.length,
-      publishedCount,
-      acknowledgedCount,
-      retryScheduledCount,
-      expiredCount,
-      driftCount,
-      pendingAckCount,
-      status: expiredCount > 0 || driftCount > 0
-        ? "degraded"
-        : receipts.length === 0
-          ? "failed"
-          : "ready",
-      issues,
-    };
+    return this.cmp.project.getDeliveryTruthSummary(projectId);
   }
 
   advanceCmpMqDeliveryTimeouts(
     params: AdvanceCmpMqDeliveryTimeoutsInput = {},
   ): AdvanceCmpMqDeliveryTimeoutsResult {
-    const now = params.now ?? new Date().toISOString();
-    let processedCount = 0;
-    let retryScheduledCount = 0;
-    let expiredCount = 0;
-
-    for (const receipt of this.listCmpDispatchReceipts()) {
-      const sourceLineage = this.#cmpLineages.get(receipt.sourceAgentId);
-      if (!sourceLineage) {
-        continue;
-      }
-      if (params.projectId && sourceLineage.projectId !== params.projectId) {
-        continue;
-      }
-      const mqReceiptId = typeof receipt.metadata?.mqReceiptId === "string"
-        ? receipt.metadata.mqReceiptId
-        : undefined;
-      if (!mqReceiptId) {
-        continue;
-      }
-      const deliveryRecord = this.#cmpDbRuntimeSync.deliveries.get(receipt.dispatchId);
-      if (!deliveryRecord) {
-        continue;
-      }
-
-      const truthState = typeof deliveryRecord.metadata?.truthStatus === "string"
-        ? deliveryRecord.metadata.truthStatus
-        : mapCmpDeliveryRecordStateToTruthStatus(deliveryRecord.state);
-      if (truthState === "acknowledged" || truthState === "expired") {
-        continue;
-      }
-
-      const deliveryState = createCmpMqDeliveryStateFromDeliveryTruth({
-        truth: {
-          receiptId: mqReceiptId,
-          projectId: sourceLineage.projectId,
-          sourceAgentId: receipt.sourceAgentId,
-          channel: mapCmpDispatchKindToMqChannel(this.#mapDispatchTargetKindFromReceipt(receipt)),
-          lane: (typeof receipt.metadata?.mqLane === "string" ? receipt.metadata.mqLane : "stream") as "pubsub" | "stream" | "queue",
-          redisKey: typeof receipt.metadata?.mqRedisKey === "string" ? receipt.metadata.mqRedisKey : `cmp:${sourceLineage.projectId}:unknown`,
-          targetCount: typeof receipt.metadata?.mqTargetCount === "number" ? receipt.metadata.mqTargetCount : 1,
-          state: (truthState === "retry_scheduled" ? "published" : truthState) as "published" | "acknowledged" | "expired",
-          publishedAt: receipt.deliveredAt ?? now,
-          acknowledgedAt: receipt.acknowledgedAt,
-          metadata: deliveryRecord.metadata,
-        },
-        dispatchId: receipt.dispatchId,
-        packageId: receipt.packageId,
-        targetAgentId: receipt.targetAgentId,
-      });
-      const evaluated = evaluateCmpMqDeliveryTimeout({
-        state: deliveryState,
-        now,
-      });
-      processedCount += 1;
-      if (evaluated.outcome === "retry_scheduled") {
-        retryScheduledCount += 1;
-      } else if (evaluated.outcome === "expired") {
-        expiredCount += 1;
-      }
-
-      this.#cmpDbRuntimeSync.deliveries.set(
-        deliveryRecord.deliveryId,
-        applyCmpMqDeliveryProjectionPatchToRecord({
-          record: deliveryRecord,
-          patch: evaluated.projectionPatch,
-          metadata: {
-            source: "cmp-runtime-delivery-timeout-sweep",
-          },
-        }),
-      );
-      const nextReceipt = createDispatchReceipt({
-        ...receipt,
-        status: evaluated.outcome === "expired" ? "expired" : receipt.status,
-        metadata: {
-          ...(receipt.metadata ?? {}),
-          mqTruthState: evaluated.state.status,
-          cmpMqProjectionPatch: evaluated.projectionPatch,
-        },
-      });
-      this.#cmpDispatchReceipts.set(nextReceipt.dispatchId, nextReceipt);
-      this.#recordCmpSyncEvent(createSyncEvent({
-        syncEventId: randomUUID(),
-        agentId: receipt.sourceAgentId,
-        channel: "mq",
-        direction: this.#mapDispatchTargetKindToDirection(this.#mapDispatchTargetKindFromReceipt(receipt)),
-        objectRef: receipt.dispatchId,
-        createdAt: now,
-        metadata: {
-          source: "cmp-runtime-delivery-timeout-sweep",
-          outcome: evaluated.outcome,
-          nextRetryAt: evaluated.state.nextRetryAt,
-          acknowledgedAt: evaluated.state.acknowledgedAt,
-        },
-      }));
-    }
-
-    return {
-      projectId: params.projectId,
-      processedCount,
-      retryScheduledCount,
-      expiredCount,
-    };
+    return this.cmp.project.advanceDeliveryTimeouts(params);
   }
 
   acknowledgeCmpDispatch(params: {
@@ -3163,173 +2988,7 @@ export class AgentCoreRuntime {
   }
 
   ingestRuntimeContext(input: IngestRuntimeContextInput): IngestRuntimeContextResult {
-    const normalized = createIngestRuntimeContextInput(input);
-    const lineage = createAgentLineage(normalized.lineage);
-    this.#cmpLineages.set(lineage.agentId, lineage);
-    this.#ensureCmpProjectRepo(lineage);
-
-    const createdAt = new Date().toISOString();
-    const ingestRequestId = `${lineage.agentId}:ingest:${createdAt}`;
-    const enrichedIngest: IngestRuntimeContextInput = {
-      ...normalized,
-      metadata: {
-        ...(normalized.metadata ?? {}),
-        cmpRequestId: ingestRequestId,
-      },
-    };
-    const icmaCapture = this.#cmpFiveAgentRuntime.icma.capture({
-      ingest: enrichedIngest,
-      createdAt,
-      loopId: randomUUID(),
-    });
-    const sectionIngress = createCmpSectionIngressRecordFromIngress({
-      ingest: enrichedIngest,
-      ingressId: randomUUID(),
-      createdAt,
-      metadata: {
-        source: "cmp-runtime-section-first-ingress",
-      },
-    });
-    const sectionLowering = lowerCmpSectionIngressRecordWithRulePack({
-      record: sectionIngress,
-      pack: createCmpRuntimeDefaultSectionRulePack(),
-      plane: "git",
-      persistedAt: createdAt,
-      metadata: {
-        source: "cmp-runtime-section-first-lowering",
-      },
-    });
-    const ingress = createCmpIngressRecord(sectionIngress.ingress);
-    this.#cmpIngressRecords.set(ingress.ingressId, ingress);
-    this.#cmpRequests.set(ingestRequestId, createCmpRequestRecordFromIngest({
-      requestId: ingestRequestId,
-      ingest: enrichedIngest,
-      createdAt,
-      metadata: {
-        ingressId: ingress.ingressId,
-        source: "cmp-runtime-object-model-ingest",
-      },
-    }));
-    const rawSectionRecordIdsBySectionId = new Map<string, string>();
-    const preSectionRecordIdsBySectionId = new Map<string, string>();
-    for (const section of sectionIngress.sections) {
-      const rawRecordId = `${section.id}:raw`;
-      const preRecordId = `${section.id}:pre`;
-      rawSectionRecordIdsBySectionId.set(section.id, rawRecordId);
-      preSectionRecordIdsBySectionId.set(section.id, preRecordId);
-      this.#cmpSectionRecords.set(rawRecordId, createCmpSectionRecordFromSection({
-        section,
-        lifecycle: "raw",
-        version: 1,
-        sourceAnchors: section.payloadRefs,
-        metadata: {
-          source: "cmp-runtime-object-model-ingest",
-          ingressId: ingress.ingressId,
-        },
-      }));
-      this.#cmpSectionRecords.set(preRecordId, createCmpSectionRecord({
-        ...createCmpSectionRecordFromSection({
-          section,
-          lifecycle: "pre",
-          version: 2,
-          parentSectionId: rawRecordId,
-          ancestorSectionIds: [rawRecordId],
-          sourceAnchors: section.payloadRefs,
-        }),
-        sectionId: preRecordId,
-        metadata: {
-          source: "cmp-runtime-object-model-ingest",
-          ingressId: ingress.ingressId,
-          cmpIcmaRecordId: icmaCapture.loop.loopId,
-          cmpIntentChunkIds: icmaCapture.loop.chunkIds,
-          cmpFragmentIds: icmaCapture.loop.fragmentIds,
-        },
-      }));
-    }
-
-    for (const loweredRecord of sectionLowering.lowered) {
-      if (!loweredRecord.storedSection) {
-        continue;
-      }
-      const preRecordId = preSectionRecordIdsBySectionId.get(loweredRecord.section.id);
-      const persistedRecord = createCmpSectionRecordFromStoredSection({
-        storedSection: loweredRecord.storedSection,
-        sourceSection: loweredRecord.section,
-        lifecycle: "persisted",
-        version: 3,
-        parentSectionId: preRecordId,
-        ancestorSectionIds: preRecordId ? [preRecordId] : [],
-        metadata: {
-          source: "cmp-runtime-object-model-ingest",
-          ingressId: ingress.ingressId,
-          ruleEvaluation: loweredRecord.evaluation,
-        },
-      });
-      this.#cmpSectionRecords.set(persistedRecord.sectionId, persistedRecord);
-    }
-
-    const acceptedEvents: ContextEvent[] = normalized.materials.map((material) => {
-      const loweredSection = sectionLowering.lowered.find((record) => record.section.payloadRefs.includes(material.ref));
-      const event = createContextEvent({
-        eventId: randomUUID(),
-        agentId: lineage.agentId,
-        sessionId: normalized.sessionId,
-        runId: normalized.runId,
-        kind: this.#toCmpEventKind(material.kind),
-        payloadRef: material.ref,
-        createdAt,
-        source: "core_agent",
-        metadata: {
-          ingressId: ingress.ingressId,
-          materialKind: material.kind,
-          cmpIcmaRecordId: icmaCapture.loop.loopId,
-          cmpIcmaChunkIds: icmaCapture.loop.chunkIds,
-          cmpIcmaFragmentIds: icmaCapture.loop.fragmentIds,
-          cmpSectionId: loweredSection?.section.id,
-          cmpRawSectionRecordId: loweredSection?.section.id
-            ? rawSectionRecordIdsBySectionId.get(loweredSection.section.id)
-            : undefined,
-          cmpPreSectionRecordId: loweredSection?.section.id
-            ? preSectionRecordIdsBySectionId.get(loweredSection.section.id)
-            : undefined,
-          cmpStoredSectionId: loweredSection?.storedSection?.id,
-          cmpStoredSections: loweredSection?.storedSection ? [loweredSection.storedSection] : [],
-          cmpSectionRuleEvaluation: loweredSection?.evaluation,
-          ...(material.metadata ?? {}),
-        },
-      });
-      this.#storeCmpEvent(event);
-      return event;
-    });
-    const emittedIcma = this.#cmpFiveAgentRuntime.icma.emit({
-      recordId: icmaCapture.loop.loopId,
-      eventIds: acceptedEvents.map((event) => event.eventId),
-      emittedAt: createdAt,
-    });
-
-    this.#recordCmpNeighborhoodSyncs({
-      ingress,
-      lineage,
-      payloadRef: normalized.materials[0]?.ref ?? `cmp-ingress:${ingress.ingressId}`,
-      granularityLabel: normalized.taskSummary,
-    });
-
-    return createIngestRuntimeContextResult({
-      status: "accepted",
-      acceptedEventIds: acceptedEvents.map((event) => event.eventId),
-      nextAction: normalized.requiresActiveSync === false ? "noop" : "commit_context_delta",
-      metadata: {
-        ingressId: ingress.ingressId,
-        cmpFiveAgent: {
-          icmaRecordId: emittedIcma.loopId,
-          chunkIds: emittedIcma.chunkIds,
-          fragmentIds: emittedIcma.fragmentIds,
-        },
-        sectionIds: sectionIngress.sections.map((section) => section.id),
-        storedSectionIds: sectionLowering.storedSections.map((section) => section.id),
-        droppedSectionIds: sectionLowering.droppedSectionIds,
-      },
-    });
+    return this.cmp.workflow.ingest(input) as IngestRuntimeContextResult;
   }
 
   commitContextDelta(input: CommitContextDeltaInput): CommitContextDeltaResult {
@@ -3667,38 +3326,7 @@ export class AgentCoreRuntime {
   }
 
   resolveCheckedSnapshot(input: ResolveCheckedSnapshotInput): ResolveCheckedSnapshotResult {
-    const normalized = createResolveCheckedSnapshotInput(input);
-    const snapshot = [...this.#cmpCheckedSnapshots.values()]
-      .filter((candidate) => {
-        const projectId = candidate.metadata?.projectId;
-        if (projectId !== normalized.projectId) {
-          return false;
-        }
-        if (candidate.agentId !== normalized.agentId) {
-          return false;
-        }
-        if (normalized.lineageRef && candidate.lineageRef !== normalized.lineageRef) {
-          return false;
-        }
-        if (normalized.branchRef && candidate.branchRef !== normalized.branchRef) {
-          return false;
-        }
-        return true;
-      })
-      .sort((left, right) => right.checkedAt.localeCompare(left.checkedAt))[0];
-
-    if (!snapshot) {
-      return {
-        status: "not_found",
-        found: false,
-      };
-    }
-
-    return {
-      status: "resolved",
-      found: true,
-      snapshot,
-    };
+    return this.cmp.workflow.resolve(input) as ResolveCheckedSnapshotResult;
   }
 
   materializeContextPackage(input: MaterializeContextPackageInput): MaterializeContextPackageResult {

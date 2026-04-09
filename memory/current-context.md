@@ -140,6 +140,23 @@ Praxis 当前可继续开发的总装主线已经形成，工作分支是：
 - `rax` 不应再直接依赖 `agent_core/index.js` 的大 barrel 来获取 CMP 相关类型
 - `rax` 应优先依赖 `agent_core/cmp-api/*`、`cmp-runtime/*`、`cmp-types/*` 等明确子入口
 - `AgentCoreRuntime` 上旧的扁平 CMP 方法目前仍可作为内部兼容层存在，但新代码不要继续贴着这些平铺方法写
+- `src/rax/cmp-facade.ts` 已降为兼容壳，`rax.cmp` 的实际实现现在应继续沿：
+  - `src/rax/cmp/session.ts`
+  - `src/rax/cmp/project.ts`
+  - `src/rax/cmp/flow.ts`
+  - `src/rax/cmp/roles.ts`
+  - `src/rax/cmp/control.ts`
+  - `src/rax/cmp/readback.ts`
+  扩展，而不是把逻辑重新堆回 facade 大文件
+- `src/agent_core/cmp-service/project-service.ts`、`src/agent_core/cmp-service/tap-bridge-service.ts`、`src/agent_core/cmp-service/active-flow-service.ts` 现在已经不只是 runtime 方法转发壳：
+  - `project-service` 已承接 bootstrap / delivery truth / recovery summary / timeout sweep 的主逻辑
+  - `tap-bridge-service` 已承接 capability access / capability dispatch / peer approval 的主逻辑
+  - `active-flow-service` 已承接 `ingest` 与 `resolve` 的主逻辑，`runtime.ts` 对应方法已经降为委托调用
+  - `runtime.ts` 对这些块应继续保持“注入依赖 -> 委托调用”的方向
+- 目前仍未完全下沉的主要块是：
+  - `package-flow-service`
+  - `active-flow-service` 里的 `commit`
+  这两块还主要通过 runtime 平铺方法转发，后续如果继续拆，应优先处理它们
 
 白话：
 
