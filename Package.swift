@@ -497,6 +497,31 @@ let package = Package(
       path: "Tests/PraxisFoundationArchitectureTests",
     ),
     .testTarget(
+      name: "PraxisGoalTests",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisGoal",
+      ],
+      path: "Tests/PraxisGoalTests",
+    ),
+    .testTarget(
+      name: "PraxisStateTests",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisState",
+      ],
+      path: "Tests/PraxisStateTests",
+    ),
+    .testTarget(
+      name: "PraxisTransitionTests",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisState",
+        "PraxisTransition",
+      ],
+      path: "Tests/PraxisTransitionTests",
+    ),
+    .testTarget(
       name: "PraxisCapabilityArchitectureTests",
       dependencies: [
         "PraxisCapabilityContracts",
