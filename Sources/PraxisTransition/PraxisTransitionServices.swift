@@ -1,16 +1,34 @@
 import PraxisState
 
+/// Runtime guard that can veto a state transition for a given event.
 public protocol PraxisTransitionGuard: Sendable {
+  /// Returns whether the current snapshot is allowed to consume the event.
+  ///
+  /// - Parameters:
+  ///   - snapshot: The current runtime snapshot.
+  ///   - event: The incoming kernel event under evaluation.
+  /// - Returns: `true` when the event may proceed, otherwise `false`.
   func canTransition(snapshot: PraxisStateSnapshot, event: PraxisKernelEvent) -> Bool
 }
 
+/// Evaluates incoming kernel events against the runtime transition table.
 public struct PraxisTransitionEvaluator: Sendable {
   public let table: PraxisTransitionTable
 
+  /// Creates an evaluator with the supplied transition table.
+  ///
+  /// - Parameter table: The transition table used as the evaluator's policy source.
   public init(table: PraxisTransitionTable = .default) {
     self.table = table
   }
 
+  /// Resolves the next transition decision for the current state and incoming event.
+  ///
+  /// - Parameters:
+  ///   - currentState: The snapshot that represents the runtime state before the event is applied.
+  ///   - incomingEvent: The kernel event requesting a transition.
+  /// - Returns: A transition decision describing the next status, phase, state delta, and follow-up action.
+  /// - Throws: A transition error when the event is illegal for the current runtime status.
   public func evaluate(
     currentState: PraxisStateSnapshot,
     incomingEvent: PraxisKernelEvent

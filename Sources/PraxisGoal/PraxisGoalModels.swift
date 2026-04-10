@@ -1,5 +1,6 @@
 import PraxisCoreTypes
 
+/// Stable identifier for a goal flowing through normalization and compilation.
 public struct PraxisGoalID: PraxisIdentifier {
   public let rawValue: String
 
@@ -8,6 +9,7 @@ public struct PraxisGoalID: PraxisIdentifier {
   }
 }
 
+/// Describes where a goal request originated from.
 public enum PraxisGoalSourceKind: String, Sendable, Codable {
   case user
   case system
@@ -15,6 +17,7 @@ public enum PraxisGoalSourceKind: String, Sendable, Codable {
   case followUp = "follow_up"
 }
 
+/// A single success or failure checkpoint attached to a goal.
 public struct PraxisGoalCriterion: Sendable, Equatable, Codable {
   public let id: String
   public let description: String
@@ -31,6 +34,7 @@ public struct PraxisGoalCriterion: Sendable, Equatable, Codable {
   }
 }
 
+/// A structured constraint that downstream planners and executors must respect.
 public struct PraxisGoalConstraint: Sendable, Equatable, Codable {
   public let key: String
   public let value: PraxisValue
@@ -48,12 +52,14 @@ public struct PraxisGoalConstraint: Sendable, Equatable, Codable {
 }
 
 public extension PraxisGoalConstraint {
+  /// Human-readable summary used in prompts and debugging output.
   var summary: String {
     let suffix = description.map { " (\($0))" } ?? ""
     return "\(key)=\(value.canonicalDescription)\(suffix)"
   }
 }
 
+/// Raw goal input captured from a user or system surface.
 public struct PraxisGoalSource: Sendable, Equatable, Codable {
   public let id: PraxisGoalID
   public let kind: PraxisGoalSourceKind
@@ -103,11 +109,13 @@ public struct PraxisGoalSource: Sendable, Equatable, Codable {
 }
 
 public extension PraxisGoalSource {
+  /// Backward-compatible alias for older call sites that still use `rawInput`.
   var rawInput: String {
     userInput
   }
 }
 
+/// Goal data after input cleanup and defaulting, ready for compilation.
 public struct PraxisNormalizedGoal: Sendable, Equatable, Codable {
   public let id: PraxisGoalID
   public let taskStatement: String
@@ -159,6 +167,7 @@ public struct PraxisNormalizedGoal: Sendable, Equatable, Codable {
   }
 }
 
+/// Prompt-ready goal package enriched with cache metadata.
 public struct PraxisCompiledGoal: Sendable, Equatable, Codable {
   public let normalizedGoal: PraxisNormalizedGoal
   public let instructionText: String
@@ -191,31 +200,38 @@ public struct PraxisCompiledGoal: Sendable, Equatable, Codable {
 }
 
 public extension PraxisCompiledGoal {
+  /// Convenience accessor mirroring the normalized goal identifier.
   var goalID: PraxisGoalID {
     normalizedGoal.id
   }
 
+  /// Backward-compatible alias for the compiled instruction text.
   var intentSummary: String {
     instructionText
   }
 
+  /// Convenience accessor mirroring normalized success criteria.
   var successCriteria: [PraxisGoalCriterion] {
     normalizedGoal.successCriteria
   }
 
+  /// Convenience accessor mirroring normalized failure criteria.
   var failureCriteria: [PraxisGoalCriterion] {
     normalizedGoal.failureCriteria
   }
 
+  /// Convenience accessor mirroring normalized constraints.
   var constraints: [PraxisGoalConstraint] {
     normalizedGoal.constraints
   }
 
+  /// Convenience accessor mirroring normalized input refs.
   var inputRefs: [String] {
     normalizedGoal.inputRefs
   }
 }
 
+/// Validation issue produced while checking goal input or normalized output.
 public struct PraxisGoalValidationIssue: Sendable, Equatable, Codable {
   public let message: String
 

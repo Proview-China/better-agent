@@ -1,5 +1,6 @@
 import Foundation
 
+/// A JSON-like plain value shared across target boundaries.
 public enum PraxisValue: Sendable, Equatable, Codable {
   case string(String)
   case number(Double)
@@ -8,6 +9,15 @@ public enum PraxisValue: Sendable, Equatable, Codable {
   case array([PraxisValue])
   case null
 
+  /// Decodes plain JSON-compatible payloads into a stable cross-target value.
+  ///
+  /// The decoder must provide a single JSON-like scalar, object, array, or `null`.
+  /// Values outside this plain-data subset are rejected so the type can remain
+  /// safe to pass across target and serialization boundaries.
+  ///
+  /// - Parameter decoder: The decoder positioned at a single JSON-compatible value.
+  /// - Throws: `DecodingError.dataCorruptedError` when the payload is not representable
+  ///   as a `PraxisValue`, or any decoding error thrown by the underlying decoder.
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
 
@@ -34,6 +44,10 @@ public enum PraxisValue: Sendable, Equatable, Codable {
     )
   }
 
+  /// Encodes the current value back into a JSON-compatible single value container.
+  ///
+  /// - Parameter encoder: The encoder that receives the plain value representation.
+  /// - Throws: Any encoding error produced by the underlying encoder.
   public func encode(to encoder: Encoder) throws {
     var container = encoder.singleValueContainer()
     switch self {
@@ -54,6 +68,7 @@ public enum PraxisValue: Sendable, Equatable, Codable {
 }
 
 public extension PraxisValue {
+  /// Returns the wrapped string when the value is `.string`.
   var stringValue: String? {
     guard case .string(let value) = self else {
       return nil
@@ -61,6 +76,7 @@ public extension PraxisValue {
     return value
   }
 
+  /// Returns the wrapped bool when the value is `.bool`.
   var boolValue: Bool? {
     guard case .bool(let value) = self else {
       return nil
@@ -68,6 +84,7 @@ public extension PraxisValue {
     return value
   }
 
+  /// Returns the wrapped number when the value is `.number`.
   var numberValue: Double? {
     guard case .number(let value) = self else {
       return nil
@@ -75,6 +92,7 @@ public extension PraxisValue {
     return value
   }
 
+  /// Returns the wrapped object when the value is `.object`.
   var objectValue: [String: PraxisValue]? {
     guard case .object(let value) = self else {
       return nil
@@ -82,6 +100,7 @@ public extension PraxisValue {
     return value
   }
 
+  /// Returns the wrapped array when the value is `.array`.
   var arrayValue: [PraxisValue]? {
     guard case .array(let value) = self else {
       return nil
@@ -89,6 +108,7 @@ public extension PraxisValue {
     return value
   }
 
+  /// Produces a stable JSON string representation suitable for equality-like comparisons and cache seeds.
   var canonicalDescription: String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
@@ -143,6 +163,7 @@ extension PraxisValue: ExpressibleByDictionaryLiteral {
 }
 
 private extension SingleValueDecodingContainer {
+  /// Tries to decode a concrete payload type and maps it into `PraxisValue`.
   func decodeValue<T: Decodable>(
     _ type: T.Type,
     map: (T) -> PraxisValue
