@@ -46,26 +46,45 @@ public struct PraxisTapInspection: Sendable, Equatable, Codable {
 }
 
 public struct PraxisCmpInspection: Sendable, Equatable, Codable {
+  public let runtimeProfile: PraxisCmpLocalRuntimeProfile
   public let summary: String
   public let projectID: String
-  public let controlSurfaceSummary: String
-  public let truthLayers: [String: String]
   public let issues: [String]
-  public let smokeSummary: String
+  public let hostSummary: String
 
   public init(
+    runtimeProfile: PraxisCmpLocalRuntimeProfile,
     summary: String,
     projectID: String,
-    controlSurfaceSummary: String,
-    truthLayers: [String: String],
     issues: [String],
-    smokeSummary: String
+    hostSummary: String
   ) {
+    self.runtimeProfile = runtimeProfile
     self.summary = summary
     self.projectID = projectID
-    self.controlSurfaceSummary = controlSurfaceSummary
-    self.truthLayers = truthLayers
     self.issues = issues
-    self.smokeSummary = smokeSummary
+    self.hostSummary = hostSummary
+  }
+}
+
+public struct PraxisCmpLocalRuntimeProfile: Sendable, Equatable, Codable {
+  public let structuredStoreSummary: String
+  public let deliveryStoreSummary: String
+  public let messageBusSummary: String
+  public let gitSummary: String
+  public let semanticIndexSummary: String
+
+  public init(
+    structuredStoreSummary: String,
+    deliveryStoreSummary: String,
+    messageBusSummary: String,
+    gitSummary: String,
+    semanticIndexSummary: String
+  ) {
+    self.structuredStoreSummary = structuredStoreSummary
+    self.deliveryStoreSummary = deliveryStoreSummary
+    self.messageBusSummary = messageBusSummary
+    self.gitSummary = gitSummary
+    self.semanticIndexSummary = semanticIndexSummary
   }
 }

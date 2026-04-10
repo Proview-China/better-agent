@@ -34,6 +34,28 @@ public struct PraxisGitPlan: Sendable, Equatable, Codable {
   }
 }
 
+public enum PraxisGitAvailabilityStatus: String, Sendable, Codable {
+  case ready
+  case installPromptExpected
+  case unavailable
+}
+
+public struct PraxisGitAvailabilityReport: Sendable, Equatable, Codable {
+  public let status: PraxisGitAvailabilityStatus
+  public let executablePath: String?
+  public let notes: String
+
+  public init(
+    status: PraxisGitAvailabilityStatus,
+    executablePath: String? = nil,
+    notes: String
+  ) {
+    self.status = status
+    self.executablePath = executablePath
+    self.notes = notes
+  }
+}
+
 public struct PraxisLongRunningTaskHandle: Sendable, Equatable, Codable {
   public let identifier: String
 

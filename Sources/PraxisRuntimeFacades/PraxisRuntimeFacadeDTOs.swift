@@ -33,11 +33,21 @@ public struct PraxisTapInspectionSnapshot: Sendable, Equatable, Codable {
 public struct PraxisCmpInspectionSnapshot: Sendable, Equatable, Codable {
   public let summary: String
   public let projectID: String
-  public let smokeSummary: String
+  public let hostRuntimeSummary: String
+  public let persistenceSummary: String
+  public let coordinationSummary: String
 
-  public init(summary: String, projectID: String, smokeSummary: String) {
+  public init(
+    summary: String,
+    projectID: String,
+    hostRuntimeSummary: String,
+    persistenceSummary: String,
+    coordinationSummary: String
+  ) {
     self.summary = summary
     self.projectID = projectID
-    self.smokeSummary = smokeSummary
+    self.hostRuntimeSummary = hostRuntimeSummary
+    self.persistenceSummary = persistenceSummary
+    self.coordinationSummary = coordinationSummary
   }
 }

@@ -27,7 +27,7 @@ public struct PraxisPresentationStateMapper: Sendable {
   public func map(cmpInspection: PraxisCmpInspectionSnapshot) -> PraxisPresentationState {
     PraxisPresentationState(
       title: "CMP Inspection",
-      summary: "\(cmpInspection.projectID): \(cmpInspection.smokeSummary)"
+      summary: "\(cmpInspection.projectID): \(cmpInspection.hostRuntimeSummary)"
     )
   }
 

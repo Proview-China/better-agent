@@ -40,7 +40,7 @@ final class CmpRuntimeSupportTests: XCTestCase {
         streamPrefix: "cmp:project-1:stream"
       ),
       bindings: [
-        .init(topicName: "neighbor.sync", channel: "peer", redisKey: "cmp:project-1:peer")
+        .init(topicName: "neighbor.sync", channel: "peer", transportKey: "cmp:project-1:peer")
       ]
     )
 
@@ -48,6 +48,7 @@ final class CmpRuntimeSupportTests: XCTestCase {
     XCTAssertEqual(gitRuntime.branchNames.count, 2)
     XCTAssertEqual(dbContract.bootstrapStatements.first?.phase, .bootstrap)
     XCTAssertEqual(mqReceipt.bindings.first?.channel, "peer")
+    XCTAssertEqual(mqReceipt.bindings.first?.transportKey, "cmp:project-1:peer")
   }
 
   func testCmpFiveAgentLiveAndObservabilityModelsCaptureRoleStatus() {

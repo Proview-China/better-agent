@@ -140,22 +140,23 @@ public final class PraxisInspectCmpUseCase: PraxisInspectCmpUseCaseProtocol {
   }
 
   public func execute() async throws -> PraxisCmpInspection {
-    let truthLayers = [
-      "git": "ready",
-      "db": "degraded",
-      "redis": "degraded",
-    ]
+    let runtimeProfile = PraxisCmpLocalRuntimeProfile(
+      structuredStoreSummary: "SQLite-backed projection, checkpoint, and journal storage is the default macOS host assumption.",
+      deliveryStoreSummary: "Delivery truth is expected to persist locally instead of relying on Redis.",
+      messageBusSummary: "Neighborhood fan-out should stay inside an in-process actor message bus until multi-process needs appear.",
+      gitSummary: "System git remains an on-demand host tool and may trigger Command Line Tools installation when first invoked.",
+      semanticIndexSummary: "Semantic search should stay local-first, with SQLite metadata plus Accelerate similarity execution."
+    )
     let issues = [
-      "CMP bootstrap/runtime surface is placeholder only.",
-      "DB/MQ truth still needs real backend integration.",
+      "CMP local runtime profile is placeholder only and still needs concrete SQLite/message-bus implementations.",
+      "System git readiness and semantic index execution still need live host adapters.",
     ]
     return PraxisCmpInspection(
-      summary: "CMP inspection placeholder is now wired through use cases.",
+      runtimeProfile: runtimeProfile,
+      summary: "CMP inspection now assumes a macOS-local runtime profile.",
       projectID: "cmp.placeholder",
-      controlSurfaceSummary: "manual / reconcile / strict_not_found",
-      truthLayers: truthLayers,
       issues: issues,
-      smokeSummary: "CMP host surface is structurally wired but still placeholder-backed."
+      hostSummary: "macOS local runtime / SQLite / actor message bus / system git / Accelerate"
     )
   }
 }

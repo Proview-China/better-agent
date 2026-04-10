@@ -73,7 +73,9 @@ public final class PraxisInspectionFacade: Sendable {
     return PraxisCmpInspectionSnapshot(
       summary: inspection.summary,
       projectID: inspection.projectID,
-      smokeSummary: inspection.smokeSummary
+      hostRuntimeSummary: inspection.hostSummary,
+      persistenceSummary: inspection.runtimeProfile.structuredStoreSummary,
+      coordinationSummary: inspection.runtimeProfile.messageBusSummary
     )
   }
 

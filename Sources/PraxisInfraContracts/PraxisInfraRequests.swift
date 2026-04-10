@@ -39,3 +39,87 @@ public struct PraxisPublishedMessage: Sendable, Equatable, Codable {
     self.payloadSummary = payloadSummary
   }
 }
+
+public enum PraxisDeliveryTruthStatus: String, Sendable, Codable {
+  case pending
+  case published
+  case acknowledged
+  case retryScheduled
+  case expired
+}
+
+public struct PraxisDeliveryTruthRecord: Sendable, Equatable, Codable, Identifiable {
+  public let id: String
+  public let topic: String
+  public let status: PraxisDeliveryTruthStatus
+  public let payloadSummary: String
+  public let updatedAt: String
+
+  public init(
+    id: String,
+    topic: String,
+    status: PraxisDeliveryTruthStatus,
+    payloadSummary: String,
+    updatedAt: String
+  ) {
+    self.id = id
+    self.topic = topic
+    self.status = status
+    self.payloadSummary = payloadSummary
+    self.updatedAt = updatedAt
+  }
+}
+
+public struct PraxisEmbeddingRecord: Sendable, Equatable, Codable, Identifiable {
+  public let id: String
+  public let contentSummary: String
+  public let vectorLength: Int
+  public let storageKey: String
+
+  public init(
+    id: String,
+    contentSummary: String,
+    vectorLength: Int,
+    storageKey: String
+  ) {
+    self.id = id
+    self.contentSummary = contentSummary
+    self.vectorLength = vectorLength
+    self.storageKey = storageKey
+  }
+}
+
+public struct PraxisSemanticSearchRequest: Sendable, Equatable, Codable {
+  public let query: String
+  public let limit: Int
+  public let candidateStorageKeys: [String]?
+
+  public init(
+    query: String,
+    limit: Int = 5,
+    candidateStorageKeys: [String]? = nil
+  ) {
+    self.query = query
+    self.limit = limit
+    self.candidateStorageKeys = candidateStorageKeys
+  }
+}
+
+public struct PraxisSemanticSearchMatch: Sendable, Equatable, Codable, Identifiable {
+  public let id: String
+  public let score: Double
+  public let contentSummary: String
+  public let storageKey: String
+
+  public init(
+    id: String,
+    score: Double,
+    contentSummary: String,
+    storageKey: String
+  ) {
+    self.id = id
+    self.score = score
+    self.contentSummary = contentSummary
+    self.storageKey = storageKey
+  }
+}

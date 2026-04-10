@@ -1,4 +1,4 @@
-public struct PraxisCmpRedisNamespace: Sendable, Equatable, Codable {
+public struct PraxisCmpMqNamespace: Sendable, Equatable, Codable {
   public let namespaceRoot: String
   public let keyPrefix: String
   public let queuePrefix: String
@@ -12,29 +12,29 @@ public struct PraxisCmpRedisNamespace: Sendable, Equatable, Codable {
   }
 }
 
-public struct PraxisCmpRedisTopicBinding: Sendable, Equatable, Codable {
+public struct PraxisCmpMqTopicBinding: Sendable, Equatable, Codable {
   public let topicName: String
   public let channel: String
-  public let redisKey: String
+  public let transportKey: String
 
-  public init(topicName: String, channel: String, redisKey: String) {
+  public init(topicName: String, channel: String, transportKey: String) {
     self.topicName = topicName
     self.channel = channel
-    self.redisKey = redisKey
+    self.transportKey = transportKey
   }
 }
 
 public struct PraxisCmpMqBootstrapReceipt: Sendable, Equatable, Codable {
   public let projectID: String
   public let agentID: String
-  public let namespace: PraxisCmpRedisNamespace
-  public let bindings: [PraxisCmpRedisTopicBinding]
+  public let namespace: PraxisCmpMqNamespace
+  public let bindings: [PraxisCmpMqTopicBinding]
 
   public init(
     projectID: String,
     agentID: String,
-    namespace: PraxisCmpRedisNamespace,
-    bindings: [PraxisCmpRedisTopicBinding]
+    namespace: PraxisCmpMqNamespace,
+    bindings: [PraxisCmpMqTopicBinding]
   ) {
     self.projectID = projectID
     self.agentID = agentID

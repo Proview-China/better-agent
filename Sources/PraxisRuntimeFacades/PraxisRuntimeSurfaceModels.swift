@@ -4,33 +4,46 @@ public enum PraxisTruthLayerStatus: String, Sendable, Codable {
   case failed
 }
 
-public struct PraxisRuntimeControlSurface: Sendable, Equatable, Codable {
+public struct PraxisLocalRuntimeHostProfile: Sendable, Equatable, Codable {
   public let executionStyle: String
-  public let readbackPriority: String
-  public let fallbackPolicy: String
+  public let structuredStore: String
+  public let deliveryStore: String
+  public let messageTransport: String
+  public let gitAccess: String
+  public let semanticIndex: String
 
-  public init(executionStyle: String, readbackPriority: String, fallbackPolicy: String) {
+  public init(
+    executionStyle: String,
+    structuredStore: String,
+    deliveryStore: String,
+    messageTransport: String,
+    gitAccess: String,
+    semanticIndex: String
+  ) {
     self.executionStyle = executionStyle
-    self.readbackPriority = readbackPriority
-    self.fallbackPolicy = fallbackPolicy
+    self.structuredStore = structuredStore
+    self.deliveryStore = deliveryStore
+    self.messageTransport = messageTransport
+    self.gitAccess = gitAccess
+    self.semanticIndex = semanticIndex
   }
 }
 
-public struct PraxisCmpProjectReadbackSummary: Sendable, Equatable, Codable {
+public struct PraxisCmpProjectLocalRuntimeSummary: Sendable, Equatable, Codable {
   public let projectID: String
-  public let controlSurface: PraxisRuntimeControlSurface
-  public let truthLayers: [String: PraxisTruthLayerStatus]
+  public let hostProfile: PraxisLocalRuntimeHostProfile
+  public let componentStatuses: [String: PraxisTruthLayerStatus]
   public let issues: [String]
 
   public init(
     projectID: String,
-    controlSurface: PraxisRuntimeControlSurface,
-    truthLayers: [String: PraxisTruthLayerStatus],
+    hostProfile: PraxisLocalRuntimeHostProfile,
+    componentStatuses: [String: PraxisTruthLayerStatus],
     issues: [String]
   ) {
     self.projectID = projectID
-    self.controlSurface = controlSurface
-    self.truthLayers = truthLayers
+    self.hostProfile = hostProfile
+    self.componentStatuses = componentStatuses
     self.issues = issues
   }
 }
