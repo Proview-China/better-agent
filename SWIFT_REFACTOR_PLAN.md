@@ -344,6 +344,17 @@ Core 禁止直接依赖：
 
 ### Wave 2：Capability
 
+进度记录（`2026-04-10`）：
+
+- 已完成
+- `PraxisCapabilityContracts`、`PraxisCapabilityResults`、`PraxisCapabilityPlanning`、`PraxisCapabilityCatalog` 已进入最小可演算实现状态
+- `PraxisCapabilityContracts` 已承接 capability manifest、binding、invocation request、execution policy 等基础契约模型
+- `PraxisCapabilityResults` 已承接 normalized output、result envelope、failure taxonomy 与默认 normalizer
+- `PraxisCapabilityPlanning` 已承接 selector、invocation plan、lease、dispatch plan 与纯规划 heuristics
+- `PraxisCapabilityCatalog` 已承接 family grouping、catalog snapshot、latest selection 视图与 MP baseline 承接点
+- 已补齐对应 Swift Testing 逻辑测试，覆盖 contracts / results / planning / catalog 四个 target 的核心样本
+- 当前 `swift test` 已继续保持通过
+
 覆盖 target：
 
 - `PraxisCapabilityContracts`
@@ -545,6 +556,15 @@ Core 禁止直接依赖：
    - `PraxisCapabilityResults`
    - `PraxisCapabilityPlanning`
    - `PraxisCapabilityCatalog`
+   - 状态：已完成（`2026-04-10`）
+   - 完成内容：
+     - 四个 Capability target 已从边界与模型骨架进入最小可运行实现
+     - `PraxisCapabilityContracts` 已冻结 capability 基础契约模型
+     - `PraxisCapabilityResults` 已补齐 result envelope 与默认归一化规则
+     - `PraxisCapabilityPlanning` 已补齐 capability selection / invocation / lease / dispatch 纯规划链路
+     - `PraxisCapabilityCatalog` 已补齐 family registry / snapshot / discoverability 最小视图
+     - 对应 Swift Testing 测试已补齐并通过，覆盖 contracts / results / planning / catalog 的最小验收样本
+     - 已新增对应 Swift Testing 逻辑测试并通过，便于后续继续推进 TAP / CMP 依赖 Capability 的上层接线
 4. PR 4
    - 全部 TAP targets
 5. PR 5
