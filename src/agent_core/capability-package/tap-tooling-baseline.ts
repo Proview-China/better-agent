@@ -6,6 +6,8 @@ import {
 
 export const TAP_TOOLING_BASELINE_CAPABILITY_KEYS = [
   "repo.write",
+  "spreadsheet.write",
+  "doc.write",
   "code.edit",
   "code.patch",
   "shell.restricted",
@@ -159,6 +161,283 @@ export function createTapToolingCapabilityPackage(
           rollbackStrategy: "restore prior binding or revert repo diff",
           deprecateStrategy: "freeze new writes before removal",
           cleanupStrategy: "remove superseded registration after drain",
+          generationPolicy: "create_next_generation",
+        },
+        activationSpec,
+        replayPolicy: "re_review_then_dispatch",
+        metadata: {
+          packageKind: "tap-tooling-baseline",
+        },
+      });
+    }
+    case "spreadsheet.write": {
+      const activationSpec = {
+        targetPool: "ta-capability-pool",
+        activationMode: "activate_after_verify" as const,
+        registerOrReplace: "register_or_replace" as const,
+        generationStrategy: "create_next_generation" as const,
+        drainStrategy: "graceful" as const,
+        manifestPayload: {
+          capabilityKey,
+          capabilityId: "capability:spreadsheet.write:1",
+          version: "1.0.0",
+          generation: 1,
+          kind: "tool",
+          description: "Write bounded spreadsheet outputs inside the workspace, including csv, tsv, and first-wave single-sheet xlsx generation.",
+          tags: ["tap", "bootstrap", "spreadsheet", "write"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        bindingPayload: {
+          adapterId: "adapter.spreadsheet.write",
+          runtimeKind: "local-tooling",
+          documentFormats: ["csv", "tsv", "xlsx"],
+          workspaceScope: "workspace-only",
+        },
+        adapterFactoryRef: "factory:tap-tooling:spreadsheet.write",
+      };
+
+      return createCapabilityPackage({
+        manifest: {
+          capabilityKey,
+          capabilityKind: "tool",
+          tier: "B0",
+          version: "1.0.0",
+          generation: 1,
+          description: "Write bounded spreadsheet outputs inside the workspace, including csv, tsv, and first-wave single-sheet xlsx generation.",
+          dependencies: ["repo.write", "spreadsheet.read"],
+          tags: ["tap", "bootstrap", "spreadsheet", "write"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          supportedPlatforms: ["linux", "macos", "windows"],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        adapter: {
+          adapterId: "adapter.spreadsheet.write",
+          runtimeKind: "local-tooling",
+          supports: ["write_spreadsheet"],
+          prepare: { ref: "adapter.prepare:spreadsheet.write" },
+          execute: { ref: "adapter.execute:spreadsheet.write" },
+          cancel: { ref: "adapter.cancel:spreadsheet.write" },
+          resultMapping: {
+            successStatuses: ["success"],
+            artifactKinds: ["usage", "verification"],
+          },
+        },
+        policy: {
+          defaultBaseline: {
+            grantedTier: "B0",
+            mode: "balanced",
+            scope: createWorkspaceScope(["write", "mkdir", "spreadsheet.write"]),
+          },
+          recommendedMode: "permissive",
+          riskLevel: "normal",
+          defaultScope: createWorkspaceScope(["write", "mkdir", "spreadsheet.write"]),
+          reviewRequirements: ["allow"],
+          safetyFlags: ["workspace_spreadsheet_only", "single_sheet_xlsx_v1"],
+          humanGateRequirements: ["workspace_outside_spreadsheet_write_requires_escalation"],
+        },
+        builder: {
+          builderId: "builder.spreadsheet.write",
+          buildStrategy: "builtin-bootstrap-tooling",
+          requiresNetwork: false,
+          requiresInstall: false,
+          requiresSystemWrite: false,
+          allowedWorkdirScope: ["workspace/**"],
+          activationSpecRef: createCapabilityPackageActivationSpecRef(activationSpec),
+          replayCapability: "re_review_then_dispatch",
+        },
+        verification: {
+          smokeEntry: "smoke:spreadsheet.write",
+          healthEntry: "health:spreadsheet.write",
+          successCriteria: [
+            "csv/tsv outputs can be written directly inside the workspace",
+            "xlsx output can be generated as a bounded single-sheet workbook",
+          ],
+          failureSignals: [
+            "output path escapes workspace",
+            "rows payload missing or invalid",
+            "xlsx generation backend fails",
+          ],
+          evidenceOutput: ["written-spreadsheet", "write-report"],
+        },
+        usage: {
+          usageDocRef: "docs/ability/25-tap-capability-package-template.md",
+          bestPractices: [
+            "Keep rows and headers bounded and explicit.",
+            "Prefer csv/tsv when formatting is unnecessary, and xlsx when the user explicitly wants workbook output.",
+          ],
+          knownLimits: [
+            "First version writes one sheet only for xlsx output.",
+            "This capability creates or overwrites outputs; it does not yet patch existing workbook formatting in place.",
+          ],
+          exampleInvocations: [
+            {
+              exampleId: "spreadsheet.write.summary-table",
+              capabilityKey,
+              operation: "write_spreadsheet",
+              input: {
+                path: "artifacts/report.xlsx",
+                headers: ["name", "value"],
+                rows: [
+                  ["gold", 4755.44],
+                  ["silver", 31.2],
+                ],
+              },
+            },
+          ],
+        },
+        lifecycle: {
+          installStrategy: "built-in bootstrap registration",
+          replaceStrategy: "register_or_replace",
+          rollbackStrategy: "restore prior binding or delete generated spreadsheet outputs",
+          deprecateStrategy: "freeze new spreadsheet generation before removal",
+          cleanupStrategy: "drain in-flight spreadsheet writes before replacement",
+          generationPolicy: "create_next_generation",
+        },
+        activationSpec,
+        replayPolicy: "re_review_then_dispatch",
+        metadata: {
+          packageKind: "tap-tooling-baseline",
+        },
+      });
+    }
+    case "doc.write": {
+      const activationSpec = {
+        targetPool: "ta-capability-pool",
+        activationMode: "activate_after_verify" as const,
+        registerOrReplace: "register_or_replace" as const,
+        generationStrategy: "create_next_generation" as const,
+        drainStrategy: "graceful" as const,
+        manifestPayload: {
+          capabilityKey,
+          capabilityId: "capability:doc.write:1",
+          version: "1.0.0",
+          generation: 1,
+          kind: "tool",
+          description: "Write bounded .docx outputs inside the workspace from structured text content.",
+          tags: ["tap", "bootstrap", "doc", "write"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        bindingPayload: {
+          adapterId: "adapter.doc.write",
+          runtimeKind: "local-tooling",
+          documentFormats: ["docx"],
+          workspaceScope: "workspace-only",
+        },
+        adapterFactoryRef: "factory:tap-tooling:doc.write",
+      };
+
+      return createCapabilityPackage({
+        manifest: {
+          capabilityKey,
+          capabilityKind: "tool",
+          tier: "B0",
+          version: "1.0.0",
+          generation: 1,
+          description: "Write bounded .docx outputs inside the workspace from structured text content.",
+          dependencies: ["repo.write", "doc.read"],
+          tags: ["tap", "bootstrap", "doc", "write"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          supportedPlatforms: ["linux", "macos", "windows"],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        adapter: {
+          adapterId: "adapter.doc.write",
+          runtimeKind: "local-tooling",
+          supports: ["write_docx"],
+          prepare: { ref: "adapter.prepare:doc.write" },
+          execute: { ref: "adapter.execute:doc.write" },
+          cancel: { ref: "adapter.cancel:doc.write" },
+          resultMapping: {
+            successStatuses: ["success"],
+            artifactKinds: ["usage", "verification"],
+          },
+        },
+        policy: {
+          defaultBaseline: {
+            grantedTier: "B0",
+            mode: "balanced",
+            scope: createWorkspaceScope(["write", "mkdir", "doc.write"]),
+          },
+          recommendedMode: "permissive",
+          riskLevel: "normal",
+          defaultScope: createWorkspaceScope(["write", "mkdir", "doc.write"]),
+          reviewRequirements: ["allow"],
+          safetyFlags: ["workspace_doc_only", "docx_generation_v1"],
+          humanGateRequirements: ["workspace_outside_doc_write_requires_escalation"],
+        },
+        builder: {
+          builderId: "builder.doc.write",
+          buildStrategy: "builtin-bootstrap-tooling",
+          requiresNetwork: false,
+          requiresInstall: false,
+          requiresSystemWrite: false,
+          allowedWorkdirScope: ["workspace/**"],
+          activationSpecRef: createCapabilityPackageActivationSpecRef(activationSpec),
+          replayCapability: "re_review_then_dispatch",
+        },
+        verification: {
+          smokeEntry: "smoke:doc.write",
+          healthEntry: "health:doc.write",
+          successCriteria: [
+            "docx output can be generated inside the workspace",
+            "title, content, and sections are preserved as readable document text",
+          ],
+          failureSignals: [
+            "output path escapes workspace",
+            "doc payload missing title/content/sections",
+            "docx conversion backend fails",
+          ],
+          evidenceOutput: ["written-document", "write-report"],
+        },
+        usage: {
+          usageDocRef: "docs/ability/25-tap-capability-package-template.md",
+          bestPractices: [
+            "Keep the document structure explicit with title, summary, content, and sections.",
+            "Use repo-local .docx paths so later doc.read can verify the generated output.",
+          ],
+          knownLimits: [
+            "First version generates text-first .docx output and does not preserve advanced styling or tracked changes.",
+            "This capability creates or overwrites the target document rather than patching existing OOXML structure.",
+          ],
+          exampleInvocations: [
+            {
+              exampleId: "doc.write.status-note",
+              capabilityKey,
+              operation: "write_docx",
+              input: {
+                path: "artifacts/status-note.docx",
+                title: "Status Note",
+                summary: "Current gold-price verification result.",
+                sections: [
+                  {
+                    heading: "Observation",
+                    body: ["Current price: 4755.44 USD/oz", "Observed at: 08:48:38"],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        lifecycle: {
+          installStrategy: "built-in bootstrap registration",
+          replaceStrategy: "register_or_replace",
+          rollbackStrategy: "restore prior binding or delete generated docx outputs",
+          deprecateStrategy: "freeze new document generation before removal",
+          cleanupStrategy: "drain in-flight doc writes before replacement",
           generationPolicy: "create_next_generation",
         },
         activationSpec,

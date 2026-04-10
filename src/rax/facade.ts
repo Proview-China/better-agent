@@ -33,6 +33,8 @@ import {
 import { createRaxCmpFacade } from "./cmp-facade.js";
 import type { RaxCmpApi, RaxCmpPort } from "./cmp-types.js";
 import type { RaxCmpConfig } from "./cmp-config.js";
+import { createRaxMpFacade } from "./mp-facade.js";
+import type { RaxMpFacade } from "./mp-types.js";
 import { composeNativeMcpInvocation } from "./mcp-native-compose.js";
 import { McpNativeRuntime, type McpNativeRuntimeLike } from "./mcp-native-runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
@@ -210,6 +212,7 @@ export interface RaxFacade {
     setDefaultVersion(options: FacadeCallOptions<SkillSetDefaultVersionInput>): PreparedInvocation<Record<string, unknown>>;
   };
   cmp: RaxCmpApi;
+  mp: RaxMpFacade;
 }
 
 type RaxCmpRuntimeFactory = (config: RaxCmpConfig) => RaxCmpPort;
@@ -246,6 +249,7 @@ export function createConfiguredRaxFacade(
   const cmp = createRaxCmpFacade({
     runtimeFactory: cmpRuntimeFactory,
   });
+  const mp = createRaxMpFacade();
   function prepare<TInput = unknown, TPayload = unknown>(
     capability: "generate" | "embed" | "file" | "batch" | "search",
     action: "create" | "stream" | "upload" | "submit" | "ground",
@@ -1825,6 +1829,7 @@ export function createConfiguredRaxFacade(
         return prepareManagedSkillSetDefaultInvocation(options);
       }
     },
-    cmp
+    cmp,
+    mp
   };
 }

@@ -317,6 +317,7 @@ export function printCoreArtifacts(turn: CoreTurnArtifacts): void {
   printDivider("Core Result");
   console.log(`runId: ${turn.runId}`);
   console.log(`dispatchStatus: ${turn.dispatchStatus}`);
+  console.log(`taskStatus: ${turn.taskStatus ?? "(none)"}`);
   console.log(`capability: ${turn.capabilityKey ?? "(none)"}`);
   console.log(`capabilityResultStatus: ${turn.capabilityResultStatus ?? "(none)"}`);
   console.log("\nAssistant:");
@@ -354,7 +355,7 @@ export function printDirectStatus(state: LiveCliState): void {
   const snapshot = state.runtime.createTapGovernanceSnapshot();
   console.log("");
   printDirectBox("Status", [
-    `core: ${state.lastTurn.core.dispatchStatus} / ${state.lastTurn.core.capabilityKey ?? "no capability"} / ${state.lastTurn.core.capabilityResultStatus ?? "success"}`,
+    `core: ${state.lastTurn.core.dispatchStatus} / ${state.lastTurn.core.taskStatus ?? "completed"} / ${state.lastTurn.core.capabilityKey ?? "no capability"} / ${state.lastTurn.core.capabilityResultStatus ?? "success"}`,
     `cmp: ${state.latestCmp ? "synced" : "warming"} / ${truncate(state.lastTurn.cmp.intent, 96)}`,
     `tap: ${governance.taskPolicy.effectiveMode} / ${state.runtime.capabilityPool.listCapabilities().length} registered / ${snapshot.blockingCapabilityKeys.length} blocked`,
   ]);

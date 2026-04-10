@@ -14,6 +14,9 @@ import {
 export const TAP_VENDOR_USER_IO_CAPABILITY_KEYS = [
   "request_user_input",
   "request_permissions",
+  "audio.transcribe",
+  "speech.synthesize",
+  "image.generate",
 ] as const;
 
 export type TapVendorUserIoCapabilityKey =
@@ -24,6 +27,9 @@ export const TAP_VENDOR_USER_IO_ACTIVATION_FACTORY_REFS: Readonly<
 > = {
   request_user_input: "factory:tap.vendor-user-io:request_user_input",
   request_permissions: "factory:tap.vendor-user-io:request_permissions",
+  "audio.transcribe": "factory:tap.vendor-user-io:audio.transcribe",
+  "speech.synthesize": "factory:tap.vendor-user-io:speech.synthesize",
+  "image.generate": "factory:tap.vendor-user-io:image.generate",
 };
 
 export interface CreateTapVendorUserIoCapabilityPackageInput {
@@ -50,6 +56,9 @@ interface UserIoCapabilityDefaults {
   reviewRequirements: ("allow" | "allow_with_constraints")[];
   safetyFlags: string[];
   riskLevel: "normal" | "risky" | "dangerous";
+  requiresNetwork?: boolean;
+  successStatuses?: string[];
+  providerHints?: string[];
 }
 
 const USER_IO_USAGE_DOC_REF =
@@ -148,11 +157,180 @@ const USER_IO_CAPABILITY_DEFAULTS: Record<
     safetyFlags: ["permission_escalation_request"],
     riskLevel: "risky",
   },
+  "audio.transcribe": {
+    description:
+      "Transcribe a local audio file into structured text using the configured multimodal backend.",
+    tags: ["tap", "user-io", "audio", "transcribe"],
+    tier: "B1",
+    routeHints: [
+      { key: "family", value: "tap-vendor-user-io" },
+      { key: "backendKind", value: "provider-native-api" },
+      { key: "selectionPolicy", value: "multimodal-io" },
+    ],
+    successCriteria: [
+      "Audio file is read successfully and transcribed into text.",
+      "Structured transcript metadata is returned without dumping raw binary payloads.",
+    ],
+    failureSignals: [
+      "audio input path is missing",
+      "audio input file cannot be read",
+      "transcription backend request fails",
+    ],
+    evidenceOutput: ["transcript-text", "transcript-metadata"],
+    bestPractices: [
+      "Pass the audio language when known to improve latency and accuracy.",
+      "Keep prompts narrow and use diarization only when speaker separation matters.",
+    ],
+    knownLimits: [
+      "First version reads a local file and returns structured transcript text only; it does not yet manage large multi-part batches.",
+      "This capability depends on the currently configured OpenAI-compatible audio backend.",
+    ],
+    exampleInput: {
+      path: "artifacts/meeting.mp3",
+      language: "zh",
+      prompt: "保留关键专有名词。",
+    },
+    exampleNotes:
+      "Transcribe a repo-local meeting clip into readable text with optional guidance.",
+    reviewRequirements: ["allow"],
+    safetyFlags: ["local_audio_read", "network_model_call"],
+    riskLevel: "normal",
+    requiresNetwork: true,
+    successStatuses: ["success"],
+    providerHints: ["openai-native-audio"],
+  },
+  "speech.synthesize": {
+    description:
+      "Synthesize speech audio from text and write the generated audio artifact to a local file.",
+    tags: ["tap", "user-io", "speech", "synthesize"],
+    tier: "B1",
+    routeHints: [
+      { key: "family", value: "tap-vendor-user-io" },
+      { key: "backendKind", value: "provider-native-api" },
+      { key: "selectionPolicy", value: "multimodal-io" },
+    ],
+    successCriteria: [
+      "Input text is converted into an audio file with a stable local artifact path.",
+      "Returned metadata captures voice, format, and artifact size.",
+    ],
+    failureSignals: [
+      "speech input text is missing",
+      "target output path is invalid",
+      "speech synthesis backend request fails",
+    ],
+    evidenceOutput: ["audio-artifact", "speech-metadata"],
+    bestPractices: [
+      "Keep narration text explicit and bounded.",
+      "Pick an explicit voice and output format when the downstream consumer expects a specific artifact.",
+    ],
+    knownLimits: [
+      "First version writes the generated audio to a file path instead of streaming live playback.",
+      "This capability depends on the currently configured OpenAI-compatible speech backend.",
+    ],
+    exampleInput: {
+      input: "当前 XAU/USD 实时价格为 4755.44 美元每盎司。",
+      voice: "alloy",
+      path: "memory/generated/gold-price.mp3",
+    },
+    exampleNotes:
+      "Generate a small speech artifact that can be replayed or attached later.",
+    reviewRequirements: ["allow"],
+    safetyFlags: ["workspace_audio_write", "network_model_call"],
+    riskLevel: "normal",
+    requiresNetwork: true,
+    successStatuses: ["success"],
+    providerHints: ["openai-native-audio"],
+  },
+  "image.generate": {
+    description:
+      "Generate an image from a text prompt and write the resulting artifact to a local file.",
+    tags: ["tap", "user-io", "image", "generate"],
+    tier: "B1",
+    routeHints: [
+      { key: "family", value: "tap-vendor-user-io" },
+      { key: "backendKind", value: "provider-native-api" },
+      { key: "selectionPolicy", value: "multimodal-io" },
+    ],
+    successCriteria: [
+      "Prompt is converted into an image artifact with a stable local file path.",
+      "Returned metadata captures size, format, and any revised prompt supplied by the backend.",
+    ],
+    failureSignals: [
+      "image prompt is missing",
+      "target output path is invalid",
+      "image generation backend request fails",
+    ],
+    evidenceOutput: ["image-artifact", "image-metadata"],
+    bestPractices: [
+      "Use explicit, concrete prompts and pass size/format when the downstream consumer expects a particular asset shape.",
+      "Treat revised prompts as evidence, not as a replacement for the original user request.",
+    ],
+    knownLimits: [
+      "First version writes one generated image artifact per call and does not yet support image edits or variations.",
+      "This capability depends on the currently configured OpenAI-compatible image backend.",
+    ],
+    exampleInput: {
+      prompt: "A precise technical illustration of a browser automation control loop.",
+      path: "memory/generated/browser-loop.png",
+      size: "1024x1024",
+    },
+    exampleNotes:
+      "Generate a single local image artifact for later inspection or inclusion in docs.",
+    reviewRequirements: ["allow_with_constraints"],
+    safetyFlags: ["workspace_image_write", "network_model_call"],
+    riskLevel: "risky",
+    requiresNetwork: true,
+    successStatuses: ["success"],
+    providerHints: ["openai-native-images"],
+  },
 };
 
 function createUserIoSupportMatrix(
   capabilityKey: TapVendorUserIoCapabilityKey,
 ) {
+  if (
+    capabilityKey === "audio.transcribe"
+    || capabilityKey === "speech.synthesize"
+    || capabilityKey === "image.generate"
+  ) {
+    return createCapabilityPackageSupportMatrix({
+      routes: [
+        {
+          provider: "openai",
+          sdkLayer: "api",
+          lowering: "provider-native-api",
+          status: "documented",
+          preferred: true,
+          notes: [
+            "Praxis currently lowers this multimodal user-io capability onto the official OpenAI-compatible API surface.",
+          ],
+        },
+        {
+          provider: "anthropic",
+          sdkLayer: "api",
+          lowering: "package-runtime",
+          status: "unsupported",
+          notes: [
+            "Anthropic does not currently provide the same direct multimodal artifact API surface for this capability in Praxis.",
+          ],
+        },
+        {
+          provider: "deepmind",
+          sdkLayer: "api",
+          lowering: "package-runtime",
+          status: "unsupported",
+          notes: [
+            "DeepMind does not currently provide the same direct multimodal artifact API surface for this capability in Praxis.",
+          ],
+        },
+      ],
+      metadata: {
+        capabilityFamily: "tap-vendor-user-io",
+        capabilityKey,
+      },
+    });
+  }
+
   return createCapabilityPackageSupportMatrix({
     routes: [
       {
@@ -267,7 +445,7 @@ export function createTapVendorUserIoCapabilityPackage(
         description: "Surface a blocked result that carries a structured operator-facing user-io request payload.",
       },
       resultMapping: {
-        successStatuses: ["blocked"],
+        successStatuses: defaults.successStatuses ?? ["blocked"],
         artifactKinds: ["usage", "verification"],
       },
       metadata: {
@@ -280,14 +458,14 @@ export function createTapVendorUserIoCapabilityPackage(
         mode: "standard",
         scope: {
           allowedOperations: [input.capabilityKey],
-          providerHints: ["operator-surface"],
+          providerHints: defaults.providerHints ?? ["operator-surface"],
         },
       },
       recommendedMode: "standard",
       riskLevel: defaults.riskLevel,
       defaultScope: {
         allowedOperations: [input.capabilityKey],
-        providerHints: ["operator-surface"],
+        providerHints: defaults.providerHints ?? ["operator-surface"],
       },
       reviewRequirements: defaults.reviewRequirements,
       safetyFlags: defaults.safetyFlags,
@@ -296,7 +474,7 @@ export function createTapVendorUserIoCapabilityPackage(
     builder: {
       builderId: `builder:${input.capabilityKey}:tap-vendor-user-io`,
       buildStrategy: "mount-existing-runtime",
-      requiresNetwork: false,
+      requiresNetwork: defaults.requiresNetwork ?? false,
       requiresInstall: false,
       requiresSystemWrite: false,
       allowedWorkdirScope: ["workspace/**"],
@@ -326,7 +504,9 @@ export function createTapVendorUserIoCapabilityPackage(
     },
     lifecycle: {
       installStrategy:
-        "register the TAP user-io adapter family and let later runtime bridges connect blocked requests to operator surfaces",
+        input.capabilityKey === "request_user_input" || input.capabilityKey === "request_permissions"
+          ? "register the TAP user-io adapter family and let later runtime bridges connect blocked requests to operator surfaces"
+          : "register the TAP user-io multimodal adapter family and let provider-native backends create local media artifacts",
       replaceStrategy: "register_or_replace active binding generation",
       rollbackStrategy: "restore the previous user-io binding generation",
       deprecateStrategy: "freeze new user-io dispatches before draining superseded bindings",

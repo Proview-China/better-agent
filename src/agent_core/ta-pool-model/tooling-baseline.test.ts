@@ -31,6 +31,8 @@ test("tap bootstrap TMA profile carries the first-class tooling baseline", () =>
     [...TAP_BOOTSTRAP_TMA_BASELINE_CAPABILITY_KEYS],
   );
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "repo.write" }), true);
+  assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "spreadsheet.write" }), true);
+  assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "doc.write" }), true);
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "code.edit" }), true);
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "code.patch" }), true);
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "shell.session" }), true);

@@ -14,6 +14,7 @@ import {
   createCodeSymbolSearchCapabilityPackage,
   createCodeLspCapabilityPackage,
   createSpreadsheetReadCapabilityPackage,
+  createDocReadCapabilityPackage,
   createReadPdfCapabilityPackage,
   createReadNotebookCapabilityPackage,
   createViewImageCapabilityPackage,
@@ -248,6 +249,8 @@ function parsePreparedWorkspaceReadInput(
                 ? "document_symbol"
                 : capabilityKey === "spreadsheet.read"
                   ? "read_spreadsheet"
+                  : capabilityKey === "doc.read"
+                    ? "read_document"
                 : capabilityKey === "read_pdf"
                   ? "read_pdf"
                   : capabilityKey === "read_notebook"
@@ -720,6 +723,35 @@ function parseDelimitedRow(line: string, delimiter: string): string[] {
   return cells;
 }
 
+function truncateStructuredString(
+  value: string,
+  maxBytes: number,
+): { value: string; truncated: boolean } {
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) {
+    return { value, truncated: false };
+  }
+  return {
+    value: truncateUtf8ByBytes(value, maxBytes),
+    truncated: true,
+  };
+}
+
+function truncateStructuredRow(
+  row: string[],
+  maxCellBytes: number,
+): { row: string[]; truncated: boolean } {
+  let truncated = false;
+  const nextRow = row.map((cell) => {
+    const normalized = truncateStructuredString(cell, maxCellBytes);
+    truncated ||= normalized.truncated;
+    return normalized.value;
+  });
+  return {
+    row: nextRow,
+    truncated,
+  };
+}
+
 function summarizeDelimitedSpreadsheet(params: {
   text: string;
   relativePath: string;
@@ -727,30 +759,40 @@ function summarizeDelimitedSpreadsheet(params: {
   maxRows: number;
   maxBytes: number;
 }) {
+  const maxCellBytes = Math.max(128, Math.min(2048, Math.floor(params.maxBytes / 8)));
   const lines = params.text.split(/\r?\n/u).filter((line) => line.length > 0);
   const delimiter = params.format === "tsv" ? "\t" : ",";
   const parsedRows = lines.map((line) => parseDelimitedRow(line, delimiter));
-  const header = parsedRows[0] ?? [];
+  const headerResult = truncateStructuredRow(parsedRows[0] ?? [], maxCellBytes);
   const dataRows = parsedRows.slice(1);
-  const sampleRows = dataRows.slice(0, params.maxRows);
+  let clippedCells = headerResult.truncated;
+  const sampleRows = dataRows.slice(0, params.maxRows).map((row) => {
+    const normalized = truncateStructuredRow(row, maxCellBytes);
+    clippedCells ||= normalized.truncated;
+    return normalized.row;
+  });
   const payload = {
     capabilityKey: "spreadsheet.read",
     operation: "read_spreadsheet",
     path: params.relativePath,
     format: params.format,
     sheetCount: 1,
+    returnedSheetCount: 1,
     sheets: [
       {
         name: path.basename(params.relativePath),
         rowCount: dataRows.length,
+        returnedRowCount: sampleRows.length,
+        omittedRowCount: Math.max(0, dataRows.length - sampleRows.length),
         columnCount: Math.max(0, ...parsedRows.map((row) => row.length)),
-        headers: header,
+        headers: headerResult.row,
         rows: sampleRows,
       },
     ],
     truncated:
       dataRows.length > params.maxRows
-      || Buffer.byteLength(params.text, "utf8") > params.maxBytes,
+      || Buffer.byteLength(params.text, "utf8") > params.maxBytes
+      || clippedCells,
   };
   return payload;
 }
@@ -828,6 +870,9 @@ async function readSpreadsheetSummary(params: {
 }) {
   const extension = path.extname(params.relativePath).toLowerCase();
   if (extension === ".csv" || extension === ".tsv") {
+    if (params.sheet) {
+      throw new Error(`spreadsheet.read does not support sheet selection for ${extension} files.`);
+    }
     const raw = await readFile(params.absolutePath, "utf8");
     return summarizeDelimitedSpreadsheet({
       text: raw,
@@ -847,9 +892,15 @@ async function readSpreadsheetSummary(params: {
     "path = sys.argv[1]",
     "max_rows = int(sys.argv[2])",
     "requested_sheet = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None",
+    "max_chars = int(sys.argv[4]) if len(sys.argv) > 4 else 400",
     "NS_MAIN = '{http://schemas.openxmlformats.org/spreadsheetml/2006/main}'",
     "NS_REL = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'",
     "PKG_REL = '{http://schemas.openxmlformats.org/package/2006/relationships}'",
+    "def clip(value):",
+    "    if value is None:",
+    "        return '', False",
+    "    text = str(value)",
+    "    return (text[:max_chars], len(text) > max_chars)",
     "def cell_index(ref):",
     "    letters = ''.join(ch for ch in ref if ch.isalpha())",
     "    value = 0",
@@ -878,11 +929,14 @@ async function readSpreadsheetSummary(params: {
     "        sheets.append((name, normalized))",
     "    if requested_sheet:",
     "        sheets = [entry for entry in sheets if entry[0] == requested_sheet]",
+    "        if not sheets:",
+    "            raise SystemExit(f'Requested sheet not found: {requested_sheet}')",
     "    out = []",
     "    for name, target in sheets:",
     "        root = ET.fromstring(zf.read(target))",
     "        rows = []",
-        "        max_cols = 0",
+    "        max_cols = 0",
+    "        sheet_truncated = False",
     "        for row in root.findall(f'{NS_MAIN}sheetData/{NS_MAIN}row'):",
     "            values = []",
     "            for cell in row.findall(f'{NS_MAIN}c'):",
@@ -904,6 +958,8 @@ async function readSpreadsheetSummary(params: {
     "                    value = '=' + formula_node.text",
     "                elif value_node is not None and value_node.text is not None:",
     "                    value = value_node.text",
+    "                value, was_truncated = clip(value)",
+    "                sheet_truncated = sheet_truncated or was_truncated",
     "                values[index] = value",
     "            max_cols = max(max_cols, len(values))",
     "            rows.append(values)",
@@ -913,22 +969,27 @@ async function readSpreadsheetSummary(params: {
     "            'name': name,",
     "            'rowCount': len(data_rows),",
     "            'columnCount': max_cols,",
+    "            'returnedRowCount': len(data_rows[:max_rows]),",
+    "            'omittedRowCount': max(0, len(data_rows) - len(data_rows[:max_rows])),",
     "            'headers': header,",
     "            'rows': data_rows[:max_rows],",
-    "            'truncated': len(data_rows) > max_rows,",
+    "            'truncated': len(data_rows) > max_rows or sheet_truncated,",
     "        })",
-    "    print(json.dumps({'sheetCount': len(out), 'sheets': out}, ensure_ascii=False))",
+    "    print(json.dumps({'sheetCount': len(out), 'returnedSheetCount': len(out), 'sheets': out}, ensure_ascii=False))",
   ].join("\n");
 
   const extraction = await runWorkspaceCommand({
     command: "python3",
-    args: ["-c", pythonScript, params.absolutePath, String(params.maxEntries), params.sheet ?? ""],
+    args: ["-c", pythonScript, params.absolutePath, String(params.maxEntries), params.sheet ?? "", String(Math.max(128, Math.min(2048, Math.floor(params.maxBytes / 8))))],
   });
   const parsed = JSON.parse(extraction.stdout) as {
     sheetCount?: number;
+    returnedSheetCount?: number;
     sheets?: Array<{
       name?: string;
       rowCount?: number;
+      returnedRowCount?: number;
+      omittedRowCount?: number;
       columnCount?: number;
       headers?: string[];
       rows?: string[][];
@@ -943,10 +1004,141 @@ async function readSpreadsheetSummary(params: {
     path: params.relativePath,
     format: "xlsx",
     sheetCount: parsed.sheetCount ?? (Array.isArray(parsed.sheets) ? parsed.sheets.length : 0),
+    returnedSheetCount: parsed.returnedSheetCount ?? (Array.isArray(parsed.sheets) ? parsed.sheets.length : 0),
     sheets: Array.isArray(parsed.sheets) ? parsed.sheets : [],
     sheet: params.sheet,
     truncated: Buffer.byteLength(serialized, "utf8") > params.maxBytes
       || (Array.isArray(parsed.sheets) && parsed.sheets.some((entry) => entry.truncated)),
+  };
+}
+
+async function readDocumentSummary(params: {
+  absolutePath: string;
+  relativePath: string;
+  maxBytes: number;
+  maxEntries: number;
+}) {
+  const extension = path.extname(params.relativePath).toLowerCase();
+  if (extension !== ".docx") {
+    throw new Error(`Unsupported document format for doc.read: ${extension || "unknown"}.`);
+  }
+
+  const pythonScript = [
+    "import json, sys, zipfile, xml.etree.ElementTree as ET",
+    "path = sys.argv[1]",
+    "max_rows = int(sys.argv[2])",
+    "max_chars = int(sys.argv[3]) if len(sys.argv) > 3 else 400",
+    "NS = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'",
+    "text_was_truncated = False",
+    "def clip(text):",
+    "    global text_was_truncated",
+    "    if len(text) > max_chars:",
+    "        text_was_truncated = True",
+    "        return text[:max_chars]",
+    "    return text",
+    "def text_from_paragraph(node):",
+    "    parts = []",
+    "    for child in node.iter():",
+    "        if child.tag == f'{NS}t' and child.text:",
+    "            parts.append(child.text)",
+    "        elif child.tag == f'{NS}tab':",
+    "            parts.append('\\t')",
+    "        elif child.tag in (f'{NS}br', f'{NS}cr'):",
+    "            parts.append('\\n')",
+    "    return clip(''.join(parts).strip())",
+    "with zipfile.ZipFile(path) as zf:",
+    "    if 'word/document.xml' not in zf.namelist():",
+    "        raise SystemExit('DOCX archive is missing word/document.xml')",
+    "    root = ET.fromstring(zf.read('word/document.xml'))",
+    "body = root.find(f'{NS}body')",
+    "paragraphs = []",
+    "tables = []",
+    "if body is not None:",
+    "    for child in list(body):",
+    "        if child.tag == f'{NS}p':",
+    "            text = text_from_paragraph(child)",
+    "            if text:",
+    "                paragraphs.append(text)",
+    "        elif child.tag == f'{NS}tbl':",
+    "            rows = []",
+    "            total_rows = 0",
+    "            for row in child.findall(f'{NS}tr'):",
+    "                total_rows += 1",
+    "                cells = []",
+    "                for cell in row.findall(f'{NS}tc'):",
+    "                    cell_parts = []",
+    "                    for paragraph in cell.findall(f'{NS}p'):",
+    "                        text = text_from_paragraph(paragraph)",
+    "                        if text:",
+    "                            cell_parts.append(text)",
+    "                    cells.append('\\n'.join(cell_parts))",
+    "                if len(rows) < max_rows:",
+    "                    rows.append(cells)",
+    "            tables.append({",
+    "                'rowCount': total_rows,",
+    "                'returnedRowCount': len(rows),",
+    "                'omittedRowCount': max(0, total_rows - len(rows)),",
+    "                'columnCount': max((len(row) for row in rows), default=0),",
+    "                'rows': rows,",
+    "                'truncated': total_rows > max_rows,",
+    "            })",
+    "visible_paragraphs = paragraphs[:max_rows]",
+    "content_parts = list(visible_paragraphs)",
+    "for index, table in enumerate(tables, start=1):",
+    "    preview_rows = [' | '.join(cell for cell in row if cell) for row in table['rows'] if any(cell for cell in row)]",
+    "    if preview_rows:",
+    "        content_parts.append(f'Table {index}:\\n' + '\\n'.join(preview_rows))",
+    "print(json.dumps({",
+    "    'paragraphCount': len(paragraphs),",
+    "    'returnedParagraphCount': len(visible_paragraphs),",
+    "    'omittedParagraphCount': max(0, len(paragraphs) - len(visible_paragraphs)),",
+    "    'paragraphs': visible_paragraphs,",
+    "    'tableCount': len(tables),",
+    "    'content': '\\n\\n'.join(content_parts),",
+    "    'tables': tables,",
+    "    'contentTruncated': text_was_truncated or len(paragraphs) > max_rows,",
+    "}, ensure_ascii=False))",
+  ].join("\n");
+
+  const extraction = await runWorkspaceCommand({
+    command: "python3",
+    args: ["-c", pythonScript, params.absolutePath, String(params.maxEntries), String(Math.max(128, Math.min(2048, Math.floor(params.maxBytes / 8))))],
+  });
+  const parsed = JSON.parse(extraction.stdout) as {
+    paragraphCount?: number;
+    returnedParagraphCount?: number;
+    omittedParagraphCount?: number;
+    paragraphs?: string[];
+    tableCount?: number;
+    content?: string;
+    contentTruncated?: boolean;
+    tables?: Array<{
+      rowCount?: number;
+      returnedRowCount?: number;
+      omittedRowCount?: number;
+      columnCount?: number;
+      rows?: string[][];
+      truncated?: boolean;
+    }>;
+  };
+  const rawContent = typeof parsed.content === "string" ? parsed.content : "";
+  const content = truncateUtf8ByBytes(rawContent, params.maxBytes);
+  return {
+    capabilityKey: "doc.read",
+    operation: "read_document",
+    path: params.relativePath,
+    format: "docx",
+    paragraphCount: parsed.paragraphCount ?? 0,
+    returnedParagraphCount: parsed.returnedParagraphCount ?? (Array.isArray(parsed.paragraphs) ? parsed.paragraphs.length : 0),
+    omittedParagraphCount: parsed.omittedParagraphCount ?? 0,
+    paragraphs: Array.isArray(parsed.paragraphs) ? parsed.paragraphs : [],
+    tableCount: parsed.tableCount ?? (Array.isArray(parsed.tables) ? parsed.tables.length : 0),
+    content,
+    tables: Array.isArray(parsed.tables) ? parsed.tables : [],
+    truncated: Buffer.byteLength(rawContent, "utf8") > params.maxBytes
+      || parsed.contentTruncated === true
+      || (Array.isArray(parsed.tables) && parsed.tables.some((entry) => entry.truncated)),
+    extractedBytes: Buffer.byteLength(rawContent, "utf8"),
   };
 }
 
@@ -1413,6 +1605,28 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
             metadata: this.#createResultMetadata(),
           });
         }
+        case "read_document": {
+          if (!target) {
+            return createFailureEnvelope({
+              prepared,
+              status: "failed",
+              code: "workspace_read_missing_path",
+              message: `${this.#capabilityKey} requires a non-empty file path.`,
+            });
+          }
+          const summary = await readDocumentSummary({
+            absolutePath: target.absolutePath,
+            relativePath: target.relativePath,
+            maxBytes: parsed.maxBytes,
+            maxEntries: parsed.maxEntries,
+          });
+          return createCapabilityResultEnvelope({
+            executionId: prepared.preparedId,
+            status: summary.truncated ? "partial" : "success",
+            output: summary,
+            metadata: this.#createResultMetadata(),
+          });
+        }
         case "read_pdf": {
           if (!target) {
             return createFailureEnvelope({
@@ -1870,9 +2084,11 @@ export function registerFirstClassToolingBaselineCapabilities(
             : capabilityKey === "code.symbol_search"
                 ? createCodeSymbolSearchCapabilityPackage()
                 : capabilityKey === "code.lsp"
-                  ? createCodeLspCapabilityPackage()
-                  : capabilityKey === "spreadsheet.read"
+                ? createCodeLspCapabilityPackage()
+                : capabilityKey === "spreadsheet.read"
                     ? createSpreadsheetReadCapabilityPackage()
+                  : capabilityKey === "doc.read"
+                    ? createDocReadCapabilityPackage()
                   : capabilityKey === "read_pdf"
                     ? createReadPdfCapabilityPackage()
                     : capabilityKey === "read_notebook"

@@ -17,6 +17,7 @@ export const FIRST_CLASS_TOOLING_BASELINE_CAPABILITY_KEYS = [
   "code.symbol_search",
   "code.lsp",
   "spreadsheet.read",
+  "doc.read",
   "read_pdf",
   "read_notebook",
   "view_image",
@@ -39,6 +40,7 @@ export const FIRST_CLASS_TOOLING_ALLOWED_OPERATIONS = [
   "references",
   "hover",
   "read_spreadsheet",
+  "read_document",
   "read_pdf",
   "read_notebook",
   "view_image",
@@ -361,6 +363,40 @@ const FIRST_CLASS_TOOLING_BASELINE_DESCRIPTORS: Record<
       "Reads table structure and bounded sample rows; it does not preserve workbook formatting.",
       "Formula cells return cached values or textual formulas rather than recalculating the workbook.",
       "Large sheets are truncated by row count and byte budget for safe context transfer.",
+    ],
+    workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
+  },
+  "doc.read": {
+    capabilityKey: "doc.read",
+    scopeKind: "workspace-docs",
+    scopeSummary:
+      "Repo-local office documents that core can inspect safely through bounded structured extraction instead of raw OOXML or binary blobs.",
+    description:
+      "Read repo-local DOCX documents as bounded paragraphs and tables for planner, reviewer, and TMA consumption.",
+    reviewerSummary:
+      "Core or reviewer can inspect word-processing document structure and text content, but cannot modify the document through this capability.",
+    pathPatterns: [
+      "docs",
+      "docs/**",
+      "output",
+      "output/**",
+      "*.docx",
+      "**/*.docx",
+    ],
+    allowedOperations: ["read_document"],
+    usageDocRef: "docs/ability/25-tap-capability-package-template.md",
+    examplePath: "docs/spec.docx",
+    exampleOperation: "read_document",
+    routeHints: [
+      { key: "scope", value: "workspace-docs" },
+      { key: "baseline", value: "reviewer-tma" },
+      { key: "toolKind", value: "document-read" },
+    ],
+    tags: ["tap", "baseline", "read", "docx", "document", "docs", "reviewer", "tma"],
+    knownLimits: [
+      "Current implementation focuses on DOCX OOXML text and table extraction rather than preserving Word formatting.",
+      "Headers, footers, comments, and tracked changes are not fully surfaced in the first version.",
+      "Large documents are truncated by byte budget and bounded table samples for stable context transfer.",
     ],
     workerConsumers: ["reviewer", "bootstrap_tma", "extended_tma"],
   },
@@ -750,6 +786,10 @@ export function createCodeLspCapabilityPackage(): CapabilityPackage {
 
 export function createSpreadsheetReadCapabilityPackage(): CapabilityPackage {
   return createFirstClassToolingCapabilityPackage("spreadsheet.read");
+}
+
+export function createDocReadCapabilityPackage(): CapabilityPackage {
+  return createFirstClassToolingCapabilityPackage("doc.read");
 }
 
 export function createReadPdfCapabilityPackage(): CapabilityPackage {

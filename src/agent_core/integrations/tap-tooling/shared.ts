@@ -64,6 +64,27 @@ export interface SkillDocGenerateInput {
   sections?: SkillDocSection[];
 }
 
+export type SpreadsheetWriteCellValue = string | number | boolean | null;
+
+export interface SpreadsheetWriteInput {
+  path?: string;
+  headers?: string[];
+  rows?: Array<SpreadsheetWriteCellValue[] | Record<string, SpreadsheetWriteCellValue>>;
+  delimiter?: "," | "\t";
+  sheet?: string;
+  createParents?: boolean;
+}
+
+export interface DocWriteInput {
+  path?: string;
+  title?: string;
+  summary?: string;
+  content?: string;
+  format?: "text" | "markdown";
+  createParents?: boolean;
+  sections?: SkillDocSection[];
+}
+
 export interface ShellRestrictedInput {
   command: string | string[];
   args?: string[];
@@ -275,6 +296,7 @@ export interface BrowserPlaywrightRouteContext {
 
 export interface BrowserPlaywrightConnectInput {
   connectionId?: string;
+  workspaceRoot: string;
   headless: boolean;
   browser: "chrome" | "chromium" | "firefox" | "webkit";
   isolated: boolean;
@@ -303,11 +325,25 @@ export interface BrowserPlaywrightSessionLike {
     toolName: string;
     arguments?: Record<string, unknown>;
   }): Promise<BrowserPlaywrightToolCallResult>;
+  getLaunchEvidence?(): Promise<BrowserPlaywrightLaunchEvidence | undefined>;
   disconnect(): Promise<void>;
 }
 
 export interface BrowserPlaywrightRuntimeLike {
   use(input: BrowserPlaywrightConnectInput): Promise<BrowserPlaywrightSessionLike>;
+}
+
+export interface BrowserPlaywrightLaunchEvidence {
+  requestedHeadless: boolean;
+  appliedHeadless: boolean;
+  requestedIsolated: boolean;
+  appliedIsolated: boolean;
+  verification: "process" | "config" | "unverified";
+  processVerifiedHeaded?: boolean;
+  processSample?: string[];
+  configPath?: string;
+  userDataDir?: string;
+  proxyServer?: string;
 }
 
 export interface PreparedRepoWriteState {
@@ -359,6 +395,35 @@ export interface NormalizedCodePatchInput {
 
 export interface PreparedSkillDocState {
   input: NormalizedSkillDocGenerateInput;
+}
+
+export interface NormalizedSpreadsheetWriteInput {
+  absolutePath: string;
+  relativeWorkspacePath: string;
+  format: "csv" | "tsv" | "xlsx";
+  headers?: string[];
+  rows: SpreadsheetWriteCellValue[][];
+  rowCount: number;
+  columnCount: number;
+  createParents: boolean;
+}
+
+export interface NormalizedDocWriteInput {
+  absolutePath: string;
+  relativeWorkspacePath: string;
+  format: "docx";
+  textContent: string;
+  title?: string;
+  sectionCount: number;
+  createParents: boolean;
+}
+
+export interface PreparedSpreadsheetWriteState {
+  input: NormalizedSpreadsheetWriteInput;
+}
+
+export interface PreparedDocWriteState {
+  input: NormalizedDocWriteInput;
 }
 
 export interface PreparedCodeEditState {
@@ -433,10 +498,18 @@ export interface NormalizedBrowserPlaywrightInput {
     | "list_tools"
     | "disconnect"
     | "navigate"
+    | "navigate_back"
     | "snapshot"
     | "screenshot"
     | "click"
+    | "hover"
     | "type"
+    | "press_key"
+    | "select_option"
+    | "drag"
+    | "fill_form"
+    | "handle_dialog"
+    | "resize"
     | "wait_for"
     | "console_messages"
     | "network_requests"
@@ -459,6 +532,18 @@ export interface NormalizedBrowserPlaywrightInput {
 export interface PreparedBrowserPlaywrightState {
   input: NormalizedBrowserPlaywrightInput;
   scope?: AccessRequestScope;
+}
+
+export interface NormalizedBrowserPlaywrightToolResult {
+  text?: string;
+  truncated: boolean;
+  imageUrls: string[];
+  imageCount: number;
+  screenshotPath?: string;
+  snapshotPath?: string;
+  pageUrl?: string;
+  pageTitle?: string;
+  blockedByInterstitial: boolean;
 }
 
 export interface TodoEntry {

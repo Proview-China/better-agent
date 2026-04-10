@@ -16,7 +16,7 @@ Praxis 当前可继续开发的总装主线已经形成，工作分支是：
 
 ## 当前最重要的项目事实
 
-### 1. 这条线已经承接住 `core_agent_runtime + TAP + CMP + rax.cmp`
+### 1. 这条线已经承接住 `core_agent_runtime + TAP + CMP + MP + rax.cmp + rax.mp`
 
 当前 `integrate/dev-master-cmp` 已经真实吸收：
 
@@ -29,6 +29,17 @@ Praxis 当前可继续开发的总装主线已经形成，工作分支是：
 
 - 当前最重要的三块不再分散在多条主要实现线上
 - 已经进入同一条可继续开发的总装基线
+
+并且到 2026-04-08 当前阶段，这条线还新增了一层新的稳定事实：
+
+- `MP` 已不再只是 branch family 里的预留位
+- 现在已经有：
+  - `mp-types`
+  - `mp-lancedb`
+  - `mp-runtime`
+  - `rax.mp`
+  - `mp` capability family
+  - 默认接入 `AgentCoreRuntime` 的 workflow 路径
 
 ### 2. `core_agent_runtime` 当前已经是总装后的正式运行底座
 
@@ -60,6 +71,20 @@ Praxis 当前可继续开发的总装主线已经形成，工作分支是：
 
 - `rax.cmp` 不再只是低风险表面层
 - 它已经能对接当前总装后的 `agent_core` runtime
+
+### 3.1 `rax.mp` 当前也已经成为可继续使用的统一入口
+
+当前这条线已经真实接好并验证：
+
+- `src/rax/mp-config.ts`
+- `src/rax/mp-connectors.ts`
+- `src/rax/mp-runtime.ts`
+- `src/rax/mp-facade.ts`
+
+白话：
+
+- `rax.mp` 不是单独的 demo facade
+- 它现在已经能对接真实本地 `LanceDB`、`agent_core` 的 `MP` runtime、以及默认 workflow 主链
 
 ### 4. 当前已经完成一轮真实 `core + TAP + CMP` 单 agent 联调
 
@@ -174,11 +199,15 @@ Praxis 当前可继续开发的总装主线已经形成，工作分支是：
 额外已单独回读过的重点验证：
 
 - `npx tsx --test src/agent_core/runtime.test.ts`
+- `npx tsx --test src/agent_core/runtime.mp-workflow.test.ts`
 - `npx tsx --test src/agent_core/runtime.cmp-live.test.ts src/agent_core/runtime.cmp-five-agent.test.ts`
 - `npx tsx --test src/agent_core/runtime.recovery.test.ts src/agent_core/runtime.replay.test.ts src/agent_core/runtime.replay-continue.test.ts`
 - `npx tsx --test src/agent_core/runtime.continue-followups.test.ts src/agent_core/runtime.continue-followups.*.test.ts`
 - `npx tsx --test src/rax/cmp-facade.test.ts src/rax/cmp-runtime.test.ts`
+- `npx tsx --test src/rax/mp-config.test.ts src/rax/mp-connectors.test.ts src/rax/mp-runtime.test.ts src/rax/mp-facade.test.ts`
 - `npx tsx --test src/agent_core/cmp-five-agent/dispatcher-runtime.test.ts src/agent_core/integrations/model-inference.test.ts`
+- `npx tsx --test src/agent_core/mp-lancedb/*.test.ts src/agent_core/mp-runtime/*.test.ts`
+- `npx tsx --test src/agent_core/capability-package/mp-family-capability-package.test.ts src/agent_core/integrations/rax-mp-adapter.test.ts`
 
 额外已在真实模型上回读过的重点 smoke：
 
@@ -213,7 +242,7 @@ Praxis 当前可继续开发的总装主线已经形成，工作分支是：
 
 当前最诚实的判断是：
 
-- 如果目标是继续做 `CMP + TAP + core_agent_runtime` 的联调、收口与新功能开发
+- 如果目标是继续做 `CMP + MP + TAP + core_agent_runtime` 的联调、收口与新功能开发
 - `integrate/dev-master-cmp` 已经足够承托
 
 也就是说：
@@ -222,6 +251,73 @@ Praxis 当前可继续开发的总装主线已经形成，工作分支是：
 - 不需要再回到 `reboot/blank-slate`
 - 也不需要再回到 `cmp/mp`
 - 如果目标是继续做 `core + TAP + CMP` 的真实模型联调，这条线现在也已经够用
+- 如果目标是继续做 `MP` 的 `LanceDB` 分层记忆、scope/session 连通、以及 package-backed workflow，这条线现在也已经够用
+
+## 当前关于 `MP` 最应该记住的事实
+
+### 1. `MP` 的 storage plane 当前已经固定为 `LanceDB`
+
+当前已经接好：
+
+- 真实本地 `LanceDB` adapter
+- in-memory fallback adapter
+- `project/global/agent_isolated` 三层表命名与 bootstrap
+- `stored section -> MP memory` lowering
+
+白话：
+
+- `MP` 不是继续沿用 `CMP DB`
+- 它现在已经有自己的语义记忆落盘层
+
+### 2. `MP` 当前默认三层 scope + session bridge 纪律已经落地
+
+当前已经固定的主要语义是：
+
+- scope:
+  - `agent_isolated`
+  - `project`
+  - `global`
+- session mode:
+  - `isolated`
+  - `bridged`
+  - `shared`
+
+并且已经有：
+
+- scope enforcement
+- session bridge access
+- search planner
+- `split / merge / reindex / compact`
+
+### 3. `MP` 当前已经默认进入 capability workflow
+
+当前默认注册进 `AgentCoreRuntime` 的 `mp.*` family 包括：
+
+- `mp.search`
+- `mp.materialize`
+- `mp.promote`
+- `mp.archive`
+- `mp.split`
+- `mp.merge`
+- `mp.reindex`
+- `mp.compact`
+
+白话：
+
+- `MP` 现在不是只能通过 `rax.mp` 单独调用
+- 它已经进入默认的 `TAP / capability pool / activation factory` workflow
+
+### 4. `MP` 当前已经补了真实主链场景验证
+
+当前已覆盖的默认 workflow 场景包括：
+
+- `mp.materialize -> rax.mp.search`
+- `mp.promote -> parent visibility change`
+- `mp.archive -> search disappear`
+
+这些场景当前都已经通过：
+
+- `src/agent_core/runtime.mp-workflow.test.ts`
 
 ## 当前还需要记住的边界
 

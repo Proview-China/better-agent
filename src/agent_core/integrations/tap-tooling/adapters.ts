@@ -14,6 +14,9 @@ import { createCapabilityResultEnvelope } from "../../capability-result/index.js
 import type { TapToolingBaselineCapabilityKey } from "../../capability-package/index.js";
 import {
   buildBrowserPlaywrightSessionFingerprint,
+  maybeCaptureBrowserPlaywrightPostNavigateSnapshot,
+  maybeRecoverBrowserPlaywrightInterstitial,
+  mergeBrowserPlaywrightToolResults,
   normalizeBrowserPlaywrightToolResult,
   SharedBrowserPlaywrightRuntime,
 } from "./browser-playwright.js";
@@ -37,6 +40,7 @@ import {
   normalizeCodeEditInput,
   normalizeCodePatchInput,
   normalizeCommandInput,
+  normalizeDocWriteInput,
   normalizeGitCommitInput,
   normalizeGitDiffInput,
   normalizeGitPushInput,
@@ -44,6 +48,7 @@ import {
   normalizeRepoWriteEntries,
   normalizeShellSessionInput,
   normalizeSkillDocGenerateInput,
+  normalizeSpreadsheetWriteInput,
   normalizeWriteTodosInput,
   SECRET_LIKE_GIT_PATH_PATTERNS,
 } from "./normalizers.js";
@@ -59,12 +64,14 @@ import {
   type BrowserPlaywrightSessionLike,
   type CommandExecutionResult,
   type NormalizedCommandInput,
+  type NormalizedDocWriteInput,
   type NormalizedRepoWriteEntry,
   type PreparedBrowserPlaywrightState,
   type PreparedCodeDiffState,
   type PreparedCodeEditState,
   type PreparedCodePatchState,
   type PreparedCommandState,
+  type PreparedDocWriteState,
   type PreparedGitCommitState,
   type PreparedGitDiffState,
   type PreparedGitPushState,
@@ -72,8 +79,10 @@ import {
   type PreparedRepoWriteState,
   type PreparedShellSessionState,
   type PreparedSkillDocState,
+  type PreparedSpreadsheetWriteState,
   type PreparedWriteTodosState,
   type ShellSessionRuntimeState,
+  type SpreadsheetWriteCellValue,
   type TapToolingAdapterOptions,
 } from "./shared.js";
 
@@ -1472,6 +1481,400 @@ export class SkillDocGenerateCapabilityAdapter implements CapabilityAdapter {
   }
 }
 
+function escapeSpreadsheetCell(value: SpreadsheetWriteCellValue, delimiter: "," | "\t"): string {
+  if (value === null) {
+    return "";
+  }
+  const text = typeof value === "string" ? value : String(value);
+  if (!text.includes("\"") && !text.includes("\n") && !text.includes("\r") && !text.includes(delimiter)) {
+    return text;
+  }
+  return `"${text.replace(/"/gu, "\"\"")}"`;
+}
+
+function renderDelimitedSpreadsheet(input: {
+  headers?: string[];
+  rows: SpreadsheetWriteCellValue[][];
+  delimiter: "," | "\t";
+}): string {
+  const lines: string[] = [];
+  if (input.headers && input.headers.length > 0) {
+    lines.push(input.headers.map((value) => escapeSpreadsheetCell(value, input.delimiter)).join(input.delimiter));
+  }
+  for (const row of input.rows) {
+    lines.push(row.map((value) => escapeSpreadsheetCell(value, input.delimiter)).join(input.delimiter));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function buildExecStyleCommandInput(params: {
+  command: string;
+  args: string[];
+  cwd: string;
+  maxOutputChars?: number;
+  description: string;
+}): NormalizedCommandInput {
+  return {
+    command: params.command,
+    args: params.args,
+    cwd: params.cwd,
+    relativeWorkspaceCwd: ".",
+    timeoutMs: 30_000,
+    runInBackground: false,
+    tty: false,
+    maxOutputChars: params.maxOutputChars ?? 12_000,
+    commandSummary: [path.basename(params.command), ...params.args].join(" "),
+    commandKind: "general",
+    description: params.description,
+  };
+}
+
+function buildSpreadsheetPythonScript(): string {
+  return [
+    "import json",
+    "import sys",
+    "import zipfile",
+    "from xml.sax.saxutils import escape",
+    "",
+    "spec_path = sys.argv[1]",
+    "out_path = sys.argv[2]",
+    "with open(spec_path, 'r', encoding='utf-8') as fh:",
+    "    spec = json.load(fh)",
+    "headers = spec.get('headers') or []",
+    "rows = spec.get('rows') or []",
+    "sheet_rows = []",
+    "if headers:",
+    "    sheet_rows.append(headers)",
+    "sheet_rows.extend(rows)",
+    "",
+    "def col_name(index):",
+    "    result = ''",
+    "    current = index + 1",
+    "    while current > 0:",
+    "        current, remainder = divmod(current - 1, 26)",
+    "        result = chr(65 + remainder) + result",
+    "    return result",
+    "",
+    "sheet_xml = [",
+    "    '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>',",
+    "    '<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">',",
+    "    '<sheetData>',",
+    "]",
+    "for row_index, row in enumerate(sheet_rows, start=1):",
+    "    sheet_xml.append(f'<row r=\"{row_index}\">')",
+    "    for col_index, value in enumerate(row, start=1):",
+    "        ref = f'{col_name(col_index - 1)}{row_index}'",
+    "        if isinstance(value, bool):",
+    "            cell_value = '1' if value else '0'",
+    "            sheet_xml.append(f'<c r=\"{ref}\" t=\"b\"><v>{cell_value}</v></c>')",
+    "        elif isinstance(value, (int, float)) and not isinstance(value, bool):",
+    "            sheet_xml.append(f'<c r=\"{ref}\"><v>{value}</v></c>')",
+    "        elif value is None:",
+    "            sheet_xml.append(f'<c r=\"{ref}\" t=\"inlineStr\"><is><t></t></is></c>')",
+    "        else:",
+    "            text = escape(str(value))",
+    "            sheet_xml.append(f'<c r=\"{ref}\" t=\"inlineStr\"><is><t>{text}</t></is></c>')",
+    "    sheet_xml.append('</row>')",
+    "sheet_xml.extend(['</sheetData>', '</worksheet>'])",
+    "",
+    "files = {",
+    "    '[Content_Types].xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+    "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">",
+    "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>",
+    "<Default Extension=\"xml\" ContentType=\"application/xml\"/>",
+    "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>",
+    "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>",
+    "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>",
+    "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>",
+    "<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>",
+    "</Types>''',",
+    "    '_rels/.rels': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
+    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>",
+    "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>",
+    "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>",
+    "</Relationships>''',",
+    "    'xl/workbook.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+    "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">",
+    "<sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>",
+    "</workbook>''',",
+    "    'xl/_rels/workbook.xml.rels': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
+    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>",
+    "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>",
+    "</Relationships>''',",
+    "    'xl/styles.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+    "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">",
+    "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>",
+    "<fills count=\"1\"><fill><patternFill patternType=\"none\"/></fill></fills>",
+    "<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>",
+    "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>",
+    "<cellXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/></cellXfs>",
+    "</styleSheet>''',",
+    "    'docProps/core.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+    "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">",
+    "<dc:title>Praxis Spreadsheet</dc:title>",
+    "</cp:coreProperties>''',",
+    "    'docProps/app.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+    "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\">",
+    "<Application>Praxis</Application>",
+    "</Properties>''',",
+    "    'xl/worksheets/sheet1.xml': '\\n'.join(sheet_xml),",
+    "}",
+    "with zipfile.ZipFile(out_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:",
+    "    for member, contents in files.items():",
+    "        archive.writestr(member, contents)",
+  ].join("\n");
+}
+
+export class SpreadsheetWriteCapabilityAdapter implements CapabilityAdapter {
+  readonly id = "adapter.spreadsheet.write";
+  readonly runtimeKind = "local-tooling";
+  readonly #workspaceRoot: string;
+  readonly #commandRunner: (
+    input: NormalizedCommandInput,
+  ) => Promise<CommandExecutionResult>;
+  readonly #prepared = new Map<string, PreparedSpreadsheetWriteState>();
+
+  constructor(options: TapToolingAdapterOptions) {
+    this.#workspaceRoot = path.resolve(options.workspaceRoot);
+    this.#commandRunner = options.commandRunner ?? createDefaultCommandRunner();
+  }
+
+  supports(plan: CapabilityInvocationPlan): boolean {
+    if (plan.capabilityKey !== "spreadsheet.write") {
+      return false;
+    }
+    try {
+      normalizeSpreadsheetWriteInput(plan, this.#workspaceRoot);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async prepare(plan: CapabilityInvocationPlan, lease: CapabilityLease): Promise<PreparedCapabilityCall> {
+    const input = normalizeSpreadsheetWriteInput(plan, this.#workspaceRoot);
+    const prepared = createPreparedCapabilityCall({
+      lease,
+      plan,
+      executionMode: "direct",
+      preparedPayloadRef: `spreadsheet-write:${plan.planId}`,
+      metadata: {
+        planId: plan.planId,
+        workspaceRoot: this.#workspaceRoot,
+      },
+    });
+    this.#prepared.set(prepared.preparedId, { input });
+    return prepared;
+  }
+
+  async execute(prepared: PreparedCapabilityCall) {
+    const state = this.#prepared.get(prepared.preparedId);
+    if (!state) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        error: {
+          code: "spreadsheet_write_prepared_state_missing",
+          message: `Prepared spreadsheet.write state for ${prepared.preparedId} was not found.`,
+        },
+      });
+    }
+    this.#prepared.delete(prepared.preparedId);
+
+    const input = state.input;
+    if (input.createParents) {
+      await mkdir(path.dirname(input.absolutePath), { recursive: true });
+    }
+
+    if (input.format === "csv" || input.format === "tsv") {
+      const content = renderDelimitedSpreadsheet({
+        headers: input.headers,
+        rows: input.rows,
+        delimiter: input.format === "csv" ? "," : "\t",
+      });
+      await writeFile(input.absolutePath, content, "utf8");
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "success",
+        output: {
+          path: input.relativeWorkspacePath,
+          format: input.format,
+          rowCount: input.rowCount,
+          columnCount: input.columnCount,
+          bytesWritten: Buffer.byteLength(content, "utf8"),
+        },
+        metadata: {
+          capabilityKey: "spreadsheet.write",
+          runtimeKind: this.runtimeKind,
+        },
+      });
+    }
+
+    const tempDir = await mkdtemp(path.join(tmpdir(), "praxis-spreadsheet-write-"));
+    try {
+      const specPath = path.join(tempDir, "spreadsheet-write.json");
+      await writeFile(specPath, JSON.stringify({
+        headers: input.headers,
+        rows: input.rows,
+      }), "utf8");
+      const commandResult = await runSimpleCommand(this.#commandRunner, buildExecStyleCommandInput({
+        command: "python3",
+        args: ["-c", buildSpreadsheetPythonScript(), specPath, input.absolutePath],
+        cwd: tempDir,
+        maxOutputChars: 16_000,
+        description: "Generate a single-sheet xlsx workbook from structured rows.",
+      }));
+      if (commandResult.timedOut || commandResult.exitCode !== 0) {
+        return createCapabilityResultEnvelope({
+          executionId: prepared.preparedId,
+          status: "failed",
+          error: {
+            code: "spreadsheet_write_xlsx_generation_failed",
+            message: trimCommandOutput(`${commandResult.stdout}\n${commandResult.stderr}`.trim(), 4_000).text || "xlsx generation failed.",
+          },
+          metadata: {
+            capabilityKey: "spreadsheet.write",
+            runtimeKind: this.runtimeKind,
+          },
+        });
+      }
+
+      const written = await readFile(input.absolutePath);
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "success",
+        output: {
+          path: input.relativeWorkspacePath,
+          format: input.format,
+          rowCount: input.rowCount,
+          columnCount: input.columnCount,
+          sheetCount: 1,
+          bytesWritten: written.byteLength,
+        },
+        metadata: {
+          capabilityKey: "spreadsheet.write",
+          runtimeKind: this.runtimeKind,
+        },
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+}
+
+export class DocWriteCapabilityAdapter implements CapabilityAdapter {
+  readonly id = "adapter.doc.write";
+  readonly runtimeKind = "local-tooling";
+  readonly #workspaceRoot: string;
+  readonly #commandRunner: (
+    input: NormalizedCommandInput,
+  ) => Promise<CommandExecutionResult>;
+  readonly #prepared = new Map<string, PreparedDocWriteState>();
+
+  constructor(options: TapToolingAdapterOptions) {
+    this.#workspaceRoot = path.resolve(options.workspaceRoot);
+    this.#commandRunner = options.commandRunner ?? createDefaultCommandRunner();
+  }
+
+  supports(plan: CapabilityInvocationPlan): boolean {
+    if (plan.capabilityKey !== "doc.write") {
+      return false;
+    }
+    try {
+      normalizeDocWriteInput(plan, this.#workspaceRoot);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async prepare(plan: CapabilityInvocationPlan, lease: CapabilityLease): Promise<PreparedCapabilityCall> {
+    const input = normalizeDocWriteInput(plan, this.#workspaceRoot);
+    const prepared = createPreparedCapabilityCall({
+      lease,
+      plan,
+      executionMode: "direct",
+      preparedPayloadRef: `doc-write:${plan.planId}`,
+      metadata: {
+        planId: plan.planId,
+        workspaceRoot: this.#workspaceRoot,
+      },
+    });
+    this.#prepared.set(prepared.preparedId, { input });
+    return prepared;
+  }
+
+  async execute(prepared: PreparedCapabilityCall) {
+    const state = this.#prepared.get(prepared.preparedId);
+    if (!state) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        error: {
+          code: "doc_write_prepared_state_missing",
+          message: `Prepared doc.write state for ${prepared.preparedId} was not found.`,
+        },
+      });
+    }
+    this.#prepared.delete(prepared.preparedId);
+
+    const input = state.input;
+    if (input.createParents) {
+      await mkdir(path.dirname(input.absolutePath), { recursive: true });
+    }
+
+    const tempDir = await mkdtemp(path.join(tmpdir(), "praxis-doc-write-"));
+    try {
+      const sourcePath = path.join(tempDir, "document.txt");
+      const outputPath = path.join(tempDir, "document.docx");
+      await writeFile(sourcePath, input.textContent, "utf8");
+      const commandResult = await runSimpleCommand(this.#commandRunner, buildExecStyleCommandInput({
+        command: "libreoffice",
+        args: ["--headless", "--convert-to", "docx:MS Word 2007 XML", "document.txt"],
+        cwd: tempDir,
+        maxOutputChars: 16_000,
+        description: "Convert plain text into a docx document.",
+      }));
+      if (commandResult.timedOut || commandResult.exitCode !== 0) {
+        return createCapabilityResultEnvelope({
+          executionId: prepared.preparedId,
+          status: "failed",
+          error: {
+            code: "doc_write_conversion_failed",
+            message: trimCommandOutput(`${commandResult.stdout}\n${commandResult.stderr}`.trim(), 4_000).text || "docx conversion failed.",
+          },
+          metadata: {
+            capabilityKey: "doc.write",
+            runtimeKind: this.runtimeKind,
+          },
+        });
+      }
+
+      const written = await readFile(outputPath);
+      await writeFile(input.absolutePath, written);
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "success",
+        output: {
+          path: input.relativeWorkspacePath,
+          format: input.format,
+          title: input.title,
+          sectionCount: input.sectionCount,
+          bytesWritten: written.byteLength,
+        },
+        metadata: {
+          capabilityKey: "doc.write",
+          runtimeKind: this.runtimeKind,
+        },
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+}
+
 export class RestrictedShellCapabilityAdapter implements CapabilityAdapter {
   readonly id = "adapter.shell.restricted";
   readonly runtimeKind = "local-tooling";
@@ -1950,7 +2353,7 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
   readonly #prepared = new Map<string, PreparedBrowserPlaywrightState>();
 
   constructor(private readonly options: TapToolingAdapterOptions) {
-    this.#runtime = options.browserPlaywrightRuntime ?? new SharedBrowserPlaywrightRuntime();
+    this.#runtime = options.browserPlaywrightRuntime ?? new SharedBrowserPlaywrightRuntime(options.workspaceRoot);
   }
 
   supports(plan: CapabilityInvocationPlan): boolean {
@@ -2035,6 +2438,7 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
       }
       this.#session = await this.#runtime.use({
         connectionId: "browser-playwright-shared",
+        workspaceRoot: this.options.workspaceRoot,
         headless: state.input.headless,
         browser: state.input.browser,
         isolated: state.input.isolated,
@@ -2046,6 +2450,7 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
 
     if (state.input.action === "connect" || state.input.action === "list_tools") {
       const tools = await session.tools();
+      const launchEvidence = await session.getLaunchEvidence?.();
       return createCapabilityResultEnvelope({
         executionId: prepared.preparedId,
         status: "success",
@@ -2059,6 +2464,7 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
           headless: state.input.headless,
           browser: state.input.browser,
           isolated: state.input.isolated,
+          launchEvidence,
         },
         metadata: {
           capabilityKey: "browser.playwright",
@@ -2082,6 +2488,26 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
       result,
       state.input.maxOutputChars,
     );
+    const recoveredInterstitialResult = !result.isError && normalizedResult.blockedByInterstitial
+      ? await maybeRecoverBrowserPlaywrightInterstitial(session, state.input)
+      : undefined;
+    const effectivePrimaryResult = recoveredInterstitialResult && !recoveredInterstitialResult.blockedByInterstitial
+      ? {
+        ...mergeBrowserPlaywrightToolResults(normalizedResult, recoveredInterstitialResult, state.input.maxOutputChars),
+        blockedByInterstitial: false,
+        pageUrl: recoveredInterstitialResult.pageUrl ?? normalizedResult.pageUrl,
+        pageTitle: recoveredInterstitialResult.pageTitle ?? normalizedResult.pageTitle,
+      }
+      : normalizedResult;
+    const snapshotResult = !result.isError && !effectivePrimaryResult.blockedByInterstitial
+      ? await maybeCaptureBrowserPlaywrightPostNavigateSnapshot(session, state.input)
+      : undefined;
+    const mergedResult = mergeBrowserPlaywrightToolResults(
+      effectivePrimaryResult,
+      snapshotResult,
+      state.input.maxOutputChars,
+    );
+    const launchEvidence = await session.getLaunchEvidence?.();
 
     if (result.isError) {
       return createCapabilityResultEnvelope({
@@ -2091,12 +2517,60 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
           action: state.input.action,
           toolName,
           connectionId: session.connectionId,
-          text: normalizedResult.text,
-          imageUrls: normalizedResult.imageUrls,
+          arguments: state.input.arguments,
+        text: mergedResult.text,
+        imageUrls: mergedResult.imageUrls,
+        imageCount: mergedResult.imageCount,
+        screenshotPath: mergedResult.screenshotPath,
+        snapshotPath: mergedResult.snapshotPath,
+        headless: state.input.headless,
+        browser: state.input.browser,
+        isolated: state.input.isolated,
+        pageUrl: mergedResult.pageUrl,
+          pageTitle: mergedResult.pageTitle,
+          interstitialRecovered: Boolean(recoveredInterstitialResult && !recoveredInterstitialResult.blockedByInterstitial),
+          launchEvidence,
         },
         error: {
           code: "browser_playwright_tool_error",
-          message: normalizedResult.text ?? result.errorMessage ?? `${toolName} failed.`,
+          message: mergedResult.text ?? result.errorMessage ?? `${toolName} failed.`,
+        },
+        metadata: {
+          capabilityKey: "browser.playwright",
+          runtimeKind: this.runtimeKind,
+          selectedBackend: state.input.selectedBackend,
+          resolvedBackend: state.input.resolvedBackend,
+        },
+      });
+    }
+
+    if (mergedResult.blockedByInterstitial) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        output: {
+          action: state.input.action,
+          toolName,
+          connectionId: session.connectionId,
+          arguments: state.input.arguments,
+          text: mergedResult.text,
+          imageUrls: mergedResult.imageUrls,
+          imageCount: mergedResult.imageCount,
+          screenshotPath: mergedResult.screenshotPath,
+          snapshotPath: mergedResult.snapshotPath,
+          pageUrl: mergedResult.pageUrl,
+          pageTitle: mergedResult.pageTitle,
+          selectedBackend: state.input.selectedBackend,
+          resolvedBackend: state.input.resolvedBackend,
+          headless: state.input.headless,
+          browser: state.input.browser,
+          isolated: state.input.isolated,
+          interstitialRecovered: Boolean(recoveredInterstitialResult && !recoveredInterstitialResult.blockedByInterstitial),
+          launchEvidence,
+        },
+        error: {
+          code: "browser_playwright_navigation_interstitial",
+          message: `browser.playwright reached an interstitial or anti-bot page at ${mergedResult.pageUrl ?? "the target URL"}.`,
         },
         metadata: {
           capabilityKey: "browser.playwright",
@@ -2109,20 +2583,27 @@ export class BrowserPlaywrightCapabilityAdapter implements CapabilityAdapter {
 
     return createCapabilityResultEnvelope({
       executionId: prepared.preparedId,
-      status: normalizedResult.truncated ? "partial" : "success",
+      status: mergedResult.truncated ? "partial" : "success",
       output: {
         action: state.input.action,
         toolName,
         connectionId: session.connectionId,
         arguments: state.input.arguments,
-        text: normalizedResult.text,
-        imageUrls: normalizedResult.imageUrls,
-        imageCount: normalizedResult.imageCount,
+        text: mergedResult.text,
+        imageUrls: mergedResult.imageUrls,
+        imageCount: mergedResult.imageCount,
+        screenshotPath: mergedResult.screenshotPath,
+        snapshotPath: mergedResult.snapshotPath,
         selectedBackend: state.input.selectedBackend,
         resolvedBackend: state.input.resolvedBackend,
         headless: state.input.headless,
         browser: state.input.browser,
         isolated: state.input.isolated,
+        pageUrl: mergedResult.pageUrl,
+        pageTitle: mergedResult.pageTitle,
+        snapshotCaptured: Boolean(snapshotResult),
+        interstitialRecovered: Boolean(recoveredInterstitialResult && !recoveredInterstitialResult.blockedByInterstitial),
+        launchEvidence,
       },
       metadata: {
         capabilityKey: "browser.playwright",
@@ -2141,6 +2622,10 @@ export function createTapToolingCapabilityAdapter(
   switch (capabilityKey) {
     case "repo.write":
       return new RepoWriteCapabilityAdapter(options);
+    case "spreadsheet.write":
+      return new SpreadsheetWriteCapabilityAdapter(options);
+    case "doc.write":
+      return new DocWriteCapabilityAdapter(options);
     case "code.edit":
       return new CodeEditCapabilityAdapter(options);
     case "code.patch":

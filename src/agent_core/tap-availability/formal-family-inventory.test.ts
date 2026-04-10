@@ -7,7 +7,7 @@ import {
   listTapFormalFamilyInventoryEntries,
 } from "./formal-family-inventory.js";
 
-test("createTapFormalFamilyInventory freezes the five formal TAP families and capability keys", () => {
+test("createTapFormalFamilyInventory freezes the six formal TAP families and capability keys", () => {
   const inventory = createTapFormalFamilyInventory();
 
   assert.deepEqual(inventory.familyKeys, [
@@ -15,9 +15,10 @@ test("createTapFormalFamilyInventory freezes the five formal TAP families and ca
     "websearch",
     "skill",
     "mcp",
+    "mp",
     "userio",
   ]);
-  assert.equal(inventory.entries.length, 39);
+  assert.equal(inventory.entries.length, 57);
   assert.deepEqual(getTapFormalFamilyInventoryFamily("foundation")?.capabilityKeys, [
     "code.read",
     "code.ls",
@@ -27,11 +28,14 @@ test("createTapFormalFamilyInventory freezes the five formal TAP families and ca
     "code.symbol_search",
     "code.lsp",
     "spreadsheet.read",
+    "doc.read",
     "read_pdf",
     "read_notebook",
     "view_image",
     "docs.read",
     "repo.write",
+    "spreadsheet.write",
+    "doc.write",
     "code.edit",
     "code.patch",
     "shell.restricted",
@@ -63,9 +67,26 @@ test("createTapFormalFamilyInventory freezes the five formal TAP families and ca
     "mcp.call",
     "mcp.native.execute",
   ]);
+  assert.deepEqual(getTapFormalFamilyInventoryFamily("mp")?.capabilityKeys, [
+    "mp.ingest",
+    "mp.align",
+    "mp.resolve",
+    "mp.history.request",
+    "mp.search",
+    "mp.materialize",
+    "mp.promote",
+    "mp.archive",
+    "mp.split",
+    "mp.merge",
+    "mp.reindex",
+    "mp.compact",
+  ]);
   assert.deepEqual(getTapFormalFamilyInventoryFamily("userio")?.capabilityKeys, [
     "request_user_input",
     "request_permissions",
+    "audio.transcribe",
+    "speech.synthesize",
+    "image.generate",
   ]);
 });
 
@@ -73,6 +94,7 @@ test("inventory entries keep package source refs, register helpers, and activati
   const entries = listTapFormalFamilyInventoryEntries();
   const repoWrite = entries.find((entry) => entry.capabilityKey === "repo.write");
   const searchGround = entries.find((entry) => entry.capabilityKey === "search.ground");
+  const mpSearch = entries.find((entry) => entry.capabilityKey === "mp.search");
 
   assert.ok(repoWrite);
   assert.equal(
@@ -98,6 +120,18 @@ test("inventory entries keep package source refs, register helpers, and activati
     "factory:tap.vendor-network:search.ground",
   ]);
 
+  assert.ok(mpSearch);
+  assert.equal(
+    mpSearch?.registerHelperRef,
+    "integrations/rax-mp-adapter#registerRaxMpCapabilityFamily",
+  );
+  assert.equal(
+    mpSearch?.packageSourceRef,
+    "capability-package/mp-family-capability-package#createRaxMpCapabilityPackageCatalog",
+  );
+  assert.deepEqual(mpSearch?.activationFactoryRefs, [
+    "factory:rax.mp:search",
+  ]);
   const mcpCall = entries.find((entry) => entry.capabilityKey === "mcp.call");
   const skillUse = entries.find((entry) => entry.capabilityKey === "skill.use");
   const requestUserInput = entries.find((entry) => entry.capabilityKey === "request_user_input");

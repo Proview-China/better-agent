@@ -42,6 +42,8 @@ function createMinimalPdfBuffer(text: string): Buffer {
 
 const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jX1cAAAAASUVORK5CYII=";
+const SIMPLE_DOCX_BASE64 =
+  "UEsDBBQAAAAIAJx5iVzXeYTq8gAAALgBAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbH2Qy07DMBBF9/0Ka7aodmCBEIrTBY8lsCgfYNmTxKo9tjxuSP8epYUiIcr6Ps6daTdzDGLCwj6RhmvZgECyyXkaNLxvn9d3ILgaciYkQg0HZNh0q3Z7yMhijoFYw1hrvleK7YjRsEwZaY6hTyWayjKVQWVjd2ZAddM0t8omqkh1XZcO6FZCtI/Ym32o4mmuSKctBQODeDh5F5wGk3Pw1lSfSE3kfoHWXxBZMBw9PPrMV3MMoC5BFvEy4yf6OmEp3qF4M6W+mIga1EcqTrlk9xGpyv+b/lib+t5bPOeXtlySRWZPQwzyrETj6fuKVh0f330CUEsDBBQAAAAIAJx5iVwgG4bqtgAAAC4BAAALAAAAX3JlbHMvLnJlbHONz7FOxDAQBNA+X7Ha/uIcBUIozjUnpGtR+ADL3iQW9q7l9UHu72koOERBOxq90YynPSf4oKpR2OKxHxCIvYTIq8W3+eXwhKDNcXBJmCzeSPE0deMrJdeisG6xKOw5sVrcWivPxqjfKDvtpRDvOS1Ss2vaS11Ncf7drWQehuHR1J8GTh3AHQuXYLFewhFhvhX6Dy/LEj2dxV8zcftj5VcDYXZ1pWbxU2ow4Tvu95zQTN1o7m5OX1BLAwQUAAAACACceYlclq40IFcBAAAxAwAAEQAAAHdvcmQvZG9jdW1lbnQueG1snZLLTsMwEEX3/QrLe5o0KlBFSRAbVjwqFRBb13Yeku2xxlMc+HqURKUFgSrYjO7xvK6sKa56a9irxtCBK/linnKmnQTVuabkT483ZyvOAgmnhAGnS/6mA7+qZkXMFcid1Y5Yb40LeSx5S+TzJAmy1VaEOXjtemtqQCsozAGbJAIqjyB1CJ1rrEmyNL1IrOgcr2aMFTHfgnob5Ai+KmKOQ6BqjaLvAlMgGWqhWN31tENdJENyiDhG/2PzRktwinmBokHhW1YDsoeHl7tbpntCIakDN/99Fm3NpCfCPUwoq2/r7oX9wdj4Ik+0PguzO9k7Ev7F0bXxrfinpWX2Fz+j3n9XEfOgJa2Pvfpm887icC+LLFumnMW8LfnifLVMefKl7k4gizmBL/liOVVi17R0wC0QgT2w0fVRttVCaSz5ZTZiDUBH2OxoxM+tg/OD24GmYxzU/tirD1BLAQIUAxQAAAAIAJx5iVzXeYTq8gAAALgBAAATAAAAAAAAAAAAAACAAQAAAABbQ29udGVudF9UeXBlc10ueG1sUEsBAhQDFAAAAAgAnHmJXCAbhuq2AAAALgEAAAsAAAAAAAAAAAAAAIABIwEAAF9yZWxzLy5yZWxzUEsBAhQDFAAAAAgAnHmJXJauNCBXAQAAMQMAABEAAAAAAAAAAAAAAIABAgIAAHdvcmQvZG9jdW1lbnQueG1sUEsFBgAAAAADAAMAuQAAAIgDAAAAAA==";
 const SIMPLE_XLSX_BASE64 =
   "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";
 
@@ -88,6 +90,10 @@ async function createWorkspaceFixture() {
   await writeFile(
     path.join(root, "docs", "sample.pdf"),
     createMinimalPdfBuffer("Hello PDF from Praxis tests"),
+  );
+  await writeFile(
+    path.join(root, "docs", "sample.docx"),
+    Buffer.from(SIMPLE_DOCX_BASE64, "base64"),
   );
   await writeFile(
     path.join(root, "docs", "tiny.png"),
@@ -534,8 +540,11 @@ test("workspace read adapter supports spreadsheet.read for csv and xlsx summarie
   assert.equal(csvEnvelope.status, "partial");
   assert.equal((csvEnvelope.output as { format?: string }).format, "csv");
   assert.equal((csvEnvelope.output as { sheetCount?: number }).sheetCount, 1);
+  assert.equal((csvEnvelope.output as { returnedSheetCount?: number }).returnedSheetCount, 1);
   assert.deepEqual((csvEnvelope.output as { sheets?: Array<{ headers?: string[] }> }).sheets?.[0]?.headers, ["Name", "Value"]);
   assert.deepEqual((csvEnvelope.output as { sheets?: Array<{ rows?: string[][] }> }).sheets?.[0]?.rows?.[0], ["Alpha", "42"]);
+  assert.equal((csvEnvelope.output as { sheets?: Array<{ returnedRowCount?: number }> }).sheets?.[0]?.returnedRowCount, 1);
+  assert.equal((csvEnvelope.output as { sheets?: Array<{ omittedRowCount?: number }> }).sheets?.[0]?.omittedRowCount, 1);
 
   const xlsxPlan = createCapabilityInvocationPlan(
     {
@@ -565,8 +574,126 @@ test("workspace read adapter supports spreadsheet.read for csv and xlsx summarie
   assert.equal(xlsxEnvelope.status, "success");
   assert.equal((xlsxEnvelope.output as { format?: string }).format, "xlsx");
   assert.equal((xlsxEnvelope.output as { sheetCount?: number }).sheetCount, 1);
+  assert.equal((xlsxEnvelope.output as { returnedSheetCount?: number }).returnedSheetCount, 1);
   assert.equal((xlsxEnvelope.output as { sheets?: Array<{ name?: string }> }).sheets?.[0]?.name, "Sheet1");
   assert.deepEqual((xlsxEnvelope.output as { sheets?: Array<{ rows?: string[][] }> }).sheets?.[0]?.rows?.[0], ["Alpha", "42"]);
+  assert.equal((xlsxEnvelope.output as { sheets?: Array<{ returnedRowCount?: number }> }).sheets?.[0]?.returnedRowCount, 2);
+  assert.equal((xlsxEnvelope.output as { sheets?: Array<{ omittedRowCount?: number }> }).sheets?.[0]?.omittedRowCount, 0);
+});
+
+test("workspace read adapter hardens spreadsheet.read sheet handling", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "spreadsheet.read",
+    allowedPathPatterns: ["data", "data/**", "*.csv", "**/*.csv", "*.tsv", "**/*.tsv", "*.xlsx", "**/*.xlsx"],
+  });
+
+  const csvSheetPlan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-spreadsheet-read-csv-sheet-1",
+      sessionId: "session-spreadsheet-read-csv-sheet-1",
+      runId: "run-spreadsheet-read-csv-sheet-1",
+      capabilityKey: "spreadsheet.read",
+      input: {
+        path: "data/sample.csv",
+        sheet: "Sheet1",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-spreadsheet-read-csv-sheet-1",
+    },
+  );
+
+  const csvSheetPrepared = await adapter.prepare(csvSheetPlan, createCapabilityLease({
+    capabilityId: "cap-spreadsheet-read-csv-sheet-1",
+    bindingId: "binding-spreadsheet-read-csv-sheet-1",
+    generation: 1,
+    plan: csvSheetPlan,
+  }, {
+    idFactory: () => "lease-spreadsheet-read-csv-sheet-1",
+    clock: { now: () => new Date("2026-04-09T00:04:42.500Z") },
+  }));
+  const csvSheetEnvelope = await adapter.execute(csvSheetPrepared);
+  assert.equal(csvSheetEnvelope.status, "failed");
+  assert.match(csvSheetEnvelope.error?.message ?? "", /does not support sheet selection/i);
+
+  const missingSheetPlan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-spreadsheet-read-xlsx-missing-sheet-1",
+      sessionId: "session-spreadsheet-read-xlsx-missing-sheet-1",
+      runId: "run-spreadsheet-read-xlsx-missing-sheet-1",
+      capabilityKey: "spreadsheet.read",
+      input: {
+        path: "data/sample.xlsx",
+        sheet: "MissingSheet",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-spreadsheet-read-xlsx-missing-sheet-1",
+    },
+  );
+
+  const missingSheetPrepared = await adapter.prepare(missingSheetPlan, createCapabilityLease({
+    capabilityId: "cap-spreadsheet-read-xlsx-missing-sheet-1",
+    bindingId: "binding-spreadsheet-read-xlsx-missing-sheet-1",
+    generation: 1,
+    plan: missingSheetPlan,
+  }, {
+    idFactory: () => "lease-spreadsheet-read-xlsx-missing-sheet-1",
+    clock: { now: () => new Date("2026-04-09T00:04:42.600Z") },
+  }));
+  const missingSheetEnvelope = await adapter.execute(missingSheetPrepared);
+  assert.equal(missingSheetEnvelope.status, "failed");
+  assert.match(missingSheetEnvelope.error?.message ?? "", /Requested sheet not found/i);
+});
+
+test("workspace read adapter supports doc.read for bounded docx summaries", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "doc.read",
+    allowedPathPatterns: ["docs", "docs/**", "*.docx", "**/*.docx"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-doc-read-1",
+      sessionId: "session-doc-read-1",
+      runId: "run-doc-read-1",
+      capabilityKey: "doc.read",
+      input: {
+        path: "docs/sample.docx",
+        maxEntries: 1,
+        maxBytes: 64,
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-doc-read-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-doc-read-1",
+    bindingId: "binding-doc-read-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-doc-read-1",
+    clock: { now: () => new Date("2026-04-09T00:04:42.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "partial");
+  assert.equal((envelope.output as { format?: string }).format, "docx");
+  assert.equal((envelope.output as { paragraphCount?: number }).paragraphCount, 2);
+  assert.equal((envelope.output as { returnedParagraphCount?: number }).returnedParagraphCount, 1);
+  assert.equal((envelope.output as { omittedParagraphCount?: number }).omittedParagraphCount, 1);
+  assert.equal((envelope.output as { tableCount?: number }).tableCount, 1);
+  assert.match(String((envelope.output as { content?: string }).content), /Praxis doc read fixture/);
+  assert.equal((envelope.output as { paragraphs?: string[] }).paragraphs?.[0], "Praxis doc read fixture");
+  assert.deepEqual((envelope.output as { tables?: Array<{ rows?: string[][] }> }).tables?.[0]?.rows?.[0], ["Name", "Value"]);
+  assert.equal((envelope.output as { tables?: Array<{ returnedRowCount?: number }> }).tables?.[0]?.returnedRowCount, 1);
 });
 
 test("workspace read adapter supports read_notebook via structured cell summaries", async () => {
@@ -852,11 +979,11 @@ test("workspace read baseline registration lets TAP dispatch docs.read through t
   assert.equal(result.grant?.capabilityKey, "docs.read");
   assert.deepEqual(
     registration.capabilityKeys,
-    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "spreadsheet.read", "read_pdf", "read_notebook", "view_image", "docs.read"],
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "spreadsheet.read", "doc.read", "read_pdf", "read_notebook", "view_image", "docs.read"],
   );
   assert.deepEqual(
     registration.descriptors.map((entry) => entry.capabilityKey),
-    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "spreadsheet.read", "read_pdf", "read_notebook", "view_image", "docs.read"],
+    ["code.read", "code.ls", "code.glob", "code.grep", "code.read_many", "code.symbol_search", "code.lsp", "spreadsheet.read", "doc.read", "read_pdf", "read_notebook", "view_image", "docs.read"],
   );
   assert.equal(
     registration.descriptors.find((entry) => entry.capabilityKey === "docs.read")?.scopeKind,

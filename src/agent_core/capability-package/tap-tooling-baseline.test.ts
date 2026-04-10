@@ -46,7 +46,37 @@ test("shell.restricted package stays formal but keeps risky policy metadata", ()
 test("test.run package is recognized as part of the B-group tooling baseline", () => {
   assert.equal(isTapToolingBaselineCapabilityKey("test.run"), true);
   assert.equal(isTapToolingBaselineCapabilityKey("browser.playwright"), true);
+  assert.equal(isTapToolingBaselineCapabilityKey("spreadsheet.write"), true);
+  assert.equal(isTapToolingBaselineCapabilityKey("doc.write"), true);
   assert.equal(isTapToolingBaselineCapabilityKey("docs.read"), false);
+});
+
+test("spreadsheet.write package carries first-wave worksheet write metadata", () => {
+  const capabilityPackage = createTapToolingCapabilityPackage("spreadsheet.write");
+
+  assert.equal(capabilityPackage.policy.riskLevel, "normal");
+  assert.equal(
+    capabilityPackage.activationSpec?.adapterFactoryRef,
+    "factory:tap-tooling:spreadsheet.write",
+  );
+  assert.match(
+    capabilityPackage.policy.safetyFlags.join(" "),
+    /single_sheet_xlsx_v1/i,
+  );
+});
+
+test("doc.write package carries first-wave docx generation metadata", () => {
+  const capabilityPackage = createTapToolingCapabilityPackage("doc.write");
+
+  assert.equal(capabilityPackage.policy.riskLevel, "normal");
+  assert.equal(
+    capabilityPackage.activationSpec?.adapterFactoryRef,
+    "factory:tap-tooling:doc.write",
+  );
+  assert.match(
+    capabilityPackage.policy.safetyFlags.join(" "),
+    /docx_generation_v1/i,
+  );
 });
 
 test("git.commit package carries new-commit safety metadata", () => {

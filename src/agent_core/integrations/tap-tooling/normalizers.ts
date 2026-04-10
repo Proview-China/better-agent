@@ -19,22 +19,27 @@ import {
   asStringRecord,
   getGrantedScope,
   normalizeNewlines,
+  type NormalizedDocWriteInput,
   type NormalizedCodeEditInput,
   type NormalizedCodePatchInput,
   type NormalizedCommandInput,
   type NormalizedRepoWriteEntry,
   type NormalizedSkillDocGenerateInput,
+  type NormalizedSpreadsheetWriteInput,
   type ParsedPatchHunk,
   type ParsedPatchLine,
   type ParsedPatchOperation,
   type PreparedCodeDiffState,
+  type PreparedDocWriteState,
   type PreparedGitCommitState,
   type PreparedGitDiffState,
   type PreparedGitPushState,
   type PreparedGitStatusState,
   type PreparedShellSessionState,
+  type PreparedSpreadsheetWriteState,
   type PreparedWriteTodosState,
   type RepoWriteEntry,
+  type SpreadsheetWriteCellValue,
   type TodoEntry,
 } from "./shared.js";
 
@@ -480,6 +485,212 @@ export function normalizeSkillDocGenerateInput(
     format,
     title: asString(record.title),
     sectionCount: sections.length,
+  };
+}
+
+function isSpreadsheetCellValue(value: unknown): value is SpreadsheetWriteCellValue {
+  return value === null
+    || typeof value === "string"
+    || typeof value === "number"
+    || typeof value === "boolean";
+}
+
+function normalizeSpreadsheetRows(record: Record<string, unknown>): {
+  headers?: string[];
+  rows: SpreadsheetWriteCellValue[][];
+} {
+  const rawRows = Array.isArray(record.rows) ? record.rows : undefined;
+  if (!rawRows) {
+    throw new Error("spreadsheet.write requires a rows array.");
+  }
+  const requestedHeaders = asStringArray(record.headers);
+  const objectRows = rawRows.filter((entry) => asRecord(entry));
+  const hasObjectRows = objectRows.length > 0;
+
+  let headers = requestedHeaders;
+  if (!headers && hasObjectRows) {
+    const seen = new Set<string>();
+    headers = [];
+    for (const entry of rawRows) {
+      const row = asRecord(entry);
+      if (!row) {
+        continue;
+      }
+      for (const key of Object.keys(row)) {
+        if (!seen.has(key)) {
+          seen.add(key);
+          headers.push(key);
+        }
+      }
+    }
+  }
+
+  const rows = rawRows.map((entry, index) => {
+    if (Array.isArray(entry)) {
+      return entry.map((cell, cellIndex) => {
+        if (!isSpreadsheetCellValue(cell)) {
+          throw new Error(`spreadsheet.write row ${index + 1} cell ${cellIndex + 1} must be string, number, boolean, or null.`);
+        }
+        return cell;
+      });
+    }
+
+    const row = asRecord(entry);
+    if (!row) {
+      throw new Error(`spreadsheet.write row ${index + 1} must be either an array or an object.`);
+    }
+    if (!headers || headers.length === 0) {
+      throw new Error("spreadsheet.write object rows require headers or derivable object keys.");
+    }
+    return headers.map((header) => {
+      const value = row[header];
+      if (value === undefined) {
+        return null;
+      }
+      if (!isSpreadsheetCellValue(value)) {
+        throw new Error(`spreadsheet.write row ${index + 1} field ${header} must be string, number, boolean, or null.`);
+      }
+      return value;
+    });
+  });
+
+  return { headers, rows };
+}
+
+export function normalizeSpreadsheetWriteInput(
+  plan: CapabilityInvocationPlan,
+  workspaceRoot: string,
+): PreparedSpreadsheetWriteState["input"] {
+  const scope = getGrantedScope(plan);
+  const record = asRecord(plan.input) ?? {};
+  const candidatePath = asString(record.path);
+  if (!candidatePath) {
+    throw new Error("spreadsheet.write requires a non-empty path.");
+  }
+  const resolved = resolvePathWithinWorkspace({
+    workspaceRoot,
+    candidatePath,
+    scope,
+    operationCandidates: ["write", "mkdir", "spreadsheet.write"],
+    label: "spreadsheet.write path",
+  });
+  const normalizedPath = resolved.relativeWorkspacePath.toLowerCase();
+  const format = normalizedPath.endsWith(".csv")
+    ? "csv"
+    : normalizedPath.endsWith(".tsv")
+      ? "tsv"
+      : normalizedPath.endsWith(".xlsx")
+        ? "xlsx"
+        : undefined;
+  if (!format) {
+    throw new Error("spreadsheet.write currently supports only .csv, .tsv, or .xlsx outputs.");
+  }
+  if (asString(record.sheet)) {
+    throw new Error("spreadsheet.write first version does not yet support writing a named sheet.");
+  }
+
+  const { headers, rows } = normalizeSpreadsheetRows(record);
+  const columnCount = Math.max(
+    headers?.length ?? 0,
+    ...rows.map((row) => row.length),
+  );
+
+  return {
+    absolutePath: resolved.absolutePath,
+    relativeWorkspacePath: resolved.relativeWorkspacePath,
+    format,
+    headers,
+    rows,
+    rowCount: rows.length,
+    columnCount,
+    createParents: asBoolean(record.createParents) ?? true,
+  };
+}
+
+function createDocWriteText(record: Record<string, unknown>): {
+  textContent: string;
+  title?: string;
+  sectionCount: number;
+} {
+  const title = asString(record.title);
+  const summary = asString(record.summary);
+  const content = asString(record.content);
+  const format = asString(record.format);
+  if (format && format !== "text" && format !== "markdown") {
+    throw new Error("doc.write format currently supports only text or markdown.");
+  }
+
+  const sectionsValue = Array.isArray(record.sections) ? record.sections : [];
+  const sections = sectionsValue.map((entry, index) => {
+    const section = asRecord(entry);
+    const heading = section ? asString(section.heading) : undefined;
+    const bodyValue = section?.body;
+    const body = typeof bodyValue === "string"
+      ? bodyValue
+      : Array.isArray(bodyValue)
+        ? bodyValue.filter((item): item is string => typeof item === "string").join("\n")
+        : undefined;
+    if (!heading || !body) {
+      throw new Error(`doc.write section ${index + 1} requires heading and body.`);
+    }
+    return { heading, body };
+  });
+
+  if (!title && !summary && !content && sections.length === 0) {
+    throw new Error("doc.write requires title, summary, content, or sections.");
+  }
+
+  const parts: string[] = [];
+  if (title) {
+    parts.push(title);
+  }
+  if (summary) {
+    parts.push(summary);
+  }
+  if (content) {
+    parts.push(content);
+  }
+  for (const section of sections) {
+    parts.push(`${section.heading}\n${section.body}`);
+  }
+
+  return {
+    textContent: parts.join("\n\n").trim(),
+    title,
+    sectionCount: sections.length,
+  };
+}
+
+export function normalizeDocWriteInput(
+  plan: CapabilityInvocationPlan,
+  workspaceRoot: string,
+): PreparedDocWriteState["input"] {
+  const scope = getGrantedScope(plan);
+  const record = asRecord(plan.input) ?? {};
+  const candidatePath = asString(record.path);
+  if (!candidatePath) {
+    throw new Error("doc.write requires a non-empty path.");
+  }
+  const resolved = resolvePathWithinWorkspace({
+    workspaceRoot,
+    candidatePath,
+    scope,
+    operationCandidates: ["write", "mkdir", "doc.write"],
+    label: "doc.write path",
+  });
+  if (!resolved.relativeWorkspacePath.toLowerCase().endsWith(".docx")) {
+    throw new Error("doc.write first version currently supports only .docx outputs.");
+  }
+
+  const rendered = createDocWriteText(record);
+  return {
+    absolutePath: resolved.absolutePath,
+    relativeWorkspacePath: resolved.relativeWorkspacePath,
+    format: "docx",
+    textContent: rendered.textContent,
+    title: rendered.title,
+    sectionCount: rendered.sectionCount,
+    createParents: asBoolean(record.createParents) ?? true,
   };
 }
 

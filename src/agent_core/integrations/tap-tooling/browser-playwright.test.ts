@@ -53,3 +53,37 @@ test("assertBrowserUrlAllowed respects wildcard domains", () => {
 test("selectBrowserPlaywrightBackend falls back to shared runtime without route", () => {
   assert.equal(selectBrowserPlaywrightBackend(undefined), "playwright-shared-runtime");
 });
+
+test("normalizeBrowserPlaywrightInput promotes reviewed structured actions", () => {
+  const hover = normalizeBrowserPlaywrightInput(createPlan({
+    action: "hover",
+    ref: "node-1",
+  }));
+  assert.equal(hover.toolName, "browser_hover");
+
+  const press = normalizeBrowserPlaywrightInput(createPlan({
+    action: "press_key",
+    key: "Enter",
+  }));
+  assert.equal(press.toolName, "browser_press_key");
+
+  const resize = normalizeBrowserPlaywrightInput(createPlan({
+    action: "resize",
+    width: 1440,
+    height: 900,
+  }));
+  assert.equal(resize.toolName, "browser_resize");
+});
+
+test("normalizeBrowserPlaywrightInput blocks unreviewed raw tools", () => {
+  assert.throws(
+    () => normalizeBrowserPlaywrightInput(createPlan({
+      action: "raw",
+      toolName: "browser_run_code",
+      arguments: {
+        code: "async (page) => page.goto('https://example.com')",
+      },
+    })),
+    /blocked unreviewed MCP tool/i,
+  );
+});

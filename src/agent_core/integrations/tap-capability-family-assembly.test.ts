@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { registerTapCapabilityFamilyAssembly } from "./tap-capability-family-assembly.js";
 
-test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and MCP families together", () => {
+test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, MCP, MP, and userio families together", () => {
   const registeredCapabilityKeys: string[] = [];
   const activationFactories = new Set<string>();
 
@@ -34,11 +34,14 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
     "code.symbol_search",
     "code.lsp",
     "spreadsheet.read",
+    "doc.read",
     "read_pdf",
     "read_notebook",
     "view_image",
     "docs.read",
     "repo.write",
+    "spreadsheet.write",
+    "doc.write",
     "code.edit",
     "code.patch",
     "shell.restricted",
@@ -70,21 +73,40 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
     "mcp.call",
     "mcp.native.execute",
   ]);
+  assert.deepEqual(result.familyKeys.mp, [
+    "mp.ingest",
+    "mp.align",
+    "mp.resolve",
+    "mp.history.request",
+    "mp.search",
+    "mp.materialize",
+    "mp.promote",
+    "mp.archive",
+    "mp.split",
+    "mp.merge",
+    "mp.reindex",
+    "mp.compact",
+  ]);
   assert.deepEqual(result.familyKeys.userio, [
     "request_user_input",
     "request_permissions",
+    "audio.transcribe",
+    "speech.synthesize",
+    "image.generate",
   ]);
-  assert.equal(result.packages.length, 39);
-  assert.equal(result.bindings.length, 39);
+  assert.equal(result.packages.length, 57);
+  assert.equal(result.bindings.length, 57);
   assert.equal(result.activationFactoryRefs.length, activationFactories.size);
-  assert.equal(result.registrationAudit.length, 39);
+  assert.equal(result.registrationAudit.length, 57);
   assert.equal(result.activationFactoryAudit.length, activationFactories.size);
   assert.equal(registeredCapabilityKeys.includes("search.web"), true);
   assert.equal(registeredCapabilityKeys.includes("search.fetch"), true);
   assert.equal(registeredCapabilityKeys.includes("search.ground"), true);
   assert.equal(registeredCapabilityKeys.includes("skill.use"), true);
   assert.equal(registeredCapabilityKeys.includes("mcp.native.execute"), true);
+  assert.equal(registeredCapabilityKeys.includes("mp.search"), true);
   assert.equal(registeredCapabilityKeys.includes("request_user_input"), true);
+  assert.equal(registeredCapabilityKeys.includes("image.generate"), true);
 
   const codeReadAudit = result.registrationAudit.find(
     (entry) => entry.capabilityKey === "code.read",
@@ -115,6 +137,11 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, and M
   assert.ok(nativeExecuteFactory);
   assert.equal(nativeExecuteFactory.familyKey, "mcp");
 
+  const mpSearchFactory = result.activationFactoryAudit.find(
+    (entry) => entry.capabilityKey === "mp.search",
+  );
+  assert.ok(mpSearchFactory);
+  assert.equal(mpSearchFactory.familyKey, "mp");
   const requestPermissionsAudit = result.registrationAudit.find(
     (entry) => entry.capabilityKey === "request_permissions",
   );

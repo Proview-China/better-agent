@@ -10,13 +10,13 @@ test("createTapCapabilityAvailabilityReport shows declared gaps when nothing is 
   });
 
   assert.equal(report.generatedAt, "2026-03-25T00:00:00.000Z");
-  assert.equal(report.summary.totalCapabilities, 39);
+  assert.equal(report.summary.totalCapabilities, 40);
   assert.equal(report.summary.registeredCapabilities, 0);
   assert.equal(report.summary.executeReadyCapabilities, 0);
   assert.equal(report.summary.healthyCapabilities, 0);
   assert.equal(report.summary.readyCapabilities, 0);
   assert.equal(report.summary.reviewRequiredCapabilities, 0);
-  assert.equal(report.summary.blockedCapabilities, 39);
+  assert.equal(report.summary.blockedCapabilities, 40);
 
   const searchGround = report.rows.find((row) => row.capabilityKey === "search.ground");
   assert.ok(searchGround);
