@@ -1,4 +1,6 @@
 import PraxisTapTypes
+import PraxisCoreTypes
+import PraxisCmpTypes
 
 public enum PraxisCmpRoleLiveMode: String, Sendable, Codable {
   case rulesOnly
@@ -19,19 +21,25 @@ public struct PraxisCmpRoleLiveRequest: Sendable, Equatable, Codable {
   public let stage: String
   public let mode: PraxisCmpRoleLiveMode
   public let promptSummary: String
+  public let outputContract: [String]
+  public let metadata: [String: PraxisValue]
 
   public init(
     requestID: String,
     role: PraxisFiveAgentRole,
     stage: String,
     mode: PraxisCmpRoleLiveMode,
-    promptSummary: String
+    promptSummary: String,
+    outputContract: [String] = [],
+    metadata: [String: PraxisValue] = [:]
   ) {
     self.requestID = requestID
     self.role = role
     self.stage = stage
     self.mode = mode
     self.promptSummary = promptSummary
+    self.outputContract = outputContract
+    self.metadata = metadata
   }
 }
 
@@ -43,6 +51,11 @@ public struct PraxisCmpRoleLiveTrace: Sendable, Equatable, Codable {
   public let provider: String?
   public let model: String?
   public let createdAt: String
+  public let completedAt: String?
+  public let requestID: String?
+  public let fallbackApplied: Bool
+  public let errorMessage: String?
+  public let metadata: [String: PraxisValue]
 
   public init(
     attemptID: String,
@@ -51,7 +64,12 @@ public struct PraxisCmpRoleLiveTrace: Sendable, Equatable, Codable {
     status: PraxisCmpRoleLiveStatus,
     provider: String? = nil,
     model: String? = nil,
-    createdAt: String
+    createdAt: String,
+    completedAt: String? = nil,
+    requestID: String? = nil,
+    fallbackApplied: Bool = false,
+    errorMessage: String? = nil,
+    metadata: [String: PraxisValue] = [:]
   ) {
     self.attemptID = attemptID
     self.role = role
@@ -60,6 +78,11 @@ public struct PraxisCmpRoleLiveTrace: Sendable, Equatable, Codable {
     self.provider = provider
     self.model = model
     self.createdAt = createdAt
+    self.completedAt = completedAt
+    self.requestID = requestID
+    self.fallbackApplied = fallbackApplied
+    self.errorMessage = errorMessage
+    self.metadata = metadata
   }
 }
 
@@ -67,17 +90,23 @@ public struct PraxisCmpFiveAgentTapBridgePayload: Sendable, Equatable, Codable {
   public let role: PraxisFiveAgentRole
   public let capabilityKey: String
   public let reason: String
+  public let packageID: PraxisCmpPackageID?
+  public let sourceSnapshotID: PraxisCmpSnapshotID?
   public let humanGateState: PraxisHumanGateState?
 
   public init(
     role: PraxisFiveAgentRole,
     capabilityKey: String,
     reason: String,
+    packageID: PraxisCmpPackageID? = nil,
+    sourceSnapshotID: PraxisCmpSnapshotID? = nil,
     humanGateState: PraxisHumanGateState? = nil
   ) {
     self.role = role
     self.capabilityKey = capabilityKey
     self.reason = reason
+    self.packageID = packageID
+    self.sourceSnapshotID = sourceSnapshotID
     self.humanGateState = humanGateState
   }
 }

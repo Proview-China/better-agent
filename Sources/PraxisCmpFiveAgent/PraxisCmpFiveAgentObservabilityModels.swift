@@ -1,3 +1,5 @@
+import PraxisCmpTypes
+
 public struct PraxisCmpRoleLiveSummary: Sendable, Equatable, Codable {
   public let mode: PraxisCmpRoleLiveMode
   public let status: PraxisCmpRoleLiveStatus
@@ -17,6 +19,25 @@ public struct PraxisCmpRoleLiveSummary: Sendable, Equatable, Codable {
     self.fallbackApplied = fallbackApplied
     self.provider = provider
     self.model = model
+  }
+}
+
+public struct PraxisCmpRoleRuntimeRecord: Sendable, Equatable, Codable {
+  public let role: PraxisFiveAgentRole
+  public let stage: String
+  public let assignment: PraxisRoleAssignment?
+  public let sourceSnapshotID: PraxisCmpSnapshotID?
+
+  public init(
+    role: PraxisFiveAgentRole,
+    stage: String,
+    assignment: PraxisRoleAssignment? = nil,
+    sourceSnapshotID: PraxisCmpSnapshotID? = nil
+  ) {
+    self.role = role
+    self.stage = stage
+    self.assignment = assignment
+    self.sourceSnapshotID = sourceSnapshotID
   }
 }
 
@@ -46,6 +67,22 @@ public struct PraxisCmpFiveAgentRecoverySummary: Sendable, Equatable, Codable {
   ) {
     self.resumableRoles = resumableRoles
     self.missingCheckpointRoles = missingCheckpointRoles
+  }
+}
+
+public struct PraxisCmpFiveAgentRuntimeSnapshot: Sendable, Equatable, Codable {
+  public let roleRecords: [PraxisCmpRoleRuntimeRecord]
+  public let handOffs: [PraxisAgentHandOff]
+  public let liveTraces: [PraxisCmpRoleLiveTrace]
+
+  public init(
+    roleRecords: [PraxisCmpRoleRuntimeRecord],
+    handOffs: [PraxisAgentHandOff],
+    liveTraces: [PraxisCmpRoleLiveTrace]
+  ) {
+    self.roleRecords = roleRecords
+    self.handOffs = handOffs
+    self.liveTraces = liveTraces
   }
 }
 

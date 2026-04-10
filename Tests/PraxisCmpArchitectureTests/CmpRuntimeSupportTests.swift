@@ -13,42 +13,49 @@ struct CmpRuntimeSupportTests {
       projectID: "project-1",
       repoName: "praxis",
       repoRootPath: "/tmp/praxis",
-      defaultBranchName: "main"
+      defaultBranchName: "main",
+      lineages: [lineageID]
     )
     let gitRuntime = PraxisCmpGitBranchRuntime(
       lineageID: lineageID,
       worktreePath: "/tmp/praxis/.cmp/lineage-1",
-      branchNames: ["cmp/agent-1", "tap/agent-1"]
+      branches: [
+        .init(kind: .cmp, agentID: "agent-1", name: "cmp/agent-1"),
+        .init(kind: .tap, agentID: "agent-1", name: "tap/agent-1"),
+      ]
     )
     let dbContract = PraxisCmpDbBootstrapContract(
       projectID: "project-1",
       databaseName: "praxis",
       schemaName: "cmp_project_1",
+      sharedTargets: ["cmp_project_1.sections"],
+      agentLocalTargets: ["agent-1.events"],
       bootstrapStatements: [
         .init(statementID: "stmt-1", phase: .bootstrap, target: "cmp_project_1.sections", sql: "create table ...")
       ],
       readbackStatements: [
-        .init(statementID: "stmt-2", phase: .readback, target: "cmp_project_1.sections", sql: "select ...")
+        .init(statementID: "stmt-2", phase: .read, target: "cmp_project_1.sections", sql: "select ...")
       ]
     )
     let mqReceipt = PraxisCmpMqBootstrapReceipt(
       projectID: "project-1",
       agentID: "agent-1",
       namespace: .init(
+        projectID: "project-1",
         namespaceRoot: "cmp/project-1",
         keyPrefix: "cmp:project-1",
         queuePrefix: "cmp:project-1:queue",
         streamPrefix: "cmp:project-1:stream"
       ),
       bindings: [
-        .init(topicName: "neighbor.sync", channel: "peer", transportKey: "cmp:project-1:peer")
+        .init(agentID: "agent-1", topicName: "neighbor.sync", channel: .peer, transportKey: "cmp:project-1:peer")
       ]
     )
 
     #expect(gitPlan.defaultBranchName == "main")
-    #expect(gitRuntime.branchNames.count == 2)
+    #expect(gitRuntime.branches.count == 2)
     #expect(dbContract.bootstrapStatements.first?.phase == .bootstrap)
-    #expect(mqReceipt.bindings.first?.channel == "peer")
+    #expect(mqReceipt.bindings.first?.channel == .peer)
     #expect(mqReceipt.bindings.first?.transportKey == "cmp:project-1:peer")
   }
 
@@ -59,7 +66,8 @@ struct CmpRuntimeSupportTests {
       role: .icma,
       stage: "capture",
       mode: .llmAssisted,
-      promptSummary: "Summarize ingress into structured sections"
+      promptSummary: "Summarize ingress into structured sections",
+      outputContract: ["sections"]
     )
     let liveSummary = PraxisCmpRoleLiveSummary(
       mode: .llmAssisted,
@@ -77,6 +85,7 @@ struct CmpRuntimeSupportTests {
     )
 
     #expect(liveRequest.role == .icma)
+    #expect(liveRequest.outputContract == ["sections"])
     #expect(summary.liveSummary[.icma]?.fallbackApplied == true)
     #expect(summary.recovery.resumableRoles == [.icma])
   }

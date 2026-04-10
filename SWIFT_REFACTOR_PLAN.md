@@ -393,6 +393,20 @@ Core 禁止直接依赖：
 
 ### Wave 4：CMP
 
+进度记录（`2026-04-10`）：
+
+- 已完成
+- CMP 八个 target 已从“边界 + 占位模型”进入“最小可验证的纯 Core model / planner”状态
+- `PraxisCmpTypes` 已冻结 Wave4 共享名词表：
+  - CMP ID 类型
+  - lineage / neighborhood / visibility / delivery status 等共享枚举
+  - request / section / snapshot / projection / package / receipt 基础语义
+  - ingest / commit / resolve / materialize / dispatch / history request 六个入口 contract
+- `PraxisCmpSections`、`PraxisCmpProjection`、`PraxisCmpDelivery` 已补齐从 ingest -> section -> lowering -> projection/materialization -> delivery planning 的纯规则链路
+- `PraxisCmpGitModel`、`PraxisCmpDbModel`、`PraxisCmpMqModel`、`PraxisCmpFiveAgent` 已补齐对应 planner / lifecycle / topology / role protocol / tap-bridge payload 纯模型
+- 已明确排除 Git CLI、数据库执行器、消息队列适配器、provider 推理执行器进入 Wave4 Core；相关 live backend 仍留给后续 HostContracts / HostRuntime
+- 已补齐八个独立 Swift Testing 测试 target，`swift test` 当前全绿，合计 `72` 个测试通过
+
 覆盖 target：
 
 - `PraxisCmpTypes`
@@ -572,11 +586,28 @@ Core 禁止直接依赖：
    - `PraxisCmpSections`
    - `PraxisCmpProjection`
    - `PraxisCmpDelivery`
+   - 状态：已完成（`2026-04-10`）
+   - 完成内容：
+     - 四个 CMP target 已从骨架进入最小可运行的纯规则实现
+     - `PraxisCmpTypes` 已冻结共享 ID、状态枚举与六个入口 action contract
+     - `PraxisCmpSections` 已承接 ingress / section creation / lowering / ownership rule evaluation
+     - `PraxisCmpProjection` 已承接 projection、materialization、visibility、runtime snapshot、recovery 纯模型
+     - `PraxisCmpDelivery` 已承接 active / passive delivery planning、dispatch instruction 与 historical fallback planning
+     - 已补齐对应 Swift Testing 测试并通过
 6. PR 6
    - `PraxisCmpGitModel`
    - `PraxisCmpDbModel`
    - `PraxisCmpMqModel`
    - `PraxisCmpFiveAgent`
+   - 状态：已完成（`2026-04-10`）
+   - 完成内容：
+     - 四个 CMP target 已落下 planner / topology / lifecycle / role protocol 最小实现
+     - `PraxisCmpGitModel` 已承接 branch family、checked/promoted ref lifecycle、promotion / sync / lineage guard 纯治理模型
+     - `PraxisCmpDbModel` 已承接 storage topology、bootstrap contract、projection/package/delivery persistence plan
+     - `PraxisCmpMqModel` 已承接 neighborhood graph、topic topology、routing、subscription guard、critical escalation
+     - `PraxisCmpFiveAgent` 已承接 five-agent role protocol、handoff、live trace、tap-bridge payload、runtime summary 纯模型
+     - 已明确不把 Git / DB / MQ / provider live executor 带回 Core
+     - 已补齐对应 Swift Testing 测试并通过
 7. PR 7
    - 全部 HostContracts targets
 8. PR 8
@@ -617,6 +648,15 @@ Core 禁止直接依赖：
 - Capability 各 target 的 plan / result 测试
 - TAP 各 target 的 policy / review / runtime 测试
 - CMP 各 target 的 section / projection / delivery / model 测试
+  - 已完成首轮：
+    - `PraxisCmpTypesTests`
+    - `PraxisCmpSectionsTests`
+    - `PraxisCmpProjectionTests`
+    - `PraxisCmpDeliveryTests`
+    - `PraxisCmpGitModelTests`
+    - `PraxisCmpDbModelTests`
+    - `PraxisCmpMqModelTests`
+    - `PraxisCmpFiveAgentTests`
 - HostContracts 的 fake/mock 合约测试
 - HostRuntime 的 composition / use case / facade / bridge 集成测试
 

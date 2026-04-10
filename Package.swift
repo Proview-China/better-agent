@@ -619,6 +619,78 @@ let package = Package(
       path: "Tests/PraxisTapArchitectureTests",
     ),
     .testTarget(
+      name: "PraxisCmpTypesTests",
+      dependencies: [
+        "PraxisCmpTypes",
+      ],
+      path: "Tests/PraxisCmpTypesTests",
+    ),
+    .testTarget(
+      name: "PraxisCmpSectionsTests",
+      dependencies: [
+        "PraxisCmpTypes",
+        "PraxisCmpSections",
+      ],
+      path: "Tests/PraxisCmpSectionsTests",
+    ),
+    .testTarget(
+      name: "PraxisCmpProjectionTests",
+      dependencies: [
+        "PraxisCheckpoint",
+        "PraxisCmpTypes",
+        "PraxisCmpSections",
+        "PraxisCmpProjection",
+      ],
+      path: "Tests/PraxisCmpProjectionTests",
+    ),
+    .testTarget(
+      name: "PraxisCmpDeliveryTests",
+      dependencies: [
+        "PraxisCmpTypes",
+        "PraxisCmpProjection",
+        "PraxisCmpDelivery",
+      ],
+      path: "Tests/PraxisCmpDeliveryTests",
+    ),
+    .testTarget(
+      name: "PraxisCmpGitModelTests",
+      dependencies: [
+        "PraxisCmpTypes",
+        "PraxisCmpProjection",
+        "PraxisCmpGitModel",
+      ],
+      path: "Tests/PraxisCmpGitModelTests",
+    ),
+    .testTarget(
+      name: "PraxisCmpDbModelTests",
+      dependencies: [
+        "PraxisCmpTypes",
+        "PraxisCmpProjection",
+        "PraxisCmpDbModel",
+      ],
+      path: "Tests/PraxisCmpDbModelTests",
+    ),
+    .testTarget(
+      name: "PraxisCmpMqModelTests",
+      dependencies: [
+        "PraxisCmpTypes",
+        "PraxisCmpDelivery",
+        "PraxisCmpMqModel",
+      ],
+      path: "Tests/PraxisCmpMqModelTests",
+    ),
+    .testTarget(
+      name: "PraxisCmpFiveAgentTests",
+      dependencies: [
+        "PraxisCmpTypes",
+        "PraxisCmpSections",
+        "PraxisCmpProjection",
+        "PraxisCmpDelivery",
+        "PraxisCmpFiveAgent",
+      ],
+      path: "Tests/PraxisCmpFiveAgentTests",
+    ),
+    .testTarget(
       name: "PraxisCmpArchitectureTests",
       dependencies: [
         "PraxisCmpTypes",

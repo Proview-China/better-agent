@@ -72,6 +72,7 @@ struct HostRuntimeSurfaceTests {
     #expect(mpState.title == "MP Inspection")
     #expect(cmpState.summary.contains("SQLite"))
     #expect(mpState.summary.contains("Store:"))
-    #expect(catalog.summary.contains("Capability catalog placeholder"))
+    #expect(catalog.summary.contains("Capability catalog assembled from current boundaries:"))
+    #expect(catalog.summary.contains("PraxisCmpFiveAgent"))
   }
 }

@@ -1,6 +1,9 @@
+import PraxisCmpTypes
+
 public enum PraxisCmpDbStatementPhase: String, Sendable, Codable {
   case bootstrap
-  case readback
+  case read
+  case write
 }
 
 public struct PraxisCmpDbStatement: Sendable, Equatable, Codable {
@@ -21,6 +24,8 @@ public struct PraxisCmpDbBootstrapContract: Sendable, Equatable, Codable {
   public let projectID: String
   public let databaseName: String
   public let schemaName: String
+  public let sharedTargets: [String]
+  public let agentLocalTargets: [String]
   public let bootstrapStatements: [PraxisCmpDbStatement]
   public let readbackStatements: [PraxisCmpDbStatement]
 
@@ -28,12 +33,16 @@ public struct PraxisCmpDbBootstrapContract: Sendable, Equatable, Codable {
     projectID: String,
     databaseName: String,
     schemaName: String,
+    sharedTargets: [String] = [],
+    agentLocalTargets: [String] = [],
     bootstrapStatements: [PraxisCmpDbStatement],
     readbackStatements: [PraxisCmpDbStatement]
   ) {
     self.projectID = projectID
     self.databaseName = databaseName
     self.schemaName = schemaName
+    self.sharedTargets = sharedTargets
+    self.agentLocalTargets = agentLocalTargets
     self.bootstrapStatements = bootstrapStatements
     self.readbackStatements = readbackStatements
   }
@@ -59,9 +68,15 @@ public struct PraxisCmpDbReadbackRecord: Sendable, Equatable, Codable {
 public struct PraxisCmpDbBootstrapReceipt: Sendable, Equatable, Codable {
   public let contract: PraxisCmpDbBootstrapContract
   public let readbackRecords: [PraxisCmpDbReadbackRecord]
+  public let missingTargetCount: Int
 
-  public init(contract: PraxisCmpDbBootstrapContract, readbackRecords: [PraxisCmpDbReadbackRecord]) {
+  public init(
+    contract: PraxisCmpDbBootstrapContract,
+    readbackRecords: [PraxisCmpDbReadbackRecord],
+    missingTargetCount: Int
+  ) {
     self.contract = contract
     self.readbackRecords = readbackRecords
+    self.missingTargetCount = missingTargetCount
   }
 }
