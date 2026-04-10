@@ -3,6 +3,7 @@ import Testing
 @testable import PraxisProviderContracts
 @testable import PraxisToolingContracts
 @testable import PraxisUserIOContracts
+@testable import PraxisWorkspaceContracts
 
 struct HostContractSurfaceTests {
   @Test
@@ -57,22 +58,33 @@ struct HostContractSurfaceTests {
   func toolingContractsCoverSystemGitReadinessSurface() {
     let report = PraxisGitAvailabilityReport(
       status: .installPromptExpected,
+      remediationHint: "Install Xcode Command Line Tools",
       notes: "macOS can prompt for Xcode Command Line Tools when git is first invoked."
     )
 
     #expect(report.status == .installPromptExpected)
     #expect(report.executablePath == nil)
+    #expect(report.remediationHint == "Install Xcode Command Line Tools")
   }
 
   @Test
   func toolingContractsCoverBrowserGroundingEvidenceSurface() {
+    let request = PraxisBrowserGroundingRequest(
+      taskSummary: "Verify gold price",
+      exampleURL: "https://example.com/gold",
+      requestedFacts: ["gold_price_usd_per_ounce"],
+      locale: "en-US",
+      maxPages: 4
+    )
     let bundle = PraxisBrowserGroundingEvidenceBundle(
+      request: request,
       pages: [
         .init(
           role: .verifiedSource,
           url: "https://example.com/gold",
           title: "Verified source",
-          snapshotPath: "snapshots/gold.txt"
+          snapshotPath: "snapshots/gold.txt",
+          capturedAt: "2026-04-10T12:00:00Z"
         )
       ],
       facts: [
@@ -83,14 +95,59 @@ struct HostContractSurfaceTests {
           unit: "USD/oz",
           sourceRole: .verifiedSource,
           sourceURL: "https://example.com/gold",
-          sourceTitle: "Verified source"
+          sourceTitle: "Verified source",
+          citationSnippet: "Gold price reached 3351.24 USD/oz",
+          observedAt: "2026-04-10T12:00:00Z"
         )
-      ]
+      ],
+      generatedAt: "2026-04-10T12:00:01Z"
     )
 
+    #expect(bundle.request?.requestedFacts == ["gold_price_usd_per_ounce"])
     #expect(bundle.pages.first?.role == .verifiedSource)
     #expect(bundle.facts.first?.status == .verified)
     #expect(bundle.facts.first?.unit == "USD/oz")
+    #expect(bundle.facts.first?.citationSnippet == "Gold price reached 3351.24 USD/oz")
+  }
+
+  @Test
+  func workspaceContractsCoverReadSearchAndChangeSurface() {
+    let read = PraxisWorkspaceReadRequest(
+      path: "/tmp/praxis/README.md",
+      range: .init(startLine: 1, endLine: 10),
+      includeRevisionToken: true
+    )
+    let readResult = PraxisWorkspaceReadResult(
+      path: read.path,
+      content: "# Praxis\n",
+      revisionToken: "rev-1",
+      lineCount: 1
+    )
+    let search = PraxisWorkspaceSearchRequest(
+      query: "Praxis",
+      kind: .fullText,
+      roots: ["/tmp/praxis"],
+      maxResults: 5
+    )
+    let match = PraxisWorkspaceSearchMatch(
+      path: "/tmp/praxis/README.md",
+      line: 1,
+      column: 3,
+      summary: "README heading",
+      snippet: "# Praxis"
+    )
+    let change = PraxisWorkspaceChangeRequest(
+      changes: [
+        .init(kind: .updateFile, path: "/tmp/praxis/README.md", content: "# Praxis\nUpdated\n")
+      ],
+      changeSummary: "Refresh README"
+    )
+
+    #expect(read.range?.startLine == 1)
+    #expect(readResult.revisionToken == "rev-1")
+    #expect(search.kind == .fullText)
+    #expect(match.snippet == "# Praxis")
+    #expect(change.changes.first?.kind == .updateFile)
   }
 
   @Test
@@ -127,42 +184,78 @@ struct HostContractSurfaceTests {
 
   @Test
   func userIOContractsCoverMultimodalChips() {
+    let prompt = PraxisPromptRequest(
+      summary: "Approve deployment",
+      detail: "Need explicit confirmation before push",
+      kind: .confirmation,
+      defaultValue: "no"
+    )
+    let permission = PraxisPermissionRequest(
+      scope: "git.push",
+      summary: "Push the current branch",
+      urgency: .high
+    )
+    let terminalEvent = PraxisTerminalEvent(
+      title: "Running tests",
+      detail: "swift test",
+      kind: .progress,
+      command: "swift test"
+    )
+    let conversation = PraxisConversationPresentation(
+      summary: "Wave5 finished",
+      detail: "HostContracts are ready for HostRuntime",
+      kind: .result
+    )
     let chips = [
       PraxisMultimodalChip(
         kind: .audioTranscribe,
         label: "Audio",
-        summary: "Transcribe uploaded audio"
+        summary: "Transcribe uploaded audio",
+        enabled: true
       ),
       PraxisMultimodalChip(
         kind: .speechSynthesize,
         label: "Speech",
-        summary: "Generate spoken response"
+        summary: "Generate spoken response",
+        enabled: true
       ),
       PraxisMultimodalChip(
         kind: .imageGenerate,
         label: "Image",
-        summary: "Generate preview image"
+        summary: "Generate preview image",
+        enabled: false
       ),
     ]
     let transcription = PraxisAudioTranscriptionRequest(
       sourceRef: "file://note.m4a",
       locale: "zh-CN",
-      hint: "meeting notes"
+      hint: "meeting notes",
+      diarizationEnabled: true
     )
     let synthesis = PraxisSpeechSynthesisRequest(
       text: "Runtime ready",
       voice: "alloy",
-      locale: "en-US"
+      locale: "en-US",
+      format: "wav"
     )
     let image = PraxisImageGenerationRequest(
       prompt: "diagram of runtime architecture",
       style: "technical",
-      size: "1024x1024"
+      size: "1024x1024",
+      transparentBackground: true
     )
 
+    #expect(prompt.kind == .confirmation)
+    #expect(permission.urgency == .high)
+    #expect(terminalEvent.kind == .progress)
+    #expect(conversation.kind == .result)
     #expect(chips.map(\.kind) == [.audioTranscribe, .speechSynthesize, .imageGenerate])
+    #expect(chips.last?.enabled == false)
     #expect(transcription.locale == "zh-CN")
+    #expect(transcription.diarizationEnabled == true)
     #expect(synthesis.voice == "alloy")
+    #expect(synthesis.format == "wav")
     #expect(image.size == "1024x1024")
+    #expect(image.transparentBackground == true)
   }
 }

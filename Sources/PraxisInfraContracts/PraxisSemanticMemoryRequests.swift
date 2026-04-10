@@ -63,6 +63,16 @@ public struct PraxisSemanticMemoryRecord: Sendable, Equatable, Codable, Identifi
   }
 }
 
+public struct PraxisSemanticMemoryWriteReceipt: Sendable, Equatable, Codable {
+  public let memoryID: String
+  public let storageKey: String
+
+  public init(memoryID: String, storageKey: String) {
+    self.memoryID = memoryID
+    self.storageKey = storageKey
+  }
+}
+
 public struct PraxisSemanticMemorySearchRequest: Sendable, Equatable, Codable {
   public let projectID: String
   public let query: String
@@ -85,6 +95,34 @@ public struct PraxisSemanticMemorySearchRequest: Sendable, Equatable, Codable {
     self.limit = limit
     self.agentID = agentID
     self.sessionID = sessionID
+  }
+}
+
+public struct PraxisSemanticMemoryBundleRequest: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let query: String
+  public let scopeLevels: [PraxisMemoryScopeLevel]
+  public let limit: Int
+  public let agentID: String?
+  public let sessionID: String?
+  public let includeSuperseded: Bool
+
+  public init(
+    projectID: String,
+    query: String,
+    scopeLevels: [PraxisMemoryScopeLevel],
+    limit: Int = 5,
+    agentID: String? = nil,
+    sessionID: String? = nil,
+    includeSuperseded: Bool = false
+  ) {
+    self.projectID = projectID
+    self.query = query
+    self.scopeLevels = scopeLevels
+    self.limit = limit
+    self.agentID = agentID
+    self.sessionID = sessionID
+    self.includeSuperseded = includeSuperseded
   }
 }
 

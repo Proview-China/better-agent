@@ -429,6 +429,20 @@ Core 禁止直接依赖：
 
 ### Wave 5：HostContracts
 
+进度记录（`2026-04-10`）：
+
+- 已完成
+- `PraxisInfraContracts` 已进入“可被 HostRuntime 消费的稳定宿主 contract”状态
+- `PraxisToolingContracts` 已进入结构化 shell / browser / git / process contract 状态，并补齐对应 doubles 与测试
+- `PraxisWorkspaceContracts` 已进入结构化 read / search / change contract 状态，并补齐对应 doubles 与测试
+- `PraxisProviderContracts` 已进入结构化 inference / embedding / file / batch / skill / MCP contract 状态，并补齐对应 doubles 与测试
+- `PraxisUserIOContracts` 已进入结构化 prompt / permission / terminal / conversation / multimodal contract 状态，并补齐对应 doubles 与测试
+- 已补齐 checkpoint / journal / projection / message bus / delivery truth / embedding / semantic search / semantic memory / lineage 的 structured request/query/receipt 模型
+- 已补齐 shell / browser grounding / git readiness / workspace read-search-write / provider host-facing contract 模型
+- 已补齐 prompt / permission / terminal / conversation / audio transcription / speech synthesis / image generation 的 host-facing contract 模型
+- 已为 `PraxisInfraContracts`、`PraxisToolingContracts`、`PraxisWorkspaceContracts`、`PraxisProviderContracts`、`PraxisUserIOContracts` 新增 fake / stub / spy test doubles，避免后续 runtime 测试只能依赖空协议或真实 adapter
+- 已新增 `PraxisInfraContractsTests`、`PraxisToolingContractsTests`、`PraxisWorkspaceContractsTests`、`PraxisProviderContractsTests`、`PraxisUserIOContractsTests` 并通过，当前 `swift test` 合计 `87` 个测试通过
+
 覆盖 target：
 
 - `PraxisWorkspaceContracts`

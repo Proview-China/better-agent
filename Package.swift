@@ -366,6 +366,9 @@ let package = Package(
       name: "PraxisInfraContracts",
       dependencies: [
         "PraxisCoreTypes",
+        "PraxisSession",
+        "PraxisJournal",
+        "PraxisCheckpoint",
         "PraxisCmpTypes",
         "PraxisCmpDelivery",
       ],
@@ -703,6 +706,46 @@ let package = Package(
         "PraxisCmpFiveAgent",
       ],
       path: "Tests/PraxisCmpArchitectureTests",
+    ),
+    .testTarget(
+      name: "PraxisInfraContractsTests",
+      dependencies: [
+        "PraxisInfraContracts",
+        "PraxisSession",
+        "PraxisJournal",
+        "PraxisCheckpoint",
+        "PraxisCmpTypes",
+      ],
+      path: "Tests/PraxisInfraContractsTests",
+    ),
+    .testTarget(
+      name: "PraxisToolingContractsTests",
+      dependencies: [
+        "PraxisToolingContracts",
+      ],
+      path: "Tests/PraxisToolingContractsTests",
+    ),
+    .testTarget(
+      name: "PraxisWorkspaceContractsTests",
+      dependencies: [
+        "PraxisWorkspaceContracts",
+      ],
+      path: "Tests/PraxisWorkspaceContractsTests",
+    ),
+    .testTarget(
+      name: "PraxisUserIOContractsTests",
+      dependencies: [
+        "PraxisUserIOContracts",
+      ],
+      path: "Tests/PraxisUserIOContractsTests",
+    ),
+    .testTarget(
+      name: "PraxisProviderContractsTests",
+      dependencies: [
+        "PraxisProviderContracts",
+        "PraxisCapabilityResults",
+      ],
+      path: "Tests/PraxisProviderContractsTests",
     ),
     .testTarget(
       name: "PraxisHostContractsArchitectureTests",
