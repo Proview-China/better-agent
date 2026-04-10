@@ -522,6 +522,43 @@ let package = Package(
       path: "Tests/PraxisTransitionTests",
     ),
     .testTarget(
+      name: "PraxisRunTests",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisState",
+        "PraxisTransition",
+        "PraxisRun",
+      ],
+      path: "Tests/PraxisRunTests",
+    ),
+    .testTarget(
+      name: "PraxisSessionTests",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisSession",
+      ],
+      path: "Tests/PraxisSessionTests",
+    ),
+    .testTarget(
+      name: "PraxisJournalTests",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisSession",
+        "PraxisJournal",
+      ],
+      path: "Tests/PraxisJournalTests",
+    ),
+    .testTarget(
+      name: "PraxisCheckpointTests",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisSession",
+        "PraxisJournal",
+        "PraxisCheckpoint",
+      ],
+      path: "Tests/PraxisCheckpointTests",
+    ),
+    .testTarget(
       name: "PraxisCapabilityArchitectureTests",
       dependencies: [
         "PraxisCapabilityContracts",

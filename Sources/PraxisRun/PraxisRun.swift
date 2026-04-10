@@ -8,15 +8,21 @@ import PraxisTransition
 // - 保持 run 只描述一次运行，不直接知道持久化、provider 或 UI。
 // - 文件可继续拆分：RunModels.swift、RunLifecycle.swift、RunCoordinator.swift、RunRecovery.swift。
 
+/// Stable blueprint describing the `PraxisRun` target responsibilities.
 public struct PraxisRunBlueprint: Sendable, Equatable {
   public let responsibilities: [String]
 
+  /// Creates the run blueprint.
+  ///
+  /// - Parameter responsibilities: Stable responsibility labels owned by the target.
   public init(responsibilities: [String]) {
     self.responsibilities = responsibilities
   }
 }
 
+/// Module-level boundary metadata for `PraxisRun`.
 public enum PraxisRunModule {
+  /// Architecture boundary descriptor for the run target.
   public static let boundary = PraxisBoundaryDescriptor(
     name: "PraxisRun",
     responsibility: "run 生命周期、tick 协调、恢复接续。",
@@ -25,6 +31,7 @@ public enum PraxisRunModule {
     ],
   )
 
+  /// Stable responsibility blueprint for the run target.
   public static let blueprint = PraxisRunBlueprint(
     responsibilities: [
       "create",

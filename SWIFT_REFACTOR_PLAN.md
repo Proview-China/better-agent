@@ -51,6 +51,7 @@
 截至 `2026-04-10`，本地已确认：
 
 - `swift test` 通过
+- Swift package tests 已切换到 `Swift Testing`
 - `npm run typecheck` 通过
 
 这说明：
@@ -286,6 +287,16 @@ Core 禁止直接依赖：
 
 这不是 target 波次，而是后续所有 target 迁移的前提。
 
+进度记录（`2026-04-10`）：
+
+- 已完成
+- 已冻结并落地 Foundation 最小黄金样本的 Swift 侧承接起点：
+  - goal compile
+  - run transition
+  - state projection / delta merge
+- 对应验证已纳入并通过 `swift test`
+- 相关 Swift package 测试已统一迁移到 `Swift Testing`
+
 必须冻结：
 
 - TS 当前验证命令
@@ -301,6 +312,14 @@ Core 禁止直接依赖：
 - CMP section lowering / delivery planning / routing
 
 ### Wave 1：Foundation
+
+进度记录（`2026-04-10`）：
+
+- 已完成
+- Foundation 八个 target 已全部进入“最小可演算实现”状态，不再只是边界占位
+- `PraxisRun`、`PraxisSession`、`PraxisJournal`、`PraxisCheckpoint` 已补齐第一轮纯模型 / 纯规则 / in-memory 支撑实现
+- 已补齐对应 Swift Testing 逻辑测试，覆盖 session lifecycle、journal append/read、checkpoint codec/recovery、run lifecycle advance
+- 当前 `swift test` 已覆盖到 Foundation 八个 target 的架构守卫与纯逻辑样本，并保持通过
 
 覆盖 target：
 
@@ -503,11 +522,24 @@ Core 禁止直接依赖：
    - `PraxisGoal`
    - `PraxisState`
    - `PraxisTransition`
+   - 状态：已完成（`2026-04-10`）
+   - 完成内容：
+     - 四个 Foundation target 已从纯边界占位进入最小可演算实现
+     - 已补齐对应 Swift Testing 测试，覆盖 goal compile、state projection / delta、transition evaluation 等核心样本
+     - 公开模型与主要函数已补基础注释和文档注释，便于后续继续承接 Wave 1
 2. PR 2
    - `PraxisRun`
    - `PraxisSession`
    - `PraxisJournal`
    - `PraxisCheckpoint`
+   - 状态：已完成（`2026-04-10`）
+   - 完成内容：
+     - 四个 Foundation target 已从空服务骨架进入最小可运行实现
+     - `PraxisSession` 已承接 session header、run attach、checkpoint pointer、hot-cold transition
+     - `PraxisJournal` 已承接 append-only in-memory journal、cursor slice、按 session/run 读取、flush signal
+     - `PraxisCheckpoint` 已承接 checkpoint tier、JSON codec、in-memory store、checkpoint + journal replay recovery
+     - `PraxisRun` 已承接 run aggregate、run event factory、advance/tick 纯推进逻辑与最小 coordinator
+     - 对应 Swift Testing 测试已补齐并通过，便于继续向 Wave 2 推进
 3. PR 3
    - `PraxisCapabilityContracts`
    - `PraxisCapabilityResults`
