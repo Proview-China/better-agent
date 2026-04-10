@@ -16,33 +16,15 @@ public enum PraxisValue: Sendable, Equatable, Codable {
       return
     }
 
-    if let bool = try? container.decode(Bool.self) {
-      self = .bool(bool)
-      return
-    }
-
-    if let int = try? container.decode(Int.self) {
-      self = .number(Double(int))
-      return
-    }
-
-    if let double = try? container.decode(Double.self) {
-      self = .number(double)
-      return
-    }
-
-    if let string = try? container.decode(String.self) {
-      self = .string(string)
-      return
-    }
-
-    if let object = try? container.decode([String: PraxisValue].self) {
-      self = .object(object)
-      return
-    }
-
-    if let array = try? container.decode([PraxisValue].self) {
-      self = .array(array)
+    if let value =
+      container.decodeValue(Bool.self, map: PraxisValue.bool) ??
+      container.decodeValue(Int.self, map: { .number(Double($0)) }) ??
+      container.decodeValue(Double.self, map: PraxisValue.number) ??
+      container.decodeValue(String.self, map: PraxisValue.string) ??
+      container.decodeValue([String: PraxisValue].self, map: PraxisValue.object) ??
+      container.decodeValue([PraxisValue].self, map: PraxisValue.array)
+    {
+      self = value
       return
     }
 
@@ -157,5 +139,17 @@ extension PraxisValue: ExpressibleByArrayLiteral {
 extension PraxisValue: ExpressibleByDictionaryLiteral {
   public init(dictionaryLiteral elements: (String, PraxisValue)...) {
     self = .object(Dictionary(uniqueKeysWithValues: elements))
+  }
+}
+
+private extension SingleValueDecodingContainer {
+  func decodeValue<T: Decodable>(
+    _ type: T.Type,
+    map: (T) -> PraxisValue
+  ) -> PraxisValue? {
+    guard let value = try? decode(type) else {
+      return nil
+    }
+    return map(value)
   }
 }
