@@ -40,6 +40,10 @@
   - Host 分层
   - PresentationBridge 入口规则
   - 若干 placeholder DTO / facade / use case
+- 最近已吸收 `integrate/dev-master-cmp` 的模块化方向：
+  - CMP facade / service 不再只靠一个大表面承接，而是已经出现 `session`、`flow`、`project`、`roles`、`control`、`readback` 这些清晰缝
+  - HostRuntime 内部也已经出现 `activeFlow`、`project`、`tapBridge` 这样的服务切面
+  - HostContracts 侧已经开始出现 MP baseline、semantic memory、browser grounding、multimodal user-io 的明确契约占位
 - 当前 Swift 仍然主要是“可编译骨架 + 架构守卫测试”，还没有承接 TS 的完整行为深度。
 
 ### 2.3 当前验证状态
@@ -208,7 +212,7 @@ Core 禁止直接依赖：
 | 9 | `PraxisCapabilityContracts` | capability identity / manifest / invocation contract | `src/agent_core/capability-types` |
 | 10 | `PraxisCapabilityResults` | normalized result envelope / failure taxonomy | `src/agent_core/capability-result` |
 | 11 | `PraxisCapabilityPlanning` | selector / plan / lease / dispatch 的纯规划 | `src/agent_core/capability-model`、`capability-invocation` |
-| 12 | `PraxisCapabilityCatalog` | capability family registry / baseline / discoverability | `src/agent_core/capability-package` |
+| 12 | `PraxisCapabilityCatalog` | capability family registry / baseline / discoverability，包含 MP family baseline 与跨宿主能力目录 | `src/agent_core/capability-package` |
 
 ### 8.3 TAP
 
@@ -227,30 +231,30 @@ Core 禁止直接依赖：
 | --- | --- | --- | --- |
 | 19 | `PraxisCmpTypes` | section / request / package / lineage / snapshot 共用对象模型 | `src/agent_core/cmp-types` |
 | 20 | `PraxisCmpSections` | ingest / section creation / lowering / ownership / visibility | `src/agent_core/cmp-runtime` 中 section 相关纯规则 |
-| 21 | `PraxisCmpProjection` | projection / materialization / recovery / visibility 模型 | `src/agent_core/cmp-runtime` 与 `cmp-db` 的纯模型层 |
-| 22 | `PraxisCmpDelivery` | package / dispatch instruction / active-passive delivery planning | `src/agent_core/cmp-runtime`、`cmp-mq` 的纯计划层 |
+| 21 | `PraxisCmpProjection` | projection / materialization / runtime snapshot / recovery / readback summary / visibility 模型 | `src/agent_core/cmp-runtime` 与 `cmp-db` 的纯模型层 |
+| 22 | `PraxisCmpDelivery` | package / dispatch instruction / active-passive flow / manual control / historical readback planning | `src/agent_core/cmp-runtime`、`cmp-mq` 的纯计划层 |
 | 23 | `PraxisCmpGitModel` | branch family / refs lifecycle / lineage governance / sync intent | `src/agent_core/cmp-git` 的规则层 |
-| 24 | `PraxisCmpDbModel` | storage topology / persistence plan / projection-package-delivery 落库模型 | `src/agent_core/cmp-db` 的模型层 |
-| 25 | `PraxisCmpMqModel` | topic topology / routing / neighborhood / escalation model | `src/agent_core/cmp-mq` 的规则层 |
-| 26 | `PraxisCmpFiveAgent` | five-agent role protocol / handoff / context partition / role contract | `src/agent_core/cmp-five-agent` |
+| 24 | `PraxisCmpDbModel` | storage topology / persistence plan / projection-package-delivery 落库 / readback contract 模型 | `src/agent_core/cmp-db` 的模型层 |
+| 25 | `PraxisCmpMqModel` | topic topology / routing / neighborhood / delivery truth / timeout / escalation model | `src/agent_core/cmp-mq` 的规则层 |
+| 26 | `PraxisCmpFiveAgent` | five-agent role protocol / handoff / context partition / TAP bridge / peer approval contract | `src/agent_core/cmp-five-agent` |
 
 ### 8.5 HostContracts
 
 | 顺序 | Target | 职责范围 | 主要对照 TS |
 | --- | --- | --- | --- |
 | 27 | `PraxisWorkspaceContracts` | workspace read / search / write 协议 | workspace 读写检索接缝 |
-| 28 | `PraxisToolingContracts` | shell / browser / git / process supervision 协议 | tooling adapters、`rax`、部分 `integrations` |
-| 29 | `PraxisUserIOContracts` | input / permission / terminal / conversation presentation 协议 | `live-agent-chat` 宿主交互面 |
+| 28 | `PraxisToolingContracts` | shell / browser / git / process supervision / browser grounding evidence 协议 | tooling adapters、`rax`、部分 `integrations` |
+| 29 | `PraxisUserIOContracts` | input / permission / terminal / conversation presentation / multimodal user-io 协议 | `live-agent-chat` 宿主交互面 |
 | 30 | `PraxisProviderContracts` | inference / embedding / files / batch / MCP / skill 协议 | `src/integrations/*` 与 `rax` provider 接缝 |
-| 31 | `PraxisInfraContracts` | checkpoint / journal / projection / message bus / lineage / semantic search 协议 | checkpoint、cmp-service、persistence、queue 相关接缝 |
+| 31 | `PraxisInfraContracts` | checkpoint / journal / projection / message bus / lineage / semantic search / semantic memory store 协议 | checkpoint、cmp-service、persistence、queue 相关接缝 |
 
 ### 8.6 HostRuntime
 
 | 顺序 | Target | 职责范围 | 主要对照 TS |
 | --- | --- | --- | --- |
 | 32 | `PraxisRuntimeComposition` | composition root / dependency graph / adapter registry | `src/agent_core/runtime.ts`、`src/rax/runtime.ts` 的装配部分 |
-| 33 | `PraxisRuntimeUseCases` | runGoal / resumeRun / inspectTap / inspectCmp / buildCapabilityCatalog 等高层用例 | runtime 对外应用用例层 |
-| 34 | `PraxisRuntimeFacades` | 稳定 facade surface / DTO 压平层 | `src/rax/facade.ts` 一类对外表面 |
+| 33 | `PraxisRuntimeUseCases` | runGoal / resumeRun / inspectTap / inspectCmp / inspectMp / buildCapabilityCatalog 等高层用例 | runtime 对外应用用例层 |
+| 34 | `PraxisRuntimeFacades` | 稳定 facade surface / DTO 压平层，承接 CMP `session/flow/project/roles` 这类宿主表面 | `src/rax/facade.ts` 一类对外表面 |
 | 35 | `PraxisRuntimePresentationBridge` | CLI / SwiftUI / FFI 展示桥 / state mapping / event mapping | `live-agent-chat` 的展示边界 |
 
 ### 8.7 Entry
@@ -260,6 +264,21 @@ Core 禁止直接依赖：
 | 36 | `PraxisCLI` | 非交互命令、交互会话、终端渲染、日志回放 | 先命令，后会话，再高级终端体验 |
 | 37 | `PraxisAppleUI` | SwiftUI app shell、inspection、run/session 宿主界面 | 先壳、后只读、再交互 |
 | 38 | `PraxisFFI` | 未来导出层 | 等 `PraxisRuntimePresentationBridge` 稳定后再做 |
+
+### 8.8 当前需要显式纳入规划的模块面
+
+这里说的“模块”默认不是再新开 target，而是在既有 target 边界内把最近已经浮现出来的子模块面写清楚，避免后面又长回大总装器。
+
+| 模块面 | 当前线索 | Swift 正式落点 |
+| --- | --- | --- |
+| CMP control surface | `src/rax/cmp/control.ts` 已把 execution style、automation gate、dispatch scope、truth preference 拆出来 | `PraxisCmpDelivery` 承担 manual control / dispatch policy，`PraxisCmpProjection` 承担 truth preference / readback fallback 语义 |
+| CMP flow facade | `src/rax/cmp/flow.ts` 与 `src/agent_core/cmp-service/active-flow-service.ts` 已把 ingest / commit / resolve / materialize / dispatch / history request 从大 runtime 拆开 | Core 规则分别落到 `PraxisCmpSections`、`PraxisCmpProjection`、`PraxisCmpDelivery`，宿主表面收敛到 `PraxisRuntimeUseCases` 与 `PraxisRuntimeFacades` |
+| CMP project / readback / smoke | `src/rax/cmp/project.ts`、`src/rax/cmp/readback.ts`、`src/agent_core/cmp-service/project-service.ts` 已把 bootstrap、recovery、delivery truth、acceptance readback 单独成面 | `PraxisCmpGitModel`、`PraxisCmpDbModel`、`PraxisCmpMqModel`、`PraxisCmpProjection` 负责纯模型与 summary，`PraxisRuntimeFacades` 对外提供 inspection / smoke 表面 |
+| CMP roles / TAP bridge | `src/rax/cmp/roles.ts` 与 `src/agent_core/cmp-service/tap-bridge-service.ts` 已把 role capability access、dispatch、peer approval 从 runtime 主体剥离 | `PraxisCmpFiveAgent` 负责 role/TAP bridge 协议，`PraxisTapRuntime` 负责 capability access / review / provision 规则，`PraxisRuntimeUseCases` 负责编排 |
+| CMP session surface | `src/rax/cmp/session.ts`、`src/rax/cmp/api.ts` 已把 session open、bootstrap payload normalize、runtime binding 明确成表面 | `PraxisRuntimeFacades` 提供稳定 session/project/flow facade，`PraxisRuntimeComposition` 负责 runtime binding 与 composition root |
+| MP capability baseline | `Sources/PraxisCapabilityCatalog/PraxisCapabilityCatalogMPModels.swift` 已引入 MP family capability baseline | `PraxisCapabilityCatalog` 继续承接 MP family registry / baseline，不单独新开“大 MP core” target |
+| Semantic memory / search contracts | `Sources/PraxisInfraContracts/PraxisSemanticMemoryRequests.swift` 已出现 local-first semantic memory record、search、bundle 契约 | `PraxisInfraContracts` 负责 memory/search/store 接缝，`PraxisRuntimeUseCases` 通过 `inspectMp` 等入口暴露宿主可读视图 |
+| Browser grounding / multimodal user-io | `Sources/PraxisToolingContracts/PraxisBrowserGroundingModels.swift` 与 `Sources/PraxisUserIOContracts/PraxisUserIOMultimodalRequests.swift` 已把 grounding evidence、audio/image/speech 请求面显式化 | `PraxisToolingContracts` 负责 browser grounding，`PraxisUserIOContracts` 负责 multimodal chips 与 I/O 请求，运行时只做编排不吸收具体宿主实现 |
 
 ## 9. 正式执行波次
 
@@ -357,11 +376,12 @@ Core 禁止直接依赖：
 
 目标：
 
-- 把 CMP 从当前文档驱动体系落成可复用 Core 规则层
+- 把 CMP 从当前文档驱动体系落成可复用 Core 规则层，并吸收最近已经拆出来的 control / flow / project / readback / roles / tap-bridge 模块面
 
 完成标准：
 
 - Swift Core 能在不接真实 Git / DB / MQ 的情况下推进 CMP 规划与状态演进
+- HostRuntime 不再把 CMP project/readback/role bridge 重新揉回一个大 runtime 方法集
 
 ### Wave 5：HostContracts
 
@@ -375,7 +395,7 @@ Core 禁止直接依赖：
 
 目标：
 
-- 冻结“系统向宿主要什么能力”
+- 冻结“系统向宿主要什么能力”，包括 semantic memory、browser grounding、multimodal user-io 这些已出现的宿主契约面
 
 完成标准：
 
@@ -393,7 +413,7 @@ Core 禁止直接依赖：
 
 目标：
 
-- 正式把系统装起来
+- 正式把系统装起来，并提供 CMP / MP inspection 这类稳定 facade / use case 表面
 
 完成标准：
 

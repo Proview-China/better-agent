@@ -51,3 +51,22 @@ public struct PraxisCmpInspectionSnapshot: Sendable, Equatable, Codable {
     self.coordinationSummary = coordinationSummary
   }
 }
+
+public struct PraxisMpInspectionSnapshot: Sendable, Equatable, Codable {
+  public let summary: String
+  public let workflowSummary: String
+  public let memoryStoreSummary: String
+  public let multimodalSummary: String
+
+  public init(
+    summary: String,
+    workflowSummary: String,
+    memoryStoreSummary: String,
+    multimodalSummary: String
+  ) {
+    self.summary = summary
+    self.workflowSummary = workflowSummary
+    self.memoryStoreSummary = memoryStoreSummary
+    self.multimodalSummary = multimodalSummary
+  }
+}

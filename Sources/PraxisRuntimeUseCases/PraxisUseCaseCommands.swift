@@ -88,3 +88,25 @@ public struct PraxisCmpLocalRuntimeProfile: Sendable, Equatable, Codable {
     self.semanticIndexSummary = semanticIndexSummary
   }
 }
+
+public struct PraxisMpInspection: Sendable, Equatable, Codable {
+  public let summary: String
+  public let workflowSummary: String
+  public let memoryStoreSummary: String
+  public let multimodalSummary: String
+  public let issues: [String]
+
+  public init(
+    summary: String,
+    workflowSummary: String,
+    memoryStoreSummary: String,
+    multimodalSummary: String,
+    issues: [String]
+  ) {
+    self.summary = summary
+    self.workflowSummary = workflowSummary
+    self.memoryStoreSummary = memoryStoreSummary
+    self.multimodalSummary = multimodalSummary
+    self.issues = issues
+  }
+}

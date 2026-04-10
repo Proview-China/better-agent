@@ -39,6 +39,7 @@ public enum PraxisRuntimeFacadesModule {
     responsibility: "对 CLI / UI / FFI 暴露的 facade 与稳定入口模型。",
     tsModules: [
       "src/rax/facade.ts",
+      "src/rax/mp-facade.ts",
       "src/agent_core/cmp-service",
     ],
   )

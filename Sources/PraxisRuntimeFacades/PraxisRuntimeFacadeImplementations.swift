@@ -47,15 +47,18 @@ public final class PraxisRunFacade: Sendable {
 public final class PraxisInspectionFacade: Sendable {
   public let inspectTapUseCase: any PraxisInspectTapUseCaseProtocol
   public let inspectCmpUseCase: any PraxisInspectCmpUseCaseProtocol
+  public let inspectMpUseCase: any PraxisInspectMpUseCaseProtocol
   public let buildCapabilityCatalogUseCase: any PraxisBuildCapabilityCatalogUseCaseProtocol
 
   public init(
     inspectTapUseCase: any PraxisInspectTapUseCaseProtocol,
     inspectCmpUseCase: any PraxisInspectCmpUseCaseProtocol,
+    inspectMpUseCase: any PraxisInspectMpUseCaseProtocol,
     buildCapabilityCatalogUseCase: any PraxisBuildCapabilityCatalogUseCaseProtocol
   ) {
     self.inspectTapUseCase = inspectTapUseCase
     self.inspectCmpUseCase = inspectCmpUseCase
+    self.inspectMpUseCase = inspectMpUseCase
     self.buildCapabilityCatalogUseCase = buildCapabilityCatalogUseCase
   }
 
@@ -76,6 +79,16 @@ public final class PraxisInspectionFacade: Sendable {
       hostRuntimeSummary: inspection.hostSummary,
       persistenceSummary: inspection.runtimeProfile.structuredStoreSummary,
       coordinationSummary: inspection.runtimeProfile.messageBusSummary
+    )
+  }
+
+  public func inspectMp() async throws -> PraxisMpInspectionSnapshot {
+    let inspection = try await inspectMpUseCase.execute()
+    return PraxisMpInspectionSnapshot(
+      summary: inspection.summary,
+      workflowSummary: inspection.workflowSummary,
+      memoryStoreSummary: inspection.memoryStoreSummary,
+      multimodalSummary: inspection.multimodalSummary
     )
   }
 

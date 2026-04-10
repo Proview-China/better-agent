@@ -16,6 +16,10 @@ public protocol PraxisInspectCmpUseCaseProtocol: Sendable {
   func execute() async throws -> PraxisCmpInspection
 }
 
+public protocol PraxisInspectMpUseCaseProtocol: Sendable {
+  func execute() async throws -> PraxisMpInspection
+}
+
 public protocol PraxisBuildCapabilityCatalogUseCaseProtocol: Sendable {
   func execute() async throws -> String
 }

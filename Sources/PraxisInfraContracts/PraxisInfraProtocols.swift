@@ -30,6 +30,12 @@ public protocol PraxisSemanticSearchIndexContract: Sendable {
   func search(_ request: PraxisSemanticSearchRequest) async throws -> [PraxisSemanticSearchMatch]
 }
 
+public protocol PraxisSemanticMemoryStoreContract: Sendable {
+  func save(_ record: PraxisSemanticMemoryRecord) async throws
+  func load(memoryID: String) async throws -> PraxisSemanticMemoryRecord?
+  func search(_ request: PraxisSemanticMemorySearchRequest) async throws -> [PraxisSemanticMemoryRecord]
+}
+
 public protocol PraxisLineageStoreContract: Sendable {
   func describe(lineageID: PraxisCmpLineageID) async throws -> String
 }

@@ -6,6 +6,10 @@ public protocol PraxisBrowserExecutor: Sendable {
   func navigate(_ request: PraxisBrowserNavigationRequest) async throws
 }
 
+public protocol PraxisBrowserGroundingCollector: Sendable {
+  func collectEvidence(_ request: PraxisBrowserGroundingRequest) async throws -> PraxisBrowserGroundingEvidenceBundle
+}
+
 public protocol PraxisGitAvailabilityProbe: Sendable {
   func probeGitReadiness() async -> PraxisGitAvailabilityReport
 }

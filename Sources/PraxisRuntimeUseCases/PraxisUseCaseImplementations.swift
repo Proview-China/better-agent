@@ -161,6 +161,27 @@ public final class PraxisInspectCmpUseCase: PraxisInspectCmpUseCaseProtocol {
   }
 }
 
+public final class PraxisInspectMpUseCase: PraxisInspectMpUseCaseProtocol {
+  public let dependencies: PraxisDependencyGraph
+
+  public init(dependencies: PraxisDependencyGraph) {
+    self.dependencies = dependencies
+  }
+
+  public func execute() async throws -> PraxisMpInspection {
+    PraxisMpInspection(
+      summary: "MP workflow placeholder is now reserved in HostRuntime for five-agent memory orchestration.",
+      workflowSummary: "ICMA / Iterator / Checker / DbAgent / Dispatcher lanes are expected to remain Core-side role protocols plus host-backed execution surfaces.",
+      memoryStoreSummary: "Local semantic memory should stay product-neutral in Swift: SQLite metadata plus pluggable vector storage/index, without hard-coding LanceDB into Core contracts.",
+      multimodalSummary: "User I/O and tooling should expose audio.transcribe, speech.synthesize, image.generate, and browser grounding evidence as host contracts rather than CLI-only helpers.",
+      issues: [
+        "MP runtime is still placeholder-only on the Swift side.",
+        "Browser grounding and multimodal chips still need real host adapter implementations.",
+      ]
+    )
+  }
+}
+
 public final class PraxisBuildCapabilityCatalogUseCase: PraxisBuildCapabilityCatalogUseCaseProtocol {
   public let dependencies: PraxisDependencyGraph
 

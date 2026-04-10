@@ -13,3 +13,15 @@ public protocol PraxisTerminalPresenter: Sendable {
 public protocol PraxisConversationPresenter: Sendable {
   func present(_ presentation: PraxisConversationPresentation) async
 }
+
+public protocol PraxisAudioTranscriptionDriver: Sendable {
+  func transcribe(_ request: PraxisAudioTranscriptionRequest) async throws -> PraxisAudioTranscriptionResponse
+}
+
+public protocol PraxisSpeechSynthesisDriver: Sendable {
+  func synthesize(_ request: PraxisSpeechSynthesisRequest) async throws -> PraxisSpeechSynthesisResponse
+}
+
+public protocol PraxisImageGenerationDriver: Sendable {
+  func generate(_ request: PraxisImageGenerationRequest) async throws -> PraxisImageGenerationResponse
+}

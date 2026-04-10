@@ -31,6 +31,13 @@ public struct PraxisPresentationStateMapper: Sendable {
     )
   }
 
+  public func map(mpInspection: PraxisMpInspectionSnapshot) -> PraxisPresentationState {
+    PraxisPresentationState(
+      title: "MP Inspection",
+      summary: "\(mpInspection.summary) Store: \(mpInspection.memoryStoreSummary)"
+    )
+  }
+
   public func map(catalogSnapshot: PraxisInspectionSnapshot) -> PraxisPresentationState {
     PraxisPresentationState(
       title: "Capability Catalog",
