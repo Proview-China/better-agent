@@ -1,15 +1,18 @@
-import XCTest
+import Testing
+@testable import PraxisCapabilityCatalog
 @testable import PraxisCapabilityContracts
 @testable import PraxisCapabilityPlanning
 
-final class CapabilityExecutionSurfaceTests: XCTestCase {
-  func testCapabilityPlanningBoundaryStillCoversExecutionPlaneModules() {
-    XCTAssertTrue(PraxisCapabilityPlanningModule.boundary.tsModules.contains("src/agent_core/capability-gateway"))
-    XCTAssertTrue(PraxisCapabilityPlanningModule.boundary.tsModules.contains("src/agent_core/capability-pool"))
-    XCTAssertTrue(PraxisCapabilityPlanningModule.boundary.tsModules.contains("src/agent_core/port"))
+struct CapabilityExecutionSurfaceTests {
+  @Test
+  func capabilityPlanningBoundaryStillCoversExecutionPlaneModules() {
+    #expect(PraxisCapabilityPlanningModule.boundary.tsModules.contains("src/agent_core/capability-gateway"))
+    #expect(PraxisCapabilityPlanningModule.boundary.tsModules.contains("src/agent_core/capability-pool"))
+    #expect(PraxisCapabilityPlanningModule.boundary.tsModules.contains("src/agent_core/port"))
   }
 
-  func testCapabilityExecutionModelsCaptureGatewayPoolAndPortSurface() {
+  @Test
+  func capabilityExecutionModelsCaptureGatewayPoolAndPortSurface() {
     let capabilityID = PraxisCapabilityID(rawValue: "code.read")
     let prepared = PraxisPreparedCapabilityCall(
       preparedID: "prepared-1",
@@ -43,10 +46,20 @@ final class CapabilityExecutionSurfaceTests: XCTestCase {
       summary: "returned 40 lines"
     )
 
-    XCTAssertEqual(prepared.capabilityID, capabilityID)
-    XCTAssertEqual(handle.preparedID, "prepared-1")
-    XCTAssertEqual(backpressure.queueDepth, 2)
-    XCTAssertEqual(intent.correlationID, "corr-1")
-    XCTAssertEqual(result.executionID, "exec-1")
+    #expect(prepared.capabilityID == capabilityID)
+    #expect(handle.preparedID == "prepared-1")
+    #expect(backpressure.queueDepth == 2)
+    #expect(intent.correlationID == "corr-1")
+    #expect(result.executionID == "exec-1")
+  }
+
+  @Test
+  func capabilityCatalogTracksMpWorkflowFamilyBaseline() {
+    let baseline = PraxisCapabilityCatalogBuilder().buildMpBaseline()
+
+    #expect(baseline.familyName == "mp")
+    #expect(baseline.capabilityIDs.contains(PraxisCapabilityID(rawValue: "mp.ingest")))
+    #expect(baseline.capabilityIDs.contains(PraxisCapabilityID(rawValue: "mp.resolve")))
+    #expect(baseline.capabilityIDs.contains(PraxisCapabilityID(rawValue: "mp.compact")))
   }
 }

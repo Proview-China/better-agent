@@ -1,11 +1,12 @@
-import XCTest
+import Testing
 @testable import PraxisRuntimeComposition
 @testable import PraxisRuntimeFacades
 @testable import PraxisRuntimePresentationBridge
 @testable import PraxisRuntimeUseCases
 
-final class HostRuntimeSurfaceTests: XCTestCase {
-  func testRuntimeSurfaceModelsCaptureLocalHostProfileAndSmokeViews() {
+struct HostRuntimeSurfaceTests {
+  @Test
+  func runtimeSurfaceModelsCaptureLocalHostProfileAndSmokeViews() {
     let hostProfile = PraxisLocalRuntimeHostProfile(
       executionStyle: "local-first",
       structuredStore: "sqlite",
@@ -32,12 +33,13 @@ final class HostRuntimeSurfaceTests: XCTestCase {
       ]
     )
 
-    XCTAssertEqual(runtimeSummary.hostProfile.executionStyle, "local-first")
-    XCTAssertEqual(runtimeSummary.componentStatuses["gitAccess"], .degraded)
-    XCTAssertEqual(smoke.checks.count, 2)
+    #expect(runtimeSummary.hostProfile.executionStyle == "local-first")
+    #expect(runtimeSummary.componentStatuses["gitAccess"] == PraxisTruthLayerStatus.degraded)
+    #expect(smoke.checks.count == 2)
   }
 
-  func testRuntimeFacadeAndBridgeExposeStructuredPlaceholderFlow() async throws {
+  @Test
+  func runtimeFacadeAndBridgeExposeStructuredPlaceholderFlow() async throws {
     let dependencies = PraxisDependencyGraph(
       boundaries: PraxisRuntimePresentationBridgeModule.bootstrap.foundationModules
         + PraxisRuntimePresentationBridgeModule.bootstrap.functionalDomainModules
@@ -52,6 +54,7 @@ final class HostRuntimeSurfaceTests: XCTestCase {
       inspectionFacade: PraxisInspectionFacade(
         inspectTapUseCase: PraxisInspectTapUseCase(dependencies: dependencies),
         inspectCmpUseCase: PraxisInspectCmpUseCase(dependencies: dependencies),
+        inspectMpUseCase: PraxisInspectMpUseCase(dependencies: dependencies),
         buildCapabilityCatalogUseCase: PraxisBuildCapabilityCatalogUseCase(dependencies: dependencies)
       )
     )
@@ -60,12 +63,15 @@ final class HostRuntimeSurfaceTests: XCTestCase {
     let architectureState = try await bridge.handle(.init(intent: .inspectArchitecture, payloadSummary: ""))
     let tapState = try await bridge.handle(.init(intent: .inspectTap, payloadSummary: ""))
     let cmpState = try await bridge.handle(.init(intent: .inspectCmp, payloadSummary: ""))
+    let mpState = try await bridge.handle(.init(intent: .inspectMp, payloadSummary: ""))
     let catalog = try await runtimeFacade.inspectionFacade.buildCapabilityCatalogSnapshot()
 
-    XCTAssertEqual(architectureState.title, "Praxis Architecture")
-    XCTAssertEqual(tapState.title, "TAP Inspection")
-    XCTAssertEqual(cmpState.title, "CMP Inspection")
-    XCTAssertTrue(cmpState.summary.contains("SQLite"))
-    XCTAssertTrue(catalog.summary.contains("Capability catalog placeholder"))
+    #expect(architectureState.title == "Praxis Architecture")
+    #expect(tapState.title == "TAP Inspection")
+    #expect(cmpState.title == "CMP Inspection")
+    #expect(mpState.title == "MP Inspection")
+    #expect(cmpState.summary.contains("SQLite"))
+    #expect(mpState.summary.contains("Store:"))
+    #expect(catalog.summary.contains("Capability catalog placeholder"))
   }
 }

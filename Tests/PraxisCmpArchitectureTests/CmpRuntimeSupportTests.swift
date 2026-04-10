@@ -1,12 +1,13 @@
-import XCTest
+import Testing
 @testable import PraxisCmpDbModel
 @testable import PraxisCmpFiveAgent
 @testable import PraxisCmpGitModel
 @testable import PraxisCmpMqModel
 @testable import PraxisCmpTypes
 
-final class CmpRuntimeSupportTests: XCTestCase {
-  func testCmpBootstrapModelsCaptureGitDbAndMqPlans() {
+struct CmpRuntimeSupportTests {
+  @Test
+  func cmpBootstrapModelsCaptureGitDbAndMqPlans() {
     let lineageID = PraxisCmpLineageID(rawValue: "lineage-1")
     let gitPlan = PraxisCmpProjectRepoBootstrapPlan(
       projectID: "project-1",
@@ -44,14 +45,15 @@ final class CmpRuntimeSupportTests: XCTestCase {
       ]
     )
 
-    XCTAssertEqual(gitPlan.defaultBranchName, "main")
-    XCTAssertEqual(gitRuntime.branchNames.count, 2)
-    XCTAssertEqual(dbContract.bootstrapStatements.first?.phase, .bootstrap)
-    XCTAssertEqual(mqReceipt.bindings.first?.channel, "peer")
-    XCTAssertEqual(mqReceipt.bindings.first?.transportKey, "cmp:project-1:peer")
+    #expect(gitPlan.defaultBranchName == "main")
+    #expect(gitRuntime.branchNames.count == 2)
+    #expect(dbContract.bootstrapStatements.first?.phase == .bootstrap)
+    #expect(mqReceipt.bindings.first?.channel == "peer")
+    #expect(mqReceipt.bindings.first?.transportKey == "cmp:project-1:peer")
   }
 
-  func testCmpFiveAgentLiveAndObservabilityModelsCaptureRoleStatus() {
+  @Test
+  func cmpFiveAgentLiveAndObservabilityModelsCaptureRoleStatus() {
     let liveRequest = PraxisCmpRoleLiveRequest(
       requestID: "request-1",
       role: .icma,
@@ -74,8 +76,8 @@ final class CmpRuntimeSupportTests: XCTestCase {
       recovery: .init(resumableRoles: [.icma], missingCheckpointRoles: [.iterator, .checker, .dbAgent, .dispatcher])
     )
 
-    XCTAssertEqual(liveRequest.role, .icma)
-    XCTAssertTrue(summary.liveSummary[.icma]?.fallbackApplied == true)
-    XCTAssertEqual(summary.recovery.resumableRoles, [.icma])
+    #expect(liveRequest.role == .icma)
+    #expect(summary.liveSummary[.icma]?.fallbackApplied == true)
+    #expect(summary.recovery.resumableRoles == [.icma])
   }
 }

@@ -1,21 +1,20 @@
-import XCTest
+import Testing
 @testable import PraxisCoreTypes
 @testable import PraxisState
 
-final class PraxisStateProjectorTests: XCTestCase {
-  func testCreateInitialAgentStateReturnsFourRequiredSections() {
+struct PraxisStateProjectorTests {
+  @Test
+  func createInitialAgentStateReturnsFourRequiredSections() {
     let state = createInitialAgentState()
 
-    XCTAssertEqual(
-      state.control,
-      .init(status: .created, phase: .decision, retryCount: 0)
-    )
-    XCTAssertEqual(state.working, [:])
-    XCTAssertEqual(state.observed, .init(artifactRefs: []))
-    XCTAssertEqual(state.recovery, .init())
+    #expect(state.control == .init(status: .created, phase: .decision, retryCount: 0))
+    #expect(state.working == [:])
+    #expect(state.observed == .init(artifactRefs: []))
+    #expect(state.recovery == .init())
   }
 
-  func testApplyStateDeltaMergesWorkingStateRecursivelyAndClearsTopLevelKeys() throws {
+  @Test
+  func applyStateDeltaMergesWorkingStateRecursivelyAndClearsTopLevelKeys() throws {
     let initial = createInitialAgentState()
     let next = try applyStateDelta(
       initial,
@@ -41,20 +40,21 @@ final class PraxisStateProjectorTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(
-      final.working,
-      [
-        "plan": [
-          "branch": "a",
-          "depth": 2,
-        ],
-      ]
+    #expect(
+      final.working
+        == [
+          "plan": [
+            "branch": "a",
+            "depth": 2,
+          ],
+        ]
     )
   }
 
-  func testApplyStateDeltaRejectsForbiddenTopLevelHistoryLikeKeys() {
-    XCTAssertThrowsError(
-      try applyStateDelta(
+  @Test
+  func applyStateDeltaRejectsForbiddenTopLevelHistoryLikeKeys() {
+    do {
+      _ = try applyStateDelta(
         createInitialAgentState(),
         .init(
           working: [
@@ -62,12 +62,14 @@ final class PraxisStateProjectorTests: XCTestCase {
           ]
         )
       )
-    ) { error in
-      XCTAssertTrue(String(describing: error).contains("history"))
+      Issue.record("Expected applyStateDelta to reject forbidden top-level history key.")
+    } catch {
+      #expect(String(describing: error).contains("history"))
     }
   }
 
-  func testProjectStateFromEventsReplaysEventSequenceIntoState() throws {
+  @Test
+  func projectStateFromEventsReplaysEventSequenceIntoState() throws {
     let events: [PraxisKernelEvent] = [
       .init(
         eventID: "evt-1",
@@ -126,24 +128,25 @@ final class PraxisStateProjectorTests: XCTestCase {
 
     let state = try PraxisDefaultStateProjector().project(from: events)
 
-    XCTAssertEqual(state.control.phase, .commit)
-    XCTAssertNil(state.control.pendingIntentID)
-    XCTAssertEqual(state.observed.lastResultID, "result-1")
-    XCTAssertEqual(state.observed.lastResultStatus, "success")
-    XCTAssertEqual(state.observed.artifactRefs, ["artifact-1"])
-    XCTAssertEqual(
-      state.working,
-      [
-        "plan": [
-          "step": "summarize",
-        ],
-      ]
+    #expect(state.control.phase == .commit)
+    #expect(state.control.pendingIntentID == nil)
+    #expect(state.observed.lastResultID == "result-1")
+    #expect(state.observed.lastResultStatus == "success")
+    #expect(state.observed.artifactRefs == ["artifact-1"])
+    #expect(
+      state.working
+        == [
+          "plan": [
+            "step": "summarize",
+          ],
+        ]
     )
-    XCTAssertEqual(state.recovery.lastCheckpointRef, "checkpoint-1")
-    XCTAssertEqual(state.recovery.resumePointer, "evt-6")
+    #expect(state.recovery.lastCheckpointRef == "checkpoint-1")
+    #expect(state.recovery.resumePointer == "evt-6")
   }
 
-  func testValidatorAcceptsSerializableStateAndSerializableDelta() {
+  @Test
+  func validatorAcceptsSerializableStateAndSerializableDelta() {
     let validator = PraxisDefaultStateValidator()
     let state = createInitialAgentState()
     let delta = PraxisStateDelta(
@@ -155,7 +158,7 @@ final class PraxisStateProjectorTests: XCTestCase {
       observed: .init(artifactRefs: ["artifact-1"])
     )
 
-    XCTAssertTrue(validator.validate(state).isEmpty)
-    XCTAssertTrue(validator.validate(delta).isEmpty)
+    #expect(validator.validate(state).isEmpty)
+    #expect(validator.validate(delta).isEmpty)
   }
 }

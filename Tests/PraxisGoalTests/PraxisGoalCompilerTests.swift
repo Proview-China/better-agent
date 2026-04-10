@@ -1,9 +1,10 @@
-import XCTest
+import Testing
 @testable import PraxisCoreTypes
 @testable import PraxisGoal
 
-final class PraxisGoalCompilerTests: XCTestCase {
-  func testCreateGoalSourceKeepsSourceLayerSmallAndNormalized() throws {
+struct PraxisGoalCompilerTests {
+  @Test
+  func createGoalSourceKeepsSourceLayerSmallAndNormalized() throws {
     let source = PraxisGoalSource(
       id: .init(rawValue: "goal-source-1"),
       kind: .user,
@@ -14,13 +15,14 @@ final class PraxisGoalCompilerTests: XCTestCase {
       ]
     )
 
-    XCTAssertEqual(source.id.rawValue, "goal-source-1")
-    XCTAssertEqual(source.userInput, "  研究 agent runtime kernel  ")
-    XCTAssertEqual(source.inputRefs, ["doc://outline"])
-    XCTAssertEqual(source.constraints, [.init(key: "mode", value: "design")])
+    #expect(source.id.rawValue == "goal-source-1")
+    #expect(source.userInput == "  研究 agent runtime kernel  ")
+    #expect(source.inputRefs == ["doc://outline"])
+    #expect(source.constraints == [.init(key: "mode", value: "design")])
   }
 
-  func testNormalizeGoalPreservesCriteriaAndMergesConstraints() throws {
+  @Test
+  func normalizeGoalPreservesCriteriaAndMergesConstraints() throws {
     let source = PraxisGoalSource(
       id: .init(rawValue: "goal-normalize-1"),
       kind: .user,
@@ -46,26 +48,21 @@ final class PraxisGoalCompilerTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(normalized.taskStatement, "Define the runtime kernel")
-    XCTAssertEqual(
-      normalized.successCriteria,
-      [.init(id: "done", description: "Kernel outline is concrete", required: true)]
+    #expect(normalized.taskStatement == "Define the runtime kernel")
+    #expect(normalized.successCriteria == [.init(id: "done", description: "Kernel outline is concrete", required: true)])
+    #expect(normalized.failureCriteria == [.init(id: "blocked", description: "Task is still vague", required: true)])
+    #expect(
+      normalized.constraints
+        == [
+          .init(key: "scope", value: "raw-kernel"),
+          .init(key: "language", value: "typescript"),
+        ]
     )
-    XCTAssertEqual(
-      normalized.failureCriteria,
-      [.init(id: "blocked", description: "Task is still vague", required: true)]
-    )
-    XCTAssertEqual(
-      normalized.constraints,
-      [
-        .init(key: "scope", value: "raw-kernel"),
-        .init(key: "language", value: "typescript"),
-      ]
-    )
-    XCTAssertEqual(normalized.inputRefs, ["memory://current-context"])
+    #expect(normalized.inputRefs == ["memory://current-context"])
   }
 
-  func testCompileGoalInjectsConstraintsAndContextIntoInstructionText() throws {
+  @Test
+  func compileGoalInjectsConstraintsAndContextIntoInstructionText() throws {
     let normalized = try PraxisDefaultGoalNormalizer().normalize(
       PraxisGoalSource(
         id: .init(rawValue: "goal-compile-1"),
@@ -93,15 +90,16 @@ final class PraxisGoalCompilerTests: XCTestCase {
       )
     )
 
-    XCTAssertTrue(compiled.instructionText.contains("Task"))
-    XCTAssertTrue(compiled.instructionText.contains("Implement goal frame compiler"))
-    XCTAssertTrue(compiled.instructionText.contains("mode=\"kernel-only\""))
-    XCTAssertTrue(compiled.instructionText.contains("Stay within src/agent_core/goal/**"))
-    XCTAssertTrue(compiled.instructionText.contains("goal.compile: compile source into instruction text"))
-    XCTAssertTrue(compiled.instructionText.contains("Raw kernel only, no governance layer."))
+    #expect(compiled.instructionText.contains("Task"))
+    #expect(compiled.instructionText.contains("Implement goal frame compiler"))
+    #expect(compiled.instructionText.contains("mode=\"kernel-only\""))
+    #expect(compiled.instructionText.contains("Stay within src/agent_core/goal/**"))
+    #expect(compiled.instructionText.contains("goal.compile: compile source into instruction text"))
+    #expect(compiled.instructionText.contains("Raw kernel only, no governance layer."))
   }
 
-  func testBuildGoalCompiledCacheKeyIsStableForSemanticallyIdenticalInputs() throws {
+  @Test
+  func buildGoalCompiledCacheKeyIsStableForSemanticallyIdenticalInputs() throws {
     let normalized = try PraxisDefaultGoalNormalizer().normalize(
       PraxisGoalSource(
         id: .init(rawValue: "goal-cache-1"),
@@ -131,6 +129,6 @@ final class PraxisGoalCompilerTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(keyA, keyB)
+    #expect(keyA == keyB)
   }
 }

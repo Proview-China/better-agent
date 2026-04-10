@@ -1,4 +1,4 @@
-import XCTest
+import Testing
 @testable import PraxisInfraContracts
 @testable import PraxisProviderContracts
 @testable import PraxisToolingContracts
@@ -10,12 +10,13 @@ import XCTest
 // - 增加协议族最小表面面积测试，防止业务模型偷偷回流到 contracts。
 // - 后续可继续拆分：HostContractsBoundaryTests.swift、HostContractsDependencyTests.swift、HostContractsProtocolSurfaceTests.swift。
 
-final class HostContractsTopologyTests: XCTestCase {
-  func testHostContractsSplitIntoProtocolFamilies() {
-    XCTAssertEqual(PraxisProviderContractsModule.boundary.name, "PraxisProviderContracts")
-    XCTAssertEqual(PraxisWorkspaceContractsModule.boundary.name, "PraxisWorkspaceContracts")
-    XCTAssertEqual(PraxisToolingContractsModule.boundary.name, "PraxisToolingContracts")
-    XCTAssertEqual(PraxisInfraContractsModule.boundary.name, "PraxisInfraContracts")
-    XCTAssertEqual(PraxisUserIOContractsModule.boundary.name, "PraxisUserIOContracts")
+struct HostContractsTopologyTests {
+  @Test
+  func hostContractsSplitIntoProtocolFamilies() {
+    #expect(PraxisProviderContractsModule.boundary.name == "PraxisProviderContracts")
+    #expect(PraxisWorkspaceContractsModule.boundary.name == "PraxisWorkspaceContracts")
+    #expect(PraxisToolingContractsModule.boundary.name == "PraxisToolingContracts")
+    #expect(PraxisInfraContractsModule.boundary.name == "PraxisInfraContracts")
+    #expect(PraxisUserIOContractsModule.boundary.name == "PraxisUserIOContracts")
   }
 }

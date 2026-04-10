@@ -1,11 +1,12 @@
-import XCTest
+import Testing
 @testable import PraxisTapGovernance
 @testable import PraxisTapReview
 @testable import PraxisTapRuntime
 @testable import PraxisTapTypes
 
-final class TapGovernanceSupportTests: XCTestCase {
-  func testTapContextModelsCaptureApertureRiskAndForbiddenObjects() {
+struct TapGovernanceSupportTests {
+  @Test
+  func tapContextModelsCaptureApertureRiskAndForbiddenObjects() {
     let projectSummary = PraxisContextSummarySlot(
       summary: "workspace ready",
       status: .ready,
@@ -44,12 +45,13 @@ final class TapGovernanceSupportTests: XCTestCase {
       mode: .careful
     )
 
-    XCTAssertEqual(aperture.riskSummary.riskLevel, .high)
-    XCTAssertEqual(aperture.sections.first?.trustLevel, .verified)
-    XCTAssertEqual(aperture.forbiddenObjects.first?.kind, .secretLiteral)
+    #expect(aperture.riskSummary.riskLevel == .high)
+    #expect(aperture.sections.first?.trustLevel == .verified)
+    #expect(aperture.forbiddenObjects.first?.kind == .secretLiteral)
   }
 
-  func testTapSupportModelsCoverSafetyToolReviewAndReplay() async throws {
+  @Test
+  func tapSupportModelsCoverSafetyToolReviewAndReplay() async throws {
     let safetyDecision = PraxisTapSafetyDecision(
       outcome: .escalateToHuman,
       summary: "dangerous capability requires approval",
@@ -80,8 +82,8 @@ final class TapGovernanceSupportTests: XCTestCase {
     let coordinator = PraxisTapRuntimeCoordinator(snapshot: runtimeSnapshot)
     let storedSnapshot = await coordinator.snapshot
 
-    XCTAssertEqual(safetyDecision.outcome, .escalateToHuman)
-    XCTAssertEqual(session.actions.first?.governanceKind, .activation)
-    XCTAssertEqual(storedSnapshot?.controlPlaneState.humanGateState, .waitingApproval)
+    #expect(safetyDecision.outcome == .escalateToHuman)
+    #expect(session.actions.first?.governanceKind == .activation)
+    #expect(storedSnapshot?.controlPlaneState.humanGateState == .waitingApproval)
   }
 }

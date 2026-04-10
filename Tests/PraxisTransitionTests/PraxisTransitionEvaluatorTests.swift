@@ -1,11 +1,11 @@
-import XCTest
+import Testing
 @testable import PraxisState
 @testable import PraxisTransition
 
-final class PraxisTransitionEvaluatorTests: XCTestCase {
-  private let evaluator = PraxisTransitionEvaluator()
-
-  func testRunCreatedEntersHotPathAndEmitsModelInferenceAction() throws {
+struct PraxisTransitionEvaluatorTests {
+  @Test
+  func runCreatedEntersHotPathAndEmitsModelInferenceAction() throws {
+    let evaluator = PraxisTransitionEvaluator()
     let state = makeState(status: .created, phase: .decision)
     let event = PraxisKernelEvent(
       eventID: "evt-run-created",
@@ -17,14 +17,16 @@ final class PraxisTransitionEvaluatorTests: XCTestCase {
 
     let decision = try evaluator.evaluate(currentState: state, incomingEvent: event)
 
-    XCTAssertEqual(decision.fromStatus, .created)
-    XCTAssertEqual(decision.toStatus, .acting)
-    XCTAssertEqual(decision.nextPhase, .execution)
-    XCTAssertEqual(decision.nextAction?.kind, .modelInference)
-    XCTAssertEqual(decision.nextAction?.intent?.kind, .modelInference)
+    #expect(decision.fromStatus == .created)
+    #expect(decision.toStatus == .acting)
+    #expect(decision.nextPhase == .execution)
+    #expect(decision.nextAction?.kind == .modelInference)
+    #expect(decision.nextAction?.intent?.kind == .modelInference)
   }
 
-  func testStateDeltaAppliedChoosesCapabilityCallFromWorkingStateHints() throws {
+  @Test
+  func stateDeltaAppliedChoosesCapabilityCallFromWorkingStateHints() throws {
+    let evaluator = PraxisTransitionEvaluator()
     let state = PraxisStateSnapshot(
       control: .init(status: .deciding, phase: .decision, retryCount: 0),
       working: [
@@ -50,13 +52,15 @@ final class PraxisTransitionEvaluatorTests: XCTestCase {
 
     let decision = try evaluator.evaluate(currentState: state, incomingEvent: event)
 
-    XCTAssertEqual(decision.toStatus, .acting)
-    XCTAssertEqual(decision.nextAction?.kind, .capabilityCall)
-    XCTAssertEqual(decision.nextAction?.intent?.kind, .capabilityCall)
-    XCTAssertEqual(decision.nextAction?.intent?.capabilityKey, "search.web")
+    #expect(decision.toStatus == .acting)
+    #expect(decision.nextAction?.kind == .capabilityCall)
+    #expect(decision.nextAction?.intent?.kind == .capabilityCall)
+    #expect(decision.nextAction?.intent?.capabilityKey == "search.web")
   }
 
-  func testStateDeltaAppliedChoosesCmpActionFromWorkingStateHints() throws {
+  @Test
+  func stateDeltaAppliedChoosesCmpActionFromWorkingStateHints() throws {
+    let evaluator = PraxisTransitionEvaluator()
     let state = PraxisStateSnapshot(
       control: .init(status: .deciding, phase: .decision, retryCount: 0),
       working: [
@@ -84,14 +88,16 @@ final class PraxisTransitionEvaluatorTests: XCTestCase {
 
     let decision = try evaluator.evaluate(currentState: state, incomingEvent: event)
 
-    XCTAssertEqual(decision.toStatus, .acting)
-    XCTAssertEqual(decision.nextAction?.kind, .cmpAction)
-    XCTAssertEqual(decision.nextAction?.intent?.kind, .cmpAction)
-    XCTAssertEqual(decision.nextAction?.intent?.cmpAction, "request_historical_context")
-    XCTAssertEqual(decision.nextAction?.intent?.cmpInput?["projectID"]?.stringValue, "cmp-project")
+    #expect(decision.toStatus == .acting)
+    #expect(decision.nextAction?.kind == .cmpAction)
+    #expect(decision.nextAction?.intent?.kind == .cmpAction)
+    #expect(decision.nextAction?.intent?.cmpAction == "request_historical_context")
+    #expect(decision.nextAction?.intent?.cmpInput?["projectID"]?.stringValue == "cmp-project")
   }
 
-  func testIntentQueuedMovesRunIntoWaitingAndStoresPendingIntentID() throws {
+  @Test
+  func intentQueuedMovesRunIntoWaitingAndStoresPendingIntentID() throws {
+    let evaluator = PraxisTransitionEvaluator()
     let state = makeState(status: .acting, phase: .execution)
     let event = PraxisKernelEvent(
       eventID: "evt-intent-queued",
@@ -103,12 +109,14 @@ final class PraxisTransitionEvaluatorTests: XCTestCase {
 
     let decision = try evaluator.evaluate(currentState: state, incomingEvent: event)
 
-    XCTAssertEqual(decision.toStatus, .waiting)
-    XCTAssertEqual(decision.nextAction?.kind, .wait)
-    XCTAssertEqual(decision.stateDelta?.control?.pendingIntentID, "intent-1")
+    #expect(decision.toStatus == .waiting)
+    #expect(decision.nextAction?.kind == .wait)
+    #expect(decision.stateDelta?.control?.pendingIntentID == "intent-1")
   }
 
-  func testCapabilityResultReceivedReturnsRunToDecisionPhase() throws {
+  @Test
+  func capabilityResultReceivedReturnsRunToDecisionPhase() throws {
+    let evaluator = PraxisTransitionEvaluator()
     let state = makeState(status: .waiting, phase: .execution)
     let event = PraxisKernelEvent(
       eventID: "evt-capability-result",
@@ -120,13 +128,15 @@ final class PraxisTransitionEvaluatorTests: XCTestCase {
 
     let decision = try evaluator.evaluate(currentState: state, incomingEvent: event)
 
-    XCTAssertEqual(decision.toStatus, .deciding)
-    XCTAssertEqual(decision.nextPhase, .decision)
-    XCTAssertEqual(decision.stateDelta?.observed?.lastResultID, "result-1")
-    XCTAssertEqual(decision.stateDelta?.observed?.lastResultStatus, "success")
+    #expect(decision.toStatus == .deciding)
+    #expect(decision.nextPhase == .decision)
+    #expect(decision.stateDelta?.observed?.lastResultID == "result-1")
+    #expect(decision.stateDelta?.observed?.lastResultStatus == "success")
   }
 
-  func testRunPausedFollowsRarePathAndEmitsPauseAction() throws {
+  @Test
+  func runPausedFollowsRarePathAndEmitsPauseAction() throws {
+    let evaluator = PraxisTransitionEvaluator()
     let state = makeState(status: .waiting, phase: .execution)
     let event = PraxisKernelEvent(
       eventID: "evt-run-paused",
@@ -138,11 +148,13 @@ final class PraxisTransitionEvaluatorTests: XCTestCase {
 
     let decision = try evaluator.evaluate(currentState: state, incomingEvent: event)
 
-    XCTAssertEqual(decision.toStatus, .paused)
-    XCTAssertEqual(decision.nextAction?.kind, .pause)
+    #expect(decision.toStatus == .paused)
+    #expect(decision.nextAction?.kind == .pause)
   }
 
-  func testIllegalTransitionsAreRejectedWithInvalidTransitionError() {
+  @Test
+  func illegalTransitionsAreRejectedWithInvalidTransitionError() {
+    let evaluator = PraxisTransitionEvaluator()
     let state = makeState(status: .completed, phase: .commit)
     let event = PraxisKernelEvent(
       eventID: "evt-illegal",
@@ -152,14 +164,14 @@ final class PraxisTransitionEvaluatorTests: XCTestCase {
       payload: .intentQueued(intentID: "intent-2", kind: "capability_call", priority: "high")
     )
 
-    XCTAssertThrowsError(
-      try evaluator.evaluate(currentState: state, incomingEvent: event)
-    ) { error in
-      guard let error = error as? PraxisInvalidTransitionError else {
-        return XCTFail("Expected PraxisInvalidTransitionError, got \(error)")
-      }
-      XCTAssertEqual(error.fromStatus, .completed)
-      XCTAssertEqual(error.eventType, .intentQueued)
+    do {
+      _ = try evaluator.evaluate(currentState: state, incomingEvent: event)
+      Issue.record("Expected PraxisInvalidTransitionError, but evaluation unexpectedly succeeded.")
+    } catch let error as PraxisInvalidTransitionError {
+      #expect(error.fromStatus == .completed)
+      #expect(error.eventType == .intentQueued)
+    } catch {
+      Issue.record("Expected PraxisInvalidTransitionError, got \(error)")
     }
   }
 

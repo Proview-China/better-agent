@@ -1,4 +1,4 @@
-import XCTest
+import Testing
 @testable import PraxisTapAvailability
 @testable import PraxisTapGovernance
 @testable import PraxisTapProvision
@@ -11,13 +11,14 @@ import XCTest
 // - 增加治理、审查、供应、availability blueprint 守卫。
 // - 后续可继续拆分：TapBoundaryTests.swift、TapDependencyTests.swift、TapBlueprintTests.swift。
 
-final class TapTopologyTests: XCTestCase {
-  func testTapDomainSplitIntoSixSubmodules() {
-    XCTAssertEqual(PraxisTapTypesModule.boundary.name, "PraxisTapTypes")
-    XCTAssertEqual(PraxisTapGovernanceModule.boundary.name, "PraxisTapGovernance")
-    XCTAssertEqual(PraxisTapReviewModule.boundary.name, "PraxisTapReview")
-    XCTAssertEqual(PraxisTapProvisionModule.boundary.name, "PraxisTapProvision")
-    XCTAssertEqual(PraxisTapRuntimeModule.boundary.name, "PraxisTapRuntime")
-    XCTAssertEqual(PraxisTapAvailabilityModule.boundary.name, "PraxisTapAvailability")
+struct TapTopologyTests {
+  @Test
+  func tapDomainSplitIntoSixSubmodules() {
+    #expect(PraxisTapTypesModule.boundary.name == "PraxisTapTypes")
+    #expect(PraxisTapGovernanceModule.boundary.name == "PraxisTapGovernance")
+    #expect(PraxisTapReviewModule.boundary.name == "PraxisTapReview")
+    #expect(PraxisTapProvisionModule.boundary.name == "PraxisTapProvision")
+    #expect(PraxisTapRuntimeModule.boundary.name == "PraxisTapRuntime")
+    #expect(PraxisTapAvailabilityModule.boundary.name == "PraxisTapAvailability")
   }
 }

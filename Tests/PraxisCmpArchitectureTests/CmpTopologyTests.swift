@@ -1,4 +1,4 @@
-import XCTest
+import Testing
 @testable import PraxisCmpDbModel
 @testable import PraxisCmpDelivery
 @testable import PraxisCmpFiveAgent
@@ -13,15 +13,16 @@ import XCTest
 // - 增加 sections/projection/delivery/git/db/mq/five-agent 的 blueprint 测试。
 // - 后续可继续拆分：CmpBoundaryTests.swift、CmpDependencyTests.swift、CmpBlueprintTests.swift。
 
-final class CmpTopologyTests: XCTestCase {
-  func testCmpDomainSplitIntoEightSubmodules() {
-    XCTAssertEqual(PraxisCmpTypesModule.boundary.name, "PraxisCmpTypes")
-    XCTAssertEqual(PraxisCmpSectionsModule.boundary.name, "PraxisCmpSections")
-    XCTAssertEqual(PraxisCmpProjectionModule.boundary.name, "PraxisCmpProjection")
-    XCTAssertEqual(PraxisCmpDeliveryModule.boundary.name, "PraxisCmpDelivery")
-    XCTAssertEqual(PraxisCmpGitModelModule.boundary.name, "PraxisCmpGitModel")
-    XCTAssertEqual(PraxisCmpDbModelModule.boundary.name, "PraxisCmpDbModel")
-    XCTAssertEqual(PraxisCmpMqModelModule.boundary.name, "PraxisCmpMqModel")
-    XCTAssertEqual(PraxisCmpFiveAgentModule.boundary.name, "PraxisCmpFiveAgent")
+struct CmpTopologyTests {
+  @Test
+  func cmpDomainSplitIntoEightSubmodules() {
+    #expect(PraxisCmpTypesModule.boundary.name == "PraxisCmpTypes")
+    #expect(PraxisCmpSectionsModule.boundary.name == "PraxisCmpSections")
+    #expect(PraxisCmpProjectionModule.boundary.name == "PraxisCmpProjection")
+    #expect(PraxisCmpDeliveryModule.boundary.name == "PraxisCmpDelivery")
+    #expect(PraxisCmpGitModelModule.boundary.name == "PraxisCmpGitModel")
+    #expect(PraxisCmpDbModelModule.boundary.name == "PraxisCmpDbModel")
+    #expect(PraxisCmpMqModelModule.boundary.name == "PraxisCmpMqModel")
+    #expect(PraxisCmpFiveAgentModule.boundary.name == "PraxisCmpFiveAgent")
   }
 }
