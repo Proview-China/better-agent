@@ -3034,6 +3034,21 @@ private func cmpDispatchStatus(from deliveryTruthStatus: PraxisDeliveryTruthStat
   }
 }
 
+private func cmpLatestDispatchStatus(from deliveryTruthStatus: PraxisDeliveryTruthStatus) -> PraxisCmpLatestDispatchStatus {
+  switch deliveryTruthStatus {
+  case .pending:
+    return .prepared
+  case .published:
+    return .delivered
+  case .acknowledged:
+    return .acknowledged
+  case .retryScheduled:
+    return .retryScheduled
+  case .expired:
+    return .expired
+  }
+}
+
 private func cmpPersistedDispatchStatus(
   from descriptor: PraxisCmpContextPackageDescriptor,
   operation: String
@@ -3049,16 +3064,51 @@ private func cmpPersistedDispatchStatus(
   return status
 }
 
-private func cmpLatestDispatchStatus(from scope: PraxisCmpReadbackScope) throws -> PraxisCmpDispatchStatus? {
-  let packageStatus: (status: PraxisCmpDispatchStatus, updatedAt: String)?
+private func cmpPersistedLatestDispatchStatus(
+  from descriptor: PraxisCmpContextPackageDescriptor,
+  operation: String
+) throws -> PraxisCmpLatestDispatchStatus? {
+  guard let rawStatus = cmpPackageMetadataString(descriptor.metadata, key: "last_dispatch_status") else {
+    return nil
+  }
+  guard let status = PraxisCmpLatestDispatchStatus(rawValue: rawStatus) else {
+    throw PraxisError.invalidInput(
+      "CMP \(operation) received invalid last_dispatch_status \(rawStatus) for package \(descriptor.packageID.rawValue)."
+    )
+  }
+  return status
+}
+
+private func cmpPersistedDispatchUpdatedAt(
+  from descriptor: PraxisCmpContextPackageDescriptor,
+  operation: String
+) throws -> String? {
+  guard cmpPackageMetadataString(descriptor.metadata, key: "last_dispatch_status") != nil else {
+    return nil
+  }
+  if let rawUpdatedAt = cmpPackageMetadataString(descriptor.metadata, key: "last_dispatch_updated_at") {
+    let normalizedUpdatedAt = rawUpdatedAt.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalizedUpdatedAt.isEmpty else {
+      throw PraxisError.invalidInput(
+        "CMP \(operation) received blank last_dispatch_updated_at for package \(descriptor.packageID.rawValue)."
+      )
+    }
+    return normalizedUpdatedAt
+  }
+  return descriptor.updatedAt
+}
+
+private func cmpLatestDispatchStatus(from scope: PraxisCmpReadbackScope) throws -> PraxisCmpLatestDispatchStatus? {
+  let packageStatus: (status: PraxisCmpLatestDispatchStatus, updatedAt: String)?
   if let latestPackage = scope.latestPackage,
-     let status = try cmpPersistedDispatchStatus(from: latestPackage, operation: "readback") {
-    packageStatus = (status, latestPackage.updatedAt)
+     let status = try cmpPersistedLatestDispatchStatus(from: latestPackage, operation: "readback"),
+     let updatedAt = try cmpPersistedDispatchUpdatedAt(from: latestPackage, operation: "readback") {
+    packageStatus = (status, updatedAt)
   } else {
     packageStatus = nil
   }
   let deliveryTruthStatus = scope.latestDispatchRecord.map { record in
-    (status: cmpDispatchStatus(from: record.status), updatedAt: record.updatedAt)
+    (status: cmpLatestDispatchStatus(from: record.status), updatedAt: record.updatedAt)
   }
   switch (packageStatus, deliveryTruthStatus) {
   case let ((packageStatus, packageUpdatedAt)?, (deliveryStatus, deliveryUpdatedAt)?):
@@ -3076,14 +3126,29 @@ private func cmpDispatcherLatestStage(
   latestPackage: PraxisCmpContextPackageDescriptor?,
   latestDispatchRecord: PraxisDeliveryTruthRecord?
 ) throws -> String? {
-  let scope = PraxisCmpReadbackScope(
-    projectionDescriptors: [],
-    packageDescriptors: latestPackage.map { [$0] } ?? [],
-    deliveryTruthRecords: latestDispatchRecord.map { [$0] } ?? [],
-    latestPackage: latestPackage,
-    latestDispatchRecord: latestDispatchRecord
-  )
-  return try cmpLatestDispatchStatus(from: scope)?.rawValue ?? (latestPackage == nil ? nil : "prepared")
+  let packageStatus: (status: PraxisCmpDispatchStatus, updatedAt: String)?
+  if let latestPackage,
+     let status = try cmpPersistedDispatchStatus(from: latestPackage, operation: "readback"),
+     let updatedAt = try cmpPersistedDispatchUpdatedAt(from: latestPackage, operation: "readback") {
+    packageStatus = (status, updatedAt)
+  } else {
+    packageStatus = nil
+  }
+  let deliveryTruthStatus = latestDispatchRecord.map { record in
+    (status: cmpDispatchStatus(from: record.status), updatedAt: record.updatedAt)
+  }
+  let latestStage: PraxisCmpDispatchStatus?
+  switch (packageStatus, deliveryTruthStatus) {
+  case let ((packageStatus, packageUpdatedAt)?, (deliveryStatus, deliveryUpdatedAt)?):
+    latestStage = packageUpdatedAt >= deliveryUpdatedAt ? packageStatus : deliveryStatus
+  case let ((packageStatus, _)? , nil):
+    latestStage = packageStatus
+  case let (nil, (deliveryStatus, _)?):
+    latestStage = deliveryStatus
+  case (nil, nil):
+    latestStage = nil
+  }
+  return latestStage?.rawValue ?? (latestPackage == nil ? nil : "prepared")
 }
 
 private func cmpReadbackScope(

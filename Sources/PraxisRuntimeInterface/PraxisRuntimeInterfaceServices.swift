@@ -543,7 +543,9 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpRecover,
         title: "CMP Recover \(recovery.projectID)",
         summary: recovery.summary,
-        projectID: recovery.projectID
+        projectID: recovery.projectID,
+        packageKind: recovery.packageKind,
+        recoveryStatus: recovery.status
       ),
       events: [
         .init(

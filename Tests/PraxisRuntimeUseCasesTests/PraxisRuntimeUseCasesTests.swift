@@ -971,6 +971,67 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func cmpReadbackUseCasesPreserveRetryScheduledLatestDispatchStatus() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-retry-scheduled-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let readbackRolesUseCase = PraxisReadbackCmpRolesUseCase(dependencies: dependencies)
+    let readbackControlUseCase = PraxisReadbackCmpControlUseCase(dependencies: dependencies)
+    let readbackStatusUseCase = PraxisReadbackCmpStatusUseCase(dependencies: dependencies)
+    let packageID = PraxisCmpPackageID(rawValue: "projection.runtime.local:checker.local:runtimeFill")
+
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: packageID,
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .dispatched,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:10:00Z",
+        metadata: [
+          "last_dispatch_status": .string(PraxisCmpDispatchStatus.rejected.rawValue),
+          "last_dispatch_updated_at": .string("2026-04-11T00:00:00Z"),
+        ]
+      )
+    )
+    _ = try await registry.deliveryTruthStore?.save(
+      .init(
+        id: "delivery.retry.projection.runtime.local:checker.local:runtimeFill",
+        packageID: packageID,
+        topic: "cmp.dispatch.checker.local",
+        targetAgentID: "checker.local",
+        status: .retryScheduled,
+        payloadSummary: "Retry dispatch runtime fill to checker",
+        updatedAt: "2026-04-11T00:05:00Z"
+      )
+    )
+
+    let roles = try await readbackRolesUseCase.execute(
+      .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let control = try await readbackControlUseCase.execute(
+      .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let status = try await readbackStatusUseCase.execute(
+      .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+
+    #expect(roles.latestDispatchStatus == .retryScheduled)
+    #expect(control.latestDispatchStatus == .retryScheduled)
+    #expect(status.latestDispatchStatus == .retryScheduled)
+  }
+
+  @Test
   func cmpReadbackStatusRejectsCorruptedPersistedDispatchStatusMetadata() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("praxis-runtime-usecases-corrupted-readback-dispatch-status-\(UUID().uuidString)", isDirectory: true)

@@ -241,6 +241,67 @@ struct PraxisRuntimeFacadesTests {
   }
 
   @Test
+  func cmpFacadeReadbacksPreserveRetryScheduledLatestDispatchStatus() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-facades-retry-scheduled-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let facade = try PraxisRuntimeGatewayFactory.makeRuntimeFacade(
+      hostAdapters: registry,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
+    let packageID = PraxisCmpPackageID(rawValue: "projection.runtime.local:checker.local:runtimeFill")
+
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: packageID,
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .dispatched,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:10:00Z",
+        metadata: [
+          "last_dispatch_status": .string(PraxisCmpDispatchStatus.rejected.rawValue),
+          "last_dispatch_updated_at": .string("2026-04-11T00:00:00Z"),
+        ]
+      )
+    )
+    _ = try await registry.deliveryTruthStore?.save(
+      .init(
+        id: "delivery.retry.projection.runtime.local:checker.local:runtimeFill",
+        packageID: packageID,
+        topic: "cmp.dispatch.checker.local",
+        targetAgentID: "checker.local",
+        status: .retryScheduled,
+        payloadSummary: "Retry dispatch runtime fill to checker",
+        updatedAt: "2026-04-11T00:05:00Z"
+      )
+    )
+
+    let rolesReadback = try await facade.cmpRolesFacade.readbackRoles(
+      .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let controlReadback = try await facade.cmpControlFacade.readbackControl(
+      .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let statusReadback = try await facade.cmpReadbackFacade.readbackStatus(
+      .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+
+    #expect(rolesReadback.latestDispatchStatus == .retryScheduled)
+    #expect(controlReadback.latestDispatchStatus == .retryScheduled)
+    #expect(statusReadback.latestDispatchStatus == .retryScheduled)
+  }
+
+  @Test
   func mpFacadeOwnsTheNeutralMpSurfaceWhileInspectionFacadeRemainsCompatible() async throws {
     let memoryStore = StubSemanticMemoryStore(
       bundleResult: .init(

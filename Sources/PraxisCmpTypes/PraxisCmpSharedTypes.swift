@@ -140,6 +140,16 @@ public enum PraxisCmpRecoveryStatus: String, Sendable, Codable {
   case degraded
 }
 
+/// Stable readback-only dispatch status exposed by CMP roles/control/status surfaces.
+public enum PraxisCmpLatestDispatchStatus: String, Sendable, Codable {
+  case prepared
+  case delivered
+  case acknowledged
+  case rejected
+  case retryScheduled
+  case expired
+}
+
 public enum PraxisCmpContextPackageFidelityLabel: String, Sendable, Codable {
   case exact
   case highSignal

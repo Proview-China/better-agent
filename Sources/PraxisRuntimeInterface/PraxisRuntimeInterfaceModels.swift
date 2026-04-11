@@ -1574,9 +1574,10 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
   public let activeLineStage: PraxisCmpActiveLineStage?
   public let qualityLabel: PraxisCmpCheckedSnapshotQualityLabel?
   public let packageKind: PraxisCmpContextPackageKind?
+  public let recoveryStatus: PraxisCmpRecoveryStatus?
   public let targetKind: PraxisCmpDispatchTargetKind?
   public let dispatchStatus: PraxisCmpDispatchStatus?
-  public let latestDispatchStatus: PraxisCmpDispatchStatus?
+  public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
 
   public init(
     kind: PraxisRuntimeInterfaceSnapshotKind,
@@ -1594,9 +1595,10 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     activeLineStage: PraxisCmpActiveLineStage? = nil,
     qualityLabel: PraxisCmpCheckedSnapshotQualityLabel? = nil,
     packageKind: PraxisCmpContextPackageKind? = nil,
+    recoveryStatus: PraxisCmpRecoveryStatus? = nil,
     targetKind: PraxisCmpDispatchTargetKind? = nil,
     dispatchStatus: PraxisCmpDispatchStatus? = nil,
-    latestDispatchStatus: PraxisCmpDispatchStatus? = nil
+    latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil
   ) {
     self.kind = kind
     self.title = title
@@ -1613,6 +1615,7 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     self.activeLineStage = activeLineStage
     self.qualityLabel = qualityLabel
     self.packageKind = packageKind
+    self.recoveryStatus = recoveryStatus
     self.targetKind = targetKind
     self.dispatchStatus = dispatchStatus
     self.latestDispatchStatus = latestDispatchStatus

@@ -1250,9 +1250,92 @@ struct HostRuntimeInterfaceTests {
     #expect(response.error == nil)
     #expect(response.snapshot?.kind == .cmpRecover)
     #expect(response.snapshot?.projectID == "cmp.local-runtime")
+    #expect(response.snapshot?.recoveryStatus == .aligned)
+    #expect(response.snapshot?.packageKind == .historicalReply)
     #expect(response.events.map(\.name) == ["cmp.project.recovered"])
     #expect(response.events.first?.detail == response.snapshot?.summary)
     #expect(response.events.first?.intentID == "package.interface.package-only")
+  }
+
+  @Test
+  func runtimeInterfaceReadbacksPreserveRetryScheduledLatestDispatchStatus() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-interface-retry-scheduled-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let packageID = PraxisCmpPackageID(rawValue: "projection.runtime.local:checker.local:runtimeFill")
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: packageID,
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .dispatched,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:10:00Z",
+        metadata: [
+          "last_dispatch_status": .string(PraxisCmpDispatchStatus.rejected.rawValue),
+          "last_dispatch_updated_at": .string("2026-04-11T00:00:00Z"),
+        ]
+      )
+    )
+    _ = try await registry.deliveryTruthStore?.save(
+      .init(
+        id: "delivery.retry.projection.runtime.local:checker.local:runtimeFill",
+        packageID: packageID,
+        topic: "cmp.dispatch.checker.local",
+        targetAgentID: "checker.local",
+        status: .retryScheduled,
+        payloadSummary: "Retry dispatch runtime fill to checker",
+        updatedAt: "2026-04-11T00:05:00Z"
+      )
+    )
+    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+
+    let rolesResponse = await runtimeInterface.handle(
+      .readbackCmpRoles(
+        .init(
+          payloadSummary: "Read CMP roles after retry scheduling",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
+    let controlResponse = await runtimeInterface.handle(
+      .readbackCmpControl(
+        .init(
+          payloadSummary: "Read CMP control after retry scheduling",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
+    let statusResponse = await runtimeInterface.handle(
+      .readbackCmpStatus(
+        .init(
+          payloadSummary: "Read CMP status after retry scheduling",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
+
+    #expect(rolesResponse.status == .success)
+    #expect(rolesResponse.snapshot?.kind == .cmpRoles)
+    #expect(rolesResponse.snapshot?.latestDispatchStatus == .retryScheduled)
+    #expect(controlResponse.status == .success)
+    #expect(controlResponse.snapshot?.kind == .cmpControl)
+    #expect(controlResponse.snapshot?.latestDispatchStatus == .retryScheduled)
+    #expect(statusResponse.status == .success)
+    #expect(statusResponse.snapshot?.kind == .cmpStatus)
+    #expect(statusResponse.snapshot?.latestDispatchStatus == .retryScheduled)
   }
 
   @Test
@@ -2949,7 +3032,7 @@ struct HostRuntimeInterfaceTests {
         packageKind: .runtimeFill,
         targetKind: .peer,
         dispatchStatus: .delivered,
-        latestDispatchStatus: .delivered
+        latestDispatchStatus: .retryScheduled
       )
     )
 
@@ -2962,7 +3045,30 @@ struct HostRuntimeInterfaceTests {
     #expect(responseJSON.contains(#""packageKind":"runtimeFill""#))
     #expect(responseJSON.contains(#""targetKind":"peer""#))
     #expect(responseJSON.contains(#""dispatchStatus":"delivered""#))
-    #expect(responseJSON.contains(#""latestDispatchStatus":"delivered""#))
+    #expect(responseJSON.contains(#""latestDispatchStatus":"retryScheduled""#))
+    #expect(decodedResponse == response)
+  }
+
+  @Test
+  func runtimeInterfaceCodecRoundTripsCmpRecoveryTypedSnapshotFieldsAsStableRawValues() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let response = PraxisRuntimeInterfaceResponse.success(
+      snapshot: .init(
+        kind: .cmpRecover,
+        title: "CMP Recover cmp.local-runtime",
+        summary: "Typed CMP recovery snapshot",
+        projectID: "cmp.local-runtime",
+        packageKind: .historicalReply,
+        recoveryStatus: .aligned
+      )
+    )
+
+    let responseData = try codec.encode(response)
+    let responseJSON = String(decoding: responseData, as: UTF8.self)
+    let decodedResponse = try codec.decodeResponse(responseData)
+
+    #expect(responseJSON.contains(#""packageKind":"historicalReply""#))
+    #expect(responseJSON.contains(#""recoveryStatus":"aligned""#))
     #expect(decodedResponse == response)
   }
 

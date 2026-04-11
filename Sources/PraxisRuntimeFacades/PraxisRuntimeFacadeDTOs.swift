@@ -488,7 +488,7 @@ public struct PraxisCmpRolesPanelSnapshot: Sendable, Equatable, Codable {
   public let roleCounts: [String: Int]
   public let roleStages: [String: String]
   public let latestPackageID: String?
-  public let latestDispatchStatus: PraxisCmpDispatchStatus?
+  public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
 
   public init(
     summary: String,
@@ -497,7 +497,7 @@ public struct PraxisCmpRolesPanelSnapshot: Sendable, Equatable, Codable {
     roleCounts: [String: Int],
     roleStages: [String: String],
     latestPackageID: String? = nil,
-    latestDispatchStatus: PraxisCmpDispatchStatus? = nil
+    latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil
   ) {
     self.summary = summary
     self.projectID = projectID
@@ -520,7 +520,7 @@ public struct PraxisCmpControlPanelSnapshot: Sendable, Equatable, Codable {
   public let recoveryPreference: PraxisCmpRecoveryPreference
   public let automation: [String: Bool]
   public let latestPackageID: String?
-  public let latestDispatchStatus: PraxisCmpDispatchStatus?
+  public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let latestTargetAgentID: String?
 
   public init(
@@ -534,7 +534,7 @@ public struct PraxisCmpControlPanelSnapshot: Sendable, Equatable, Codable {
     recoveryPreference: PraxisCmpRecoveryPreference,
     automation: [String: Bool],
     latestPackageID: String? = nil,
-    latestDispatchStatus: PraxisCmpDispatchStatus? = nil,
+    latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     latestTargetAgentID: String? = nil
   ) {
     self.summary = summary
@@ -692,7 +692,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
   public let readbackPriority: PraxisCmpReadbackPriority
   public let packageCount: Int
   public let latestPackageID: String?
-  public let latestDispatchStatus: PraxisCmpDispatchStatus?
+  public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let roleCounts: [String: Int]
   public let roleStages: [String: String]
 
@@ -704,7 +704,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
     readbackPriority: PraxisCmpReadbackPriority,
     packageCount: Int,
     latestPackageID: String? = nil,
-    latestDispatchStatus: PraxisCmpDispatchStatus? = nil,
+    latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     roleCounts: [String: Int],
     roleStages: [String: String]
   ) {
