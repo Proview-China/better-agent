@@ -862,6 +862,7 @@ struct PraxisRuntimeUseCasesTests {
     let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
     let dependencies = try makeDependencies(hostAdapters: registry)
     let readbackControlUseCase = PraxisReadbackCmpControlUseCase(dependencies: dependencies)
+    let readbackStatusUseCase = PraxisReadbackCmpStatusUseCase(dependencies: dependencies)
     let updateControlUseCase = PraxisUpdateCmpControlUseCase(dependencies: dependencies)
 
     let corruptedFields = [
@@ -925,6 +926,22 @@ struct PraxisRuntimeUseCasesTests {
         #expect(message.contains(corruptedField.1))
       } catch {
         Issue.record("Expected PraxisError.invalidInput from updateCmpControl, got \(error).")
+      }
+
+      do {
+        _ = try await readbackStatusUseCase.execute(
+          PraxisReadbackCmpStatusCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+        )
+        Issue.record("Expected readbackCmpStatus to reject corrupted persisted control descriptors.")
+      } catch let error as PraxisError {
+        guard case let .invalidInput(message) = error else {
+          Issue.record("Expected invalidInput from readbackCmpStatus, got \(error).")
+          return
+        }
+        #expect(message.contains(corruptedField.0))
+        #expect(message.contains(corruptedField.1))
+      } catch {
+        Issue.record("Expected PraxisError.invalidInput from readbackCmpStatus, got \(error).")
       }
     }
   }

@@ -3232,7 +3232,7 @@ private func updateCmpControl(
       "mode": .string(resolvedControl.mode.rawValue),
       "autoDispatch": .bool(resolvedControl.automation["autoDispatch"] ?? true),
       "targetAgentID": command.agentID.map(PraxisValue.string) ?? .null,
-      "decisionSummary": .string("CMP control updated without crossing into CLI or GUI."),
+      "decisionSummary": .string("CMP control updated within the host-neutral runtime surface."),
     ],
     dependencies: dependencies
   )
@@ -3240,7 +3240,7 @@ private func updateCmpControl(
   return PraxisCmpControlUpdate(
     projectID: command.projectID,
     agentID: command.agentID,
-    summary: "CMP control update persisted host-neutral execution defaults and automation gates without coupling callers to CLI or GUI.",
+    summary: "CMP control update persisted host-neutral execution defaults and automation gates without coupling callers to presentation-specific surfaces.",
     control: resolvedControl,
     storedAt: updatedAt,
     issues: issues
@@ -3274,7 +3274,7 @@ private func readbackCmpStatus(
     dependencies: dependencies
   )
 
-  let summary = "CMP status readback reconstructed role/control/object-model state from \(scope.projectionDescriptors.count) projection(s), \(scope.packageDescriptors.count) package(s), and \(scope.deliveryTruthRecords.count) delivery record(s) without coupling callers to CLI or GUI."
+  let summary = "CMP status readback reconstructed role/control/object-model state from \(scope.projectionDescriptors.count) projection(s), \(scope.packageDescriptors.count) package(s), and \(scope.deliveryTruthRecords.count) delivery record(s) without coupling callers to presentation-specific surfaces."
   return PraxisCmpStatusReadback(
     projectID: command.projectID,
     agentID: command.agentID,
