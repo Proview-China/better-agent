@@ -108,6 +108,15 @@ let package = Package(
     .executable(name: "praxis-cli", targets: ["PraxisCLI"]),
   ] + appleProducts,
   targets: [
+    .systemLibrary(
+      name: "SQLite3",
+      path: "Sources/SQLite3",
+      pkgConfig: "sqlite3",
+      providers: [
+        .apt(["libsqlite3-dev"]),
+        .brew(["sqlite3"]),
+      ],
+    ),
     .target(
       name: "PraxisCoreTypes",
       path: "Sources/PraxisCoreTypes",
@@ -386,6 +395,7 @@ let package = Package(
     .target(
       name: "PraxisRuntimeComposition",
       dependencies: [
+        "SQLite3",
         "PraxisGoal",
         "PraxisState",
         "PraxisTransition",
