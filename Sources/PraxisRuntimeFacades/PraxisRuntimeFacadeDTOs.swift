@@ -263,12 +263,12 @@ public struct PraxisCmpProjectRecoverySnapshot: Sendable, Equatable, Codable {
   public let projectID: String
   public let sourceAgentID: String
   public let targetAgentID: String
-  public let status: String
+  public let status: PraxisCmpRecoveryStatus
   public let recoverySource: String
   public let foundHistoricalContext: Bool
   public let snapshotID: String?
   public let packageID: String
-  public let packageKind: String
+  public let packageKind: PraxisCmpContextPackageKind
   public let projectionRecoverySummary: String?
   public let hydratedRecoverySummary: String
   public let resumableProjectionCount: Int
@@ -280,12 +280,12 @@ public struct PraxisCmpProjectRecoverySnapshot: Sendable, Equatable, Codable {
     projectID: String,
     sourceAgentID: String,
     targetAgentID: String,
-    status: String,
+    status: PraxisCmpRecoveryStatus,
     recoverySource: String,
     foundHistoricalContext: Bool,
     snapshotID: String?,
     packageID: String,
-    packageKind: String,
+    packageKind: PraxisCmpContextPackageKind,
     projectionRecoverySummary: String? = nil,
     hydratedRecoverySummary: String,
     resumableProjectionCount: Int,

@@ -135,6 +135,11 @@ public enum PraxisCmpContextPackageKind: String, Sendable, Codable {
   case historicalReply
 }
 
+public enum PraxisCmpRecoveryStatus: String, Sendable, Codable {
+  case aligned
+  case degraded
+}
+
 public enum PraxisCmpContextPackageFidelityLabel: String, Sendable, Codable {
   case exact
   case highSignal

@@ -2262,7 +2262,7 @@ private func recoverCmpProject(
     issues.append(projectionRecoveryPlan.summary)
   }
 
-  let status = issues.isEmpty ? "aligned" : "degraded"
+  let status: PraxisCmpRecoveryStatus = issues.isEmpty ? .aligned : .degraded
   let hydratedRecoverySummary = hydratedRecovery.missingProjectionIDs.isEmpty
     ? "Hydrated recovery can resume \(hydratedRecovery.resumableProjectionIDs.count) projection(s)."
     : "Hydrated recovery resumed \(hydratedRecovery.resumableProjectionIDs.count) projection(s) and is missing \(hydratedRecovery.missingProjectionIDs.count) projection(s)."

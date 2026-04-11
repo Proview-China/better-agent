@@ -592,8 +592,8 @@ struct HostRuntimeSurfaceTests {
     #expect(recovery.targetAgentID == "checker.local")
     #expect(recovery.snapshotID == "snapshot.package-only")
     #expect(recovery.packageID == "package.package-only")
-    #expect(recovery.packageKind == "historicalReply")
-    #expect(recovery.status == "aligned")
+    #expect(recovery.packageKind == .historicalReply)
+    #expect(recovery.status == .aligned)
     #expect(recovery.missingProjectionCount == 0)
     #expect(recovery.issues.isEmpty)
   }
@@ -651,8 +651,8 @@ struct HostRuntimeSurfaceTests {
     #expect(recovery.sourceAgentID == "runtime.local")
     #expect(recovery.snapshotID == "\(descriptor.projectionID.rawValue):checked")
     #expect(recovery.packageID == "\(descriptor.projectionID.rawValue):checker.local:historicalReply")
-    #expect(recovery.packageKind == "historicalReply")
-    #expect(recovery.status == "aligned")
+    #expect(recovery.packageKind == .historicalReply)
+    #expect(recovery.status == .aligned)
     #expect(recovery.resumableProjectionCount == 1)
     #expect(recovery.missingProjectionCount == 0)
     #expect(recovery.issues.isEmpty)
@@ -689,6 +689,49 @@ struct HostRuntimeSurfaceTests {
       }
       #expect(message.contains("snapshot.missing"))
       #expect(message.contains("without falling back to a different checked snapshot"))
+    }
+  }
+
+  @Test
+  func cmpProjectRecoverySnapshotCodecRoundTripsTypedStatusAndPackageKind() throws {
+    let snapshot = PraxisCmpProjectRecoverySnapshot(
+      summary: "Recovered CMP project context.",
+      projectID: "cmp.local-runtime",
+      sourceAgentID: "runtime.local",
+      targetAgentID: "checker.local",
+      status: .aligned,
+      recoverySource: "historical_context",
+      foundHistoricalContext: true,
+      snapshotID: "snapshot.recovery.codec",
+      packageID: "package.recovery.codec",
+      packageKind: .historicalReply,
+      projectionRecoverySummary: "Projection is resumable.",
+      hydratedRecoverySummary: "Hydrated recovery can resume 1 projection(s).",
+      resumableProjectionCount: 1,
+      missingProjectionCount: 0,
+      issues: []
+    )
+
+    let encoded = try encodeTestJSON(snapshot)
+    let decoded = try decodeTestJSON(PraxisCmpProjectRecoverySnapshot.self, from: encoded)
+
+    #expect(encoded.contains(#""status":"aligned""#))
+    #expect(encoded.contains(#""packageKind":"historicalReply""#))
+    #expect(decoded.status == .aligned)
+    #expect(decoded.packageKind == .historicalReply)
+  }
+
+  @Test
+  func cmpProjectRecoverySnapshotDecodeRejectsUnknownTypedFields() throws {
+    let cases = [
+      #"{"foundHistoricalContext":true,"hydratedRecoverySummary":"Hydrated recovery can resume 1 projection(s).","issues":[],"missingProjectionCount":0,"packageID":"package.recovery.codec","packageKind":"historicalReply","projectID":"cmp.local-runtime","projectionRecoverySummary":"Projection is resumable.","recoverySource":"historical_context","resumableProjectionCount":1,"snapshotID":"snapshot.recovery.codec","sourceAgentID":"runtime.local","status":"broken_status","summary":"Recovered CMP project context.","targetAgentID":"checker.local"}"#,
+      #"{"foundHistoricalContext":true,"hydratedRecoverySummary":"Hydrated recovery can resume 1 projection(s).","issues":[],"missingProjectionCount":0,"packageID":"package.recovery.codec","packageKind":"broken_kind","projectID":"cmp.local-runtime","projectionRecoverySummary":"Projection is resumable.","recoverySource":"historical_context","resumableProjectionCount":1,"snapshotID":"snapshot.recovery.codec","sourceAgentID":"runtime.local","status":"aligned","summary":"Recovered CMP project context.","targetAgentID":"checker.local"}"#
+    ]
+
+    for json in cases {
+      #expect(throws: DecodingError.self) {
+        try decodeTestJSON(PraxisCmpProjectRecoverySnapshot.self, from: json)
+      }
     }
   }
 

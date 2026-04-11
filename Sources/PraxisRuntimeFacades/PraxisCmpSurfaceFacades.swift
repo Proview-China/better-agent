@@ -137,7 +137,7 @@ public final class PraxisCmpProjectFacade: Sendable {
       foundHistoricalContext: recovery.foundHistoricalContext,
       snapshotID: recovery.snapshotID,
       packageID: recovery.packageID,
-      packageKind: recovery.packageKind.rawValue,
+      packageKind: recovery.packageKind,
       projectionRecoverySummary: recovery.projectionRecoverySummary,
       hydratedRecoverySummary: recovery.hydratedRecoverySummary,
       resumableProjectionCount: recovery.resumableProjectionCount,
