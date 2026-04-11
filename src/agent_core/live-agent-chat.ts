@@ -7,6 +7,9 @@ import OpenAI from "openai";
 
 import {
   buildBrowserGroundingEvidenceText,
+  browserTaskRequiresPageNativeEvidence,
+  browserTaskWantsGoldPrice,
+  shouldKeepBrowserTaskBlockedByObstruction,
   type BrowserTurnSummary,
   updateBrowserTurnSummary,
 } from "./live-agent-chat/browser-grounding.js";
@@ -23,6 +26,10 @@ import {
   registerTapCapabilityFamilyAssembly,
 } from "./integrations/tap-capability-family-assembly.js";
 import {
+  createTapCapabilityUsageIndex,
+  renderTapCapabilityUsageIndexForCore,
+} from "./tap-availability/index.js";
+import {
   createGoalSource,
 } from "./goal/index.js";
 import {
@@ -35,8 +42,12 @@ import {
 import type { DialogueTurn } from "./live-agent-chat/shared.js";
 import {
   applyCliDefaultsToCapabilityRequest,
+  buildDocReadCompletionAnswer,
+  buildSpreadsheetReadCompletionAnswer,
   createLiveChatLogPath,
   type CoreTaskStatus,
+  extractDocReadFactSummary,
+  extractSpreadsheetReadFactSummary,
   extractResponseTextMaybe,
   extractTextFromResponseLike,
   formatElapsed,
@@ -410,6 +421,13 @@ function buildCoreUserInput(input: {
     .listCapabilities()
     .map((manifest) => manifest.capabilityKey)
     .join(", ");
+  const capabilityUsageIndexText = renderTapCapabilityUsageIndexForCore(
+    createTapCapabilityUsageIndex({
+      availableCapabilityKeys: input.runtime.capabilityPool
+        .listCapabilities()
+        .map((manifest) => manifest.capabilityKey),
+    }),
+  );
   const cmpSummaryBlock = input.cmp
     ? [
       "CMP active package summary:",
@@ -469,6 +487,9 @@ function buildCoreUserInput(input: {
     input.groundingEvidenceText
       ? "If the evidence shows only blockers or candidates and a safe next tool step still exists, keep the task incomplete or blocked instead of claiming completion."
       : "",
+    input.groundingEvidenceText
+      ? "If the user requires facts that must come from the visible target page itself, such as a page-displayed timestamp or an on-page quote, do not use search results or external summaries as a substitute for those page-native facts."
+      : "",
     "If the user asks what you can do, what abilities are in the TAP pool, or asks for a capability introduction, answer directly from the registered capability inventory below instead of calling a tool.",
     "Do not use MCP capabilities merely to inspect your own already-registered TAP inventory.",
     input.toolResultText && !input.forceFinalAnswer
@@ -482,19 +503,19 @@ function buildCoreUserInput(input: {
       : "If the user asks to inspect or operate the local workspace/system, or asks for current online information, emit a structured action envelope immediately whenever a fitting capability exists.",
     input.forceFinalAnswer
       ? "Summarize the actual tool result and continue the task."
-      : "Exact JSON schema: {\"action\":\"reply|capability_call\",\"taskStatus\":\"completed|incomplete|blocked|exhausted\",\"responseText\":\"短中文句子\",\"capabilityRequest\":{\"capabilityKey\":\"shell.restricted|shell.session|test.run|repo.write|spreadsheet.write|doc.write|code.edit|code.patch|code.diff|git.status|git.diff|git.commit|git.push|browser.playwright|write_todos|code.read|code.ls|code.glob|code.grep|code.read_many|code.symbol_search|code.lsp|spreadsheet.read|doc.read|read_pdf|read_notebook|view_image|docs.read|search.web|search.fetch|search.ground|skill.use|skill.mount|skill.prepare|mcp.listTools|mcp.listResources|mcp.readResource|mcp.call|mcp.native.execute|request_user_input|request_permissions|audio.transcribe|speech.synthesize|image.generate\",\"reason\":\"为什么要用\",\"requestedTier\":\"B0|B1|B2|B3\",\"timeoutMs\":15000,\"input\":{}}}",
+      : "Exact JSON schema: {\"action\":\"reply|capability_call\",\"taskStatus\":\"completed|incomplete|blocked|exhausted\",\"responseText\":\"短中文句子\",\"capabilityRequest\":{\"capabilityKey\":\"shell.restricted|shell.session|test.run|repo.write|spreadsheet.write|doc.write|remote.exec|tracker.create|code.edit|code.patch|code.diff|git.status|git.diff|git.commit|git.push|browser.playwright|write_todos|code.read|code.ls|code.glob|code.grep|code.read_many|code.symbol_search|code.lsp|spreadsheet.read|doc.read|read_pdf|read_notebook|view_image|docs.read|search.web|search.fetch|search.ground|skill.use|skill.mount|skill.prepare|mcp.listTools|mcp.listResources|mcp.readResource|mcp.call|mcp.native.execute|request_user_input|request_permissions|audio.transcribe|speech.synthesize|image.generate\",\"reason\":\"为什么要用\",\"requestedTier\":\"B0|B1|B2|B3\",\"timeoutMs\":15000,\"input\":{}}}",
     input.forceFinalAnswer
       ? "Do not return JSON in the final answer."
       : "Return strict JSON only. No markdown fences. No prose outside JSON.",
     input.forceFinalAnswer
       ? ""
-      : "For shell.restricted/test.run, use structured input like {\"command\":\"zsh\",\"args\":[\"--version\"],\"cwd\":\".\",\"timeoutMs\":15000}. For shell.session, use {\"action\":\"start\",\"command\":\"python3\",\"args\":[\"-i\"],\"cwd\":\".\",\"yield_time_ms\":500} and later {\"action\":\"write\",\"sessionId\":\"...\",\"chars\":\"print(1)\\n\"}. For code.edit, use {\"path\":\"src/file.ts\",\"old_string\":\"旧文本\",\"new_string\":\"新文本\",\"allow_multiple\":false}. For code.patch, use {\"patch\":\"*** Begin Patch\\n*** Update File: path\\n@@\\n-旧\\n+新\\n*** End Patch\\n\"}. For git.status/git.diff use bounded cwd/path inputs. For git.commit, use explicit paths like {\"cwd\":\".\",\"paths\":[\"src/file.ts\"],\"message\":\"Clear commit reason\"} and avoid sweeping unrelated dirty files. For git.push, use normal push input like {\"cwd\":\".\",\"remote\":\"origin\",\"branch\":\"feature-name\"} and never request force semantics. For browser.playwright, use actions like {\"action\":\"navigate\",\"url\":\"https://example.com\",\"allowedDomains\":[\"example.com\"],\"headless\":true}, then {\"action\":\"snapshot\"} or {\"action\":\"screenshot\"}; file uploads stay blocked unless allowFileUploads=true. For spreadsheet.read, use {\"path\":\"data/report.xlsx\",\"maxEntries\":20} or {\"path\":\"data/table.csv\",\"maxEntries\":20}; optional sheet can narrow one workbook tab. For spreadsheet.write, use {\"path\":\"artifacts/report.xlsx\",\"headers\":[\"name\",\"value\"],\"rows\":[[\"gold\",4755.44]]}. For doc.read, use {\"path\":\"docs/file.docx\",\"maxEntries\":20,\"maxBytes\":12000}. For doc.write, use {\"path\":\"artifacts/status.docx\",\"title\":\"Status\",\"content\":\"...\",\"sections\":[{\"heading\":\"Observation\",\"body\":[\"...\"]}]}. For audio.transcribe, use {\"path\":\"artifacts/meeting.mp3\",\"language\":\"zh\",\"prompt\":\"保留关键专有名词\"}. For speech.synthesize, use {\"input\":\"要播报的文本\",\"voice\":\"alloy\",\"path\":\"memory/generated/tts.mp3\"}. For image.generate, use {\"prompt\":\"A precise technical illustration...\",\"path\":\"memory/generated/diagram.png\",\"size\":\"1024x1024\"}. For request_user_input use {\"questions\":[...]} and for request_permissions use {\"permissions\":{...},\"reason\":\"...\"}. For code.symbol_search, use {\"query\":\"SymbolName\",\"path\":\".\"}. For code.lsp, use {\"path\":\"src/file.ts\",\"operation\":\"document_symbol|definition|references|hover\",\"line\":1,\"character\":1}. For read_pdf, use {\"path\":\"docs/file.pdf\",\"pages\":\"1-3\"}. For read_notebook, use {\"path\":\"notebooks/demo.ipynb\",\"maxEntries\":20}. For view_image, use {\"path\":\"assets/mockup.png\",\"detail\":\"original\"} when the user wants you to inspect a local image. For write_todos use {\"todos\":[{\"description\":\"...\",\"status\":\"pending|in_progress|completed|blocked|cancelled\"}]}. Do not use shell operators like ||, &&, pipes, redirects, or inline shell strings. For code.glob/code.grep/code.read_many, prefer bounded path/pattern inputs instead of huge raw dumps.",
+      : "For shell.restricted, use structured input like {\"command\":\"pwd\",\"args\":[],\"cwd\":\".\",\"timeoutMs\":15000}. For test.run, use an actual test-oriented command such as {\"command\":\"npx\",\"args\":[\"tsx\",\"--test\",\"src/example.test.ts\"],\"cwd\":\".\",\"timeoutMs\":30000}; for plain JavaScript tests, {\"command\":\"node\",\"args\":[\"--test\",\"src/example.test.js\"],\"cwd\":\".\",\"timeoutMs\":30000} is also fine. For shell.session, use {\"action\":\"start\",\"command\":\"python3\",\"args\":[\"-i\"],\"cwd\":\".\",\"yield_time_ms\":500} and later {\"action\":\"write\",\"sessionId\":\"...\",\"chars\":\"print(1)\\n\"}. For remote.exec, use {\"host\":\"example-host\",\"user\":\"deploy\",\"command\":\"hostname\",\"args\":[],\"timeoutMs\":15000}. For tracker.create, use {\"title\":\"Follow up item\",\"description\":\"...\",\"labels\":[\"rollout\"]}. For code.edit, use either {\"path\":\"src/file.ts\",\"old_string\":\"旧文本\",\"new_string\":\"新文本\",\"allow_multiple\":false} or {\"path\":\"src/file.ts\",\"edits\":[{\"find\":\"旧文本\",\"replace\":\"新文本\"}]}; after editing docs or memory files, prefer docs.read for readback, and after editing source/build files, prefer code.read. For code.patch, use {\"patch\":\"*** Begin Patch\\n*** Update File: path\\n@@\\n-旧\\n+新\\n*** End Patch\\n\"}. For git.status/git.diff use bounded cwd/path inputs. For git.commit, use explicit paths like {\"cwd\":\".\",\"paths\":[\"src/file.ts\"],\"message\":\"Clear commit reason\"} and avoid sweeping unrelated dirty files. For git.push, use normal push input like {\"cwd\":\".\",\"remote\":\"origin\",\"branch\":\"feature-name\"} and never request force semantics. For browser.playwright, use actions like {\"action\":\"navigate\",\"url\":\"https://example.com\",\"allowedDomains\":[\"example.com\"],\"headless\":true}, then {\"action\":\"snapshot\"} or {\"action\":\"screenshot\"}; file uploads stay blocked unless allowFileUploads=true. For spreadsheet.read, use {\"path\":\"data/report.xlsx\",\"maxEntries\":20} or {\"path\":\"data/table.csv\",\"maxEntries\":20}; optional sheet can narrow one workbook tab. For spreadsheet.write, use {\"path\":\"artifacts/report.xlsx\",\"headers\":[\"name\",\"value\"],\"rows\":[[\"gold\",4755.44]]}. For doc.read, use {\"path\":\"docs/file.docx\",\"maxEntries\":20,\"maxBytes\":12000}. For docs.read, use {\"path\":\"memory/current-context.md\",\"maxBytes\":12000} for markdown, docs, or memory artifacts. For doc.write, use top-level fields only, not nested document wrappers; emit shapes like {\"path\":\"artifacts/status.docx\",\"format\":\"docx\",\"title\":\"Status\",\"content\":\"...\",\"sections\":[{\"heading\":\"Observation\",\"body\":[\"...\"]}]} or replace body with paragraphs:[\"...\"]. For audio.transcribe, use {\"path\":\"artifacts/meeting.mp3\",\"language\":\"zh\",\"prompt\":\"保留关键专有名词\"}. For speech.synthesize, use {\"input\":\"要播报的文本\",\"voice\":\"alloy\",\"path\":\"memory/generated/tts.mp3\"}. For image.generate, use {\"prompt\":\"A precise technical illustration...\",\"path\":\"memory/generated/diagram.png\",\"size\":\"1024x1024\"}. For request_user_input use {\"questions\":[...]} and for request_permissions use {\"permissions\":{...},\"reason\":\"...\"}. For code.symbol_search, use {\"query\":\"SymbolName\",\"path\":\".\"}. For code.lsp, use {\"path\":\"src/file.ts\",\"operation\":\"document_symbol|definition|references|hover\",\"line\":1,\"character\":1}. For read_pdf, use {\"path\":\"docs/file.pdf\",\"pages\":\"1-3\"}. For read_notebook, use {\"path\":\"notebooks/demo.ipynb\",\"maxEntries\":20}. For view_image, use {\"path\":\"assets/mockup.png\",\"detail\":\"original\"} when the user wants you to inspect a local image. For write_todos use {\"todos\":[{\"description\":\"...\",\"status\":\"pending|in_progress|completed|blocked|cancelled\"}]}, and keep at most one item in progress. Do not use shell operators like ||, &&, pipes, redirects, or inline shell strings for local shell capabilities. For code.glob/code.grep/code.read_many, prefer bounded path/pattern inputs instead of huge raw dumps.",
     input.forceFinalAnswer
       ? ""
       : "If the user asks for latest/current web information, browsing, live situation, or anything explicitly requiring the internet, prefer search.ground; use search.web for broad discovery and search.fetch for targeted page retrieval.",
     input.forceFinalAnswer
       ? ""
-      : "For search.web/search.ground, use input like {\"query\":\"问题本体\",\"freshness\":\"day\",\"citations\":\"preferred|required\"}. Provider/model defaults will be supplied by the CLI. For search.fetch, use input like {\"url\":\"https://...\",\"prompt\":\"要抽取什么\"}.",
+      : "For search.web/search.ground, use input like {\"query\":\"问题本体\",\"freshness\":\"day\",\"citations\":\"preferred|required\"}. Provider/model defaults will be supplied by the CLI. For search.fetch, use input like {\"url\":\"https://...\",\"prompt\":\"要抽取什么\"}, and inspect selectedBackend, resolvedBackend, fallbackApplied, finalUrl, transport, and page status facts before claiming completion.",
     input.forceFinalAnswer
       ? ""
       : "When using shell.restricted, prefer bounded output. Avoid commands that dump an entire large tree or huge raw search results in one go.",
@@ -506,8 +527,15 @@ function buildCoreUserInput(input: {
       : "For MCP capabilities, provide route.provider, route.model, and structured input. Examples: mcp.listTools => {\"route\":{...},\"input\":{\"connectionId\":\"...\"}}, mcp.listResources => {\"route\":{...},\"input\":{\"connectionId\":\"...\"}}, mcp.call => {\"route\":{...},\"input\":{\"connectionId\":\"...\",\"toolName\":\"...\",\"arguments\":{}}}.",
     input.forceFinalAnswer
       ? ""
-      : "If shell.restricted, shell.session, test.run, repo.write, spreadsheet.write, doc.write, code.edit, code.patch, code.diff, git.status, git.diff, git.commit, git.push, browser.playwright, write_todos, code.symbol_search, code.lsp, spreadsheet.read, doc.read, read_pdf, read_notebook, view_image, search.web, search.fetch, search.ground, request_user_input, request_permissions, audio.transcribe, speech.synthesize, or image.generate is already registered, treat it as ready-to-use TAP inventory rather than something that still needs user approval.",
+      : "If shell.restricted, shell.session, test.run, repo.write, spreadsheet.write, doc.write, remote.exec, tracker.create, code.edit, code.patch, code.diff, git.status, git.diff, git.commit, git.push, browser.playwright, write_todos, code.symbol_search, code.lsp, spreadsheet.read, doc.read, read_pdf, read_notebook, view_image, search.web, search.fetch, search.ground, request_user_input, request_permissions, audio.transcribe, speech.synthesize, or image.generate is already registered, treat it as ready-to-use TAP inventory rather than something that still needs user approval.",
     `Currently registered TAP capabilities: ${availableCapabilities || "(none)"}.`,
+    capabilityUsageIndexText
+      ? [
+        "",
+        "Priority hardened capability guide:",
+        capabilityUsageIndexText,
+      ].join("\n")
+      : "",
     "",
     "Latest user message:",
     input.userMessage,
@@ -720,10 +748,10 @@ async function runCoreActionPlanner(
         "For browser.playwright, emit exactly one reviewed action per capability_call.",
         "Do not emit browser steps arrays, actions arrays, or bundled browser master plans in one request. Let later loop iterations issue the next browser action.",
         "Schema:",
-        '{"action":"reply|capability_call","taskStatus":"completed|incomplete|blocked|exhausted","responseText":"user-facing text","capabilityRequest":{"capabilityKey":"shell.restricted|shell.session|test.run|repo.write|spreadsheet.write|doc.write|code.edit|code.patch|code.diff|git.status|git.diff|git.commit|git.push|browser.playwright|write_todos|code.read|code.ls|code.glob|code.grep|code.read_many|code.symbol_search|code.lsp|spreadsheet.read|doc.read|read_pdf|read_notebook|view_image|search.web|search.fetch|search.ground|skill.use|skill.mount|skill.prepare|mcp.listTools|mcp.listResources|mcp.readResource|mcp.call|mcp.native.execute|request_user_input|request_permissions|audio.transcribe|speech.synthesize|image.generate|...","reason":"short reason","input":{"command":"...","args":["..."],"cwd":"."},"requestedTier":"B0|B1|B2|B3","timeoutMs":20000}}',
+        '{"action":"reply|capability_call","taskStatus":"completed|incomplete|blocked|exhausted","responseText":"user-facing text","capabilityRequest":{"capabilityKey":"shell.restricted|shell.session|test.run|repo.write|spreadsheet.write|doc.write|remote.exec|tracker.create|code.edit|code.patch|code.diff|git.status|git.diff|git.commit|git.push|browser.playwright|write_todos|code.read|code.ls|code.glob|code.grep|code.read_many|code.symbol_search|code.lsp|spreadsheet.read|doc.read|read_pdf|read_notebook|view_image|search.web|search.fetch|search.ground|skill.use|skill.mount|skill.prepare|mcp.listTools|mcp.listResources|mcp.readResource|mcp.call|mcp.native.execute|request_user_input|request_permissions|audio.transcribe|speech.synthesize|image.generate|...","reason":"short reason","input":{"command":"...","args":["..."],"cwd":"."},"requestedTier":"B0|B1|B2|B3","timeoutMs":20000}}',
         "If action=reply, omit capabilityRequest.",
         "If action=capability_call, responseText should briefly tell the user what tool you are using and then proceed.",
-        "For search.web/search.ground, emit input like {\"query\":\"...\",\"freshness\":\"day\",\"citations\":\"preferred|required\"}. The CLI will supply provider/model defaults. For search.fetch, emit input like {\"url\":\"https://...\",\"prompt\":\"extract the needed facts\"}.",
+        "For search.web/search.ground, emit input like {\"query\":\"...\",\"freshness\":\"day\",\"citations\":\"preferred|required\"}. The CLI will supply provider/model defaults. For search.fetch, emit input like {\"url\":\"https://...\",\"prompt\":\"extract the needed facts\"}, then judge completion from selectedBackend, resolvedBackend, fallbackApplied, finalUrl, transport, and page status facts rather than from tool success alone.",
         "For skill.* and mcp.* capabilities, include structured route/input objects rather than vague prose.",
         "Recent transcript window:",
         formatTranscript(recentTranscript),
@@ -1289,7 +1317,9 @@ function inferDeterministicBrowserFollowupEnvelope(params: {
   const explicitUrl = extractFirstHttpUrl(params.userMessage);
   const wantsScreenshot = /(截图|screenshot)/iu.test(params.userMessage);
   const googleQuery = buildGoogleSearchQueryFromUserMessage(params.userMessage);
-  const wantsGoldPrice = /(金价|黄金|美元\/盎司|美刀\/盎司|usd\/oz|XAU\/USD)/iu.test(params.userMessage);
+  const wantsGoldPrice = browserTaskWantsGoldPrice(params.userMessage);
+  const requiresPageNativeEvidence = browserTaskRequiresPageNativeEvidence(params.userMessage);
+  const currentHeadless = typeof output.headless === "boolean" ? output.headless : undefined;
 
   if (
     action === "navigate"
@@ -1414,6 +1444,57 @@ function inferDeterministicBrowserFollowupEnvelope(params: {
     };
   }
 
+  if (
+    params.summary.activeObstruction
+    && pageUrl
+    && wantsGoldPrice
+    && requiresPageNativeEvidence
+    && !/google\.com\/search/iu.test(pageUrl)
+    && !pageUrl.startsWith("https://example.com")
+    && currentHeadless !== false
+  ) {
+    let allowedDomains: string[] | undefined;
+    try {
+      const parsed = new URL(pageUrl);
+      allowedDomains = parsed.hostname ? [parsed.hostname] : undefined;
+    } catch {
+      allowedDomains = undefined;
+    }
+    return {
+      action: "capability_call",
+      taskStatus: "incomplete",
+      responseText: "目标页被安全校验拦截，先用可视浏览器再重试一次。",
+      capabilityRequest: {
+        capabilityKey: "browser.playwright",
+        reason: "The target page is blocked by a security verification gate, so retry once with a visible browser before giving up.",
+        requestedTier: "B1",
+        timeoutMs: 15_000,
+        input: {
+          action: "navigate",
+          url: pageUrl,
+          ...(allowedDomains ? { allowedDomains } : {}),
+          headless: false,
+        },
+      },
+    };
+  }
+
+  if (
+    params.summary.activeObstruction
+    && pageUrl
+    && wantsGoldPrice
+    && requiresPageNativeEvidence
+    && !/google\.com\/search/iu.test(pageUrl)
+    && !pageUrl.startsWith("https://example.com")
+    && currentHeadless === false
+  ) {
+    return {
+      action: "reply",
+      taskStatus: "blocked",
+      responseText: "当前目标页面仍停留在安全校验页，页面里没有出现你要求的价格和页面显示时间；这类页面内事实不能用联网检索结果冒充，所以当前任务还没完成。",
+    };
+  }
+
   return undefined;
 }
 
@@ -1424,9 +1505,169 @@ function isEmptyCorePlaceholderAnswer(text: string | undefined): boolean {
   return text.trim() === "" || /^Core 没有返回正文，但链路已经跑完。?$/u.test(text.trim());
 }
 
+function looksLikeInterimPromise(text: string | undefined): boolean {
+  if (!text) {
+    return false;
+  }
+  const normalized = text.trim();
+  return /然后我会/u.test(normalized)
+    || /接下来我会/u.test(normalized)
+    || /随后我会/u.test(normalized)
+    || /先.+然后/u.test(normalized)
+    || /继续.+(回读|校验|确认|读取)/u.test(normalized);
+}
+
+function answerClaimsSpreadsheetRowsUnavailable(text: string | undefined): boolean {
+  if (!text) {
+    return false;
+  }
+  const normalized = text.trim();
+  return /被截断/u.test(normalized)
+    || /不可见/u.test(normalized)
+    || /无法基于当前已返回内容/u.test(normalized)
+    || /没有把单元格明细一并带回/u.test(normalized)
+    || /无法逐字列出/u.test(normalized);
+}
+
+function buildBlockedBrowserPageNativeReply(summary: BrowserTurnSummary): string {
+  return [
+    "当前任务还没完成。",
+    "目标页面仍停留在安全校验页，页面里没有出现你要求的价格和页面显示时间。",
+    "这类页面原生事实不能用联网检索结果冒充。",
+    summary.activeObstruction?.pageUrl ? `- 当前页面: ${summary.activeObstruction.pageUrl}` : undefined,
+    summary.activeObstruction?.pageTitle ? `- 当前标题: ${summary.activeObstruction.pageTitle}` : undefined,
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
 function extractFirstMatch(text: string, pattern: RegExp): string | undefined {
   const match = text.match(pattern);
   return match?.[1]?.trim();
+}
+
+function userMessageWantsEditedContentReadback(userMessage: string): boolean {
+  return /(修改后|改后|回读|确认内容|文件内容|全文|告诉我.*内容|readback|read back)/iu.test(userMessage);
+}
+
+function inferReadbackCapabilityForPath(pathValue: string): {
+  capabilityKey: string;
+  input: Record<string, unknown>;
+  responseText: string;
+} | undefined {
+  const normalizedPath = pathValue.replace(/\\/gu, "/");
+  const lowerPath = normalizedPath.toLowerCase();
+
+  if (lowerPath.endsWith(".xlsx") || lowerPath.endsWith(".csv") || lowerPath.endsWith(".tsv")) {
+    return {
+      capabilityKey: "spreadsheet.read",
+      input: { path: normalizedPath, maxEntries: 20 },
+      responseText: "继续回读修改后的表格内容。",
+    };
+  }
+
+  if (lowerPath.endsWith(".docx")) {
+    return {
+      capabilityKey: "doc.read",
+      input: { path: normalizedPath, maxEntries: 20, maxBytes: 12_000 },
+      responseText: "继续回读修改后的文档内容。",
+    };
+  }
+
+  if (lowerPath.endsWith(".pdf")) {
+    return {
+      capabilityKey: "read_pdf",
+      input: { path: normalizedPath, pages: "1-3" },
+      responseText: "继续回读修改后的 PDF 内容。",
+    };
+  }
+
+  if (lowerPath.endsWith(".ipynb")) {
+    return {
+      capabilityKey: "read_notebook",
+      input: { path: normalizedPath, maxEntries: 20 },
+      responseText: "继续回读修改后的 notebook 内容。",
+    };
+  }
+
+  if (/\.(png|jpe?g|gif|webp|bmp|svg)$/iu.test(lowerPath)) {
+    return {
+      capabilityKey: "view_image",
+      input: { path: normalizedPath, detail: "original" },
+      responseText: "继续查看修改后的图片内容。",
+    };
+  }
+
+  if (
+    normalizedPath.startsWith("docs/")
+    || normalizedPath.startsWith("memory/")
+    || lowerPath.endsWith(".md")
+    || lowerPath.endsWith(".txt")
+  ) {
+    return {
+      capabilityKey: "docs.read",
+      input: { path: normalizedPath, maxBytes: 12_000 },
+      responseText: "继续回读修改后的文档内容。",
+    };
+  }
+
+  return {
+    capabilityKey: "code.read",
+    input: { path: normalizedPath },
+    responseText: "继续回读修改后的文件内容。",
+  };
+}
+
+function inferDeterministicPostEditReadbackEnvelope(params: {
+  userMessage: string;
+  toolExecution: NonNullable<CoreTurnArtifacts["toolExecution"]>;
+}): CoreActionEnvelope | undefined {
+  if (params.toolExecution.capabilityKey !== "code.edit" || params.toolExecution.status !== "success") {
+    return undefined;
+  }
+  if (!userMessageWantsEditedContentReadback(params.userMessage)) {
+    return undefined;
+  }
+  const output = params.toolExecution.output && typeof params.toolExecution.output === "object"
+    ? params.toolExecution.output as Record<string, unknown>
+    : undefined;
+  const editedPath = readString(output?.path);
+  if (!editedPath) {
+    return undefined;
+  }
+  const readback = inferReadbackCapabilityForPath(editedPath);
+  if (!readback) {
+    return undefined;
+  }
+  return {
+    action: "capability_call",
+    taskStatus: "incomplete",
+    responseText: readback.responseText,
+    capabilityRequest: {
+      capabilityKey: readback.capabilityKey,
+      reason: `Read back ${editedPath} after code.edit so the user can inspect the updated content.`,
+      requestedTier: "B0",
+      timeoutMs: 15_000,
+      input: readback.input,
+    },
+  };
+}
+
+function inferDeterministicDocReadCompletionEnvelope(params: {
+  toolExecution?: NonNullable<CoreTurnArtifacts["toolExecution"]>;
+}): CoreActionEnvelope | undefined {
+  if (params.toolExecution?.capabilityKey !== "doc.read" || params.toolExecution.status !== "success") {
+    return undefined;
+  }
+  const answer = buildDocReadCompletionAnswer(
+    extractDocReadFactSummary(params.toolExecution.output),
+  );
+  if (!answer) {
+    return undefined;
+  }
+  return {
+    action: "reply",
+    taskStatus: "completed",
+    responseText: answer,
+  };
 }
 
 function synthesizeUserFacingToolAnswer(
@@ -1438,6 +1679,12 @@ function synthesizeUserFacingToolAnswer(
   const normalized = output && typeof output === "object"
     ? output as Record<string, unknown>
     : undefined;
+  if (capabilityKey === "spreadsheet.read") {
+    return buildSpreadsheetReadCompletionAnswer(extractSpreadsheetReadFactSummary(output));
+  }
+  if (capabilityKey === "doc.read") {
+    return buildDocReadCompletionAnswer(extractDocReadFactSummary(output));
+  }
   if (capabilityKey !== "browser.playwright") {
     return undefined;
   }
@@ -1486,7 +1733,9 @@ function synthesizeUserFacingToolAnswer(
   }
 
   return [
-    `浏览器自动化已经执行成功，这一步实际完成了 \`${action}\`。`,
+    executionStatus === "partial"
+      ? `浏览器自动化只完成了部分步骤，这一步实际执行了 \`${action}\`，但还不能直接算任务完成。`
+      : `浏览器自动化已经执行成功，这一步实际完成了 \`${action}\`。`,
     requestedHeadless === false
       ? processVerifiedHeaded === true
         ? "这次走的是有头路径，并且进程级证据表明实际 Chrome 命令行不含 `--headless`。"
@@ -1502,6 +1751,7 @@ function synthesizeUserFacingToolAnswer(
 }
 
 function deriveTerminalCoreTaskStatus(params: {
+  capabilityKey?: string;
   toolExecutionStatus?: string;
   forceFinalAnswer?: boolean;
   envelope?: CoreActionEnvelope;
@@ -1518,6 +1768,9 @@ function deriveTerminalCoreTaskStatus(params: {
     || status === "baseline_missing"
   ) {
     return "blocked";
+  }
+  if (status === "partial") {
+    return params.capabilityKey === "browser.playwright" ? "incomplete" : "completed";
   }
   if (params.forceFinalAnswer || status === "failed") {
     return "exhausted";
@@ -1731,9 +1984,19 @@ async function runCoreTurn(
     });
 
     const toolResultCapabilityKey = resolvedToolExecution.capabilityKey || capabilityRequest.capabilityKey;
+    const toolResultSummary = summarizeToolOutputForCore(
+      toolResultCapabilityKey,
+      resolvedToolExecution.output ?? {},
+      {
+        preserveBody: state.uiMode === "direct",
+      },
+    );
     const toolResultText = resolvedToolExecution.error
-      ? JSON.stringify({ error: resolvedToolExecution.error }, null, 2)
-      : summarizeToolOutputForCore(toolResultCapabilityKey, resolvedToolExecution.output ?? {});
+      ? JSON.stringify({
+        error: resolvedToolExecution.error,
+        output: JSON.parse(toolResultSummary),
+      }, null, 2)
+      : toolResultSummary;
     const inputImageUrls = toolResultCapabilityKey === "view_image"
       && resolvedToolExecution.output
       && typeof resolvedToolExecution.output === "object"
@@ -1769,20 +2032,40 @@ async function runCoreTurn(
     });
 
     const deterministicFollowup = !forceFinalAnswer
-      ? inferDeterministicBrowserFollowupEnvelope({
+      ? inferDeterministicPostEditReadbackEnvelope({
         userMessage,
         toolExecution: resolvedToolExecution,
-        summary: browserTurnSummary,
-      })
+      }) ?? inferDeterministicDocReadCompletionEnvelope({
+        toolExecution: resolvedToolExecution,
+      }) ?? inferDeterministicBrowserFollowupEnvelope({
+          userMessage,
+          toolExecution: resolvedToolExecution,
+          summary: browserTurnSummary,
+        })
       : undefined;
-    if (deterministicFollowup?.action === "capability_call" && deterministicFollowup.capabilityRequest) {
+    if (deterministicFollowup) {
       latestTaskStatus = normalizeCoreTaskStatus(deterministicFollowup);
-      actionEnvelope = deterministicFollowup;
-      rawAnswer = JSON.stringify(deterministicFollowup);
-      pendingToolResultText = undefined;
-      pendingInputImageUrls = undefined;
-      pendingIncompleteReplyText = undefined;
-      continue;
+      if (deterministicFollowup.action === "capability_call" && deterministicFollowup.capabilityRequest) {
+        actionEnvelope = deterministicFollowup;
+        rawAnswer = JSON.stringify(deterministicFollowup);
+        pendingToolResultText = undefined;
+        pendingInputImageUrls = undefined;
+        pendingIncompleteReplyText = undefined;
+        continue;
+      }
+      if (deterministicFollowup.action === "reply") {
+        return {
+          runId: latestRunId,
+          answer: extractResponseTextMaybe(deterministicFollowup.responseText),
+          dispatchStatus: completedCapabilityLoops > 1 ? "capability_loop_completed" : "capability_executed",
+          taskStatus: latestTaskStatus,
+          capabilityKey: capabilityRequest.capabilityKey,
+          capabilityResultStatus: resolvedToolExecution.status,
+          plannerRawAnswer: JSON.stringify(deterministicFollowup),
+          toolExecution: resolvedToolExecution,
+          eventTypes: latestEventTypes.length > 0 ? latestEventTypes : ["core.action_planner.reply"],
+        };
+      }
     }
 
     const followup = await runCoreModelPass({
@@ -1811,9 +2094,8 @@ async function runCoreTurn(
       "core.capability_bridge.executed",
     ];
     const followupRawAnswer = followup.answer?.trim() ?? "";
-    const followupEnvelope = !forceFinalAnswer
-      ? (deriveActionEnvelopeFromRaw(followupRawAnswer) ?? deriveCapabilityEnvelopeFromTapRequest(followupRawAnswer))
-      : undefined;
+    const followupEnvelope = deriveActionEnvelopeFromRaw(followupRawAnswer)
+      ?? (!forceFinalAnswer ? deriveCapabilityEnvelopeFromTapRequest(followupRawAnswer) : undefined);
 
     if (!forceFinalAnswer && followupEnvelope?.action === "capability_call" && followupEnvelope.capabilityRequest) {
       latestTaskStatus = normalizeCoreTaskStatus(followupEnvelope);
@@ -1859,18 +2141,58 @@ async function runCoreTurn(
       : synthesizedToolAnswer
         || actionEnvelope.responseText
         || rawAnswer;
-    latestTaskStatus = toolResultCapabilityKey === "search.ground"
-      && (resolvedToolExecution.status === "success" || resolvedToolExecution.status === "partial")
-      && !isEmptyCorePlaceholderAnswer(followupAnswer)
-      ? "completed"
-      : deriveTerminalCoreTaskStatus({
-        toolExecutionStatus: resolvedToolExecution.status,
-        forceFinalAnswer,
-        envelope: followupEnvelope,
+    const shouldPreferSpreadsheetAnswer =
+      toolResultCapabilityKey === "spreadsheet.read"
+      && typeof synthesizedToolAnswer === "string"
+      && (
+        isEmptyCorePlaceholderAnswer(modelFollowupAnswer)
+        || looksLikeInterimPromise(followupAnswer)
+        || answerClaimsSpreadsheetRowsUnavailable(followupAnswer)
+      );
+    const mustKeepBrowserBlocked =
+      (toolResultCapabilityKey === "search.ground"
+        || toolResultCapabilityKey === "browser.playwright")
+      && shouldKeepBrowserTaskBlockedByObstruction({
+        userMessage,
+        summary: browserTurnSummary,
       });
+    const effectiveFollowupAnswer = mustKeepBrowserBlocked
+      ? buildBlockedBrowserPageNativeReply(browserTurnSummary)
+      : shouldPreferSpreadsheetAnswer
+        ? synthesizedToolAnswer!
+        : followupAnswer;
+    if (
+      !forceFinalAnswer
+      && !shouldPreferSpreadsheetAnswer
+      && !mustKeepBrowserBlocked
+      && incompleteReplyRecoveries < maxIncompleteReplyRecoveries
+      && (isEmptyCorePlaceholderAnswer(modelFollowupAnswer) || looksLikeInterimPromise(effectiveFollowupAnswer))
+    ) {
+      incompleteReplyRecoveries += 1;
+      pendingIncompleteReplyText = extractResponseTextMaybe(effectiveFollowupAnswer);
+      actionEnvelope = undefined;
+      rawAnswer = followupRawAnswer;
+      continue;
+    }
+    latestTaskStatus = mustKeepBrowserBlocked
+      ? "blocked"
+      : shouldPreferSpreadsheetAnswer
+        ? "completed"
+        : followupEnvelope?.action === "reply"
+          ? normalizeCoreTaskStatus(followupEnvelope)
+          : toolResultCapabilityKey === "search.ground"
+        && (resolvedToolExecution.status === "success" || resolvedToolExecution.status === "partial")
+        && !isEmptyCorePlaceholderAnswer(effectiveFollowupAnswer)
+            ? "completed"
+            : deriveTerminalCoreTaskStatus({
+              capabilityKey: toolResultCapabilityKey,
+              toolExecutionStatus: resolvedToolExecution.status,
+              forceFinalAnswer,
+              envelope: followupEnvelope,
+            });
     return {
       runId: followup.runId,
-      answer: followupAnswer,
+      answer: effectiveFollowupAnswer,
       dispatchStatus: completedCapabilityLoops > 1 ? "capability_loop_completed" : "capability_executed",
       taskStatus: latestTaskStatus,
       capabilityKey: capabilityRequest.capabilityKey,
@@ -2034,6 +2356,8 @@ function createRuntime() {
         "code.edit",
         "code.patch",
         "code.diff",
+        "remote.exec",
+        "tracker.create",
         "shell.restricted",
         "shell.session",
         "test.run",

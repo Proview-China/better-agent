@@ -24,8 +24,10 @@ import {
   type NormalizedCodePatchInput,
   type NormalizedCommandInput,
   type NormalizedRepoWriteEntry,
+  type NormalizedRemoteExecInput,
   type NormalizedSkillDocGenerateInput,
   type NormalizedSpreadsheetWriteInput,
+  type NormalizedTrackerCreateInput,
   type ParsedPatchHunk,
   type ParsedPatchLine,
   type ParsedPatchOperation,
@@ -35,8 +37,10 @@ import {
   type PreparedGitDiffState,
   type PreparedGitPushState,
   type PreparedGitStatusState,
+  type PreparedRemoteExecState,
   type PreparedShellSessionState,
   type PreparedSpreadsheetWriteState,
+  type PreparedTrackerCreateState,
   type PreparedWriteTodosState,
   type RepoWriteEntry,
   type SpreadsheetWriteCellValue,
@@ -180,8 +184,21 @@ export function normalizeCodeEditInput(
   if (!candidatePath) {
     throw new Error("code.edit requires a non-empty path or file_path.");
   }
-  const oldString = asString(record.old_string) ?? asString(record.oldString);
-  const newString = asString(record.new_string) ?? asString(record.newString);
+  const firstEdit = Array.isArray(record.edits) && record.edits.length > 0
+    ? asRecord(record.edits[0])
+    : undefined;
+  const oldString = asString(record.old_string)
+    ?? asString(record.oldString)
+    ?? asString(firstEdit?.find)
+    ?? asString(firstEdit?.old_string)
+    ?? asString(firstEdit?.oldString)
+    ?? asString(firstEdit?.oldText);
+  const newString = asString(record.new_string)
+    ?? asString(record.newString)
+    ?? asString(firstEdit?.replace)
+    ?? asString(firstEdit?.new_string)
+    ?? asString(firstEdit?.newString)
+    ?? asString(firstEdit?.newText);
   if (oldString === undefined || newString === undefined) {
     throw new Error("code.edit requires old_string and new_string.");
   }
@@ -557,6 +574,53 @@ function normalizeSpreadsheetRows(record: Record<string, unknown>): {
   return { headers, rows };
 }
 
+function normalizeSpreadsheetWriteShape(record: Record<string, unknown>): {
+  sheetName?: string;
+  headers?: string[];
+  rows: SpreadsheetWriteCellValue[][];
+} {
+  const sheets = Array.isArray(record.sheets)
+    ? record.sheets
+      .map((entry) => asRecord(entry))
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    : [];
+
+  if (sheets.length === 0) {
+    const direct = normalizeSpreadsheetRows(record);
+    return {
+      sheetName: asString(record.sheet),
+      headers: direct.headers,
+      rows: direct.rows,
+    };
+  }
+
+  if (sheets.length !== 1) {
+    throw new Error("spreadsheet.write first version currently supports exactly one sheet.");
+  }
+
+  const sheetRecord = sheets[0];
+  const normalized = normalizeSpreadsheetRows({
+    headers: sheetRecord.headers ?? record.headers,
+    rows: sheetRecord.rows,
+  });
+
+  if (!normalized.headers && normalized.rows.length > 0) {
+    const firstRow = normalized.rows[0];
+    const looksLikeHeaderRow = Array.isArray(firstRow) && firstRow.length > 0
+      && firstRow.every((cell) => typeof cell === "string");
+    if (looksLikeHeaderRow) {
+      normalized.headers = firstRow.map((cell) => String(cell));
+      normalized.rows = normalized.rows.slice(1);
+    }
+  }
+
+  return {
+    sheetName: asString(sheetRecord.name) ?? asString(record.sheet),
+    headers: normalized.headers,
+    rows: normalized.rows,
+  };
+}
+
 export function normalizeSpreadsheetWriteInput(
   plan: CapabilityInvocationPlan,
   workspaceRoot: string,
@@ -585,11 +649,14 @@ export function normalizeSpreadsheetWriteInput(
   if (!format) {
     throw new Error("spreadsheet.write currently supports only .csv, .tsv, or .xlsx outputs.");
   }
-  if (asString(record.sheet)) {
-    throw new Error("spreadsheet.write first version does not yet support writing a named sheet.");
+  const requestedFormat = asString(record.format);
+  if (requestedFormat && requestedFormat !== format) {
+    throw new Error(`spreadsheet.write format ${requestedFormat} does not match output extension ${format}.`);
   }
-
-  const { headers, rows } = normalizeSpreadsheetRows(record);
+  const { headers, rows, sheetName } = normalizeSpreadsheetWriteShape(record);
+  if (sheetName && format !== "xlsx") {
+    throw new Error("spreadsheet.write named sheets are only supported for .xlsx outputs.");
+  }
   const columnCount = Math.max(
     headers?.length ?? 0,
     ...rows.map((row) => row.length),
@@ -599,6 +666,7 @@ export function normalizeSpreadsheetWriteInput(
     absolutePath: resolved.absolutePath,
     relativeWorkspacePath: resolved.relativeWorkspacePath,
     format,
+    sheetName,
     headers,
     rows,
     rowCount: rows.length,
@@ -614,10 +682,12 @@ function createDocWriteText(record: Record<string, unknown>): {
 } {
   const title = asString(record.title);
   const summary = asString(record.summary);
-  const content = asString(record.content);
+  const content = asString(record.content)
+    ?? asString(record.markdown)
+    ?? asString(record.text);
   const format = asString(record.format);
-  if (format && format !== "text" && format !== "markdown") {
-    throw new Error("doc.write format currently supports only text or markdown.");
+  if (format && format !== "text" && format !== "markdown" && format !== "docx") {
+    throw new Error("doc.write format currently supports only docx, text, or markdown.");
   }
 
   const sectionsValue = Array.isArray(record.sections) ? record.sections : [];
@@ -625,13 +695,16 @@ function createDocWriteText(record: Record<string, unknown>): {
     const section = asRecord(entry);
     const heading = section ? asString(section.heading) : undefined;
     const bodyValue = section?.body;
+    const paragraphsValue = Array.isArray(section?.paragraphs) ? section?.paragraphs : undefined;
     const body = typeof bodyValue === "string"
       ? bodyValue
       : Array.isArray(bodyValue)
         ? bodyValue.filter((item): item is string => typeof item === "string").join("\n")
+        : Array.isArray(paragraphsValue)
+          ? paragraphsValue.filter((item): item is string => typeof item === "string").join("\n")
         : undefined;
     if (!heading || !body) {
-      throw new Error(`doc.write section ${index + 1} requires heading and body.`);
+      throw new Error(`doc.write section ${index + 1} requires heading and body/paragraphs.`);
     }
     return { heading, body };
   });
@@ -690,6 +763,94 @@ export function normalizeDocWriteInput(
     textContent: rendered.textContent,
     title: rendered.title,
     sectionCount: rendered.sectionCount,
+    createParents: asBoolean(record.createParents) ?? true,
+  };
+}
+
+export function normalizeRemoteExecInput(
+  plan: CapabilityInvocationPlan,
+  defaultTimeoutMs: number,
+): PreparedRemoteExecState["input"] {
+  const record = asRecord(plan.input) ?? {};
+  const host = asString(record.host);
+  if (!host) {
+    throw new Error("remote.exec requires a non-empty host.");
+  }
+  const commandValue = record.command;
+  const commandArray = asStringArray(commandValue);
+  const command = commandArray?.[0] ?? asString(commandValue);
+  if (!command) {
+    throw new Error("remote.exec requires a non-empty command.");
+  }
+  const args = commandArray
+    ? [...commandArray.slice(1), ...(asStringArray(record.args) ?? [])]
+    : asStringArray(record.args) ?? [];
+  const timeoutMs =
+    asNumber(record.timeoutMs)
+    ?? asNumber(record.timeout_ms)
+    ?? plan.timeoutMs
+    ?? defaultTimeoutMs;
+  const maxOutputChars =
+    asNumber(record.maxOutputChars)
+    ?? tokenBudgetToMaxChars(record)
+    ?? 12_000;
+  return {
+    host,
+    user: asString(record.user),
+    port: asNumber(record.port),
+    command,
+    args,
+    cwd: asString(record.cwd),
+    env: asStringRecord(record.env),
+    identityFile: asString(record.identityFile) ?? asString(record.identity_file),
+    strictHostKeyChecking: asBoolean(record.strictHostKeyChecking)
+      ?? asBoolean(record.strict_host_key_checking)
+      ?? false,
+    timeoutMs,
+    maxOutputChars,
+    description: asString(record.description),
+  };
+}
+
+export function normalizeTrackerCreateInput(
+  plan: CapabilityInvocationPlan,
+  workspaceRoot: string,
+): PreparedTrackerCreateState["input"] {
+  const scope = getGrantedScope(plan);
+  const record = asRecord(plan.input) ?? {};
+  const title = asString(record.title);
+  if (!title) {
+    throw new Error("tracker.create requires a non-empty title.");
+  }
+  const rawStatus = asString(record.status) ?? "pending";
+  if (
+    rawStatus !== "pending"
+    && rawStatus !== "in_progress"
+    && rawStatus !== "completed"
+    && rawStatus !== "blocked"
+    && rawStatus !== "cancelled"
+  ) {
+    throw new Error(`tracker.create has unsupported status ${rawStatus}.`);
+  }
+  const trackerId = plan.planId;
+  const resolved = resolvePathWithinWorkspace({
+    workspaceRoot,
+    candidatePath: asString(record.path) ?? `memory/trackers/${trackerId}.json`,
+    scope,
+    operationCandidates: ["write", "mkdir", "tracker.create"],
+    label: "tracker.create path",
+  });
+  return {
+    trackerId,
+    absolutePath: resolved.absolutePath,
+    relativeWorkspacePath: resolved.relativeWorkspacePath,
+    title,
+    description: asString(record.description),
+    kind: asString(record.kind) ?? "task",
+    status: rawStatus,
+    labels: asStringArray(record.labels) ?? [],
+    owner: asString(record.owner),
+    metadata: asRecord(record.metadata),
     createParents: asBoolean(record.createParents) ?? true,
   };
 }

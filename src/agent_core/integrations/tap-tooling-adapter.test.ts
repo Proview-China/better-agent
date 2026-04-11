@@ -19,6 +19,7 @@ import {
   createTapToolingCapabilityAdapter,
   registerTapToolingBaseline,
 } from "./tap-tooling-adapter.js";
+import { createWorkspaceReadCapabilityAdapter } from "./workspace-read-adapter.js";
 
 function createLease(bindingId: string): CapabilityLease {
   return {
@@ -189,6 +190,18 @@ test("spreadsheet.write adapter writes csv and xlsx outputs inside the workspace
   const adapter = createTapToolingCapabilityAdapter("spreadsheet.write", {
     workspaceRoot,
   });
+  const readAdapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "spreadsheet.read",
+    allowedPathPatterns: [
+      "artifacts",
+      "artifacts/**",
+      "*.csv",
+      "**/*.csv",
+      "*.xlsx",
+      "**/*.xlsx",
+    ],
+  });
 
   const csvPrepared = await adapter.prepare(
     createPlan({
@@ -212,6 +225,26 @@ test("spreadsheet.write adapter writes csv and xlsx outputs inside the workspace
   const csvText = await readFile(path.join(workspaceRoot, "artifacts", "report.csv"), "utf8");
   assert.equal(csvResult.status, "success");
   assert.match(csvText, /gold,4755\.44/u);
+
+  const csvReadPrepared = await readAdapter.prepare(
+    createPlan({
+      planId: "plan-spreadsheet-read-csv-roundtrip",
+      capabilityKey: "spreadsheet.read",
+      operation: "read_spreadsheet",
+      input: {
+        path: "artifacts/report.csv",
+        maxEntries: 5,
+      },
+    }),
+    createLease("binding.spreadsheet.read.csv"),
+  );
+  const csvReadResult = await readAdapter.execute(csvReadPrepared);
+  assert.equal(csvReadResult.status, "success");
+  assert.equal((csvReadResult.output as { format?: string }).format, "csv");
+  assert.deepEqual(
+    (csvReadResult.output as { sheets?: Array<{ rows?: string[][] }> }).sheets?.[0]?.rows?.[0],
+    ["gold", "4755.44"],
+  );
 
   const xlsxPrepared = await adapter.prepare(
     createPlan({
@@ -237,12 +270,102 @@ test("spreadsheet.write adapter writes csv and xlsx outputs inside the workspace
   const xlsxBuffer = await readFile(path.join(workspaceRoot, "artifacts", "report.xlsx"));
   assert.equal(xlsxResult.status, "success");
   assert.equal(xlsxBuffer.subarray(0, 2).toString("utf8"), "PK");
+
+  const xlsxReadPrepared = await readAdapter.prepare(
+    createPlan({
+      planId: "plan-spreadsheet-read-xlsx-roundtrip",
+      capabilityKey: "spreadsheet.read",
+      operation: "read_spreadsheet",
+      input: {
+        path: "artifacts/report.xlsx",
+        maxEntries: 5,
+      },
+    }),
+    createLease("binding.spreadsheet.read.xlsx"),
+  );
+  const xlsxReadResult = await readAdapter.execute(xlsxReadPrepared);
+  assert.equal(xlsxReadResult.status, "success");
+  assert.equal((xlsxReadResult.output as { format?: string }).format, "xlsx");
+  assert.deepEqual(
+    (xlsxReadResult.output as { sheets?: Array<{ headers?: string[] }> }).sheets?.[0]?.headers,
+    ["name", "value"],
+  );
+  assert.deepEqual(
+    (xlsxReadResult.output as { sheets?: Array<{ rows?: string[][] }> }).sheets?.[0]?.rows?.[1],
+    ["silver", "31.2"],
+  );
+
+  const xlsxSheetPrepared = await adapter.prepare(
+    createPlan({
+      capabilityKey: "spreadsheet.write",
+      operation: "write_spreadsheet",
+      input: {
+        path: "artifacts/report-from-sheet.xlsx",
+        format: "xlsx",
+        sheets: [
+          {
+            name: "SmokeSheet",
+            rows: [
+              ["item", "price", "unit"],
+              ["gold", 4755.44, "usd/oz"],
+              ["silver", 31.2, "usd/oz"],
+            ],
+          },
+        ],
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["write", "mkdir", "spreadsheet.write"],
+        },
+      },
+    }),
+    createLease("binding.spreadsheet.write.sheet-payload"),
+  );
+  const xlsxSheetResult = await adapter.execute(xlsxSheetPrepared);
+  const xlsxSheetBuffer = await readFile(path.join(workspaceRoot, "artifacts", "report-from-sheet.xlsx"));
+  assert.equal(xlsxSheetResult.status, "success");
+  assert.equal((xlsxSheetResult.output as { sheetName?: string }).sheetName, "SmokeSheet");
+  assert.equal(xlsxSheetBuffer.subarray(0, 2).toString("utf8"), "PK");
+
+  const xlsxSheetReadPrepared = await readAdapter.prepare(
+    createPlan({
+      planId: "plan-spreadsheet-read-sheet-roundtrip",
+      capabilityKey: "spreadsheet.read",
+      operation: "read_spreadsheet",
+      input: {
+        path: "artifacts/report-from-sheet.xlsx",
+        sheet: "SmokeSheet",
+        maxEntries: 5,
+      },
+    }),
+    createLease("binding.spreadsheet.read.sheet-payload"),
+  );
+  const xlsxSheetReadResult = await readAdapter.execute(xlsxSheetReadPrepared);
+  assert.equal(xlsxSheetReadResult.status, "success");
+  assert.equal(
+    (xlsxSheetReadResult.output as { sheets?: Array<{ name?: string }> }).sheets?.[0]?.name,
+    "SmokeSheet",
+  );
+  assert.deepEqual(
+    (xlsxSheetReadResult.output as { sheets?: Array<{ headers?: string[] }> }).sheets?.[0]?.headers,
+    ["item", "price", "unit"],
+  );
+  assert.deepEqual(
+    (xlsxSheetReadResult.output as { sheets?: Array<{ rows?: string[][] }> }).sheets?.[0]?.rows?.[1],
+    ["silver", "31.2", "usd/oz"],
+  );
 });
 
 test("doc.write adapter writes docx output inside the workspace root", async () => {
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-"));
   const adapter = createTapToolingCapabilityAdapter("doc.write", {
     workspaceRoot,
+  });
+  const readAdapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "doc.read",
+    allowedPathPatterns: ["artifacts", "artifacts/**", "*.docx", "**/*.docx"],
   });
 
   const prepared = await adapter.prepare(
@@ -274,6 +397,77 @@ test("doc.write adapter writes docx output inside the workspace root", async () 
   const docxBuffer = await readFile(path.join(workspaceRoot, "artifacts", "status.docx"));
   assert.equal(result.status, "success");
   assert.equal(docxBuffer.subarray(0, 2).toString("utf8"), "PK");
+
+  const docReadPrepared = await readAdapter.prepare(
+    createPlan({
+      planId: "plan-doc-read-roundtrip",
+      capabilityKey: "doc.read",
+      operation: "read_document",
+      input: {
+        path: "artifacts/status.docx",
+        maxEntries: 10,
+        maxBytes: 4_000,
+      },
+    }),
+    createLease("binding.doc.read"),
+  );
+  const docReadResult = await readAdapter.execute(docReadPrepared);
+  assert.equal(docReadResult.status, "success");
+  assert.equal((docReadResult.output as { format?: string }).format, "docx");
+  assert.match(String((docReadResult.output as { content?: string }).content), /Status Note/u);
+  assert.match(String((docReadResult.output as { content?: string }).content), /Current price: 4755\.44 USD\/oz/u);
+
+  const plannerPrepared = await adapter.prepare(
+    createPlan({
+      capabilityKey: "doc.write",
+      operation: "write_docx",
+      input: {
+        path: "artifacts/status-from-paragraphs.docx",
+        format: "docx",
+        title: "P2 Doc Smoke",
+        sections: [
+          {
+            heading: "Summary",
+            paragraphs: ["验证 doc.write 和 doc.read 主链"],
+          },
+          {
+            heading: "Observation",
+            paragraphs: ["Current price: 4755.44 USD/oz", "Observed at: 08:48:38"],
+          },
+        ],
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["write", "mkdir", "doc.write"],
+        },
+      },
+    }),
+    createLease("binding.doc.write.paragraphs"),
+  );
+
+  const plannerResult = await adapter.execute(plannerPrepared);
+  const plannerBuffer = await readFile(path.join(workspaceRoot, "artifacts", "status-from-paragraphs.docx"));
+  assert.equal(plannerResult.status, "success");
+  assert.equal(plannerBuffer.subarray(0, 2).toString("utf8"), "PK");
+
+  const plannerReadPrepared = await readAdapter.prepare(
+    createPlan({
+      planId: "plan-doc-read-paragraph-roundtrip",
+      capabilityKey: "doc.read",
+      operation: "read_document",
+      input: {
+        path: "artifacts/status-from-paragraphs.docx",
+        maxEntries: 10,
+        maxBytes: 4_000,
+      },
+    }),
+    createLease("binding.doc.read.paragraphs"),
+  );
+  const plannerReadResult = await readAdapter.execute(plannerReadPrepared);
+  assert.equal(plannerReadResult.status, "success");
+  assert.match(String((plannerReadResult.output as { content?: string }).content), /P2 Doc Smoke/u);
+  assert.match(String((plannerReadResult.output as { content?: string }).content), /验证 doc\.write 和 doc\.read 主链/u);
 });
 
 test("shell.restricted adapter rejects destructive commands before execution", async () => {
@@ -821,7 +1015,7 @@ test("git.push adapter pushes the current branch without force semantics", async
   assert.equal((pushed.output as { branch?: string }).branch, "main");
 });
 
-test("code.diff adapter returns unified diff for before/after text and write_todos stores structured list", async () => {
+test("code.diff, remote.exec, tracker.create, and write_todos stay structured and bounded", async () => {
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "praxis-tap-tooling-"));
   const codeDiffAdapter = createTapToolingCapabilityAdapter("code.diff", { workspaceRoot });
   const diff = await codeDiffAdapter.execute(await codeDiffAdapter.prepare(
@@ -843,6 +1037,67 @@ test("code.diff adapter returns unified diff for before/after text and write_tod
   ));
   assert.equal(diff.status, "success");
   assert.match(String((diff.output as { diff?: string }).diff), /answer = 42/);
+
+  const remoteExecAdapter = createTapToolingCapabilityAdapter("remote.exec", {
+    workspaceRoot,
+    commandRunner: async (input) => {
+      assert.equal(input.command, "ssh");
+      assert.equal(input.args.includes("deploy@example-host"), true);
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: "remote-host\n",
+        stderr: "",
+        timedOut: false,
+      };
+    },
+  });
+  const remoteExec = await remoteExecAdapter.execute(await remoteExecAdapter.prepare(
+    createPlan({
+      capabilityKey: "remote.exec",
+      operation: "remote_exec",
+      input: {
+        host: "example-host",
+        user: "deploy",
+        command: "hostname",
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["exec", "remote.exec"],
+        },
+      },
+    }),
+    createLease("binding.remote.exec"),
+  ));
+  assert.equal(remoteExec.status, "success");
+  assert.equal((remoteExec.output as { host?: string }).host, "example-host");
+  assert.match(String((remoteExec.output as { stdout?: string }).stdout), /remote-host/u);
+
+  const trackerAdapter = createTapToolingCapabilityAdapter("tracker.create", { workspaceRoot });
+  const tracker = await trackerAdapter.execute(await trackerAdapter.prepare(
+    createPlan({
+      capabilityKey: "tracker.create",
+      operation: "create_tracker",
+      input: {
+        title: "Verify rollout result",
+        description: "Check the remote host after the deploy finishes.",
+        labels: ["rollout", "follow-up"],
+      },
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["workspace/**"],
+          allowedOperations: ["write", "mkdir", "tracker.create"],
+        },
+      },
+    }),
+    createLease("binding.tracker.create"),
+  ));
+  assert.equal(tracker.status, "success");
+  const trackerPath = path.join(workspaceRoot, String((tracker.output as { path?: string }).path));
+  const trackerArtifact = JSON.parse(await readFile(trackerPath, "utf8")) as { title?: string; labels?: string[] };
+  assert.equal(trackerArtifact.title, "Verify rollout result");
+  assert.deepEqual(trackerArtifact.labels, ["rollout", "follow-up"]);
 
   const todosAdapter = createTapToolingCapabilityAdapter("write_todos", { workspaceRoot });
   const todos = await todosAdapter.execute(await todosAdapter.prepare(
@@ -1398,6 +1653,8 @@ test("registerTapToolingBaseline makes B-group capabilities available to bootstr
     "repo.write",
     "spreadsheet.write",
     "doc.write",
+    "remote.exec",
+    "tracker.create",
     "code.edit",
     "code.patch",
     "shell.restricted",
@@ -1412,10 +1669,10 @@ test("registerTapToolingBaseline makes B-group capabilities available to bootstr
     "skill.doc.generate",
     "write_todos",
   ]);
-  assert.equal(result.packages.length, 16);
-  assert.equal(result.manifests.length, 16);
-  assert.equal(result.bindings.length, 16);
-  assert.equal(result.activationFactoryRefs.length, 16);
+  assert.equal(result.packages.length, 18);
+  assert.equal(result.manifests.length, 18);
+  assert.equal(result.bindings.length, 18);
+  assert.equal(result.activationFactoryRefs.length, 18);
 
   const reviewer = createTapReviewerProfile();
   assert.equal(reviewer.baselineCapabilities?.includes("repo.write"), false);

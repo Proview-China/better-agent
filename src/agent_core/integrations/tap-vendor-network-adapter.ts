@@ -65,12 +65,38 @@ export interface TapVendorNetworkFetcherResponse {
   redirectTarget?: string;
   fallbackApplied?: boolean;
   errorCode?: string;
+  networkPhase?: SearchFetchNetworkPhase;
+  failureClass?: SearchFetchFailureClass;
+  denyReason?: string;
+  resolvedAddresses?: string[];
 }
 
 export type SearchFetchBackendKind =
   | "anthropic-claude-code-native"
   | "gemini-cli-native"
   | "portable-fallback";
+
+export type SearchFetchNetworkPhase =
+  | "url_validation"
+  | "dns"
+  | "connect"
+  | "response"
+  | "fallback";
+
+export type SearchFetchFailureClass =
+  | "invalid_url"
+  | "invalid_protocol"
+  | "credentialed_url"
+  | "private_target"
+  | "private_resolution"
+  | "dns_verification_failed"
+  | "redirect_limit"
+  | "redirect_missing_location"
+  | "redirect_host_change"
+  | "http_error"
+  | "tls_handshake"
+  | "transport_error"
+  | "fallback_failed";
 
 export type SearchWebBackendKind =
   | "openai-codex-style-web-search"
@@ -158,6 +184,9 @@ interface SearchFetchExecutionResult {
   resolvedBackend: SearchFetchBackendKind;
   layer: "native" | "portable";
   fallbackApplied: boolean;
+  fallbackReasonCode?: string;
+  fallbackReasonPhase?: SearchFetchNetworkPhase;
+  fallbackReasonClass?: SearchFetchFailureClass;
 }
 
 interface PortableSearchResult {
@@ -178,6 +207,8 @@ type PreparedVendorNetworkState =
 class SearchFetchExecutionError extends Error {
   readonly code: string;
   readonly fallbackEligible: boolean;
+  readonly networkPhase?: SearchFetchNetworkPhase;
+  readonly failureClass?: SearchFetchFailureClass;
   readonly details?: Record<string, unknown>;
 
   constructor(
@@ -193,6 +224,8 @@ class SearchFetchExecutionError extends Error {
     this.name = "SearchFetchExecutionError";
     this.code = code;
     this.fallbackEligible = options?.fallbackEligible ?? false;
+    this.networkPhase = options?.networkPhase;
+    this.failureClass = options?.failureClass;
     this.details = options?.details;
   }
 }
@@ -610,21 +643,34 @@ function validateFetchUrl(url: string): URL {
     throw new SearchFetchExecutionError(
       "search_fetch_invalid_url",
       `search.fetch received an invalid URL: ${url}`,
-      { details: { url }, cause },
+      {
+        networkPhase: "url_validation",
+        failureClass: "invalid_url",
+        details: { url },
+        cause,
+      },
     );
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new SearchFetchExecutionError(
       "search_fetch_invalid_protocol",
       `search.fetch only supports http/https URLs: ${url}`,
-      { details: { url, protocol: parsed.protocol } },
+      {
+        networkPhase: "url_validation",
+        failureClass: "invalid_protocol",
+        details: { url, protocol: parsed.protocol },
+      },
     );
   }
   if (parsed.username || parsed.password) {
     throw new SearchFetchExecutionError(
       "search_fetch_credentialed_url_denied",
       `search.fetch denied credentialed URL: ${url}`,
-      { details: { url } },
+      {
+        networkPhase: "url_validation",
+        failureClass: "credentialed_url",
+        details: { url },
+      },
     );
   }
   return parsed;
@@ -633,10 +679,31 @@ function validateFetchUrl(url: string): URL {
 async function ensureNotDeniedTarget(url: string, verifyDns: boolean): Promise<void> {
   const parsed = validateFetchUrl(url);
   if (isDeniedHostname(parsed.hostname)) {
+    let denyReason = "private_or_local_host";
+    const lowered = sanitizeHostname(parsed.hostname);
+    if (lowered === "localhost") {
+      denyReason = "localhost";
+    } else if (lowered === "127.0.0.1" || lowered === "::1") {
+      denyReason = "loopback";
+    } else if (lowered.endsWith(".local")) {
+      denyReason = "multicast_dns_local";
+    } else if (lowered.endsWith(".internal")) {
+      denyReason = "internal_hostname";
+    } else if (lowered.startsWith("198.18.") || lowered.startsWith("198.19.")) {
+      denyReason = "benchmark_reserved_198_18";
+    }
     throw new SearchFetchExecutionError(
       "search_fetch_private_target_denied",
       `search.fetch denied local or private target: ${parsed.hostname}`,
-      { details: { url, hostname: parsed.hostname } },
+      {
+        networkPhase: "url_validation",
+        failureClass: "private_target",
+        details: {
+          url,
+          hostname: parsed.hostname,
+          denyReason,
+        },
+      },
     );
   }
   if (!verifyDns || isIP(sanitizeHostname(parsed.hostname))) {
@@ -648,7 +715,16 @@ async function ensureNotDeniedTarget(url: string, verifyDns: boolean): Promise<v
       throw new SearchFetchExecutionError(
         "search_fetch_private_resolution_denied",
         `search.fetch denied host that resolves to a private address: ${parsed.hostname}`,
-        { details: { url, hostname: parsed.hostname, addresses: addresses.map((entry) => entry.address) } },
+        {
+          networkPhase: "dns",
+          failureClass: "private_resolution",
+          details: {
+            url,
+            hostname: parsed.hostname,
+            resolvedAddresses: addresses.map((entry) => entry.address),
+            denyReason: "private_resolution",
+          },
+        },
       );
     }
   } catch (error) {
@@ -660,6 +736,8 @@ async function ensureNotDeniedTarget(url: string, verifyDns: boolean): Promise<v
       `search.fetch could not verify whether ${parsed.hostname} resolves to a private address.`,
       {
         fallbackEligible: true,
+        networkPhase: "dns",
+        failureClass: "dns_verification_failed",
         details: { url, hostname: parsed.hostname },
         cause: error,
       },
@@ -707,13 +785,51 @@ async function fetchResponse(
   backend: SearchFetchBackendKind,
   redirect: "follow" | "manual" | "error",
 ): Promise<Response> {
-  return fetch(url, {
-    headers: {
-      "user-agent": getVendorNetworkUserAgent(backend),
-      accept: "text/markdown, text/plain, text/html, application/json, */*",
-    },
-    redirect,
-  });
+  try {
+    return await fetch(url, {
+      headers: {
+        "user-agent": getVendorNetworkUserAgent(backend),
+        accept: "text/markdown, text/plain, text/html, application/json, */*",
+      },
+      redirect,
+    });
+  } catch (error) {
+    const errorRecord = error as
+      | (Error & { code?: unknown; cause?: { code?: unknown } })
+      | undefined;
+    const directCode = typeof errorRecord?.code === "string" ? errorRecord.code : undefined;
+    const causeCode =
+      errorRecord?.cause && typeof errorRecord.cause.code === "string"
+        ? errorRecord.cause.code
+        : undefined;
+    const errorCode = directCode ?? causeCode;
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    const lowered = `${errorCode ?? ""} ${message}`.toLowerCase();
+    const isTlsFailure =
+      lowered.includes("certificate")
+      || lowered.includes("tls")
+      || lowered.includes("ssl")
+      || lowered.includes("issuer_cert")
+      || lowered.includes("self signed");
+    throw new SearchFetchExecutionError(
+      isTlsFailure
+        ? "search_fetch_tls_handshake_failed"
+        : "search_fetch_transport_failed",
+      `search.fetch transport failed for ${url}`,
+      {
+        fallbackEligible: true,
+        networkPhase: "connect",
+        failureClass: isTlsFailure ? "tls_handshake" : "transport_error",
+        details: {
+          url,
+          errorCode,
+          errorName: error instanceof Error ? error.name : undefined,
+          message,
+        },
+        cause: error,
+      },
+    );
+  }
 }
 
 async function fetchPortableSearchPages(
@@ -741,7 +857,12 @@ async function fetchClaudeCodeNativePage(
     throw new SearchFetchExecutionError(
       "search_fetch_redirect_limit_exceeded",
       "search.fetch hit the Claude-style redirect limit.",
-      { fallbackEligible: true, details: { url, redirectDepth } },
+      {
+        fallbackEligible: true,
+        networkPhase: "response",
+        failureClass: "redirect_limit",
+        details: { url, redirectDepth },
+      },
     );
   }
 
@@ -753,7 +874,12 @@ async function fetchClaudeCodeNativePage(
       throw new SearchFetchExecutionError(
         "search_fetch_redirect_missing_location",
         "search.fetch received a redirect response without a Location header.",
-        { fallbackEligible: true, details: { url, status: response.status } },
+        {
+          fallbackEligible: true,
+          networkPhase: "response",
+          failureClass: "redirect_missing_location",
+          details: { url, status: response.status },
+        },
       );
     }
     const redirectUrl = new URL(location, url).toString();
@@ -774,13 +900,20 @@ async function fetchClaudeCodeNativePage(
       backend: "anthropic-claude-code-native",
       redirectTarget: redirectUrl,
       errorCode: "redirect_host_change",
+      networkPhase: "response",
+      failureClass: "redirect_host_change",
     };
   }
   if (!response.ok) {
     throw new SearchFetchExecutionError(
       "search_fetch_http_error",
       `search.fetch received HTTP ${response.status} from ${url}`,
-      { fallbackEligible: true, details: { url, status: response.status } },
+      {
+        fallbackEligible: true,
+        networkPhase: "response",
+        failureClass: "http_error",
+        details: { url, status: response.status },
+      },
     );
   }
   const rawContent = await response.text();
@@ -809,7 +942,12 @@ async function fetchGeminiNativePage(
     throw new SearchFetchExecutionError(
       "search_fetch_redirect_limit_exceeded",
       "search.fetch hit the Gemini-style redirect limit.",
-      { fallbackEligible: true, details: { url, redirectDepth } },
+      {
+        fallbackEligible: true,
+        networkPhase: "response",
+        failureClass: "redirect_limit",
+        details: { url, redirectDepth },
+      },
     );
   }
 
@@ -821,7 +959,12 @@ async function fetchGeminiNativePage(
       throw new SearchFetchExecutionError(
         "search_fetch_redirect_missing_location",
         "search.fetch received a redirect response without a Location header.",
-        { fallbackEligible: true, details: { url, status: response.status } },
+        {
+          fallbackEligible: true,
+          networkPhase: "response",
+          failureClass: "redirect_missing_location",
+          details: { url, status: response.status },
+        },
       );
     }
     const redirectUrl = new URL(location, url).toString();
@@ -832,7 +975,12 @@ async function fetchGeminiNativePage(
     throw new SearchFetchExecutionError(
       "search_fetch_http_error",
       `search.fetch received HTTP ${response.status} from ${url}`,
-      { fallbackEligible: true, details: { url, status: response.status } },
+      {
+        fallbackEligible: true,
+        networkPhase: "response",
+        failureClass: "http_error",
+        details: { url, status: response.status },
+      },
     );
   }
   const rawContent = await response.text();
@@ -886,7 +1034,11 @@ async function fetchPortablePage(url: string, maxChars: number): Promise<TapVend
     throw new SearchFetchExecutionError(
       "search_fetch_fallback_failed",
       `search.fetch portable fallback failed for ${finalUrl}`,
-      { details: { url, finalUrl, status: jinaResponse.status } },
+      {
+        networkPhase: "fallback",
+        failureClass: "fallback_failed",
+        details: { url, finalUrl, status: jinaResponse.status },
+      },
     );
   }
   const jinaText = await jinaResponse.text();
@@ -979,6 +1131,9 @@ async function defaultSearchFetchExecutor(
       resolvedBackend: "portable-fallback",
       layer: "portable",
       fallbackApplied: true,
+      fallbackReasonCode: error.code,
+      fallbackReasonPhase: error.networkPhase,
+      fallbackReasonClass: error.failureClass,
     };
   }
 }
@@ -1302,6 +1457,9 @@ export class TapVendorNetworkAdapter implements CapabilityAdapter {
             selectedBackend: fetchResult.selectedBackend,
             resolvedBackend: fetchResult.resolvedBackend,
             fallbackApplied: fetchResult.fallbackApplied,
+            fallbackReasonCode: fetchResult.fallbackReasonCode,
+            fallbackReasonPhase: fetchResult.fallbackReasonPhase,
+            fallbackReasonClass: fetchResult.fallbackReasonClass,
             pages: fetchResult.pages,
           },
           evidence: fetchResult.pages.map((page) => ({
@@ -1311,6 +1469,8 @@ export class TapVendorNetworkAdapter implements CapabilityAdapter {
             status: page.status,
             backend: page.backend,
             redirectTarget: page.redirectTarget,
+            networkPhase: page.networkPhase,
+            failureClass: page.failureClass,
           })),
           metadata: {
             capabilityKey: state.capabilityKey,
@@ -1321,6 +1481,9 @@ export class TapVendorNetworkAdapter implements CapabilityAdapter {
             resolvedBackend: fetchResult.resolvedBackend,
             layer: fetchResult.layer,
             fallbackApplied: fetchResult.fallbackApplied,
+            fallbackReasonCode: fetchResult.fallbackReasonCode,
+            fallbackReasonPhase: fetchResult.fallbackReasonPhase,
+            fallbackReasonClass: fetchResult.fallbackReasonClass,
           },
         });
       }
@@ -1425,6 +1588,14 @@ export class TapVendorNetworkAdapter implements CapabilityAdapter {
         metadata: {
           capabilityKey: state.capabilityKey,
           runtimeKind: this.runtimeKind,
+          networkPhase:
+            error instanceof SearchFetchExecutionError
+              ? error.networkPhase
+              : undefined,
+          failureClass:
+            error instanceof SearchFetchExecutionError
+              ? error.failureClass
+              : undefined,
         },
       });
     }

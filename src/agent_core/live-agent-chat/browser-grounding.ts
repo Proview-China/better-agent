@@ -59,6 +59,23 @@ export interface BrowserTurnSummary {
   activeObstruction?: BrowserTurnObstruction;
 }
 
+export function browserTaskWantsGoldPrice(userMessage: string): boolean {
+  return /(金价|黄金|现货黄金|现货金|伦敦金|gold spot|spot gold|美元\/盎司|美刀\/盎司|usd\/oz|XAU\/USD|XAUUSD)/iu.test(userMessage);
+}
+
+export function browserTaskRequiresPageNativeEvidence(userMessage: string): boolean {
+  return /(页面显示(?:的)?(?:时间|报价|价格)|页面(?:上|里)(?:显示|看到|写着)|页面时间|页面上的时间|从页面读取|打开页面|页内|可见(?:内容|报价|时间)?|visible page|on-page|page time|displayed time|shown on page|as displayed)/iu.test(userMessage);
+}
+
+export function shouldKeepBrowserTaskBlockedByObstruction(params: {
+  userMessage: string;
+  summary: BrowserTurnSummary;
+}): boolean {
+  return Boolean(params.summary.activeObstruction)
+    && browserTaskWantsGoldPrice(params.userMessage)
+    && browserTaskRequiresPageNativeEvidence(params.userMessage);
+}
+
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
@@ -66,6 +83,46 @@ function readString(value: unknown): string | undefined {
 function extractFirstMatch(text: string, pattern: RegExp): string | undefined {
   const match = text.match(pattern);
   return match?.[1]?.trim();
+}
+
+function countMatches(text: string, patterns: RegExp[]): number {
+  return patterns.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+}
+
+function isSecurityVerificationPage(params: {
+  pageUrl?: string;
+  pageTitle?: string;
+  text?: string;
+}): boolean {
+  const pageTitle = params.pageTitle ?? "";
+  const text = params.text ?? "";
+  const url = params.pageUrl ?? "";
+  const titleSignals = [
+    /just a moment/iu,
+    /attention required/iu,
+    /verify you are human/iu,
+    /security check/iu,
+    /checking your browser/iu,
+  ];
+  const textSignals = [
+    /performing security verification/iu,
+    /verify you are human/iu,
+    /checking your browser before accessing/iu,
+    /enable javascript and cookies to continue/iu,
+    /ray id/iu,
+    /challenge-platform/iu,
+    /attention required/iu,
+    /security check(?:ing)?/iu,
+  ];
+  const hasChallengeUrl = /\/cdn-cgi\/challenge-platform\//iu.test(url);
+  const titleSignalCount = countMatches(pageTitle, titleSignals);
+  const textSignalCount = countMatches(text, textSignals);
+  const mentionsCloudflare = /cloudflare/iu.test(text);
+
+  return hasChallengeUrl
+    || titleSignalCount >= 1
+    || textSignalCount >= 2
+    || (mentionsCloudflare && textSignalCount >= 1);
 }
 
 function extractGoldPriceUsdPerOunce(text: string): string | undefined {
@@ -337,13 +394,20 @@ export function updateBrowserTurnSummary(
   const snapshotPath = readString(normalized.snapshotPath);
   const blockedByInterstitial = normalized.blockedByInterstitial === true
     || Boolean(pageUrl && /\/sorry\//iu.test(pageUrl));
+  const blockedBySecurityVerification = isSecurityVerificationPage({
+    pageUrl,
+    pageTitle,
+    text,
+  });
 
-  if (blockedByInterstitial) {
+  if (blockedByInterstitial || blockedBySecurityVerification) {
     next.activeObstruction = {
       kind: "interstitial",
       pageUrl,
       pageTitle,
-      detail: "The current browser page is still blocked by an interstitial or anti-bot gate.",
+      detail: blockedBySecurityVerification
+        ? "The current browser page is blocked by a security verification gate rather than the target content."
+        : "The current browser page is still blocked by an interstitial or anti-bot gate.",
     };
     return next;
   }

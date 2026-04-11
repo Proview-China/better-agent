@@ -33,10 +33,21 @@ export interface RepoWriteInput {
 export interface CodeEditInput {
   path?: string;
   file_path?: string;
+  filePath?: string;
   old_string?: string;
   oldString?: string;
   new_string?: string;
   newString?: string;
+  edits?: Array<{
+    find?: string;
+    old_string?: string;
+    oldString?: string;
+    oldText?: string;
+    replace?: string;
+    new_string?: string;
+    newString?: string;
+    newText?: string;
+  }>;
   replace_all?: boolean;
   allow_multiple?: boolean;
   createParents?: boolean;
@@ -68,8 +79,14 @@ export type SpreadsheetWriteCellValue = string | number | boolean | null;
 
 export interface SpreadsheetWriteInput {
   path?: string;
+  format?: "csv" | "tsv" | "xlsx";
   headers?: string[];
   rows?: Array<SpreadsheetWriteCellValue[] | Record<string, SpreadsheetWriteCellValue>>;
+  sheets?: Array<{
+    name?: string;
+    headers?: string[];
+    rows?: Array<SpreadsheetWriteCellValue[] | Record<string, SpreadsheetWriteCellValue>>;
+  }>;
   delimiter?: "," | "\t";
   sheet?: string;
   createParents?: boolean;
@@ -80,7 +97,7 @@ export interface DocWriteInput {
   title?: string;
   summary?: string;
   content?: string;
-  format?: "text" | "markdown";
+  format?: "docx" | "text" | "markdown";
   createParents?: boolean;
   sections?: SkillDocSection[];
 }
@@ -221,6 +238,36 @@ export interface BrowserPlaywrightInput {
   index?: number;
   tabAction?: string;
   tab_action?: string;
+}
+
+export interface RemoteExecInput {
+  host?: string;
+  user?: string;
+  port?: number;
+  command?: string | string[];
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  identityFile?: string;
+  identity_file?: string;
+  strictHostKeyChecking?: boolean;
+  strict_host_key_checking?: boolean;
+  timeoutMs?: number;
+  timeout_ms?: number;
+  maxOutputChars?: number;
+  description?: string;
+}
+
+export interface TrackerCreateInput {
+  title?: string;
+  description?: string;
+  kind?: string;
+  status?: "pending" | "in_progress" | "completed" | "blocked" | "cancelled";
+  labels?: string[];
+  owner?: string;
+  metadata?: Record<string, unknown>;
+  path?: string;
+  createParents?: boolean;
 }
 
 export interface WriteTodosInput {
@@ -401,6 +448,7 @@ export interface NormalizedSpreadsheetWriteInput {
   absolutePath: string;
   relativeWorkspacePath: string;
   format: "csv" | "tsv" | "xlsx";
+  sheetName?: string;
   headers?: string[];
   rows: SpreadsheetWriteCellValue[][];
   rowCount: number;
@@ -424,6 +472,43 @@ export interface PreparedSpreadsheetWriteState {
 
 export interface PreparedDocWriteState {
   input: NormalizedDocWriteInput;
+}
+
+export interface NormalizedRemoteExecInput {
+  host: string;
+  user?: string;
+  port?: number;
+  command: string;
+  args: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  identityFile?: string;
+  strictHostKeyChecking: boolean;
+  timeoutMs: number;
+  maxOutputChars: number;
+  description?: string;
+}
+
+export interface NormalizedTrackerCreateInput {
+  trackerId: string;
+  absolutePath: string;
+  relativeWorkspacePath: string;
+  title: string;
+  description?: string;
+  kind: string;
+  status: "pending" | "in_progress" | "completed" | "blocked" | "cancelled";
+  labels: string[];
+  owner?: string;
+  metadata?: Record<string, unknown>;
+  createParents: boolean;
+}
+
+export interface PreparedRemoteExecState {
+  input: NormalizedRemoteExecInput;
+}
+
+export interface PreparedTrackerCreateState {
+  input: NormalizedTrackerCreateInput;
 }
 
 export interface PreparedCodeEditState {

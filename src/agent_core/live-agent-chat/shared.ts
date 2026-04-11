@@ -68,6 +68,81 @@ export interface ParsedTapRequest {
   rawCommand?: string;
 }
 
+export interface SpreadsheetReadFactSummary {
+  path?: string;
+  format?: string;
+  sheetCount?: number;
+  returnedSheetCount?: number;
+  selectedSheet?: string;
+  truncated?: boolean;
+  sheetNames: string[];
+  firstSheet?: {
+    name?: string;
+    rowCount?: number;
+    returnedRowCount?: number;
+    omittedRowCount?: number;
+    columnCount?: number;
+    headers: string[];
+    rows: string[][];
+    truncated?: boolean;
+  };
+}
+
+interface DocReadFactSummary {
+  path?: string;
+  format?: string;
+  paragraphCount?: number;
+  returnedParagraphCount?: number;
+  omittedParagraphCount?: number;
+  tableCount?: number;
+  truncated?: boolean;
+  paragraphs: string[];
+  contentExcerpt?: string;
+  firstTable?: {
+    rowCount?: number;
+    returnedRowCount?: number;
+    omittedRowCount?: number;
+    columnCount?: number;
+    rows: string[][];
+    truncated?: boolean;
+  };
+}
+
+export function buildDocReadCompletionAnswer(summary: DocReadFactSummary | undefined): string | undefined {
+  if (!summary) {
+    return undefined;
+  }
+  const lines = [
+    "已完成文档回读核验。",
+    summary.path ? `- path: ${summary.path}` : undefined,
+    summary.format ? `- format: ${summary.format}` : undefined,
+    summary.paragraphCount !== undefined ? `- paragraphCount: ${summary.paragraphCount}` : undefined,
+    summary.tableCount !== undefined ? `- tableCount: ${summary.tableCount}` : undefined,
+  ].filter((line): line is string => Boolean(line));
+
+  const paragraphLines = summary.paragraphs.slice(0, 3).map((paragraph, index) =>
+    `- 第${index + 1}段: ${paragraph}`);
+  if (paragraphLines.length > 0) {
+    lines.push(...paragraphLines);
+  } else if (summary.contentExcerpt) {
+    lines.push(`- 内容摘要: ${summary.contentExcerpt}`);
+  }
+
+  if (summary.firstTable?.rows?.length) {
+    lines.push("- 首表前几行:");
+    lines.push(
+      ...summary.firstTable.rows.slice(0, 2).map((row, index) =>
+        `  - 第${index + 1}行: ${row.join(", ")}`),
+    );
+  }
+
+  if ((summary.omittedParagraphCount ?? 0) > 0 || summary.truncated) {
+    lines.push(`- 还有 ${summary.omittedParagraphCount ?? 0} 段未展开，这次返回是采样结果。`);
+  }
+
+  return lines.join("\n");
+}
+
 export interface TurnArtifacts {
   cmp: CmpTurnArtifacts;
   core: CoreTurnArtifacts;
@@ -305,8 +380,32 @@ export function excerptText(
   };
 }
 
+function maybeExcerptText(
+  value: string,
+  max: number,
+  preserveBody = false,
+): string {
+  return preserveBody ? value : excerptText(value, max).text;
+}
+
+function summarizeDataUrl(value: string): {
+  kind: "data_url";
+  mimeType: string;
+  originalChars: number;
+} {
+  const mimeType = value.match(/^data:([^;,]+)/u)?.[1] ?? "application/octet-stream";
+  return {
+    kind: "data_url",
+    mimeType,
+    originalChars: value.length,
+  };
+}
+
 export function trimStructuredValue(value: unknown, budget = 8_000): unknown {
   if (typeof value === "string") {
+    if (value.startsWith("data:")) {
+      return summarizeDataUrl(value);
+    }
     const excerpt = excerptText(value, Math.min(4_000, budget));
     return excerpt.truncated
       ? {
@@ -355,7 +454,11 @@ export function trimStructuredValue(value: unknown, budget = 8_000): unknown {
 export function summarizeToolOutputForCore(
   capabilityKey: string,
   output: unknown,
+  options: {
+    preserveBody?: boolean;
+  } = {},
 ): string {
+  const preserveBody = options.preserveBody === true;
   const normalized = output && typeof output === "object"
     ? output as Record<string, unknown>
     : undefined;
@@ -371,9 +474,9 @@ export function summarizeToolOutputForCore(
       exitCode: normalized?.exitCode,
       stdoutChars: stdout.length,
       stderrChars: stderr.length,
-      stdoutExcerpt: stdoutExcerpt.text,
+      stdoutExcerpt: preserveBody ? stdout : stdoutExcerpt.text,
       stdoutTruncated: stdoutExcerpt.truncated,
-      stderrExcerpt: stderrExcerpt.text,
+      stderrExcerpt: preserveBody ? stderr : stderrExcerpt.text,
       stderrTruncated: stderrExcerpt.truncated,
     }, null, 2);
   }
@@ -389,7 +492,7 @@ export function summarizeToolOutputForCore(
       capabilityKey,
       status: normalized?.status,
       answer: typeof normalized?.answer === "string"
-        ? excerptText(normalized.answer, 5_000).text
+        ? maybeExcerptText(normalized.answer, 5_000, preserveBody)
         : undefined,
       sourceCount: Array.isArray(normalized?.sources) ? normalized.sources.length : 0,
       citationCount: Array.isArray(normalized?.citations) ? normalized.citations.length : 0,
@@ -409,7 +512,32 @@ export function summarizeToolOutputForCore(
         ? excerptText(normalized.prompt, 600).text
         : undefined,
       urlCount: normalized?.urlCount,
-      pages: trimStructuredValue(pages, 6_000),
+      selectedBackend: normalized?.selectedBackend,
+      resolvedBackend: normalized?.resolvedBackend,
+      fallbackApplied: normalized?.fallbackApplied,
+      fallbackReasonCode: normalized?.fallbackReasonCode,
+      fallbackReasonPhase: normalized?.fallbackReasonPhase,
+      fallbackReasonClass: normalized?.fallbackReasonClass,
+      pages: pages.map((page) => {
+        const record = page && typeof page === "object"
+          ? page as Record<string, unknown>
+          : undefined;
+        return {
+          url: record?.url,
+          finalUrl: record?.finalUrl,
+          status: record?.status,
+          transport: record?.transport,
+          backend: record?.backend,
+          fallbackApplied: record?.fallbackApplied,
+          errorCode: record?.errorCode,
+          networkPhase: record?.networkPhase,
+          failureClass: record?.failureClass,
+          redirectTarget: record?.redirectTarget,
+          content: typeof record?.content === "string"
+            ? maybeExcerptText(record.content, 1_000, preserveBody)
+            : undefined,
+        };
+      }),
     }, null, 2);
   }
 
@@ -425,9 +553,9 @@ export function summarizeToolOutputForCore(
       committedFiles: trimStructuredValue(normalized?.committedFiles, 2_000),
       entries: trimStructuredValue(normalized?.entries, 2_000),
       diff: typeof normalized?.diff === "string"
-        ? excerptText(normalized.diff, 6_000).text
+        ? maybeExcerptText(normalized.diff, 6_000, preserveBody)
         : typeof normalized?.raw === "string"
-          ? excerptText(normalized.raw, 6_000).text
+          ? maybeExcerptText(normalized.raw, 6_000, preserveBody)
           : undefined,
     }, null, 2);
   }
@@ -445,18 +573,24 @@ export function summarizeToolOutputForCore(
       definitions: trimStructuredValue(normalized?.definitions, 2_500),
       references: trimStructuredValue(normalized?.references, 2_500),
       hoverText: typeof normalized?.hoverText === "string"
-        ? excerptText(normalized.hoverText, 2_000).text
+        ? maybeExcerptText(normalized.hoverText, 2_000, preserveBody)
         : undefined,
     }, null, 2);
   }
 
   if (capabilityKey === "spreadsheet.read") {
+    const summary = extractSpreadsheetReadFactSummary(output);
     return JSON.stringify({
       capabilityKey,
-      path: normalized?.path,
-      format: normalized?.format,
-      sheetCount: normalized?.sheetCount,
-      sheets: trimStructuredValue(normalized?.sheets, 3_500),
+      ...summary,
+    }, null, 2);
+  }
+
+  if (capabilityKey === "doc.read") {
+    const summary = extractDocReadFactSummary(output);
+    return JSON.stringify({
+      capabilityKey,
+      ...summary,
     }, null, 2);
   }
 
@@ -469,7 +603,7 @@ export function summarizeToolOutputForCore(
       returnedCellCount: normalized?.returnedCellCount,
       language: normalized?.language,
       content: typeof normalized?.content === "string"
-        ? excerptText(normalized.content, 3_500).text
+        ? maybeExcerptText(normalized.content, 3_500, preserveBody)
         : undefined,
       cells: trimStructuredValue(normalized?.cells, 3_500),
     }, null, 2);
@@ -501,7 +635,7 @@ export function summarizeToolOutputForCore(
       interstitialRecovered: normalized?.interstitialRecovered,
       launchEvidence: trimStructuredValue(normalized?.launchEvidence, 2_000),
       text: typeof normalized?.text === "string"
-        ? excerptText(normalized.text, 3_500).text
+        ? maybeExcerptText(normalized.text, 3_500, preserveBody)
         : undefined,
       imageCount: normalized?.imageCount,
       tools: trimStructuredValue(normalized?.tools, 2_500),
@@ -516,10 +650,180 @@ export function summarizeToolOutputForCore(
     }, null, 2);
   }
 
+  if (capabilityKey === "remote.exec") {
+    return JSON.stringify({
+      capabilityKey,
+      host: normalized?.host,
+      user: normalized?.user,
+      port: normalized?.port,
+      command: normalized?.command,
+      args: trimStructuredValue(normalized?.args, 1_000),
+      cwd: normalized?.cwd,
+      stdout: typeof normalized?.stdout === "string"
+        ? maybeExcerptText(normalized.stdout, 3_000, preserveBody)
+        : undefined,
+      stderr: typeof normalized?.stderr === "string"
+        ? maybeExcerptText(normalized.stderr, 2_000, preserveBody)
+        : undefined,
+      exitCode: normalized?.exitCode,
+    }, null, 2);
+  }
+
+  if (capabilityKey === "tracker.create") {
+    return JSON.stringify({
+      capabilityKey,
+      trackerId: normalized?.trackerId,
+      path: normalized?.path,
+      title: normalized?.title,
+      kind: normalized?.kind,
+      statusValue: normalized?.statusValue,
+      labels: trimStructuredValue(normalized?.labels, 1_000),
+    }, null, 2);
+  }
+
   return JSON.stringify({
     capabilityKey,
     output: trimStructuredValue(output, 8_000),
   }, null, 2);
+}
+
+function normalizeSpreadsheetCell(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+  return typeof value === "string"
+    ? value
+    : typeof value === "number" || typeof value === "boolean"
+      ? String(value)
+      : JSON.stringify(value);
+}
+
+function normalizeSpreadsheetRow(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((cell) => normalizeSpreadsheetCell(cell))
+    : [];
+}
+
+export function extractSpreadsheetReadFactSummary(output: unknown): SpreadsheetReadFactSummary | undefined {
+  if (!output || typeof output !== "object") {
+    return undefined;
+  }
+  const normalized = output as Record<string, unknown>;
+  const rawSheets = Array.isArray(normalized.sheets) ? normalized.sheets : [];
+  const sheetNames = rawSheets
+    .map((entry) =>
+      entry && typeof entry === "object"
+        ? readString((entry as Record<string, unknown>).name)
+        : undefined)
+    .filter((entry): entry is string => Boolean(entry));
+  const firstSheetRaw = rawSheets[0] && typeof rawSheets[0] === "object"
+    ? rawSheets[0] as Record<string, unknown>
+    : undefined;
+
+  return {
+    path: readString(normalized.path),
+    format: readString(normalized.format),
+    sheetCount: readPositiveInteger(normalized.sheetCount),
+    returnedSheetCount: readPositiveInteger(normalized.returnedSheetCount),
+    selectedSheet: readString(normalized.sheet),
+    truncated: normalized.truncated === true,
+    sheetNames,
+    firstSheet: firstSheetRaw
+      ? {
+        name: readString(firstSheetRaw.name),
+        rowCount: readPositiveInteger(firstSheetRaw.rowCount),
+        returnedRowCount: readPositiveInteger(firstSheetRaw.returnedRowCount),
+        omittedRowCount: readPositiveInteger(firstSheetRaw.omittedRowCount),
+        columnCount: readPositiveInteger(firstSheetRaw.columnCount),
+        headers: normalizeSpreadsheetRow(firstSheetRaw.headers),
+        rows: Array.isArray(firstSheetRaw.rows)
+          ? firstSheetRaw.rows
+            .map((entry) => normalizeSpreadsheetRow(entry))
+            .filter((entry) => entry.length > 0)
+          : [],
+        truncated: firstSheetRaw.truncated === true,
+      }
+      : undefined,
+  };
+}
+
+export function buildSpreadsheetReadCompletionAnswer(summary: SpreadsheetReadFactSummary | undefined): string | undefined {
+  if (!summary) {
+    return undefined;
+  }
+  const lines = [
+    "已完成回读核验。",
+    summary.path ? `- path: ${summary.path}` : undefined,
+    summary.format ? `- format: ${summary.format}` : undefined,
+    summary.sheetCount !== undefined ? `- sheetCount: ${summary.sheetCount}` : undefined,
+    summary.firstSheet?.name ? `- 第一张表名称: ${summary.firstSheet.name}` : undefined,
+    summary.firstSheet?.headers?.length
+      ? `- 表头: ${summary.firstSheet.headers.join(", ")}`
+      : undefined,
+  ].filter((line): line is string => Boolean(line));
+
+  const rowLines = summary.firstSheet?.rows?.slice(0, 2).map((row, index) =>
+    `- 第${index + 1}行: ${row.join(", ")}`) ?? [];
+
+  if (rowLines.length > 0) {
+    lines.push(...rowLines);
+  }
+
+  if (summary.firstSheet && rowLines.length === 0) {
+    lines.push("- 当前回读里还没有拿到可见行数据。");
+  }
+
+  if ((summary.firstSheet?.omittedRowCount ?? 0) > 0 || summary.firstSheet?.truncated || summary.truncated) {
+    lines.push(`- 还有 ${summary.firstSheet?.omittedRowCount ?? 0} 行未展开，这次返回是采样结果。`);
+  }
+
+  return lines.join("\n");
+}
+
+export function extractDocReadFactSummary(output: unknown): DocReadFactSummary | undefined {
+  if (!output || typeof output !== "object") {
+    return undefined;
+  }
+
+  const normalized = output as Record<string, unknown>;
+  const rawTables = Array.isArray(normalized.tables) ? normalized.tables : [];
+  const firstTableRaw = rawTables[0] && typeof rawTables[0] === "object"
+    ? rawTables[0] as Record<string, unknown>
+    : undefined;
+
+  return {
+    path: readString(normalized.path),
+    format: readString(normalized.format),
+    paragraphCount: readPositiveInteger(normalized.paragraphCount),
+    returnedParagraphCount: readPositiveInteger(normalized.returnedParagraphCount),
+    omittedParagraphCount: readPositiveInteger(normalized.omittedParagraphCount),
+    tableCount: readPositiveInteger(normalized.tableCount),
+    truncated: normalized.truncated === true,
+    paragraphs: Array.isArray(normalized.paragraphs)
+      ? normalized.paragraphs
+        .map((entry) => readString(entry))
+        .filter((entry): entry is string => Boolean(entry))
+        .slice(0, 3)
+      : [],
+    contentExcerpt: typeof normalized.content === "string"
+      ? excerptText(normalized.content, 1_200).text
+      : undefined,
+    firstTable: firstTableRaw
+      ? {
+        rowCount: readPositiveInteger(firstTableRaw.rowCount),
+        returnedRowCount: readPositiveInteger(firstTableRaw.returnedRowCount),
+        omittedRowCount: readPositiveInteger(firstTableRaw.omittedRowCount),
+        columnCount: readPositiveInteger(firstTableRaw.columnCount),
+        rows: Array.isArray(firstTableRaw.rows)
+          ? firstTableRaw.rows
+            .map((entry) => normalizeSpreadsheetRow(entry))
+            .filter((entry) => entry.length > 0)
+            .slice(0, 3)
+          : [],
+        truncated: firstTableRaw.truncated === true,
+      }
+      : undefined,
+  };
 }
 
 export function resolveCliSearchGroundDefaults(): {
@@ -575,20 +879,36 @@ export async function applyCliDefaultsToCapabilityRequest(
   request: CoreCapabilityRequest,
   config: OpenAILiveConfig,
   userMessage: string,
+  previousBrowserSession?: {
+    headless?: boolean;
+    browser?: string;
+    isolated?: boolean;
+  },
 ): Promise<CoreCapabilityRequest> {
   if (request.capabilityKey !== "search.ground" && request.capabilityKey !== "search.web") {
     if (request.capabilityKey === "browser.playwright") {
-      const rewrittenRequest = rewriteBrowserNavigateRequestForConcreteSearch(request, userMessage);
+      const rewrittenRequest = rewriteBrowserPlaywrightRequest(request, userMessage);
       const preferredHeadless = inferBrowserHeadlessPreference(userMessage);
+      const explicitHeadless = typeof rewrittenRequest.input.headless === "boolean"
+        ? rewrittenRequest.input.headless
+        : undefined;
+      const resolvedHeadless = explicitHeadless
+        ?? previousBrowserSession?.headless
+        ?? preferredHeadless
+        ?? false;
+      const resolvedBrowser = typeof rewrittenRequest.input.browser === "string"
+        ? rewrittenRequest.input.browser
+        : previousBrowserSession?.browser;
+      const resolvedIsolated = typeof rewrittenRequest.input.isolated === "boolean"
+        ? rewrittenRequest.input.isolated
+        : previousBrowserSession?.isolated;
       return {
         ...rewrittenRequest,
         input: {
           ...rewrittenRequest.input,
-          ...(typeof rewrittenRequest.input.headless === "boolean"
-            ? {}
-            : preferredHeadless !== undefined
-              ? { headless: preferredHeadless }
-              : { headless: false }),
+          headless: resolvedHeadless,
+          ...(resolvedBrowser ? { browser: resolvedBrowser } : {}),
+          ...(resolvedIsolated !== undefined ? { isolated: resolvedIsolated } : {}),
         },
       };
     }
@@ -797,12 +1117,24 @@ export function extractFirstJsonObject(source: string): string {
 
 export function parseCoreActionEnvelope(text: string): CoreActionEnvelope {
   const parsed = JSON.parse(extractFirstJsonObject(text)) as Record<string, unknown>;
-  const action = parsed.action;
+  const capabilityRequest = parsed.capabilityRequest;
+  const legacyCompleted = typeof parsed.completed === "boolean" ? parsed.completed : undefined;
+  const action = parsed.action === "reply" || parsed.action === "capability_call"
+    ? parsed.action
+    : capabilityRequest && typeof capabilityRequest === "object"
+      ? "capability_call"
+      : "reply";
   const responseText = parsed.responseText;
-  if ((action !== "reply" && action !== "capability_call") || typeof responseText !== "string") {
+  if (typeof responseText !== "string") {
     throw new Error("Core action envelope requires action and responseText.");
   }
-  const taskStatus = parsed.taskStatus;
+  const taskStatus = parsed.taskStatus ?? (
+    legacyCompleted === true
+      ? "completed"
+      : legacyCompleted === false
+        ? "incomplete"
+        : undefined
+  );
   if (
     taskStatus !== undefined
     && taskStatus !== "completed"
@@ -812,7 +1144,6 @@ export function parseCoreActionEnvelope(text: string): CoreActionEnvelope {
   ) {
     throw new Error("Core action envelope taskStatus must be completed, incomplete, blocked, or exhausted.");
   }
-  const capabilityRequest = parsed.capabilityRequest;
   if (action === "capability_call") {
     if (!capabilityRequest || typeof capabilityRequest !== "object") {
       throw new Error("Core capability_call envelope requires capabilityRequest.");
@@ -995,6 +1326,25 @@ export function summarizeCapabilityRequestForLog(request: CoreCapabilityRequest)
     );
   }
 
+  if (request.capabilityKey === "remote.exec") {
+    const host = readString(input.host) ?? "(missing host)";
+    const commandArray = readStringArray(input.command);
+    const command = commandArray?.[0] ?? readString(input.command) ?? "(missing command)";
+    const args = [
+      ...(commandArray?.slice(1) ?? []),
+      ...(readStringArray(input.args) ?? []),
+    ];
+    return summarizeForLog(`${host} :: ${command}${args.length > 0 ? ` ${args.join(" ")}` : ""}`);
+  }
+
+  if (request.capabilityKey === "tracker.create") {
+    return summarizeForLog(
+      readString(input.title)
+      ?? readString(input.kind)
+      ?? request.reason,
+    );
+  }
+
   if (
     request.capabilityKey === "mcp.listTools"
     || request.capabilityKey === "mcp.listResources"
@@ -1065,7 +1415,7 @@ function buildGoogleSearchQueryFromUserMessage(userMessage: string): string | un
   return cleaned;
 }
 
-function rewriteBrowserNavigateRequestForConcreteSearch(
+function rewriteBrowserPlaywrightRequest(
   request: CoreCapabilityRequest,
   userMessage: string,
 ): CoreCapabilityRequest {
@@ -1073,6 +1423,34 @@ function rewriteBrowserNavigateRequestForConcreteSearch(
     return request;
   }
   const action = typeof request.input.action === "string" ? request.input.action : undefined;
+  const actions = Array.isArray(request.input.actions)
+    ? request.input.actions
+      .map((entry) => (entry && typeof entry === "object" ? entry as Record<string, unknown> : undefined))
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    : [];
+
+  if (!action && actions.length > 0) {
+    const navigateStep = actions.find((entry) => {
+      const type = readString(entry.type)?.toLowerCase();
+      return type === "navigate" || type === "goto";
+    });
+    const navigateUrl = navigateStep
+      ? readString(navigateStep.url) ?? readString(request.input.url)
+      : undefined;
+    if (navigateUrl) {
+      return rewriteBrowserPlaywrightRequest({
+        ...request,
+        input: {
+          ...request.input,
+          action: "navigate",
+          url: navigateUrl,
+          allowedDomains: readStringArray(request.input.allowedDomains)
+            ?? readStringArray(request.input.allowed_domains),
+        },
+      }, userMessage);
+    }
+  }
+
   if (action !== "navigate") {
     return request;
   }

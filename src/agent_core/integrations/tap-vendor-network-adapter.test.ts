@@ -222,6 +222,8 @@ test("tap vendor network adapter rejects localhost and private targets for searc
 
   assert.equal(envelope.status, "failed");
   assert.equal(envelope.error?.code, "search_fetch_private_target_denied");
+  assert.equal(envelope.metadata?.networkPhase, "url_validation");
+  assert.equal(envelope.metadata?.failureClass, "private_target");
 });
 
 test("tap vendor network adapter truncates oversized fetched content", async () => {
@@ -279,6 +281,9 @@ test("tap vendor network adapter falls back to portable fetch when a provider-na
     assert.equal(envelope.metadata?.selectedBackend, "anthropic-claude-code-native");
     assert.equal(envelope.metadata?.resolvedBackend, "portable-fallback");
     assert.equal(envelope.metadata?.fallbackApplied, true);
+    assert.equal(envelope.metadata?.fallbackReasonCode, "search_fetch_http_error");
+    assert.equal(envelope.metadata?.fallbackReasonPhase, "response");
+    assert.equal(envelope.metadata?.fallbackReasonClass, "http_error");
     assert.equal(
       (envelope.output as { pages?: Array<{ backend?: string; fallbackApplied?: boolean }> }).pages?.[0]?.backend,
       "portable-fallback",
@@ -287,6 +292,32 @@ test("tap vendor network adapter falls back to portable fetch when a provider-na
       (envelope.output as { pages?: Array<{ fallbackApplied?: boolean }> }).pages?.[0]?.fallbackApplied,
       true,
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("tap vendor network adapter classifies portable TLS transport failures for search.fetch", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    const error = new TypeError("fetch failed") as TypeError & {
+      cause?: { code?: string };
+    };
+    error.cause = { code: "UNABLE_TO_GET_ISSUER_CERT_LOCALLY" };
+    throw error;
+  }) as typeof fetch;
+
+  try {
+    const envelope = await executePlan("search.fetch", {
+      provider: "openai",
+      model: "gpt-5.4",
+      url: "https://example.com/page",
+    });
+
+    assert.equal(envelope.status, "failed");
+    assert.equal(envelope.error?.code, "search_fetch_tls_handshake_failed");
+    assert.equal(envelope.metadata?.networkPhase, "connect");
+    assert.equal(envelope.metadata?.failureClass, "tls_handshake");
   } finally {
     globalThis.fetch = originalFetch;
   }

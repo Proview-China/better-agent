@@ -353,10 +353,23 @@ export function printDirectStatus(state: LiveCliState): void {
     userOverride: LIVE_CHAT_TAP_OVERRIDE,
   });
   const snapshot = state.runtime.createTapGovernanceSnapshot();
+  const cmpStatus = state.lastTurn.cmp.agentId === "cmp-sidecar-skipped"
+    ? "skipped"
+    : state.latestCmp
+      ? "synced"
+      : "warming";
+  const coreTaskStatus = state.lastTurn.core.taskStatus ?? "completed";
+  const capabilityResultStatus = state.lastTurn.core.capabilityResultStatus ?? "success";
+  const capabilityStatusSuffix =
+    state.lastTurn.core.capabilityKey === "browser.playwright"
+    && coreTaskStatus === "completed"
+    && capabilityResultStatus === "partial"
+      ? " (任务已完成，但浏览器证据链是 partial)"
+      : "";
   console.log("");
   printDirectBox("Status", [
-    `core: ${state.lastTurn.core.dispatchStatus} / ${state.lastTurn.core.taskStatus ?? "completed"} / ${state.lastTurn.core.capabilityKey ?? "no capability"} / ${state.lastTurn.core.capabilityResultStatus ?? "success"}`,
-    `cmp: ${state.latestCmp ? "synced" : "warming"} / ${truncate(state.lastTurn.cmp.intent, 96)}`,
+    `core: ${state.lastTurn.core.dispatchStatus} / ${coreTaskStatus} / ${state.lastTurn.core.capabilityKey ?? "no capability"} / ${capabilityResultStatus}${capabilityStatusSuffix}`,
+    `cmp: ${cmpStatus} / ${truncate(state.lastTurn.cmp.intent, 96)}`,
     `tap: ${governance.taskPolicy.effectiveMode} / ${state.runtime.capabilityPool.listCapabilities().length} registered / ${snapshot.blockingCapabilityKeys.length} blocked`,
   ]);
 }

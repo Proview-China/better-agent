@@ -116,6 +116,15 @@ export {
   createTapCapabilityAvailabilityReport,
   createTapCapabilityAvailabilityTruthTable,
 } from "./availability-audit.js";
+export type {
+  TapCapabilityUsageIndex,
+  TapCapabilityUsageIndexEntry,
+} from "./capability-usage-index.js";
+export {
+  createTapCapabilityUsageIndex,
+  renderTapCapabilityUsageIndexForCore,
+  TAP_HARDENED_CORE_INDEX_CAPABILITY_KEYS,
+} from "./capability-usage-index.js";
 export type { CreateTapLiveAvailabilityReportInput } from "./family-check-assembly.js";
 export {
   createTapFormalFamilyCheckReports,
