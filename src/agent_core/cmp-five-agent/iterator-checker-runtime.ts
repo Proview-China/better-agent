@@ -11,6 +11,7 @@ import type {
   CmpIteratorAdvanceInput,
   CmpIteratorRecord,
   CmpPromoteRequestRecord,
+  CmpRoleConfiguration,
   CmpRoleCheckpointRecord,
   CmpIteratorCheckerRuntimeSnapshot,
   CmpRoleLiveLlmExecutor,
@@ -103,13 +104,23 @@ function toLiveAuditStatus(status: "rules_only" | "live_applied" | "fallback_rul
 }
 
 export class CmpIteratorCheckerRuntime {
+  readonly #iteratorConfiguration: CmpRoleConfiguration;
+  readonly #checkerConfiguration: CmpRoleConfiguration;
   readonly #iterator = new Map<string, CmpIteratorRecord>();
   readonly #checker = new Map<string, CmpCheckerRecord>();
   readonly #checkpoints = new Map<string, CmpRoleCheckpointRecord>();
   readonly #promoteRequests = new Map<string, CmpPromoteRequestRecord>();
 
+  constructor(options: {
+    iteratorConfiguration?: CmpRoleConfiguration;
+    checkerConfiguration?: CmpRoleConfiguration;
+  } = {}) {
+    this.#iteratorConfiguration = options.iteratorConfiguration ?? getCmpRoleConfiguration("iterator");
+    this.#checkerConfiguration = options.checkerConfiguration ?? getCmpRoleConfiguration("checker");
+  }
+
   advanceIterator(input: CmpIteratorAdvanceInput): CmpIteratorRecord {
-    const configuration = getCmpRoleConfiguration("iterator");
+    const configuration = this.#iteratorConfiguration;
     const record: CmpIteratorRecord = {
       loopId: randomUUID(),
       role: "iterator",
@@ -164,7 +175,7 @@ export class CmpIteratorCheckerRuntime {
     executor?: CmpRoleLiveLlmExecutor<Record<string, unknown>, Record<string, unknown>>;
   } = {}): Promise<CmpIteratorRecord> {
     const record = this.advanceIterator(input);
-    const configuration = getCmpRoleConfiguration("iterator");
+    const configuration = this.#iteratorConfiguration;
     const live = await executeCmpRoleLiveLlmStep({
       role: "iterator",
       agentId: input.agentId,
@@ -225,7 +236,7 @@ export class CmpIteratorCheckerRuntime {
   }
 
   evaluateChecker(input: CmpCheckerEvaluateInput): CmpCheckerRuntimeResult {
-    const configuration = getCmpRoleConfiguration("checker");
+    const configuration = this.#checkerConfiguration;
     const checkerRecord: CmpCheckerRecord = {
       loopId: randomUUID(),
       role: "checker",
@@ -348,7 +359,7 @@ export class CmpIteratorCheckerRuntime {
     executor?: CmpRoleLiveLlmExecutor<Record<string, unknown>, Record<string, unknown>>;
   } = {}): Promise<CmpCheckerRuntimeResult> {
     const evaluated = this.evaluateChecker(input);
-    const configuration = getCmpRoleConfiguration("checker");
+    const configuration = this.#checkerConfiguration;
     const live = await executeCmpRoleLiveLlmStep({
       role: "checker",
       agentId: input.agentId,
@@ -464,6 +475,9 @@ export class CmpIteratorCheckerRuntime {
   }
 }
 
-export function createCmpIteratorCheckerRuntime(): CmpIteratorCheckerRuntime {
-  return new CmpIteratorCheckerRuntime();
+export function createCmpIteratorCheckerRuntime(options: {
+  iteratorConfiguration?: CmpRoleConfiguration;
+  checkerConfiguration?: CmpRoleConfiguration;
+} = {}): CmpIteratorCheckerRuntime {
+  return new CmpIteratorCheckerRuntime(options);
 }

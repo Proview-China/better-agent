@@ -16,6 +16,7 @@ import type {
   CmpDispatcherRecord,
   CmpDispatcherRuntimeSnapshot,
   CmpPeerExchangeApprovalRecord,
+  CmpRoleConfiguration,
   CmpRoleCheckpointRecord,
   CmpRoleLiveLlmExecutor,
   CmpRoleLiveLlmMode,
@@ -328,9 +329,14 @@ export interface CmpDispatcherRuntimeResult {
 }
 
 export class CmpDispatcherRuntime {
+  readonly #configuration: CmpRoleConfiguration;
   readonly #records = new Map<string, CmpDispatcherRecord>();
   readonly #checkpoints = new Map<string, CmpRoleCheckpointRecord>();
   readonly #peerApprovals = new Map<string, CmpPeerExchangeApprovalRecord>();
+
+  constructor(options: { configuration?: CmpRoleConfiguration } = {}) {
+    this.#configuration = options.configuration ?? getCmpRoleConfiguration("dispatcher");
+  }
 
   get peerApprovals(): CmpPeerExchangeApprovalRecord[] {
     return [...this.#peerApprovals.values()];
@@ -447,7 +453,7 @@ export class CmpDispatcherRuntime {
     } = {},
   ): Promise<CmpDispatcherRuntimeResult> {
     const rulesResult = this.dispatch(input);
-    const configuration = getCmpRoleConfiguration("dispatcher");
+    const configuration = this.#configuration;
     const live = await executeCmpRoleLiveLlmStep<Record<string, unknown>, CmpDispatcherLiveOutput>({
       role: "dispatcher",
       agentId: rulesResult.loop.agentId,
@@ -601,7 +607,7 @@ export class CmpDispatcherRuntime {
     } = {},
   ): Promise<CmpDispatcherRecord> {
     const loop = this.deliverPassiveReturn(input);
-    const configuration = getCmpRoleConfiguration("dispatcher");
+    const configuration = this.#configuration;
     const live = await executeCmpRoleLiveLlmStep<Record<string, unknown>, CmpDispatcherLiveOutput>({
       role: "dispatcher",
       agentId: loop.agentId,
@@ -764,6 +770,6 @@ export class CmpDispatcherRuntime {
   }
 }
 
-export function createCmpDispatcherRuntime(): CmpDispatcherRuntime {
-  return new CmpDispatcherRuntime();
+export function createCmpDispatcherRuntime(options: { configuration?: CmpRoleConfiguration } = {}): CmpDispatcherRuntime {
+  return new CmpDispatcherRuntime(options);
 }

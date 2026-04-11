@@ -5,6 +5,7 @@ import {
   CMP_DEFAULT_ROLE_LIVE_LLM_MODES,
   CMP_FIVE_AGENT_CONFIGURATION_VERSION,
   createCmpFiveAgentCapabilityMatrixSummary,
+  createCmpFiveAgentConfiguration,
   createCmpFiveAgentRoleSummaryCatalog,
   createCmpRoleLiveLlmModeCatalog,
   createCmpFiveAgentTapProfileCatalog,
@@ -134,4 +135,119 @@ test("cmp five-agent configuration reflects the chosen fine-grained strategy del
   assert.match(checker.profile.responsibilities.join(" "), /execution-grade split\/merge semantics/i);
   assert.match(dbagent.promptPack.guardrails.join(" "), /active package, timeline package, task snapshots, and passive packaging strategies/i);
   assert.match(dispatcher.profile.responsibilities.join(" "), /child seed, peer slim exchange, and passive return/i);
+});
+
+test("cmp five-agent configuration can produce a lean prompt variant for comparison runs", () => {
+  const baseline = createCmpFiveAgentConfiguration();
+  const lean = createCmpFiveAgentConfiguration({ promptVariant: "lean_v2" });
+
+  assert.equal(baseline.version, CMP_FIVE_AGENT_CONFIGURATION_VERSION);
+  assert.equal(lean.version, `${CMP_FIVE_AGENT_CONFIGURATION_VERSION}:lean_v2`);
+  assert.equal(lean.roles.icma.promptPack.promptPackId, "cmp-five-agent/icma-prompt-pack/lean-v2");
+  assert.equal(lean.roles.checker.promptPack.promptPackId, "cmp-five-agent/checker-prompt-pack/lean-v2");
+  assert.equal(lean.roles.dbagent.promptPack.promptPackId, "cmp-five-agent/dbagent-prompt-pack/lean-v2");
+  assert.ok(
+    lean.roles.icma.promptPack.guardrails.join(" ").length
+      < baseline.roles.icma.promptPack.guardrails.join(" ").length,
+  );
+  assert.ok(
+    lean.roles.dbagent.promptPack.guardrails.join(" ").length
+      < baseline.roles.dbagent.promptPack.guardrails.join(" ").length,
+  );
+  assert.ok(
+    lean.roles.checker.promptPack.mission.length
+      < baseline.roles.checker.promptPack.mission.length,
+  );
+  assert.deepEqual(
+    lean.roles.dispatcher.promptPack.outputContract,
+    baseline.roles.dispatcher.promptPack.outputContract,
+  );
+});
+
+test("cmp five-agent configuration can produce a workflow-aligned prompt variant for checker and dbagent", () => {
+  const baseline = createCmpFiveAgentConfiguration();
+  const workflow = createCmpFiveAgentConfiguration({ promptVariant: "workflow_v3" });
+
+  assert.equal(workflow.version, `${CMP_FIVE_AGENT_CONFIGURATION_VERSION}:workflow_v3`);
+  assert.equal(workflow.roles.icma.promptPack.promptPackId, "cmp-five-agent/icma-prompt-pack/lean-v2");
+  assert.equal(workflow.roles.checker.promptPack.promptPackId, "cmp-five-agent/checker-prompt-pack/workflow-v3");
+  assert.equal(workflow.roles.dbagent.promptPack.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workflow-v3");
+  assert.match(workflow.roles.checker.promptPack.guardrails.join(" "), /checked-ready output before any escalation signal/i);
+  assert.match(workflow.roles.dbagent.promptPack.guardrails.join(" "), /passive mode, prioritize clean historical return/i);
+  assert.match(workflow.roles.checker.promptPack.handoffContract, /checked core first/i);
+  assert.match(workflow.roles.dbagent.promptPack.handoffContract, /minimum review state needed/i);
+  assert.equal(workflow.roles.iterator.promptPack.promptPackId, baseline.roles.iterator.promptPack.promptPackId);
+  assert.equal(workflow.roles.dispatcher.promptPack.promptPackId, baseline.roles.dispatcher.promptPack.promptPackId);
+});
+
+test("cmp five-agent configuration can produce a full workmode-aligned prompt variant", () => {
+  const baseline = createCmpFiveAgentConfiguration();
+  const workmode = createCmpFiveAgentConfiguration({ promptVariant: "workmode_v4" });
+
+  assert.equal(workmode.version, `${CMP_FIVE_AGENT_CONFIGURATION_VERSION}:workmode_v4`);
+  assert.equal(workmode.roles.icma.promptPack.promptPackId, "cmp-five-agent/icma-prompt-pack/workmode-v4");
+  assert.equal(workmode.roles.iterator.promptPack.promptPackId, "cmp-five-agent/iterator-prompt-pack/workmode-v4");
+  assert.equal(workmode.roles.checker.promptPack.promptPackId, "cmp-five-agent/checker-prompt-pack/workmode-v4");
+  assert.equal(workmode.roles.dbagent.promptPack.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workmode-v4");
+  assert.equal(workmode.roles.dispatcher.promptPack.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/workmode-v4");
+  assert.match(workmode.roles.icma.promptPack.systemPrompt, /pre-processing/i);
+  assert.match(workmode.roles.iterator.promptPack.systemPrompt, /line and granularity governor/i);
+  assert.match(workmode.roles.checker.promptPack.systemPrompt, /signal quality and direction/i);
+  assert.match(workmode.roles.dbagent.promptPack.systemPrompt, /high-value sections/i);
+  assert.match(workmode.roles.dispatcher.promptPack.systemPrompt, /control console/i);
+  assert.deepEqual(workmode.roles.dispatcher.promptPack.outputContract, baseline.roles.dispatcher.promptPack.outputContract);
+});
+
+test("cmp five-agent configuration can produce a v5 workmode prompt variant aligned to async companion workflow", () => {
+  const workmode = createCmpFiveAgentConfiguration({ promptVariant: "workmode_v5" });
+
+  assert.equal(workmode.version, `${CMP_FIVE_AGENT_CONFIGURATION_VERSION}:workmode_v5`);
+  assert.equal(workmode.roles.icma.promptPack.promptPackId, "cmp-five-agent/icma-prompt-pack/workmode-v5");
+  assert.equal(workmode.roles.iterator.promptPack.promptPackId, "cmp-five-agent/iterator-prompt-pack/workmode-v5");
+  assert.equal(workmode.roles.checker.promptPack.promptPackId, "cmp-five-agent/checker-prompt-pack/workmode-v5");
+  assert.equal(workmode.roles.dbagent.promptPack.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workmode-v5");
+  assert.equal(workmode.roles.dispatcher.promptPack.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/workmode-v5");
+  assert.match(workmode.roles.icma.promptPack.systemPrompt, /pre-processing desk/i);
+  assert.match(workmode.roles.iterator.promptPack.systemPrompt, /package-line and granularity governor/i);
+  assert.match(workmode.roles.checker.promptPack.systemPrompt, /signal and direction gate/i);
+  assert.match(workmode.roles.dbagent.promptPack.systemPrompt, /package truth manager/i);
+  assert.match(workmode.roles.dispatcher.promptPack.systemPrompt, /control console/i);
+});
+
+test("cmp five-agent configuration can produce a v6 workmode prompt variant with tighter contract discipline", () => {
+  const workmode = createCmpFiveAgentConfiguration({ promptVariant: "workmode_v6" });
+
+  assert.equal(workmode.version, `${CMP_FIVE_AGENT_CONFIGURATION_VERSION}:workmode_v6`);
+  assert.equal(workmode.roles.icma.promptPack.promptPackId, "cmp-five-agent/icma-prompt-pack/workmode-v6");
+  assert.equal(workmode.roles.iterator.promptPack.promptPackId, "cmp-five-agent/iterator-prompt-pack/workmode-v6");
+  assert.equal(workmode.roles.checker.promptPack.promptPackId, "cmp-five-agent/checker-prompt-pack/workmode-v6");
+  assert.equal(workmode.roles.dbagent.promptPack.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workmode-v6");
+  assert.equal(workmode.roles.dispatcher.promptPack.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/workmode-v6");
+  assert.match(workmode.roles.dbagent.promptPack.guardrails.join(" "), /existing strategy fields/i);
+  assert.match(workmode.roles.checker.promptPack.systemPrompt, /signal and direction gate/i);
+});
+
+test("cmp five-agent configuration can produce a v7 workmode prompt variant with a narrower ICMA desk", () => {
+  const workmode = createCmpFiveAgentConfiguration({ promptVariant: "workmode_v7" });
+
+  assert.equal(workmode.version, `${CMP_FIVE_AGENT_CONFIGURATION_VERSION}:workmode_v7`);
+  assert.equal(workmode.roles.icma.promptPack.promptPackId, "cmp-five-agent/icma-prompt-pack/workmode-v7");
+  assert.equal(workmode.roles.dispatcher.promptPack.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/workmode-v7");
+  assert.match(workmode.roles.icma.promptPack.systemPrompt, /pre-processing desk/i);
+  assert.ok(
+    workmode.roles.icma.promptPack.mission.length
+      < createCmpFiveAgentConfiguration({ promptVariant: "workmode_v6" }).roles.icma.promptPack.mission.length,
+  );
+});
+
+test("cmp five-agent configuration can produce a v8 hybrid workmode variant", () => {
+  const baseline = createCmpFiveAgentConfiguration();
+  const v8 = createCmpFiveAgentConfiguration({ promptVariant: "workmode_v8" });
+
+  assert.equal(v8.version, `${CMP_FIVE_AGENT_CONFIGURATION_VERSION}:workmode_v8`);
+  assert.equal(v8.roles.icma.promptPack.promptPackId, baseline.roles.icma.promptPack.promptPackId);
+  assert.equal(v8.roles.iterator.promptPack.promptPackId, baseline.roles.iterator.promptPack.promptPackId);
+  assert.equal(v8.roles.dispatcher.promptPack.promptPackId, baseline.roles.dispatcher.promptPack.promptPackId);
+  assert.equal(v8.roles.checker.promptPack.promptPackId, "cmp-five-agent/checker-prompt-pack/workmode-v6");
+  assert.equal(v8.roles.dbagent.promptPack.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workmode-v6");
 });

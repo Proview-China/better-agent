@@ -11,6 +11,7 @@ import type {
   CmpIcmaEmitInput,
   CmpIcmaIngestInput,
   CmpIcmaRecord,
+  CmpRoleConfiguration,
   CmpIcmaRuntimeSnapshot,
   CmpIntentChunkRecord,
   CmpRoleCheckpointRecord,
@@ -128,14 +129,23 @@ export interface CmpIcmaRuntimeResult {
   checkpoints: CmpRoleCheckpointRecord[];
 }
 
+export interface CmpIcmaRuntimeOptions {
+  configuration?: CmpRoleConfiguration;
+}
+
 export class CmpIcmaRuntime {
+  readonly #configuration: CmpRoleConfiguration;
   readonly #records = new Map<string, CmpIcmaRecord>();
   readonly #intentChunks = new Map<string, CmpIntentChunkRecord>();
   readonly #fragments = new Map<string, CmpSystemFragmentRecord>();
   readonly #checkpoints = new Map<string, CmpRoleCheckpointRecord>();
 
+  constructor(options: CmpIcmaRuntimeOptions = {}) {
+    this.#configuration = options.configuration ?? getCmpRoleConfiguration("icma");
+  }
+
   capture(input: CmpIcmaIngestInput): CmpIcmaRuntimeResult {
-    const configuration = getCmpRoleConfiguration("icma");
+    const configuration = this.#configuration;
     const materialKinds = input.ingest.materials.map((material) => material.kind);
     const fragmentKinds = normalizeFragmentKinds(input.ingest.metadata?.cmpSystemFragmentKinds);
     const detectedFragmentKinds = fragmentKinds.length > 0 ? fragmentKinds : inferAutoFragmentKinds(materialKinds);
@@ -291,7 +301,7 @@ export class CmpIcmaRuntime {
     executor?: CmpRoleLiveLlmExecutor<Record<string, unknown>, Record<string, unknown>>;
   } = {}): Promise<CmpIcmaRuntimeResult> {
     const captured = this.capture(input);
-    const configuration = getCmpRoleConfiguration("icma");
+    const configuration = this.#configuration;
     const liveResult = await executeCmpRoleLiveLlmStep({
       role: "icma",
       agentId: input.ingest.agentId,
@@ -453,7 +463,7 @@ export class CmpIcmaRuntime {
       metadata: {
         ...(current.metadata ?? {}),
         emittedEventIds: uniqueStrings(input.eventIds),
-        handoffContract: getCmpRoleConfiguration("icma").promptPack.handoffContract,
+        handoffContract: this.#configuration.promptPack.handoffContract,
         emittedEventCount: uniqueStrings(input.eventIds).length,
         fragmentPolicy: current.metadata?.fragmentPolicy,
         seedAssembly: current.metadata?.seedAssembly,
@@ -507,6 +517,6 @@ export class CmpIcmaRuntime {
   }
 }
 
-export function createCmpIcmaRuntime(): CmpIcmaRuntime {
-  return new CmpIcmaRuntime();
+export function createCmpIcmaRuntime(options: CmpIcmaRuntimeOptions = {}): CmpIcmaRuntime {
+  return new CmpIcmaRuntime(options);
 }

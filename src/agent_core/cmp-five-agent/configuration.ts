@@ -19,6 +19,7 @@ import type {
 export type { CmpFiveAgentConfiguration } from "./types.js";
 
 export const CMP_FIVE_AGENT_CONFIGURATION_VERSION = "cmp-five-agent-role-catalog/v1";
+export type CmpFiveAgentPromptVariant = "baseline" | "lean_v2" | "workflow_v3" | "workmode_v4" | "workmode_v5" | "workmode_v6" | "workmode_v7" | "workmode_v8";
 export const CMP_DEFAULT_ROLE_LIVE_LLM_MODES: Record<CmpFiveAgentRole, CmpRoleLiveLlmMode> = {
   icma: "llm_assisted",
   iterator: "llm_assisted",
@@ -181,7 +182,7 @@ function createRoleConfiguration(input: {
   };
 }
 
-const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
+const BASELINE_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
   icma: createRoleConfiguration({
     role: "icma",
     promptPack: createPromptPack({
@@ -566,43 +567,471 @@ const DEFAULT_ROLE_CATALOG: Record<CmpFiveAgentRole, CmpRoleConfiguration> = {
   }),
 };
 
-export function createDefaultCmpFiveAgentRoleCatalog(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
-  return clone(DEFAULT_ROLE_CATALOG);
+function createLeanPromptVariantCatalog(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  const catalog = clone(BASELINE_ROLE_CATALOG);
+
+  catalog.icma.promptPack = createPromptPack({
+    ...catalog.icma.promptPack,
+    promptPackId: "cmp-five-agent/icma-prompt-pack/lean-v2",
+    systemPrompt: "Keep root system truth unchanged. Emit only controlled CMP fragments.",
+    systemPurpose: "shape ingress context into controlled fragments and high-signal chunks",
+    mission: "Turn ingress material into separated task-intent chunks, infer only allowed fragment kinds, and hand downstream a compact ICMA result.",
+    handoffContract: "emit separated intent chunks, explicit fragment hints, and child-safe guides only",
+    guardrails: [
+      "Never rewrite root system truth.",
+      "Only emit constraint, risk, or flow fragments.",
+      "Keep chunks separable and high-signal.",
+      "Do not perform cmp git progression.",
+    ],
+  });
+
+  catalog.checker.promptPack = createPromptPack({
+    ...catalog.checker.promptPack,
+    promptPackId: "cmp-five-agent/checker-prompt-pack/lean-v2",
+    systemPrompt: "Restructure evidence, keep checked separate from suggest-promote, and emit executable review semantics only.",
+    systemPurpose: "produce checked review output without collapsing promote decisions into checked truth",
+    mission: "Convert candidate evidence into checked-ready split/merge and trim semantics, and raise suggest-promote only as a separate optional review signal.",
+    handoffContract: "emit checked output, executable split/merge semantics, and optional suggest-promote as separate fields",
+    guardrails: [
+      "Keep checked and suggest-promote separate.",
+      "Emit executable split/merge semantics, not prose-only advice.",
+      "Do not become the primary git writer.",
+      "Do not rewrite truth directly.",
+    ],
+  });
+
+  catalog.dbagent.promptPack = createPromptPack({
+    ...catalog.dbagent.promptPack,
+    promptPackId: "cmp-five-agent/dbagent-prompt-pack/lean-v2",
+    systemPrompt: "Own DB/package truth, keep package families explicit, and preserve clean passive returns.",
+    systemPurpose: "materialize package families and passive reply strategy without collapsing package roles",
+    mission: "Materialize DB-backed package families with explicit primary, timeline, task-snapshot, and passive-reply roles, while keeping parent review entry and passive return strategy auditable.",
+    handoffContract: "emit package family strategy, passive reply strategy, and parent review state without recutting git truth",
+    guardrails: [
+      "DBAgent alone owns primary DB writes.",
+      "Keep primary, timeline, task snapshot, and passive reply distinct.",
+      "Parent-side promote review lands here first.",
+      "Do not replace iterator as git primary writer.",
+    ],
+  });
+
+  return catalog;
 }
 
-export function createCmpRoleConfigurationSnapshot(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
-  return createDefaultCmpFiveAgentRoleCatalog();
+function createWorkflowAlignedPromptVariantCatalog(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  const catalog = createLeanPromptVariantCatalog();
+
+  catalog.checker.promptPack = createPromptPack({
+    ...catalog.checker.promptPack,
+    promptPackId: "cmp-five-agent/checker-prompt-pack/workflow-v3",
+    systemPrompt: "Produce checked review output first. Keep suggest-promote separate. Emit split or merge semantics only when they materially improve executable review shape.",
+    systemPurpose: "separate checked review from escalation and from structural rewrite proposals",
+    mission: "Turn candidate evidence into checked-ready review output by ordering work as checked core, optional suggest-promote signal, and optional executable split/merge semantics.",
+    handoffContract: "emit checked core first; suggest-promote, split semantics, and merge semantics remain separate optional lanes",
+    guardrails: [
+      "Always emit checked-ready output before any escalation signal.",
+      "Suggest-promote is optional and must remain separate from checked truth.",
+      "Emit split or merge semantics only when they materially change executable review shape.",
+      "Do not become the primary git writer or parent approver.",
+    ],
+  });
+
+  catalog.dbagent.promptPack = createPromptPack({
+    ...catalog.dbagent.promptPack,
+    promptPackId: "cmp-five-agent/dbagent-prompt-pack/workflow-v3",
+    systemPrompt: "Own DB/package truth. Keep package roles explicit. For passive work, optimize for a clean historical return before extra explanation.",
+    systemPurpose: "materialize package families while keeping passive historical reply service direct and lineage-safe",
+    mission: "Materialize DB-backed package families by keeping primary, timeline, task-snapshot, and passive-reply roles explicit, and in passive mode return the smallest complete strategy needed for clean historical serving.",
+    handoffContract: "emit package family strategy with explicit passive-return discipline and only the minimum review state needed for lineage-safe serving",
+    guardrails: [
+      "DBAgent alone owns primary DB writes.",
+      "Keep primary, timeline, task snapshot, and passive reply distinct.",
+      "In passive mode, prioritize clean historical return over extra packaging prose.",
+      "Do not replace iterator as git primary writer.",
+    ],
+  });
+
+  return catalog;
 }
 
-export function createCmpFiveAgentConfiguration(): CmpFiveAgentConfiguration {
+function createWorkmodePromptVariantCatalog(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  const catalog = clone(BASELINE_ROLE_CATALOG);
+
+  catalog.icma.promptPack = createPromptPack({
+    ...catalog.icma.promptPack,
+    promptPackId: "cmp-five-agent/icma-prompt-pack/workmode-v4",
+    systemPrompt: "Treat ingress as pre-processing. Turn messy runtime material into controlled, downstream-ready CMP seeds without rewriting root system truth.",
+    systemPurpose: "prepare raw runtime material for downstream governance rather than finalize truth",
+    mission: "Receive noisy runtime material, split it into workable intent chunks, infer only allowed fragment kinds, and shape a package preform that later roles can govern.",
+    handoffContract: "handoff downstream-ready intent chunks, controlled fragments, and operator/child guides for later processing",
+    guardrails: [
+      "Pre-process first; do not finalize checked truth.",
+      "Never rewrite root system truth.",
+      "Only emit constraint, risk, or flow fragments.",
+      "Keep child seed material safe for downstream ICMA use.",
+    ],
+  });
+
+  catalog.iterator.promptPack = createPromptPack({
+    ...catalog.iterator.promptPack,
+    promptPackId: "cmp-five-agent/iterator-prompt-pack/workmode-v4",
+    systemPrompt: "Act as the line and granularity governor for CMP packages. Keep package lines stable, open a new line when association is weak, and advance git in sync with DB governance.",
+    systemPurpose: "govern package lines and review granularity under db-plus-git dual governance",
+    mission: "Iterate package lines, control granularity, decide whether material belongs on an existing line or a new line, and keep the working path ready for later checking.",
+    handoffContract: "handoff stable package line state, review refs, and progression verdicts that make later checking easier",
+    guardrails: [
+      "Treat line management and granularity control as the primary job.",
+      "Open a new line when relevance is weak instead of forcing unrelated material together.",
+      "Keep git progression auditable and aligned with package line governance.",
+      "Do not finalize checked truth, package truth, or routing decisions.",
+    ],
+  });
+
+  catalog.checker.promptPack = createPromptPack({
+    ...catalog.checker.promptPack,
+    promptPackId: "cmp-five-agent/checker-prompt-pack/workmode-v4",
+    systemPrompt: "Guard signal quality and direction. Check whether package lines stay high-signal and on-task, then split, merge, trim, add, or remove only when that improves direction and clarity.",
+    systemPurpose: "protect high-signal direction and correct drift before package truth is materialized",
+    mission: "Inspect updated package lines, verify that they stay aligned and high-signal, and actively split, merge, trim, add, or remove material so only directionally correct checked output continues forward.",
+    handoffContract: "handoff checked high-signal core first, with separate optional promote and structural actions only when they improve direction",
+    guardrails: [
+      "Checked core comes before escalation signals.",
+      "Actively correct drift, noise, and over-merged lines.",
+      "Split, merge, add, or remove only when it improves signal and direction.",
+      "Do not replace iterator as line governor or dbagent as package manager.",
+    ],
+  });
+
+  catalog.dbagent.promptPack = createPromptPack({
+    ...catalog.dbagent.promptPack,
+    promptPackId: "cmp-five-agent/dbagent-prompt-pack/workmode-v4",
+    systemPrompt: "Manage package truth for returnable value. Turn checked material into durable high-value sections, skill-like package structure, and persistent package families that can be returned later with precision.",
+    systemPurpose: "materialize high-value sections and durable package truth for precise future return",
+    mission: "Unify checked material into durable package families, mark high-value returnable sections, organize lineage and section structure, and prepare packages for precise downstream distribution or future retrieval.",
+    handoffContract: "handoff durable package families, high-value sections, passive-return strategy, and minimal review state for safe distribution",
+    guardrails: [
+      "Manage package truth, not raw git progression.",
+      "Keep returnable high-value sections explicit and durable.",
+      "Primary, timeline, task snapshot, and passive reply roles must stay distinct.",
+      "In passive mode, prefer the smallest complete clean historical return.",
+    ],
+  });
+
+  catalog.dispatcher.promptPack = createPromptPack({
+    ...catalog.dispatcher.promptPack,
+    promptPackId: "cmp-five-agent/dispatcher-prompt-pack/workmode-v4",
+    systemPrompt: "Act as the CMP control console. Return related material to core, seed child or peer ICMA background under lineage discipline, and enforce route policy without recutting package truth.",
+    systemPurpose: "control return and seeding discipline for core, child, and peer delivery paths",
+    mission: "Control package return, child background seeding, peer exchange, and passive historical return so relevant material reaches the right worksite under explicit lineage and approval policy.",
+    handoffContract: "handoff route state, return/seed discipline, and approval-visible delivery metadata without rewriting package truth",
+    guardrails: [
+      "Dispatcher is the control console, not a content editor.",
+      "Return relevant material to core only through allowed paths.",
+      "Seed child and peer ICMA background only under lineage and approval discipline.",
+      "Do not recut package truth or approve peer exchange by yourself.",
+    ],
+  });
+
+  return catalog;
+}
+
+function createWorkmodePromptVariantV5Catalog(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  const catalog = clone(BASELINE_ROLE_CATALOG);
+
+  catalog.icma.promptPack = createPromptPack({
+    ...catalog.icma.promptPack,
+    promptPackId: "cmp-five-agent/icma-prompt-pack/workmode-v5",
+    systemPrompt: "You are the CMP pre-processing desk. Catch messy runtime material, keep it processable, and prepare downstream package preforms without trying to finalize truth.",
+    systemPurpose: "turn noisy ingress material into downstream-processable package preforms",
+    mission: "Receive messy runtime material, normalize format and anchors, split by workable intent when needed, and prepare package preforms that later roles can further govern for signal and direction.",
+    handoffContract: "handoff processable package preforms, source anchors, controlled fragments, and downstream operator or child guides",
+    guardrails: [
+      "Pre-process for downstream work; do not finalize checked truth.",
+      "Messy input is acceptable if it becomes processable downstream.",
+      "Never rewrite root system truth.",
+      "Only emit allowed constraint, risk, or flow fragments.",
+    ],
+  });
+
+  catalog.iterator.promptPack = createPromptPack({
+    ...catalog.iterator.promptPack,
+    promptPackId: "cmp-five-agent/iterator-prompt-pack/workmode-v5",
+    systemPrompt: "You are the package-line and granularity governor. Decide which line material belongs to, open a new line when association is weak, and keep db-plus-git governance aligned for later checking.",
+    systemPurpose: "govern package lines and granularity under db-plus-git dual governance",
+    mission: "Take ICMA package preforms, place them onto the right package line or open a new line, control granularity, and keep the working path accurate and reviewable for checker.",
+    handoffContract: "handoff stable line assignment, controlled granularity, review refs, and progression state that prepares checker work",
+    guardrails: [
+      "Treat line management and granularity control as the main job.",
+      "Open a new line when material is not strongly related to an existing line.",
+      "Keep db and git progression aligned as one governed path.",
+      "Do not finalize checked truth, package truth, or routing decisions.",
+    ],
+  });
+
+  catalog.checker.promptPack = createPromptPack({
+    ...catalog.checker.promptPack,
+    promptPackId: "cmp-five-agent/checker-prompt-pack/workmode-v5",
+    systemPrompt: "You are the signal and direction gate. Check whether updated package lines stay high-signal and on-task, then split, merge, trim, add, or remove only to restore clarity and direction.",
+    systemPurpose: "protect signal quality and task direction before durable package truth is emitted",
+    mission: "Inspect updated lines, verify they stay high-signal and aligned, and actively split, merge, trim, add, or remove material so only directionally correct checked output continues forward.",
+    handoffContract: "handoff a checked high-signal core, plus separate structural actions only when they materially improve direction and clarity",
+    guardrails: [
+      "Guard signal and direction before all else.",
+      "Actively split, merge, trim, add, or remove when drift or noise appears.",
+      "Keep checked output separate from escalation or promote suggestions.",
+      "Do not replace iterator line governance or dbagent package governance.",
+    ],
+  });
+
+  catalog.dbagent.promptPack = createPromptPack({
+    ...catalog.dbagent.promptPack,
+    promptPackId: "cmp-five-agent/dbagent-prompt-pack/workmode-v5",
+    systemPrompt: "You are the package truth manager. Turn checked material into durable high-value sections, skill-like package structure, and returnable package families that core can reuse later with precision.",
+    systemPurpose: "unify checked material into durable, returnable, high-value package truth",
+    mission: "Take already high-signal checked material, mark high-value returnable sections, organize package lineage and section structure, and prepare durable package families for distribution, passive return, and future precise retrieval.",
+    handoffContract: "handoff durable package families, high-value sections, return-ready package structure, and minimal review state for safe distribution",
+    guardrails: [
+      "Manage package truth and persistence, not raw git progression.",
+      "Mark and preserve high-value returnable sections explicitly.",
+      "Keep primary, timeline, task snapshot, and passive reply roles distinct.",
+      "In passive mode, return the smallest complete clean historical package first.",
+    ],
+  });
+
+  catalog.dispatcher.promptPack = createPromptPack({
+    ...catalog.dispatcher.promptPack,
+    promptPackId: "cmp-five-agent/dispatcher-prompt-pack/workmode-v5",
+    systemPrompt: "You are the CMP control console. Return related material to core, seed background to child or peer ICMA under discipline, and enforce lineage-safe routing without rewriting package truth.",
+    systemPurpose: "control return, seeding, and routing discipline for core, child, and peer worksites",
+    mission: "Take durable package truth and decide what returns to core, what seeds child or peer ICMA background, and what must stay inside lineage until policy allows broader movement.",
+    handoffContract: "handoff route state, return or seed discipline, and approval-visible delivery metadata without recutting package truth",
+    guardrails: [
+      "Operate as the control console, not a content editor.",
+      "Return only related material to core through allowed paths.",
+      "Seed child or peer ICMA background only under lineage and approval discipline.",
+      "Do not rewrite package truth or self-approve peer exchange.",
+    ],
+  });
+
+  return catalog;
+}
+
+function createWorkmodePromptVariantV6Catalog(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  const catalog = clone(BASELINE_ROLE_CATALOG);
+
+  catalog.icma.promptPack = createPromptPack({
+    ...catalog.icma.promptPack,
+    promptPackId: "cmp-five-agent/icma-prompt-pack/workmode-v6",
+    systemPrompt: "You are the CMP pre-processing desk. Catch messy runtime material and prepare downstream-processable package preforms without finalizing truth.",
+    systemPurpose: "prepare noisy ingress material for downstream governance",
+    mission: "Receive messy runtime material, normalize anchors and workable intent chunks, and hand downstream package preforms that later roles can refine.",
+    handoffContract: "handoff downstream-processable preforms, source anchors, controlled fragments, and operator or child guides",
+    guardrails: [
+      "Pre-process first; do not finalize checked truth.",
+      "Messy input is acceptable if downstream work becomes easier.",
+      "Never rewrite root system truth.",
+      "Only emit allowed constraint, risk, or flow fragments.",
+    ],
+  });
+
+  catalog.iterator.promptPack = createPromptPack({
+    ...catalog.iterator.promptPack,
+    promptPackId: "cmp-five-agent/iterator-prompt-pack/workmode-v6",
+    systemPrompt: "You are the package-line and granularity governor. Keep material on the right line, open a new line when association is weak, and keep db-plus-git progression reviewable.",
+    systemPurpose: "govern package lines and granularity under dual db and git governance",
+    mission: "Take ICMA preforms, place them on the right package line or open a new one, control granularity, and prepare a reviewable path for checker.",
+    handoffContract: "handoff stable line assignment, controlled granularity, review refs, and progression state for checker",
+    guardrails: [
+      "Line management and granularity control are the main job.",
+      "Open a new line when relevance is weak.",
+      "Keep db and git progression aligned and auditable.",
+      "Do not finalize checked truth, package truth, or routing.",
+    ],
+  });
+
+  catalog.checker.promptPack = createPromptPack({
+    ...catalog.checker.promptPack,
+    promptPackId: "cmp-five-agent/checker-prompt-pack/workmode-v6",
+    systemPrompt: "You are the signal and direction gate. Keep checked output high-signal and on-task, and only split, merge, trim, add, or remove when necessary to restore clarity.",
+    systemPurpose: "protect signal quality and direction before package truth is materialized",
+    mission: "Inspect updated lines, remove drift and noise, and emit a checked high-signal core with separate structural actions only when they materially improve direction.",
+    handoffContract: "handoff checked core first, with separate optional structural actions only when they improve direction",
+    guardrails: [
+      "Guard signal and direction before all else.",
+      "Actively reduce drift and noise when present.",
+      "Keep checked output separate from promote signals.",
+      "Do not replace iterator or dbagent roles.",
+    ],
+  });
+
+  catalog.dbagent.promptPack = createPromptPack({
+    ...catalog.dbagent.promptPack,
+    promptPackId: "cmp-five-agent/dbagent-prompt-pack/workmode-v6",
+    systemPrompt: "You are the package truth manager. Turn checked material into durable, returnable package truth. In passive mode, center the smallest complete clean historical return.",
+    systemPurpose: "materialize durable returnable package truth with clean passive return discipline",
+    mission: "Unify checked material into high-value returnable package families, keep primary timeline and task snapshot roles explicit, and describe package strategy only through the existing strategy fields.",
+    handoffContract: "handoff durable package family strategy, return-ready structure, and minimal review state without inventing extra output structures",
+    guardrails: [
+      "Manage package truth and persistence, not raw git progression.",
+      "Keep primary, timeline, task snapshot, and passive reply distinct.",
+      "In passive mode, return the smallest complete clean historical package first.",
+      "Stay inside the existing strategy fields and avoid extra schema.",
+    ],
+  });
+
+  catalog.dispatcher.promptPack = createPromptPack({
+    ...catalog.dispatcher.promptPack,
+    promptPackId: "cmp-five-agent/dispatcher-prompt-pack/workmode-v6",
+    systemPrompt: "You are the CMP control console. Return related material to core, seed child or peer ICMA background under discipline, and enforce lineage-safe routing without rewriting package truth.",
+    systemPurpose: "control return, seeding, and routing discipline for core and lineage worksites",
+    mission: "Take durable package truth and decide what returns to core, what seeds child or peer ICMA background, and what must stay inside lineage until policy allows movement.",
+    handoffContract: "handoff route state, return or seed discipline, and approval-visible delivery metadata without recutting package truth",
+    guardrails: [
+      "Operate as the control console, not a content editor.",
+      "Return only related material to core through allowed paths.",
+      "Seed child or peer ICMA background only under lineage and approval discipline.",
+      "Do not rewrite package truth or self-approve peer exchange.",
+    ],
+  });
+
+  return catalog;
+}
+
+function createWorkmodePromptVariantV7Catalog(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  const catalog = createWorkmodePromptVariantV6Catalog();
+
+  catalog.icma.promptPack = createPromptPack({
+    ...catalog.icma.promptPack,
+    promptPackId: "cmp-five-agent/icma-prompt-pack/workmode-v7",
+    systemPrompt: "You are the CMP pre-processing desk. Prepare noisy runtime material for downstream governance. Do not finalize truth.",
+    systemPurpose: "prepare noisy ingress material for downstream processing",
+    mission: "Normalize anchors, keep only workable intent chunks, and hand downstream a processable package preform.",
+    handoffContract: "emit processable preforms, source anchors, and operator or child guides only",
+    guardrails: [
+      "Pre-process only.",
+      "Do not finalize checked truth.",
+      "Never rewrite root system truth.",
+      "Only emit allowed constraint, risk, or flow fragments.",
+    ],
+  });
+
+  catalog.dispatcher.promptPack = createPromptPack({
+    ...catalog.dispatcher.promptPack,
+    promptPackId: "cmp-five-agent/dispatcher-prompt-pack/workmode-v7",
+    systemPrompt: "You are the CMP control console. Route return and seed packages under lineage discipline without rewriting package truth.",
+    systemPurpose: "control return and seeding discipline for core and lineage worksites",
+    mission: "Decide what returns to core, what seeds child or peer ICMA background, and what must remain inside lineage until policy allows movement.",
+    handoffContract: "handoff route state and approval-visible delivery metadata without recutting package truth",
+    guardrails: [
+      "Operate as the control console, not a content editor.",
+      "Return only related material to core through allowed paths.",
+      "Seed child or peer ICMA background only under lineage and approval discipline.",
+      "Do not rewrite package truth or self-approve peer exchange.",
+    ],
+  });
+
+  return catalog;
+}
+
+function createWorkmodePromptVariantV8Catalog(): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  const catalog = clone(BASELINE_ROLE_CATALOG);
+  const workmodeV6 = createWorkmodePromptVariantV6Catalog();
+
+  catalog.checker.promptPack = clone(workmodeV6.checker.promptPack);
+  catalog.dbagent.promptPack = clone(workmodeV6.dbagent.promptPack);
+
+  return catalog;
+}
+
+function createRoleCatalog(
+  promptVariant: CmpFiveAgentPromptVariant = "baseline",
+): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  if (promptVariant === "lean_v2") {
+    return createLeanPromptVariantCatalog();
+  }
+  if (promptVariant === "workflow_v3") {
+    return createWorkflowAlignedPromptVariantCatalog();
+  }
+  if (promptVariant === "workmode_v4") {
+    return createWorkmodePromptVariantCatalog();
+  }
+  if (promptVariant === "workmode_v5") {
+    return createWorkmodePromptVariantV5Catalog();
+  }
+  if (promptVariant === "workmode_v6") {
+    return createWorkmodePromptVariantV6Catalog();
+  }
+  if (promptVariant === "workmode_v7") {
+    return createWorkmodePromptVariantV7Catalog();
+  }
+  if (promptVariant === "workmode_v8") {
+    return createWorkmodePromptVariantV8Catalog();
+  }
+  return clone(BASELINE_ROLE_CATALOG);
+}
+
+export function createDefaultCmpFiveAgentRoleCatalog(
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  return createRoleCatalog(input.promptVariant);
+}
+
+export function createCmpRoleConfigurationSnapshot(
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): Record<CmpFiveAgentRole, CmpRoleConfiguration> {
+  return createDefaultCmpFiveAgentRoleCatalog(input);
+}
+
+export function createCmpFiveAgentConfiguration(
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): CmpFiveAgentConfiguration {
   return {
-    version: CMP_FIVE_AGENT_CONFIGURATION_VERSION,
-    roles: createDefaultCmpFiveAgentRoleCatalog(),
+    version: input.promptVariant && input.promptVariant !== "baseline"
+      ? `${CMP_FIVE_AGENT_CONFIGURATION_VERSION}:${input.promptVariant}`
+      : CMP_FIVE_AGENT_CONFIGURATION_VERSION,
+    roles: createDefaultCmpFiveAgentRoleCatalog(input),
   };
 }
 
-export function getCmpRoleConfiguration(role: CmpFiveAgentRole): CmpRoleConfiguration {
-  return clone(DEFAULT_ROLE_CATALOG[role]);
+export function getCmpRoleConfiguration(
+  role: CmpFiveAgentRole,
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): CmpRoleConfiguration {
+  return createRoleCatalog(input.promptVariant)[role];
 }
 
-export function getCmpFiveAgentRoleDefinition(role: CmpFiveAgentRole): CmpRoleConfiguration {
-  return getCmpRoleConfiguration(role);
+export function getCmpFiveAgentRoleDefinition(
+  role: CmpFiveAgentRole,
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): CmpRoleConfiguration {
+  return getCmpRoleConfiguration(role, input);
 }
 
-export function getCmpRolePromptPack(role: CmpFiveAgentRole): CmpRolePromptPack {
-  return getCmpRoleConfiguration(role).promptPack;
+export function getCmpRolePromptPack(
+  role: CmpFiveAgentRole,
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): CmpRolePromptPack {
+  return getCmpRoleConfiguration(role, input).promptPack;
 }
 
-export function getCmpRoleProfile(role: CmpFiveAgentRole): CmpRoleProfile {
-  return getCmpRoleConfiguration(role).profile;
+export function getCmpRoleProfile(
+  role: CmpFiveAgentRole,
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): CmpRoleProfile {
+  return getCmpRoleConfiguration(role, input).profile;
 }
 
-export function getCmpRoleCapabilityContract(role: CmpFiveAgentRole): CmpRoleCapabilityContract {
-  return getCmpRoleConfiguration(role).capabilityContract;
+export function getCmpRoleCapabilityContract(
+  role: CmpFiveAgentRole,
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): CmpRoleCapabilityContract {
+  return getCmpRoleConfiguration(role, input).capabilityContract;
 }
 
-export function listCmpRoleConfigurations(): CmpRoleConfiguration[] {
-  return CMP_FIVE_AGENT_ROLES.map((role) => getCmpRoleConfiguration(role));
+export function listCmpRoleConfigurations(
+  input: { promptVariant?: CmpFiveAgentPromptVariant } = {},
+): CmpRoleConfiguration[] {
+  return CMP_FIVE_AGENT_ROLES.map((role) => getCmpRoleConfiguration(role, input));
 }
 
 export function createCmpRoleCapabilityMatrix(

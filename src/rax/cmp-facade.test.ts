@@ -1149,6 +1149,220 @@ test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime",
   assert.deepEqual(calls, ["ingest", "commit", "resolve", "materialize", "dispatch", "history"]);
 });
 
+test("createRaxCmpFacade smoke surfaces pending peer approval as degraded flow state", async () => {
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      return {
+        projectId: "proj-peer-flow",
+        bootstrapId: "bootstrap-peer-flow",
+        git: { status: "bootstrapped" as const },
+        gitBootstrap: { status: "bootstrapped" as const, repoRootPath: "/tmp/praxis/proj-peer-flow" },
+        dbBootstrap: { status: "bootstrapped" as const, databaseName: "cmp_peer_flow" },
+        mqBootstrap: { status: "bootstrapped" as const, namespaceRoot: "cmp:peer:flow" },
+        dbReceipt: { status: "bootstrapped" as const, expectedTargetCount: 1, presentTargetCount: 1 },
+        mqBootstraps: [{ agentId: "main", namespaceRoot: "cmp:peer:flow:main", topicBindings: [] }],
+        lineages: [{ agentId: "main", depth: 0 }],
+        gitBranchBootstraps: [{ agentId: "main", createdBranchNames: ["cmp/main"] }],
+        branchRuntimes: [],
+        createdAt: "2026-04-11T00:00:00.000Z",
+      };
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return {
+        projectId: "proj-peer-flow",
+        bootstrapId: "bootstrap-peer-flow",
+        git: { status: "bootstrapped" as const },
+        gitBootstrap: { status: "bootstrapped" as const, repoRootPath: "/tmp/praxis/proj-peer-flow" },
+        dbBootstrap: { status: "bootstrapped" as const, databaseName: "cmp_peer_flow" },
+        mqBootstrap: { status: "bootstrapped" as const, namespaceRoot: "cmp:peer:flow" },
+        dbReceipt: { status: "bootstrapped" as const, expectedTargetCount: 1, presentTargetCount: 1 },
+        mqBootstraps: [{ agentId: "main", namespaceRoot: "cmp:peer:flow:main", topicBindings: [] }],
+        lineages: [{ agentId: "main", depth: 0 }],
+        gitBranchBootstraps: [{ agentId: "main", createdBranchNames: ["cmp/main"] }],
+        branchRuntimes: [],
+        createdAt: "2026-04-11T00:00:00.000Z",
+      };
+    },
+    getCmpRuntimeInfraProjectState() {
+      return {
+        projectId: "proj-peer-flow",
+        gitBranchBootstraps: [{ agentId: "main", createdBranchNames: ["cmp/main"] }],
+        branchRuntimes: [],
+        mqBootstraps: [{ agentId: "main", namespaceRoot: "cmp:peer:flow:main", topicBindings: [] }],
+        lineages: [{ agentId: "main", depth: 0 }],
+        gitBootstrapStatus: "bootstrapped",
+        dbReceiptStatus: "bootstrapped",
+        mqBootstrapCount: 1,
+        expectedLineageCount: 1,
+        hydratedLineageCount: 1,
+        updatedAt: "2026-04-11T00:00:01.000Z",
+      };
+    },
+    getCmpRuntimeRecoverySummary() {
+      return {
+        checkpointRunIds: ["run-peer-flow"],
+        recoveredRunIds: ["run-peer-flow"],
+        hydratedProjectIds: ["proj-peer-flow"],
+      };
+    },
+    getCmpRuntimeProjectRecoverySummary() {
+      return {
+        projectId: "proj-peer-flow",
+        status: "aligned" as const,
+        recommendedAction: "continue",
+      };
+    },
+    getCmpRuntimeDeliveryTruthSummary() {
+      return {
+        projectId: "proj-peer-flow",
+        deliveredCount: 1,
+        driftCount: 0,
+        expiredCount: 0,
+      };
+    },
+    getCmpFiveAgentRuntimeSummary() {
+      return {
+        configurationVersion: "cmp-five-agent-role-catalog/v1",
+        roleCounts: { icma: 1, iterator: 1, checker: 1, dbagent: 1, dispatcher: 1 },
+        configuredRoles: {
+          icma: { promptPackId: "cmp-five-agent/icma-prompt-pack/v1", profileId: "cmp-five-agent/icma-profile/v1", capabilityContractId: "cmp-five-agent/icma-capability-contract/v1", tapProfileId: "cmp-five-agent/icma-tap-profile/v1" },
+          iterator: { promptPackId: "cmp-five-agent/iterator-prompt-pack/v1", profileId: "cmp-five-agent/iterator-profile/v1", capabilityContractId: "cmp-five-agent/iterator-capability-contract/v1", tapProfileId: "cmp-five-agent/iterator-tap-profile/v1" },
+          checker: { promptPackId: "cmp-five-agent/checker-prompt-pack/v1", profileId: "cmp-five-agent/checker-profile/v1", capabilityContractId: "cmp-five-agent/checker-capability-contract/v1", tapProfileId: "cmp-five-agent/checker-tap-profile/v1" },
+          dbagent: { promptPackId: "cmp-five-agent/dbagent-prompt-pack/v1", profileId: "cmp-five-agent/dbagent-profile/v1", capabilityContractId: "cmp-five-agent/dbagent-capability-contract/v1", tapProfileId: "cmp-five-agent/dbagent-tap-profile/v1" },
+          dispatcher: { promptPackId: "cmp-five-agent/dispatcher-prompt-pack/v1", profileId: "cmp-five-agent/dispatcher-profile/v1", capabilityContractId: "cmp-five-agent/dispatcher-capability-contract/v1", tapProfileId: "cmp-five-agent/dispatcher-tap-profile/v1" },
+        },
+        latestStages: {
+          icma: "emit",
+          iterator: "update_review_ref",
+          checker: "checked",
+          dbagent: "attach_snapshots",
+          dispatcher: "collect_receipt",
+        },
+        latestRoleMetadata: {
+          icma: {
+            structuredOutput: {
+              intent: "整理 peer exchange 上下文",
+              sourceAnchorRefs: ["msg:peer:1"],
+              chunkingMode: "multi_auto",
+              intentChunks: [{ chunkId: "chunk-peer-1" }],
+              explicitFragmentIds: [],
+            },
+            liveTrace: { mode: "llm_assisted", status: "live_applied", provider: "openai", model: "gpt-5.4" },
+          },
+          iterator: {
+            reviewOutput: {
+              minimumReviewUnit: "commit",
+              progressionVerdict: "advance_review",
+              reviewRefAnnotation: "peer candidate ready for checker",
+            },
+          },
+          checker: {
+            reviewOutput: {
+              sourceSectionIds: ["section-peer-1"],
+              splitExecutions: [{ decisionRef: "split-peer-1" }],
+              mergeExecutions: [],
+              trimSummary: "peer flow trim",
+            },
+          },
+          dbagent: {
+            materializationOutput: {
+              bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+              primaryPackageStrategy: "peer exchange package keeps primary ref only",
+              timelinePackageStrategy: "timeline remains separate",
+              taskSnapshotStrategy: "task snapshots stay append-only",
+              passivePackagingStrategy: "historical replies stay coarse and high-fidelity",
+            },
+          },
+          dispatcher: {
+            bundle: {
+              target: { targetIngress: "peer_exchange" },
+              body: {
+                primaryRef: "cmp-package:peer",
+                bodyStrategy: "peer_exchange_slim",
+                slimExchangeFields: ["packageId", "packageKind", "primaryRef"],
+              },
+              governance: {
+                scopePolicy: "peer_exchange_requires_explicit_parent_approval",
+                approvalStatus: "pending_parent_core_approval",
+              },
+            },
+          },
+        },
+        capabilityMatrix: {
+          gitWriters: ["iterator", "checker"],
+          dbWriters: ["dbagent"],
+          mqPublishers: ["icma", "dispatcher"],
+        },
+        tapProfiles: {
+          icma: { role: "icma", profileId: "cmp-five-agent/icma-tap-profile/v1", agentClass: "cmp-five-agent:icma", defaultMode: "balanced", baselineTier: "B0", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+          iterator: { role: "iterator", profileId: "cmp-five-agent/iterator-tap-profile/v1", agentClass: "cmp-five-agent:iterator", defaultMode: "strict", baselineTier: "B1", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+          checker: { role: "checker", profileId: "cmp-five-agent/checker-tap-profile/v1", agentClass: "cmp-five-agent:checker", defaultMode: "standard", baselineTier: "B1", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+          dbagent: { role: "dbagent", profileId: "cmp-five-agent/dbagent-tap-profile/v1", agentClass: "cmp-five-agent:dbagent", defaultMode: "strict", baselineTier: "B1", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+          dispatcher: { role: "dispatcher", profileId: "cmp-five-agent/dispatcher-tap-profile/v1", agentClass: "cmp-five-agent:dispatcher", defaultMode: "strict", baselineTier: "B1", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+        },
+        flow: {
+          packageModeCounts: { peer_exchange_slim: 1 },
+          childSeedToIcmaCount: 0,
+          passiveReturnCount: 0,
+          pendingPeerApprovalCount: 1,
+          approvedPeerApprovalCount: 0,
+          rejectedPeerApprovalCount: 0,
+          reinterventionPendingCount: 0,
+          reinterventionServedCount: 0,
+        },
+        recovery: {
+          checkpointCoverage: { icma: 1, iterator: 1, checker: 1, dbagent: 1, dispatcher: 1 },
+          resumableRoles: ["icma", "iterator", "checker", "dbagent", "dispatcher"],
+          missingCheckpointRoles: [],
+        },
+        live: {
+          icma: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+          iterator: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+          checker: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+          dbagent: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+          dispatcher: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+        },
+      } satisfies CmpFiveAgentSummary;
+    },
+    getCmpRuntimeSnapshot() {
+      return createCmpRuntimeSnapshotFixture("proj-peer-flow", "main");
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() { throw new Error("not used"); },
+    async commitContextDelta() { throw new Error("not used"); },
+    async resolveCheckedSnapshot() { throw new Error("not used"); },
+    async materializeContextPackage() { throw new Error("not used"); },
+    async dispatchContextPackage() { throw new Error("not used"); },
+    async requestHistoricalContext() { throw new Error("not used"); },
+  };
+
+  const cmp = createRaxCmpFacade();
+  const session = cmp.session.open({
+    config: {
+      projectId: "proj-peer-flow",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-peer-flow",
+        repoRootPath: "/tmp/praxis/proj-peer-flow",
+        defaultBranchName: "main",
+      },
+    },
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
+  });
+
+  const readback = await cmp.project.readback({ session });
+  const smoke = await cmp.project.smoke({ session });
+
+  assert.equal(readback.summary?.statusPanel?.roles.dispatcher.semanticSummary, "body=peer_exchange_slim, ingress=peer_exchange, slim=3, scope=peer_exchange_requires_explicit_parent_approval");
+  assert.equal(readback.summary?.statusPanel?.requests.pendingPeerApprovalCount, 1);
+  assert.equal(readback.summary?.statusPanel?.health.readbackStatus, "degraded");
+  assert.equal(smoke.status, "degraded");
+  assert.equal(smoke.checks.find((check) => check.id === "cmp.five_agent.flow")?.status, "degraded");
+  assert.ok(smoke.checks.find((check) => check.id === "cmp.five_agent.flow")?.summary.includes("peer pending 1"));
+});
+
 test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage coverage is incomplete", async () => {
   const runtime = {
     async bootstrapCmpProjectInfra() {
@@ -1703,6 +1917,300 @@ test("createRaxCmpFacade can forward explicit peer approval to runtime", async (
   });
   assert.equal(approval.status, "approved");
   assert.equal(approval.approvedByAgentId, "parent-a");
+});
+
+test("createRaxCmpFacade surfaces peer approval transition from pending to approved in readback and smoke", async () => {
+  const cmp = createRaxCmpFacade();
+  let approvalStatus: "pending_parent_core_approval" | "approved" = "pending_parent_core_approval";
+
+  const createSummary = (): CmpFiveAgentSummary => ({
+    configurationVersion: "cmp-five-agent-role-catalog/v1",
+    roleCounts: { icma: 1, iterator: 1, checker: 1, dbagent: 1, dispatcher: 1 },
+    checkpointCount: 5,
+    overrideCount: 0,
+    peerExchangePendingApprovalCount: approvalStatus === "pending_parent_core_approval" ? 1 : 0,
+    peerExchangeApprovedCount: approvalStatus === "approved" ? 1 : 0,
+    parentPromoteReviewCount: 0,
+    configuredRoles: {
+      icma: { promptPackId: "cmp-five-agent/icma-prompt-pack/v1", profileId: "cmp-five-agent/icma-profile/v1", capabilityContractId: "cmp-five-agent/icma-capability-contract/v1", tapProfileId: "cmp-five-agent/icma-tap-profile/v1" },
+      iterator: { promptPackId: "cmp-five-agent/iterator-prompt-pack/v1", profileId: "cmp-five-agent/iterator-profile/v1", capabilityContractId: "cmp-five-agent/iterator-capability-contract/v1", tapProfileId: "cmp-five-agent/iterator-tap-profile/v1" },
+      checker: { promptPackId: "cmp-five-agent/checker-prompt-pack/v1", profileId: "cmp-five-agent/checker-profile/v1", capabilityContractId: "cmp-five-agent/checker-capability-contract/v1", tapProfileId: "cmp-five-agent/checker-tap-profile/v1" },
+      dbagent: { promptPackId: "cmp-five-agent/dbagent-prompt-pack/v1", profileId: "cmp-five-agent/dbagent-profile/v1", capabilityContractId: "cmp-five-agent/dbagent-capability-contract/v1", tapProfileId: "cmp-five-agent/dbagent-tap-profile/v1" },
+      dispatcher: { promptPackId: "cmp-five-agent/dispatcher-prompt-pack/v1", profileId: "cmp-five-agent/dispatcher-profile/v1", capabilityContractId: "cmp-five-agent/dispatcher-capability-contract/v1", tapProfileId: "cmp-five-agent/dispatcher-tap-profile/v1" },
+    },
+    latestStages: {
+      icma: "emit",
+      iterator: "update_review_ref",
+      checker: "checked",
+      dbagent: "attach_snapshots",
+      dispatcher: "collect_receipt",
+    },
+    latestRoleMetadata: {
+      icma: {
+        structuredOutput: {
+          intent: "整理 peer exchange 上下文",
+          sourceAnchorRefs: ["msg:peer:1"],
+          chunkingMode: "multi_auto",
+          intentChunks: [{ chunkId: "chunk-peer-1" }],
+          explicitFragmentIds: [],
+        },
+        liveTrace: { mode: "llm_assisted", status: "live_applied", provider: "openai", model: "gpt-5.4" },
+      },
+      iterator: {
+        reviewOutput: {
+          minimumReviewUnit: "commit",
+          progressionVerdict: "advance_review",
+          reviewRefAnnotation: "peer candidate ready for checker",
+        },
+      },
+      checker: {
+        reviewOutput: {
+          sourceSectionIds: ["section-peer-1"],
+          splitExecutions: [{ decisionRef: "split-peer-1" }],
+          mergeExecutions: [],
+          trimSummary: "peer flow trim",
+        },
+      },
+      dbagent: {
+        materializationOutput: {
+          bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+          primaryPackageStrategy: "peer exchange package keeps primary ref only",
+          timelinePackageStrategy: "timeline remains separate",
+          taskSnapshotStrategy: "task snapshots stay append-only",
+          passivePackagingStrategy: "historical replies stay coarse and high-fidelity",
+        },
+      },
+      dispatcher: {
+        bundle: {
+          target: { targetIngress: "peer_exchange" },
+          body: {
+            primaryRef: "cmp-package:peer",
+            bodyStrategy: "peer_exchange_slim",
+            slimExchangeFields: ["packageId", "packageKind", "primaryRef"],
+          },
+          governance: {
+            scopePolicy: "peer_exchange_requires_explicit_parent_approval",
+            approvalStatus,
+          },
+        },
+      },
+    },
+    capabilityMatrix: {
+      gitWriters: ["iterator", "checker"],
+      dbWriters: ["dbagent"],
+      mqPublishers: ["icma", "dispatcher"],
+    },
+    tapProfiles: {
+      icma: { role: "icma", profileId: "cmp-five-agent/icma-tap-profile/v1", agentClass: "cmp-five-agent:icma", defaultMode: "balanced", baselineTier: "B0", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+      iterator: { role: "iterator", profileId: "cmp-five-agent/iterator-tap-profile/v1", agentClass: "cmp-five-agent:iterator", defaultMode: "strict", baselineTier: "B1", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+      checker: { role: "checker", profileId: "cmp-five-agent/checker-tap-profile/v1", agentClass: "cmp-five-agent:checker", defaultMode: "standard", baselineTier: "B1", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+      dbagent: { role: "dbagent", profileId: "cmp-five-agent/dbagent-tap-profile/v1", agentClass: "cmp-five-agent:dbagent", defaultMode: "strict", baselineTier: "B1", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+      dispatcher: { role: "dispatcher", profileId: "cmp-five-agent/dispatcher-tap-profile/v1", agentClass: "cmp-five-agent:dispatcher", defaultMode: "strict", baselineTier: "B1", baselineCapabilities: [], allowedCapabilityPatterns: [], deniedCapabilityPatterns: [] },
+    },
+    flow: {
+      packageModeCounts: { peer_exchange_slim: 1 },
+      childSeedToIcmaCount: 0,
+      passiveReturnCount: 0,
+      pendingPeerApprovalCount: approvalStatus === "pending_parent_core_approval" ? 1 : 0,
+      approvedPeerApprovalCount: approvalStatus === "approved" ? 1 : 0,
+      rejectedPeerApprovalCount: 0,
+      reinterventionPendingCount: 0,
+      reinterventionServedCount: 0,
+    },
+    recovery: {
+      checkpointCoverage: { icma: 1, iterator: 1, checker: 1, dbagent: 1, dispatcher: 1 },
+      resumableRoles: ["icma", "iterator", "checker", "dbagent", "dispatcher"],
+      missingCheckpointRoles: [],
+    },
+    live: {
+      icma: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+      iterator: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+      checker: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+      dbagent: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+      dispatcher: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
+    },
+  });
+
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      return {
+        projectId: "proj-peer-approval-transition",
+        bootstrapId: "bootstrap-peer-approval-transition",
+        git: { status: "bootstrapped" as const },
+        gitBootstrap: { status: "bootstrapped" as const, repoRootPath: "/tmp/praxis/proj-peer-approval-transition" },
+        dbBootstrap: { status: "bootstrapped" as const, databaseName: "cmp_peer_approval_transition" },
+        mqBootstrap: { status: "bootstrapped" as const, namespaceRoot: "cmp:peer:approval:transition" },
+        dbReceipt: { status: "bootstrapped" as const, expectedTargetCount: 1, presentTargetCount: 1 },
+        mqBootstraps: [{ agentId: "main", namespaceRoot: "cmp:peer:approval:transition:main", topicBindings: [] }],
+        lineages: [{ agentId: "main", depth: 0 }],
+        gitBranchBootstraps: [{ agentId: "main", createdBranchNames: ["cmp/main"] }],
+        branchRuntimes: [],
+        createdAt: "2026-04-11T00:00:00.000Z",
+      };
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return {
+        projectId: "proj-peer-approval-transition",
+        bootstrapId: "bootstrap-peer-approval-transition",
+        git: { status: "bootstrapped" as const },
+        gitBootstrap: { status: "bootstrapped" as const, repoRootPath: "/tmp/praxis/proj-peer-approval-transition" },
+        dbBootstrap: { status: "bootstrapped" as const, databaseName: "cmp_peer_approval_transition" },
+        mqBootstrap: { status: "bootstrapped" as const, namespaceRoot: "cmp:peer:approval:transition" },
+        dbReceipt: { status: "bootstrapped" as const, expectedTargetCount: 1, presentTargetCount: 1 },
+        mqBootstraps: [{ agentId: "main", namespaceRoot: "cmp:peer:approval:transition:main", topicBindings: [] }],
+        lineages: [{ agentId: "main", depth: 0 }],
+        gitBranchBootstraps: [{ agentId: "main", createdBranchNames: ["cmp/main"] }],
+        branchRuntimes: [],
+        createdAt: "2026-04-11T00:00:00.000Z",
+      };
+    },
+    getCmpRuntimeInfraProjectState() {
+      return {
+        projectId: "proj-peer-approval-transition",
+        gitBranchBootstraps: [{ agentId: "main", createdBranchNames: ["cmp/main"] }],
+        branchRuntimes: [],
+        mqBootstraps: [{ agentId: "main", namespaceRoot: "cmp:peer:approval:transition:main", topicBindings: [] }],
+        lineages: [{ agentId: "main", depth: 0 }],
+        gitBootstrapStatus: "bootstrapped",
+        dbReceiptStatus: "bootstrapped",
+        mqBootstrapCount: 1,
+        expectedLineageCount: 1,
+        hydratedLineageCount: 1,
+        updatedAt: "2026-04-11T00:00:01.000Z",
+      };
+    },
+    getCmpRuntimeRecoverySummary() {
+      return {
+        checkpointRunIds: ["run-peer-approval-transition"],
+        recoveredRunIds: ["run-peer-approval-transition"],
+        hydratedProjectIds: ["proj-peer-approval-transition"],
+      };
+    },
+    getCmpRuntimeProjectRecoverySummary() {
+      return {
+        projectId: "proj-peer-approval-transition",
+        status: "aligned" as const,
+        recommendedAction: "continue",
+      };
+    },
+    getCmpRuntimeDeliveryTruthSummary() {
+      return {
+        projectId: "proj-peer-approval-transition",
+        deliveredCount: 1,
+        driftCount: 0,
+        expiredCount: 0,
+      };
+    },
+    getCmpFiveAgentRuntimeSummary() {
+      return createSummary();
+    },
+    getCmpRuntimeSnapshot() {
+      return createCmpRuntimeSnapshotFixture("proj-peer-approval-transition", "main");
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() { throw new Error("not used"); },
+    async commitContextDelta() { throw new Error("not used"); },
+    async resolveCheckedSnapshot() { throw new Error("not used"); },
+    async materializeContextPackage() { throw new Error("not used"); },
+    async dispatchContextPackage() { throw new Error("not used"); },
+    async requestHistoricalContext() { throw new Error("not used"); },
+    async dispatchCmpFiveAgentCapability() {
+      return {
+        role: "dispatcher" as const,
+        profile: {
+          profileId: "cmp-five-agent/dispatcher-tap-profile/v1",
+          agentClass: "cmp-five-agent:dispatcher",
+          defaultMode: "strict" as const,
+          canonicalDefaultMode: "standard" as const,
+          baselineTier: "B1" as const,
+          baselineCapabilities: ["cmp.mq.publish.delivery"],
+          allowedCapabilityPatterns: ["cmp.mq.publish.*"],
+          deniedCapabilityPatterns: ["cmp.git.*"],
+        },
+        intent: {
+          intentId: "intent-peer-approval-transition",
+          sessionId: "session-peer-approval-transition",
+          runId: "run-peer-approval-transition",
+          kind: "capability_call" as const,
+          createdAt: "2026-04-11T00:00:00.000Z",
+          priority: "high" as const,
+          request: {
+            requestId: "request-peer-approval-transition",
+            intentId: "intent-peer-approval-transition",
+            sessionId: "session-peer-approval-transition",
+            runId: "run-peer-approval-transition",
+            capabilityKey: "cmp.mq.publish.delivery",
+            input: {},
+            priority: "high" as const,
+          },
+        },
+        bridgeMetadata: {
+          cmpRole: "dispatcher",
+        },
+        dispatch: {
+          status: "review_required" as const,
+        },
+      } satisfies DispatchCmpFiveAgentCapabilityResult;
+    },
+    reviewCmpPeerExchangeApproval(input: Record<string, unknown>) {
+      approvalStatus = "approved";
+      return {
+        approvalId: String(input.approvalId),
+        parentAgentId: "parent-main",
+        sourceAgentId: "peer-a",
+        targetAgentId: "peer-b",
+        packageId: "pkg-peer-transition",
+        createdAt: "2026-04-11T00:00:00.000Z",
+        mode: "explicit_once" as const,
+        status: "approved" as const,
+        approvalChain: "parent_dbagent_then_parent_core_agent" as const,
+        approvedAt: "2026-04-11T00:00:02.000Z",
+        approvedByAgentId: String(input.actorAgentId),
+        decisionNote: typeof input.note === "string" ? input.note : undefined,
+      };
+    },
+  };
+
+  const session = cmp.session.open({
+    config: {
+      projectId: "proj-peer-approval-transition",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-peer-approval-transition",
+        repoRootPath: "/tmp/praxis/proj-peer-approval-transition",
+        defaultBranchName: "main",
+      },
+    },
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
+  });
+
+  const pendingReadback = await cmp.project.readback({ session });
+  const pendingSmoke = await cmp.project.smoke({ session });
+  assert.equal(pendingReadback.summary?.statusPanel?.requests.pendingPeerApprovalCount, 1);
+  assert.equal(pendingReadback.summary?.statusPanel?.requests.approvedPeerApprovalCount, 0);
+  assert.equal(pendingReadback.summary?.statusPanel?.health.readbackStatus, "degraded");
+  assert.equal(pendingSmoke.status, "degraded");
+  assert.equal(pendingSmoke.checks.find((check) => check.id === "cmp.five_agent.flow")?.status, "degraded");
+
+  const approval = await cmp.roles.approvePeerExchange({
+    session,
+    approvalId: "approval-transition-1",
+    actorAgentId: "parent-main",
+    decision: "approved",
+    note: "allow peer exchange once",
+  });
+  assert.equal(approval.status, "approved");
+
+  const approvedReadback = await cmp.project.readback({ session });
+  const approvedSmoke = await cmp.project.smoke({ session });
+  assert.equal(approvedReadback.summary?.statusPanel?.requests.pendingPeerApprovalCount, 0);
+  assert.equal(approvedReadback.summary?.statusPanel?.requests.approvedPeerApprovalCount, 1);
+  assert.equal(approvedReadback.summary?.statusPanel?.roles.dispatcher.semanticSummary, "body=peer_exchange_slim, ingress=peer_exchange, slim=3, scope=peer_exchange_requires_explicit_parent_approval");
+  assert.ok(!approvedReadback.summary?.issues.some((issue) => issue.includes("pending peer exchange approval")));
+  assert.equal(approvedSmoke.checks.find((check) => check.id === "cmp.five_agent.flow")?.status, "ready");
+  assert.ok(approvedSmoke.checks.find((check) => check.id === "cmp.five_agent.flow")?.summary.includes("peer pending 0"));
 });
 
 test("createRaxCmpFacade can resolve five-agent TAP capability access through runtime", async () => {

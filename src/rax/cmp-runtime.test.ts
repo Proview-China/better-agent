@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  createContextPackage,
+  createDispatchReceipt,
+} from "../agent_core/cmp-types/index.js";
 import { createAgentCoreRuntime } from "../agent_core/runtime.js";
 import { createInMemoryCmpGitBackend } from "../agent_core/cmp-git/index.js";
 import { createInMemoryCmpRedisMqAdapter } from "../agent_core/cmp-mq/index.js";
@@ -97,4 +101,96 @@ test("createRaxCmpRuntime exposes full cmp workflow surface through agent_core r
   assert.equal(typeof runtime.fiveAgent.getSummary, "function");
   assert.equal(typeof runtime.roles.resolveCapabilityAccess, "function");
   assert.equal(typeof runtime.roles.dispatchCapability, "function");
+});
+
+test("createRaxCmpRuntime can carry peer approval from pending to approved through the real five-agent summary", async () => {
+  const config = createRaxCmpConfig({
+    projectId: "proj-rax-cmp-runtime-peer-approval",
+    git: {
+      repoName: "proj-rax-cmp-runtime-peer-approval",
+      repoRootPath: "/tmp/praxis/proj-rax-cmp-runtime-peer-approval",
+    },
+    db: {
+      databaseName: "cmp_proj_rax_cmp_runtime_peer_approval",
+      liveExecutionPreferred: false,
+    },
+    mq: {
+      liveExecutionPreferred: false,
+    },
+  });
+  const connectors = createCmpSharedInfraConnectors({
+    gitBackend: createInMemoryCmpGitBackend(),
+    mqAdapter: createInMemoryCmpRedisMqAdapter(),
+  });
+  const runtime = createRaxCmpRuntime({
+    config,
+    connectors,
+  });
+
+  const dispatched = await runtime.agentCoreRuntime.cmp.fiveAgent.dispatchDispatcherWithLlm({
+    contextPackage: createContextPackage({
+      packageId: "pkg-runtime-peer-1",
+      sourceProjectionId: "projection-runtime-peer-1",
+      targetAgentId: "peer-b",
+      packageKind: "peer_exchange",
+      packageRef: "cmp-package:runtime-peer-1",
+      fidelityLabel: "checked_high_fidelity",
+      createdAt: "2026-04-11T16:00:00.000Z",
+    }),
+    dispatch: {
+      agentId: "peer-a",
+      packageId: "pkg-runtime-peer-1",
+      sourceAgentId: "peer-a",
+      targetAgentId: "peer-b",
+      targetKind: "peer",
+      metadata: {
+        parentAgentId: "parent-main",
+        currentStateSummary: "peer exchange awaits explicit parent approval",
+        sourceRequestId: "request-runtime-peer-1",
+        sourceSnapshotId: "snapshot-runtime-peer-1",
+      },
+    },
+    receipt: createDispatchReceipt({
+      dispatchId: "dispatch-runtime-peer-1",
+      packageId: "pkg-runtime-peer-1",
+      sourceAgentId: "peer-a",
+      targetAgentId: "peer-b",
+      status: "delivered",
+      deliveredAt: "2026-04-11T16:00:00.000Z",
+    }),
+    createdAt: "2026-04-11T16:00:00.000Z",
+    loopId: "dispatcher-runtime-peer-1",
+  }, {
+    mode: "llm_assisted",
+    executor: async () => ({
+      output: {
+        routeRationale: "peer exchange can proceed after explicit parent approval",
+        bodyStrategy: "peer_exchange_slim",
+        slimExchangeFields: ["packageId", "packageKind", "primaryRef"],
+        scopePolicy: "peer_exchange_requires_explicit_parent_approval",
+      },
+      provider: "openai",
+      model: "gpt-5.4",
+      requestId: "req-runtime-peer-1",
+    }),
+  });
+
+  const approvalId = dispatched.peerApproval?.approvalId;
+  assert.ok(approvalId);
+  const pendingSummary = runtime.fiveAgent.getSummary("peer-a");
+  assert.equal(pendingSummary.flow.pendingPeerApprovalCount, 1);
+  assert.equal(pendingSummary.flow.approvedPeerApprovalCount, 0);
+
+  const approval = await runtime.roles.approvePeerExchange({
+    approvalId,
+    actorAgentId: "parent-main",
+    decision: "approved",
+    note: "allow one peer exchange",
+  });
+
+  assert.equal(approval.status, "approved");
+  const approvedSummary = runtime.fiveAgent.getSummary("peer-a");
+  assert.equal(approvedSummary.flow.pendingPeerApprovalCount, 0);
+  assert.equal(approvedSummary.flow.approvedPeerApprovalCount, 1);
+  assert.equal(approvedSummary.latestRoleMetadata.dispatcher?.bundle?.governance?.approvalStatus, "approved");
 });

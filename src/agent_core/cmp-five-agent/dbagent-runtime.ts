@@ -17,6 +17,7 @@ import type {
   CmpDbAgentMaterializeResult,
   CmpDbAgentPassiveInput,
   CmpDbAgentRecord,
+  CmpRoleConfiguration,
   CmpDbAgentRuntimeSnapshot,
   CmpReinterventionRequestRecord,
   CmpParentPromoteReviewRecord,
@@ -47,6 +48,7 @@ function normalizeCurrentStateRefs(input: {
 }
 
 export class CmpDbAgentRuntime {
+  readonly #configuration: CmpRoleConfiguration;
   readonly #records = new Map<string, CmpDbAgentRecord>();
   readonly #checkpoints = new Map<string, CmpRoleCheckpointRecord>();
   readonly #packageFamilies = new Map<string, ReturnType<typeof createCmpPackageFamilyRecord>>();
@@ -54,11 +56,16 @@ export class CmpDbAgentRuntime {
   readonly #parentPromoteReviews = new Map<string, CmpParentPromoteReviewRecord>();
   readonly #reinterventionRequests = new Map<string, CmpReinterventionRequestRecord>();
 
+  constructor(options: { configuration?: CmpRoleConfiguration } = {}) {
+    this.#configuration = options.configuration ?? getCmpRoleConfiguration("dbagent");
+  }
+
   get reinterventionRequests(): CmpReinterventionRequestRecord[] {
     return [...this.#reinterventionRequests.values()];
   }
 
   materialize(input: CmpDbAgentMaterializeInput): CmpDbAgentMaterializeResult {
+    const configuration = this.#configuration;
     const taskSnapshot: CmpTaskSkillSnapshot = createCmpSkillSnapshotRecord({
       snapshotId: `${input.contextPackage.packageId}:task-state`,
       taskRef: `${input.checkedSnapshot.agentId}:${input.checkedSnapshot.snapshotId}`,
@@ -92,6 +99,9 @@ export class CmpDbAgentRuntime {
         metadata: {
           dbWriteAuthority: "dbagent_only",
           packageAuthority: "dbagent_primary_packer",
+          promptPackId: configuration.promptPack.promptPackId,
+          profileId: configuration.profile.profileId,
+          capabilityContractId: configuration.capabilityContract.contractId,
           packageBundle: {
             topology: "active_plus_timeline_plus_task_snapshots",
             primaryPackageId: input.contextPackage.packageId,
@@ -151,7 +161,7 @@ export class CmpDbAgentRuntime {
     } = {},
   ): Promise<CmpDbAgentMaterializeResult> {
     const rulesResult = this.materialize(input);
-    const configuration = getCmpRoleConfiguration("dbagent");
+    const configuration = this.#configuration;
     const live = await executeCmpRoleLiveLlmStep<Record<string, unknown>, CmpDbAgentLiveMaterializationOutput>({
       role: "dbagent",
       agentId: rulesResult.loop.agentId,
@@ -216,6 +226,7 @@ export class CmpDbAgentRuntime {
   }
 
   servePassive(input: CmpDbAgentPassiveInput): CmpDbAgentMaterializeResult {
+    const configuration = this.#configuration;
     const family = createCmpPackageFamilyRecord({
       familyId: `${input.contextPackage.packageId}:family`,
       primaryPackageId: input.contextPackage.packageId,
@@ -249,6 +260,9 @@ export class CmpDbAgentRuntime {
         metadata: {
           passiveDefaultPayload: "ContextPackage",
           packageAuthority: "dbagent_primary_packer",
+          promptPackId: configuration.promptPack.promptPackId,
+          profileId: configuration.profile.profileId,
+          capabilityContractId: configuration.capabilityContract.contractId,
           packageBundle: {
             topology: "passive_reply_plus_timeline_plus_task_snapshots",
             primaryPackageId: input.contextPackage.packageId,
@@ -309,7 +323,7 @@ export class CmpDbAgentRuntime {
     } = {},
   ): Promise<CmpDbAgentMaterializeResult> {
     const rulesResult = this.servePassive(input);
-    const configuration = getCmpRoleConfiguration("dbagent");
+    const configuration = this.#configuration;
     const live = await executeCmpRoleLiveLlmStep<Record<string, unknown>, CmpDbAgentLiveMaterializationOutput>({
       role: "dbagent",
       agentId: rulesResult.loop.agentId,
@@ -546,6 +560,6 @@ export class CmpDbAgentRuntime {
   }
 }
 
-export function createCmpDbAgentRuntime(): CmpDbAgentRuntime {
-  return new CmpDbAgentRuntime();
+export function createCmpDbAgentRuntime(options: { configuration?: CmpRoleConfiguration } = {}): CmpDbAgentRuntime {
+  return new CmpDbAgentRuntime(options);
 }

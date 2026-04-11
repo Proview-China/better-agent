@@ -121,11 +121,20 @@ export class CmpFiveAgentRuntime {
   readonly liveDefaults: CmpFiveAgentLiveDefaults;
 
   constructor(options: CmpFiveAgentRuntimeOptions = {}) {
-    this.icma = options.icma ?? createCmpIcmaRuntime();
-    this.iteratorChecker = options.iteratorChecker ?? createCmpIteratorCheckerRuntime();
-    this.dbagent = options.dbagent ?? createCmpDbAgentRuntime();
-    this.dispatcher = options.dispatcher ?? createCmpDispatcherRuntime();
     this.configuration = options.configuration ?? createCmpFiveAgentConfiguration();
+    this.icma = options.icma ?? createCmpIcmaRuntime({
+      configuration: this.configuration.roles.icma,
+    });
+    this.iteratorChecker = options.iteratorChecker ?? createCmpIteratorCheckerRuntime({
+      iteratorConfiguration: this.configuration.roles.iterator,
+      checkerConfiguration: this.configuration.roles.checker,
+    });
+    this.dbagent = options.dbagent ?? createCmpDbAgentRuntime({
+      configuration: this.configuration.roles.dbagent,
+    });
+    this.dispatcher = options.dispatcher ?? createCmpDispatcherRuntime({
+      configuration: this.configuration.roles.dispatcher,
+    });
     this.liveDefaults = {
       modes: {
         ...(options.live?.modes ?? {}),

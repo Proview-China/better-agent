@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createCmpBranchFamily } from "../cmp-types/index.js";
+import { createCmpFiveAgentConfiguration } from "./configuration.js";
 import { createCmpFiveAgentRuntime } from "./five-agent-runtime.js";
 
 test("CmpFiveAgentRuntime creates per-role summaries", () => {
@@ -311,6 +312,198 @@ test("CmpFiveAgentRuntime can orchestrate one active live loop without touching 
   assert.equal(result.summary.live.dispatcher.status, "succeeded");
 });
 
+test("CmpFiveAgentRuntime can surface peer exchange pending approval inside the active loop", async () => {
+  const runtime = createCmpFiveAgentRuntime({
+    configuration: createCmpFiveAgentConfiguration({ promptVariant: "workmode_v8" }),
+    live: {
+      executors: {
+        icma: async () => ({
+          output: {
+            intent: "peer exchange active loop intent",
+            sourceAnchorRefs: ["msg:peer:1"],
+            candidateBodyRefs: ["msg:peer:1"],
+            boundary: "preserve_root_system_and_emit_controlled_fragments_only",
+            operatorGuide: "operator peer loop",
+            childGuide: "child peer loop",
+          },
+          provider: "openai",
+          model: "gpt-5.4",
+        }),
+        iterator: async () => ({
+          output: {
+            sourceSectionIds: ["section-pre-peer-1"],
+            commitRationale: "iterator peer loop rationale",
+          },
+          provider: "openai",
+          model: "gpt-5.4",
+        }),
+        checker: async () => ({
+          output: {
+            sourceSectionIds: ["section-pre-peer-1"],
+            checkedSectionIds: ["section-checked-peer-1"],
+            splitExecutions: [{
+              decisionRef: "split-peer-1",
+              sourceSectionId: "section-pre-peer-1",
+              proposedSectionIds: ["section-checked-peer-1"],
+              rationale: "peer split",
+            }],
+            mergeExecutions: [],
+            trimSummary: "checker peer loop trim",
+            shortReason: "peer checked short",
+            detailedReason: "peer checked detail",
+          },
+          provider: "openai",
+          model: "gpt-5.4",
+        }),
+        dbagent: async () => ({
+          output: {
+            packageTopology: "active_plus_timeline_plus_task_snapshots",
+            bundleSchemaVersion: "cmp-dispatch-bundle/v1",
+            materializationRationale: "dbagent peer loop rationale",
+          },
+          provider: "openai",
+          model: "gpt-5.4",
+        }),
+        dispatcher: async () => ({
+          output: {
+            routeRationale: "peer exchange should stay slim and await parent approval",
+            bodyStrategy: "peer_exchange_slim",
+            slimExchangeFields: ["packageId", "packageKind", "primaryRef"],
+            scopePolicy: "peer_exchange_requires_explicit_parent_approval",
+          },
+          provider: "openai",
+          model: "gpt-5.4",
+        }),
+      },
+    },
+  });
+
+  const result = await runtime.runActiveLoopWithLlm({
+    icma: {
+      input: {
+        ingest: {
+          agentId: "peer-main",
+          sessionId: "peer-session",
+          taskSummary: "peer exchange active loop task",
+          materials: [{ kind: "user_input", ref: "msg:peer:1" }],
+          lineage: {
+            agentId: "peer-main",
+            projectId: "peer-proj",
+            depth: 0,
+            status: "active",
+            branchFamily: createCmpBranchFamily({
+              workBranch: "work/peer-main",
+              cmpBranch: "cmp/peer-main",
+              mpBranch: "mp/peer-main",
+              tapBranch: "tap/peer-main",
+            }),
+          },
+        },
+        createdAt: "2026-04-11T00:20:00.000Z",
+        loopId: "peer-icma-loop",
+      },
+    },
+    iterator: {
+      input: {
+        agentId: "peer-main",
+        deltaId: "delta-peer-1",
+        candidateId: "candidate-peer-1",
+        branchRef: "refs/heads/cmp/peer-main",
+        commitRef: "commit-peer-1",
+        reviewRef: "refs/cmp/review/candidate-peer-1",
+        createdAt: "2026-04-11T00:20:01.000Z",
+        metadata: {
+          sourceSectionIds: ["section-pre-peer-1"],
+        },
+      },
+    },
+    checker: {
+      input: {
+        agentId: "peer-main",
+        candidateId: "candidate-peer-1",
+        checkedSnapshotId: "snapshot-peer-1",
+        checkedAt: "2026-04-11T00:20:02.000Z",
+        metadata: {
+          sourceSectionIds: ["section-pre-peer-1"],
+          checkedSectionIds: ["section-checked-peer-1"],
+        },
+      },
+    },
+    dbagent: {
+      input: {
+        checkedSnapshot: {
+          snapshotId: "snapshot-peer-1",
+          agentId: "peer-main",
+          lineageRef: "lineage:peer-main",
+          branchRef: "refs/heads/cmp/peer-main",
+          commitRef: "commit-peer-1",
+          checkedAt: "2026-04-11T00:20:03.000Z",
+          qualityLabel: "usable",
+          promotable: true,
+        },
+        projectionId: "projection-peer-1",
+        contextPackage: {
+          packageId: "package-peer-1",
+          sourceProjectionId: "projection-peer-1",
+          targetAgentId: "peer-b",
+          packageKind: "peer_exchange",
+          packageRef: "cmp-package:snapshot-peer-1:peer-b:peer_exchange",
+          fidelityLabel: "checked_high_fidelity",
+          createdAt: "2026-04-11T00:20:03.000Z",
+        },
+        createdAt: "2026-04-11T00:20:03.000Z",
+        loopId: "peer-dbagent-loop",
+        metadata: {
+          sourceRequestId: "request-peer-1",
+          sourceSectionIds: ["section-checked-peer-1"],
+        },
+      },
+    },
+    dispatcher: {
+      input: {
+        contextPackage: {
+          packageId: "package-peer-1",
+          sourceProjectionId: "projection-peer-1",
+          targetAgentId: "peer-b",
+          packageKind: "peer_exchange",
+          packageRef: "cmp-package:snapshot-peer-1:peer-b:peer_exchange",
+          fidelityLabel: "checked_high_fidelity",
+          createdAt: "2026-04-11T00:20:04.000Z",
+        },
+        dispatch: {
+          agentId: "peer-main",
+          packageId: "package-peer-1",
+          sourceAgentId: "peer-main",
+          targetAgentId: "peer-b",
+          targetKind: "peer",
+          metadata: {
+            parentAgentId: "parent-main",
+            currentStateSummary: "peer package awaits approval",
+            sourceRequestId: "request-peer-1",
+            sourceSnapshotId: "snapshot-peer-1",
+          },
+        },
+        receipt: {
+          dispatchId: "dispatch-peer-1",
+          packageId: "package-peer-1",
+          sourceAgentId: "peer-main",
+          targetAgentId: "peer-b",
+          status: "delivered",
+          deliveredAt: "2026-04-11T00:20:04.000Z",
+        },
+        createdAt: "2026-04-11T00:20:04.000Z",
+        loopId: "peer-dispatcher-loop",
+      },
+    },
+  });
+
+  assert.equal(result.dispatcher.loop.packageMode, "peer_exchange_slim");
+  assert.equal(result.dispatcher.loop.bundle.target.targetIngress, "peer_exchange");
+  assert.equal(result.dispatcher.loop.bundle.governance.scopePolicy, "peer_exchange_requires_explicit_parent_approval");
+  assert.equal(result.summary.flow.pendingPeerApprovalCount, 1);
+  assert.equal(result.summary.flow.approvedPeerApprovalCount, 0);
+});
+
 test("CmpFiveAgentRuntime can orchestrate one passive live loop for historical return", async () => {
   const runtime = createCmpFiveAgentRuntime({
     live: {
@@ -404,4 +597,182 @@ test("CmpFiveAgentRuntime can orchestrate one passive live loop for historical r
   assert.equal(result.dispatcher.liveTrace?.status, "live_applied");
   assert.equal(result.dispatcher.bundle.governance.routeRationale, "dispatcher passive live loop rationale");
   assert.equal(result.summary.live.dispatcher.status, "succeeded");
+});
+
+test("CmpFiveAgentRuntime passes configured prompt variants into role runtimes", async () => {
+  const runtime = createCmpFiveAgentRuntime({
+    configuration: createCmpFiveAgentConfiguration({ promptVariant: "workflow_v3" }),
+    live: {
+      executors: {
+        icma: async () => ({
+          output: {
+            intent: "variant ingress intent",
+            sourceAnchorRefs: ["msg:variant:1"],
+            candidateBodyRefs: ["msg:variant:1"],
+            boundary: "preserve_root_system_and_emit_controlled_fragments_only",
+            operatorGuide: "variant operator",
+            childGuide: "variant child",
+          },
+          provider: "openai",
+          model: "gpt-5.4",
+        }),
+        checker: async () => ({
+          output: {
+            sourceSectionIds: ["section-pre-variant-1"],
+            checkedSectionIds: ["section-checked-variant-1"],
+            splitExecutions: [{
+              decisionRef: "split-variant-1",
+              sourceSectionId: "section-pre-variant-1",
+              proposedSectionIds: ["section-checked-variant-1"],
+              rationale: "variant split",
+            }],
+            mergeExecutions: [],
+            trimSummary: "variant trim",
+            shortReason: "variant short",
+            detailedReason: "variant detail",
+          },
+          provider: "openai",
+          model: "gpt-5.4",
+        }),
+        dbagent: async () => ({
+          output: {
+            passivePackagingStrategy: "variant_passive_strategy",
+          },
+          provider: "openai",
+          model: "gpt-5.4",
+        }),
+      },
+    },
+  });
+
+  const icma = await runtime.captureIcmaWithLlm({
+    ingest: {
+      agentId: "variant-main",
+      sessionId: "variant-session",
+      taskSummary: "variant task",
+      materials: [{ kind: "user_input", ref: "msg:variant:1" }],
+      lineage: {
+        agentId: "variant-main",
+        projectId: "variant-proj",
+        depth: 0,
+        status: "active",
+        branchFamily: createCmpBranchFamily({
+          workBranch: "work/variant-main",
+          cmpBranch: "cmp/variant-main",
+          mpBranch: "mp/variant-main",
+          tapBranch: "tap/variant-main",
+        }),
+      },
+    },
+    createdAt: "2026-04-11T00:00:00.000Z",
+    loopId: "variant-icma-loop",
+  });
+
+  const checker = await runtime.evaluateCheckerWithLlm({
+    agentId: "variant-main",
+    candidateId: "variant-candidate",
+    checkedSnapshotId: "variant-snapshot",
+    checkedAt: "2026-04-11T00:00:01.000Z",
+    metadata: {
+      sourceSectionIds: ["section-pre-variant-1"],
+      checkedSectionIds: ["section-checked-variant-1"],
+    },
+  });
+
+  const dbagent = await runtime.servePassiveDbAgentWithLlm({
+    request: {
+      requesterAgentId: "variant-main",
+      projectId: "variant-proj",
+      reason: "need historical context",
+      query: {
+        snapshotId: "variant-snapshot",
+      },
+    },
+    snapshot: {
+      snapshotId: "variant-snapshot",
+      agentId: "variant-main",
+      lineageRef: "variant:main",
+      branchRef: "refs/heads/cmp/variant-main",
+      commitRef: "commit-variant",
+      checkedAt: "2026-04-11T00:00:02.000Z",
+    },
+    contextPackage: {
+      packageId: "variant-package",
+      sourceProjectionId: "variant-projection",
+      targetAgentId: "variant-main",
+      packageKind: "historical_reply",
+      packageRef: "cmp-package:variant",
+      fidelityLabel: "checked_high_fidelity",
+      createdAt: "2026-04-11T00:00:02.000Z",
+    },
+    createdAt: "2026-04-11T00:00:02.000Z",
+    loopId: "variant-dbagent-loop",
+  });
+
+  assert.equal(icma.loop.metadata?.promptPackId, "cmp-five-agent/icma-prompt-pack/lean-v2");
+  assert.equal(checker.checkerRecord.metadata?.promptPackId, "cmp-five-agent/checker-prompt-pack/workflow-v3");
+  assert.equal(dbagent.loop.metadata?.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workflow-v3");
+  assert.equal(runtime.createSummary("variant-main").configuredRoles.checker.promptPackId, "cmp-five-agent/checker-prompt-pack/workflow-v3");
+});
+
+test("CmpFiveAgentRuntime surfaces workmode prompt ids in summaries", () => {
+  const runtime = createCmpFiveAgentRuntime({
+    configuration: createCmpFiveAgentConfiguration({ promptVariant: "workmode_v4" }),
+  });
+
+  const summary = runtime.createSummary();
+  assert.equal(summary.configuredRoles.icma.promptPackId, "cmp-five-agent/icma-prompt-pack/workmode-v4");
+  assert.equal(summary.configuredRoles.iterator.promptPackId, "cmp-five-agent/iterator-prompt-pack/workmode-v4");
+  assert.equal(summary.configuredRoles.checker.promptPackId, "cmp-five-agent/checker-prompt-pack/workmode-v4");
+  assert.equal(summary.configuredRoles.dbagent.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workmode-v4");
+  assert.equal(summary.configuredRoles.dispatcher.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/workmode-v4");
+});
+
+test("CmpFiveAgentRuntime surfaces v5 workmode prompt ids in summaries", () => {
+  const runtime = createCmpFiveAgentRuntime({
+    configuration: createCmpFiveAgentConfiguration({ promptVariant: "workmode_v5" }),
+  });
+
+  const summary = runtime.createSummary();
+  assert.equal(summary.configuredRoles.icma.promptPackId, "cmp-five-agent/icma-prompt-pack/workmode-v5");
+  assert.equal(summary.configuredRoles.iterator.promptPackId, "cmp-five-agent/iterator-prompt-pack/workmode-v5");
+  assert.equal(summary.configuredRoles.checker.promptPackId, "cmp-five-agent/checker-prompt-pack/workmode-v5");
+  assert.equal(summary.configuredRoles.dbagent.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workmode-v5");
+  assert.equal(summary.configuredRoles.dispatcher.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/workmode-v5");
+});
+
+test("CmpFiveAgentRuntime surfaces v6 workmode prompt ids in summaries", () => {
+  const runtime = createCmpFiveAgentRuntime({
+    configuration: createCmpFiveAgentConfiguration({ promptVariant: "workmode_v6" }),
+  });
+
+  const summary = runtime.createSummary();
+  assert.equal(summary.configuredRoles.icma.promptPackId, "cmp-five-agent/icma-prompt-pack/workmode-v6");
+  assert.equal(summary.configuredRoles.iterator.promptPackId, "cmp-five-agent/iterator-prompt-pack/workmode-v6");
+  assert.equal(summary.configuredRoles.checker.promptPackId, "cmp-five-agent/checker-prompt-pack/workmode-v6");
+  assert.equal(summary.configuredRoles.dbagent.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workmode-v6");
+  assert.equal(summary.configuredRoles.dispatcher.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/workmode-v6");
+});
+
+test("CmpFiveAgentRuntime surfaces v7 workmode prompt ids in summaries", () => {
+  const runtime = createCmpFiveAgentRuntime({
+    configuration: createCmpFiveAgentConfiguration({ promptVariant: "workmode_v7" }),
+  });
+
+  const summary = runtime.createSummary();
+  assert.equal(summary.configuredRoles.icma.promptPackId, "cmp-five-agent/icma-prompt-pack/workmode-v7");
+  assert.equal(summary.configuredRoles.dispatcher.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/workmode-v7");
+});
+
+test("CmpFiveAgentRuntime surfaces v8 hybrid prompt ids in summaries", () => {
+  const runtime = createCmpFiveAgentRuntime({
+    configuration: createCmpFiveAgentConfiguration({ promptVariant: "workmode_v8" }),
+  });
+
+  const summary = runtime.createSummary();
+  assert.equal(summary.configuredRoles.icma.promptPackId, "cmp-five-agent/icma-prompt-pack/v1");
+  assert.equal(summary.configuredRoles.iterator.promptPackId, "cmp-five-agent/iterator-prompt-pack/v1");
+  assert.equal(summary.configuredRoles.checker.promptPackId, "cmp-five-agent/checker-prompt-pack/workmode-v6");
+  assert.equal(summary.configuredRoles.dbagent.promptPackId, "cmp-five-agent/dbagent-prompt-pack/workmode-v6");
+  assert.equal(summary.configuredRoles.dispatcher.promptPackId, "cmp-five-agent/dispatcher-prompt-pack/v1");
 });

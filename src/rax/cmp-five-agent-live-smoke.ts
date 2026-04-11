@@ -8,10 +8,14 @@ import {
   createDispatchReceipt,
 } from "../agent_core/cmp-types/index.js";
 import {
+  createCmpFiveAgentConfiguration,
   createCmpFiveAgentRuntime,
   createCmpRoleLiveLlmModelExecutor,
 } from "../agent_core/cmp-five-agent/index.js";
-import type { CmpRoleLiveLlmMode } from "../agent_core/cmp-five-agent/index.js";
+import type {
+  CmpFiveAgentPromptVariant,
+  CmpRoleLiveLlmMode,
+} from "../agent_core/cmp-five-agent/index.js";
 import { loadOpenAILiveConfig } from "./live-config.js";
 
 type ProviderTarget = "openai";
@@ -36,6 +40,7 @@ interface SmokeCliOptions {
   flowTarget: CmpLiveFlowTarget;
   retryFallback: boolean;
   liveMode: CmpRoleLiveLlmMode;
+  promptVariant: CmpFiveAgentPromptVariant;
 }
 
 function parseProviderArg(argv: string[]): ProviderTarget {
@@ -92,6 +97,15 @@ function parseLiveModeArg(argv: string[]): CmpRoleLiveLlmMode {
     return "llm_required";
   }
   return "llm_assisted";
+}
+
+function parsePromptVariantArg(argv: string[]): CmpFiveAgentPromptVariant {
+  const entry = argv.find((item) => item.startsWith("--prompt-variant="));
+  const value = entry?.slice("--prompt-variant=".length) ?? "baseline";
+  if (value === "baseline" || value === "lean_v2" || value === "workflow_v3" || value === "workmode_v4" || value === "workmode_v5" || value === "workmode_v6" || value === "workmode_v7" || value === "workmode_v8") {
+    return value;
+  }
+  throw new Error(`Unsupported cmp five-agent prompt variant: ${value}`);
 }
 
 function formatError(error: unknown): { summary: string; details: Record<string, unknown> } {
@@ -191,7 +205,11 @@ async function withElapsed<T extends SmokeRow>(
 async function smokeOpenAI(cli: SmokeCliOptions): Promise<{ rows: SmokeRow[]; baseURL: string }> {
   const rows: SmokeRow[] = [];
   const config = loadOpenAILiveConfig();
-  const runtime = createCmpFiveAgentRuntime();
+  const runtime = createCmpFiveAgentRuntime({
+    configuration: createCmpFiveAgentConfiguration({
+      promptVariant: cli.promptVariant,
+    }),
+  });
   const executor = createCmpRoleLiveLlmModelExecutor({
     provider: "openai",
     model: config.model,
@@ -492,6 +510,78 @@ async function smokeOpenAI(cli: SmokeCliOptions): Promise<{ rows: SmokeRow[]; ba
         details: formatted.details,
       });
     }
+
+    try {
+      rows.push(await maybeRetryFallbackRow(() => withElapsed(async () => {
+      const result = await runtime.dispatchDispatcherWithLlm({
+        contextPackage: createContextPackage({
+          packageId: "package-cmp-live-peer",
+          sourceProjectionId: "projection-cmp-live-1",
+          targetAgentId: "cmp-live-peer-b",
+          packageKind: "peer_exchange",
+          packageRef: "cmp-package:snapshot-cmp-live-1:peer:exchange",
+          fidelityLabel: "checked_high_fidelity",
+          createdAt: "2026-03-31T00:00:04.500Z",
+        }),
+        dispatch: {
+          agentId: "cmp-live-peer-a",
+          packageId: "package-cmp-live-peer",
+          sourceAgentId: "cmp-live-peer-a",
+          targetAgentId: "cmp-live-peer-b",
+          targetKind: "peer",
+          metadata: {
+            parentAgentId: "cmp-live-parent",
+            currentStateSummary: "peer exchange awaits explicit parent approval",
+            sourceRequestId: "request-cmp-live-peer",
+            sourceSnapshotId: "snapshot-cmp-live-1",
+          },
+        },
+        receipt: createDispatchReceipt({
+          dispatchId: "dispatch-cmp-live-peer-1",
+          packageId: "package-cmp-live-peer",
+          sourceAgentId: "cmp-live-peer-a",
+          targetAgentId: "cmp-live-peer-b",
+          status: "delivered",
+          deliveredAt: "2026-03-31T00:00:04.500Z",
+        }),
+        createdAt: "2026-03-31T00:00:04.500Z",
+        loopId: "dispatcher-cmp-live-peer-1",
+      }, {
+        mode: liveMode,
+        executor,
+      });
+      return {
+        provider: "openai",
+        role: "dispatcher",
+        flow: "active",
+        ok: result.loop.liveTrace?.status === "live_applied",
+        model: config.model,
+        mode: result.loop.liveTrace?.mode,
+        status: result.loop.liveTrace?.status,
+        summary: `peer: ${result.loop.bundle.governance.routeRationale ?? "dispatcher peer rationale missing"}`,
+        details: {
+          targetIngress: result.loop.bundle.target.targetIngress,
+          packageMode: result.loop.packageMode,
+          bodyStrategy: result.loop.bundle.body.bodyStrategy,
+          scopePolicy: result.loop.bundle.governance.scopePolicy,
+          approvalStatus: result.peerApproval?.status,
+          approvalChain: result.peerApproval?.approvalChain,
+          errorMessage: result.loop.liveTrace?.errorMessage,
+        },
+      };
+      }), { retryFallback }));
+    } catch (error) {
+      const formatted = formatError(error);
+      rows.push({
+        provider: "openai",
+        role: "dispatcher",
+        flow: "active",
+        ok: false,
+        model: config.model,
+        summary: `peer: ${formatted.summary}`,
+        details: formatted.details,
+      });
+    }
   }
 
   if ((roleTarget === "all" || roleTarget === "dbagent") && (flowTarget === "passive" || flowTarget === "both")) {
@@ -644,6 +734,7 @@ async function main(argv: string[]): Promise<void> {
     flowTarget: parseFlowArg(argv),
     retryFallback: parseRetryFallbackArg(argv),
     liveMode: parseLiveModeArg(argv),
+    promptVariant: parsePromptVariantArg(argv),
   };
   const reportPath = parseReportPathArg(argv, provider);
   const { rows, baseURL } = await smokeOpenAI(cli);
@@ -656,6 +747,7 @@ async function main(argv: string[]): Promise<void> {
     flowTarget: cli.flowTarget,
     retryFallback: cli.retryFallback,
     liveMode: cli.liveMode,
+    promptVariant: cli.promptVariant,
     baseURL,
     model: rows[0]?.model ?? "unknown",
     rows,
