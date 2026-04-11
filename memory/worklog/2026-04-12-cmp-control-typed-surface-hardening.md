@@ -10,6 +10,7 @@
   - `fallbackPolicy`
   - `recoveryPreference`
 - runtime interface codec 现在会把非法 control enum 输入稳定映射成 `invalid_input`，而不是让底层解码错误直接漏出。
+- CMP control update / status 的 neutral output 文案已经去掉 `CLI` / `GUI` 这类具体宿主词汇，统一改成 host-neutral 表述，不让 presentation host 语义回渗到中间层。
 
 一句白话：
 
@@ -32,6 +33,7 @@
   - runtime interface codec 对五个 control enum 字段的非法 raw value 都会返回 `invalid_input`
   - FFI encoded request 入口会把非法 control enum 稳定包成结构化 `invalid_input` failure response
   - persisted corrupted descriptor 不会被归一化成 baseline，而是显式失败，当前覆盖 `executionStyle` / `mode` / `fallbackPolicy`
+  - `readbackCmpStatus()` 在 persisted control 损坏时也会显式失败，避免 status surface 偷偷吃回 baseline
 - 本地最终验收：
   - `swift test`
   - 结果：`228 tests / 52 suites` 通过
@@ -41,7 +43,7 @@
 ## 残余限制
 
 - `PraxisCmpStatusPanelSnapshot` 仍然只暴露 status 需要的 control 子集，没有把 `fallbackPolicy` / `recoveryPreference` 再展开成新的状态面板字段；这次没有扩 DTO 形状。
-- FFI bridge 的结构化失败断言目前只用 `executionStyle` 非法值举例；`mode` 在 codec 层已补到，但在 encoded request 全链路上没有再重复一遍。
+- runtime interface 层目前显式覆盖了坏 persisted control 对 `readbackCmpControl` / `updateCmpControl` 的 `invalid_input` 返回；`readbackCmpStatus` 的同路径失败现在只在 use case 层有补测，还没在 interface/encoded-request 层再走一遍。
 - persisted control 损坏现在统一视为结构化失败；如果未来要支持“带损坏标记的只读展示”而不是失败，需要单独设计新的 neutral snapshot，而不是回退成 baseline。
 
 ## 下一包入口
