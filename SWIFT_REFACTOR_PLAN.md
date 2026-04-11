@@ -74,7 +74,7 @@
 - `swift test` 通过
 - Swift package tests 已切换到 `Swift Testing`
 - 当前 `swift test` 快照为：
-  - `128` tests
+  - `150` tests
   - `39` suites
 - `npm run typecheck` 当前未全绿：
   - `src/agent_core/live-agent-chat.ts:1690` 存在 TypeScript 参数个数错误
@@ -409,6 +409,16 @@ Core 禁止直接依赖：
 
 ### Wave 3：TAP
 
+进度记录（`2026-04-10`，`2026-04-11` 校准）：
+
+- 已完成
+- TAP 六个 target 已从“类型/服务骨架 + 架构守卫”进入“最小可验证的 Core 规则层”状态
+- `PraxisTapTypes`、`PraxisTapGovernance` 已承接 mode / tier / risk / vote / profile、risk classify、mode policy、safety interception 等基础语义与治理规则
+- `PraxisTapReview`、`PraxisTapProvision` 已承接 review route / decision、tool-review 统一审查面、asset registry、provision planner、verification/rollback plan 等纯规则面
+- `PraxisTapRuntime`、`PraxisTapAvailability` 已承接 replay policy、human gate、runtime snapshot、availability audit、gate decision、failure taxonomy 等运行期语义与可用性规则
+- 已明确把 reviewer worker bridge、model hook、tool runtime handoff、install/repo write/network side effect 留在 HostContracts / HostRuntime，不回灌进 TAP Core
+- 已补齐对应 Swift Testing 测试，覆盖 topology、governance、review/provision/runtime/availability 的首轮样本；截至 `2026-04-11`，整包 `swift test` 为 `150` tests / `39` suites 全绿
+
 覆盖 target：
 
 - `PraxisTapTypes`
@@ -532,6 +542,10 @@ Core 禁止直接依赖：
   - message bus publication side effect
 - 这意味着当前 Wave 6 已进入“最小 local runtime 闭环”阶段，而不是只停留在 neutral bridge / facade 可调用
 - 这些覆盖已经足以支撑后续多语言 UI / shell / CLI adapter 继续演进，不需要现在就把 Swift CLI / SwiftUI 做成主产品面，也不需要现在就把完整 FFI target、C ABI、字符串/内存管理策略一次性做死
+- 当前 Wave 6 尚未收口的主要缺口是：
+  - `PraxisRuntimeInterface` 仍主要覆盖 run / resume / inspection / catalog
+  - TS 当前已拆开的 `session / project / flow / roles / readback` 中立表面还没有完整升格成 Swift neutral contract
+  - provider inference / browser grounding / multimodal user-io 仍主要停留在 scaffold surface
 - 当前阶段应刻意保留的弹性包括：
   - 真实导出函数表如何组织
   - 跨线程调用约束
@@ -697,6 +711,13 @@ Core 禁止直接依赖：
      - 已新增对应 Swift Testing 逻辑测试并通过，便于后续继续推进 TAP / CMP 依赖 Capability 的上层接线
 4. PR 4
    - 全部 TAP targets
+   - 状态：已完成（`2026-04-10`）
+   - 完成内容：
+     - 六个 TAP target 已从 skeleton 进入最小可运行的 Core 规则层
+     - `PraxisTapTypes` / `PraxisTapGovernance` 已固定 mode、risk、policy、safety 语义
+     - `PraxisTapReview` / `PraxisTapProvision` 已补齐 review route/decision、asset registry、provision planning
+     - `PraxisTapRuntime` / `PraxisTapAvailability` 已补齐 replay/human gate/runtime snapshot 与 availability audit/gate 规则
+     - 已补齐 `TapGovernanceRuleTests`、`TapOperationalRuleTests`、`TapGovernanceSupportTests`、`TapTopologyTests`
 5. PR 5
    - `PraxisCmpTypes`
    - `PraxisCmpSections`
@@ -726,12 +747,29 @@ Core 禁止直接依赖：
      - 已补齐对应 Swift Testing 测试并通过
 7. PR 7
    - 全部 HostContracts targets
+   - 状态：已完成（`2026-04-10`）
+   - 完成内容：
+     - 五类 HostContracts 已形成稳定结构化 contract
+     - 已补齐 fake / stub / spy doubles 与对应测试
+     - 协议输入输出已优先使用 Core 语义模型，而不是 provider / host 原始 payload
 8. PR 8
    - `PraxisRuntimeComposition`
    - `PraxisRuntimeUseCases`
+   - 状态：已完成（`2026-04-11`）
+   - 完成内容：
+     - 默认 local profile 已切到真实 `localDefaults(rootDirectory:)`
+     - 已补入 SQLite-backed checkpoint / journal / projection / delivery truth / semantic memory / lineage
+     - `runGoal` / `resumeRun` 已开始真实消费本地 persistence、recovery、message bus 与 lineage truth
 9. PR 9
    - `PraxisRuntimeFacades`
+   - `PraxisRuntimeInterface`
+   - `PraxisRuntimeGateway`
    - `PraxisRuntimePresentationBridge`
+   - 状态：已完成（`2026-04-11`）
+   - 完成内容：
+     - 已形成 facade / runtime interface / encoded bridge 的最小闭环
+     - 已具备 typed request/response/error envelope、session handle lifecycle、FFI bridge smoke surface
+     - HostRuntime 当前已能通过 neutral surface 承接 inspection / run / resume / buffered events
 10. PR 10
    - `PraxisCLI`（若仍需要最小验证入口）
    - `PraxisAppleUI`（若需要原生壳）
@@ -762,8 +800,26 @@ Core 禁止直接依赖：
 建议按 target 继续下钻：
 
 - Foundation 各 target 的纯逻辑测试
+- 已完成首轮：
+  - `PraxisGoalTests`
+  - `PraxisStateTests`
+  - `PraxisTransitionTests`
+  - `PraxisRunTests`
+  - `PraxisSessionTests`
+  - `PraxisJournalTests`
+  - `PraxisCheckpointTests`
 - Capability 各 target 的 plan / result 测试
+- 已完成首轮：
+  - `PraxisCapabilityContractsTests`
+  - `PraxisCapabilityResultsTests`
+  - `PraxisCapabilityPlanningTests`
+  - `PraxisCapabilityCatalogTests`
 - TAP 各 target 的 policy / review / runtime 测试
+- 已完成首轮：
+  - `PraxisTapArchitectureTests/TapTopologyTests`
+  - `PraxisTapArchitectureTests/TapGovernanceRuleTests`
+  - `PraxisTapArchitectureTests/TapOperationalRuleTests`
+  - `PraxisTapArchitectureTests/TapGovernanceSupportTests`
 - CMP 各 target 的 section / projection / delivery / model 测试
   - 已完成首轮：
     - `PraxisCmpTypesTests`
@@ -775,7 +831,17 @@ Core 禁止直接依赖：
     - `PraxisCmpMqModelTests`
     - `PraxisCmpFiveAgentTests`
 - HostContracts 的 fake/mock 合约测试
+- 已完成首轮：
+  - `PraxisInfraContractsTests`
+  - `PraxisToolingContractsTests`
+  - `PraxisWorkspaceContractsTests`
+  - `PraxisProviderContractsTests`
+  - `PraxisUserIOContractsTests`
 - HostRuntime 的 composition / use case / facade / bridge 集成测试
+- 已完成首轮：
+  - `PraxisHostRuntimeArchitectureTests/HostRuntimeTopologyTests`
+  - `PraxisHostRuntimeArchitectureTests/HostRuntimeSurfaceTests`
+  - `PraxisHostRuntimeArchitectureTests/HostRuntimeInterfaceTests`
 
 ### 13.3 双跑对照
 
@@ -788,19 +854,17 @@ Core 禁止直接依赖：
 
 ## 14. 当前开工建议
 
-如果下一轮要开始真实编码，建议严格按下面节奏推进：
+按当前进度，下一轮建议不再回到“从 Wave 0 顺序开工”的视角，而是直接沿着当前缺口收口：
 
-1. 先做 Wave 0
-   - 冻结最小黄金样本
-   - 确认对照测试入口
-2. 再做 Wave 1 和 Wave 2
-   - 先证明 Swift 能承接纯核心
-3. 然后做 Wave 3 和 Wave 4
-   - 把 TAP/CMP 的纯规则层补齐
-4. 再做 Wave 5 和 Wave 6
-   - 建立可装配运行时
-5. 最后才做 Wave 7
-   - 让 Swift 宿主真正可用
+1. 优先补完 Wave 6 的 neutral runtime surface
+   - 把 `session / project / flow / roles / readback` 升格成稳定的 RuntimeInterface / facade / use case 表面
+   - 避免 HostRuntime 重新长回“大 runtime 方法集”
+2. 继续做实 local runtime baseline
+   - 在保持四层边界不变的前提下，补强 local runtime 守卫测试
+   - 为 SQLite-backed runtime store 引入明确的 schema versioning / migration policy
+3. 然后再推进 Wave 7
+   - 优先把现有 `PraxisFFIBridge` 升格成正式 `PraxisFFI`
+   - UI / shell 如由其它语言实现，优先建立在 `RuntimeInterface` / `PraxisFFI` 之上，而不是反向塑造 Core/Runtime contract
 
 最重要的一句话：
 

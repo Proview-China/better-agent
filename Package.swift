@@ -66,6 +66,25 @@ let architectureTestTargets = [
   "PraxisHostRuntimeArchitectureTests",
 ]
 
+let sqliteSystemLibraryTarget: Target
+
+#if os(macOS)
+sqliteSystemLibraryTarget = .systemLibrary(
+  name: "SQLite3",
+  path: "Sources/SQLite3",
+)
+#else
+sqliteSystemLibraryTarget = .systemLibrary(
+  name: "SQLite3",
+  path: "Sources/SQLite3",
+  pkgConfig: "sqlite3",
+  providers: [
+    .apt(["libsqlite3-dev"]),
+    .brew(["sqlite3"]),
+  ],
+)
+#endif
+
 let appleProducts: [Product]
 let appleTargets: [Target]
 
@@ -108,15 +127,7 @@ let package = Package(
     .executable(name: "praxis-cli", targets: ["PraxisCLI"]),
   ] + appleProducts,
   targets: [
-    .systemLibrary(
-      name: "SQLite3",
-      path: "Sources/SQLite3",
-      pkgConfig: "sqlite3",
-      providers: [
-        .apt(["libsqlite3-dev"]),
-        .brew(["sqlite3"]),
-      ],
-    ),
+    sqliteSystemLibraryTarget,
     .target(
       name: "PraxisCoreTypes",
       path: "Sources/PraxisCoreTypes",

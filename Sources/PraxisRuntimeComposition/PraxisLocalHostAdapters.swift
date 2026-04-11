@@ -1,5 +1,10 @@
 import Foundation
 import SQLite3
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import PraxisCapabilityResults
 import PraxisCheckpoint
 import PraxisCmpTypes
@@ -1882,6 +1887,673 @@ private enum PraxisLocalProcessRunner {
   }
 }
 
+private struct PraxisLocalProcessHandleDescriptor {
+  let processID: Int32
+  let terminalStatus: PraxisLongRunningTaskStatus?
+  let exitCode: Int32?
+}
+
+private enum PraxisLocalProcessHandleParser {
+  static func descriptor(from identifier: String) -> PraxisLocalProcessHandleDescriptor? {
+    let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      return nil
+    }
+
+    let segments = trimmed.split(separator: ":").map(String.init)
+    guard !segments.isEmpty else {
+      return nil
+    }
+
+    let rawProcessID: String
+    let metadataSegments: ArraySlice<String>
+    if segments.count >= 2, segments[0] == "pid" {
+      rawProcessID = segments[1]
+      metadataSegments = segments.dropFirst(2)
+    } else {
+      rawProcessID = segments[0]
+      metadataSegments = segments.dropFirst()
+    }
+
+    guard let processID = Int32(rawProcessID), processID > 0 else {
+      return nil
+    }
+
+    var terminalStatus: PraxisLongRunningTaskStatus?
+    var exitCode: Int32?
+    for segment in metadataSegments {
+      let parts = segment.split(separator: "=", maxSplits: 1).map(String.init)
+      guard parts.count == 2 else {
+        continue
+      }
+      switch parts[0] {
+      case "status":
+        terminalStatus = PraxisLongRunningTaskStatus(rawValue: parts[1])
+      case "exit", "exitCode":
+        exitCode = Int32(parts[1])
+      default:
+        continue
+      }
+    }
+
+    return PraxisLocalProcessHandleDescriptor(
+      processID: processID,
+      terminalStatus: terminalStatus,
+      exitCode: exitCode
+    )
+  }
+}
+
+private enum PraxisLocalInferenceBaseline {
+  static func condensedText(from text: String, limit: Int = 160) -> String {
+    let normalized = text
+      .components(separatedBy: .newlines)
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard normalized.count > limit else {
+      return normalized
+    }
+
+    let endIndex = normalized.index(normalized.startIndex, offsetBy: limit)
+    return normalized[..<endIndex].trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+  }
+
+  static func output(for request: PraxisProviderInferenceRequest) -> PraxisNormalizedCapabilityOutput {
+    let promptSummary = condensedText(from: request.prompt)
+    let contextSummary = request.contextSummary.map { condensedText(from: $0, limit: 120) }
+    let summary: String
+    if let contextSummary, !contextSummary.isEmpty {
+      summary = "Local heuristic inference prepared a response plan for: \(promptSummary). Context: \(contextSummary)."
+    } else {
+      summary = "Local heuristic inference prepared a response plan for: \(promptSummary)."
+    }
+
+    var structuredFields: [String: PraxisValue] = [
+      "backendProfile": .string("local-runtime"),
+      "inferenceMode": .string("heuristic_baseline"),
+      "effectiveModel": .string(request.preferredModel ?? "local-heuristic-v1"),
+      "promptSummary": .string(promptSummary),
+      "promptLength": .number(Double(request.prompt.count)),
+      "requiredCapabilities": .array(request.requiredCapabilities.map(PraxisValue.string))
+    ]
+    if let systemPrompt = request.systemPrompt, !systemPrompt.isEmpty {
+      structuredFields["systemPromptSummary"] = .string(condensedText(from: systemPrompt, limit: 100))
+    }
+    if let contextSummary, !contextSummary.isEmpty {
+      structuredFields["contextSummary"] = .string(contextSummary)
+    }
+    if let temperature = request.temperature {
+      structuredFields["temperature"] = .number(temperature)
+    }
+    if !request.metadata.isEmpty {
+      structuredFields["metadataKeys"] = .array(request.metadata.keys.sorted().map(PraxisValue.string))
+    }
+
+    return PraxisNormalizedCapabilityOutput(summary: summary, structuredFields: structuredFields)
+  }
+}
+
+private enum PraxisLocalHostBaseline {
+  static func slug(from text: String) -> String {
+    let slug = text
+      .lowercased()
+      .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "-", options: .regularExpression)
+      .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    return slug.isEmpty ? "baseline" : slug
+  }
+
+  static func condensedText(from text: String, limit: Int = 120) -> String {
+    PraxisLocalInferenceBaseline.condensedText(from: text, limit: limit)
+  }
+
+  static func assetReference(
+    kind: String,
+    label: String,
+    rootDirectory: URL,
+    extension fileExtension: String
+  ) -> String {
+    rootDirectory
+      .appendingPathComponent(kind, isDirectory: true)
+      .appendingPathComponent("\(slug(from: label)).\(fileExtension)", isDirectory: false)
+      .path
+  }
+}
+
+private enum PraxisLocalBrowserGroundingBaseline {
+  static func slug(from text: String) -> String {
+    let slug = text
+      .lowercased()
+      .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "-", options: .regularExpression)
+      .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    return slug.isEmpty ? "grounding" : slug
+  }
+
+  static func pageTitle(from url: URL) -> String {
+    if let host = url.host, !host.isEmpty {
+      return host + (url.path.isEmpty ? "" : url.path)
+    }
+    return url.absoluteString
+  }
+
+  static func factValue(named factName: String, for url: URL) -> String? {
+    let normalized = factName.lowercased()
+    if normalized.contains("url") {
+      return url.absoluteString
+    }
+    if normalized.contains("host") || normalized.contains("domain") {
+      return url.host
+    }
+    if normalized.contains("path") {
+      return url.path.isEmpty ? "/" : url.path
+    }
+    if normalized.contains("title") {
+      return pageTitle(from: url)
+    }
+    return nil
+  }
+}
+
+private enum PraxisLocalBrowserArtifactWriter {
+  static func writeSnapshot(
+    at path: String,
+    lines: [String]
+  ) throws {
+    let snapshotURL = URL(fileURLWithPath: path, isDirectory: false)
+    let snapshotDirectory = snapshotURL.deletingLastPathComponent()
+    try FileManager.default.createDirectory(at: snapshotDirectory, withIntermediateDirectories: true)
+    let snapshotBody = lines.joined(separator: "\n") + "\n"
+    try snapshotBody.write(to: snapshotURL, atomically: true, encoding: .utf8)
+  }
+}
+
+public struct PraxisLocalProviderInferenceExecutor: PraxisProviderInferenceExecutor, Sendable {
+  public init() {}
+
+  public func infer(_ request: PraxisProviderInferenceRequest) async throws -> PraxisProviderInferenceResponse {
+    PraxisProviderInferenceResponse(
+      output: PraxisLocalInferenceBaseline.output(for: request),
+      receipt: PraxisHostCapabilityReceipt(
+        capabilityKey: "provider.infer",
+        backend: "local-runtime",
+        status: .succeeded,
+        completedAt: localRuntimeNow(),
+        summary: "Local heuristic inference baseline executed without an external provider dependency."
+      )
+    )
+  }
+}
+
+public struct PraxisLocalCapabilityExecutor: PraxisCapabilityExecutor, Sendable {
+  public init() {}
+
+  public func execute(_ request: PraxisHostCapabilityRequest) async throws -> PraxisHostCapabilityReceipt {
+    PraxisHostCapabilityReceipt(
+      capabilityKey: request.capabilityKey,
+      backend: "local-runtime",
+      status: .succeeded,
+      providerOperationID: "local-capability:\(PraxisLocalHostBaseline.slug(from: request.capabilityKey))",
+      completedAt: localRuntimeNow(),
+      summary: "Local host capability baseline executed \(request.capabilityKey) for \(PraxisLocalHostBaseline.condensedText(from: request.payloadSummary))."
+    )
+  }
+}
+
+public struct PraxisLocalProviderEmbeddingExecutor: PraxisProviderEmbeddingExecutor, Sendable {
+  public init() {}
+
+  public func embed(_ request: PraxisProviderEmbeddingRequest) async throws -> PraxisProviderEmbeddingResponse {
+    let tokenLikeCount = request.content
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .split(whereSeparator: \.isWhitespace)
+      .count
+    return PraxisProviderEmbeddingResponse(
+      vectorLength: max(tokenLikeCount, 1),
+      model: request.preferredModel ?? "local-embedding-v1"
+    )
+  }
+}
+
+public actor PraxisLocalProviderFileStore: PraxisProviderFileStore {
+  private let rootDirectory: URL
+  private var requests: [PraxisProviderFileUploadRequest] = []
+
+  public init(rootDirectory: URL) {
+    self.rootDirectory = rootDirectory
+  }
+
+  public func upload(_ request: PraxisProviderFileUploadRequest) async throws -> PraxisProviderFileUploadReceipt {
+    requests.append(request)
+    return PraxisProviderFileUploadReceipt(
+      fileID: PraxisLocalHostBaseline.assetReference(
+        kind: "provider-files",
+        label: request.summary,
+        rootDirectory: rootDirectory,
+        extension: "json"
+      ),
+      backend: "local-runtime"
+    )
+  }
+
+  public func allRequests() async -> [PraxisProviderFileUploadRequest] {
+    requests
+  }
+}
+
+public actor PraxisLocalProviderBatchExecutor: PraxisProviderBatchExecutor {
+  private var requests: [PraxisProviderBatchRequest] = []
+
+  public init() {}
+
+  public func enqueue(_ request: PraxisProviderBatchRequest) async throws -> PraxisProviderBatchReceipt {
+    requests.append(request)
+    return PraxisProviderBatchReceipt(batchID: "local-batch-\(requests.count)", backend: "local-runtime")
+  }
+
+  public func allRequests() async -> [PraxisProviderBatchRequest] {
+    requests
+  }
+}
+
+public struct PraxisLocalProviderSkillRegistry: PraxisProviderSkillRegistry, Sendable {
+  public let skillKeys: [String]
+
+  public init(skillKeys: [String] = [
+    "runtime.inspect",
+    "workspace.read",
+    "tool.git",
+    "provider.infer",
+    "browser.ground"
+  ]) {
+    self.skillKeys = skillKeys
+  }
+
+  public func listSkillKeys() async throws -> [String] {
+    skillKeys
+  }
+}
+
+public actor PraxisLocalProviderSkillActivator: PraxisProviderSkillActivator {
+  private var requests: [PraxisProviderSkillActivationRequest] = []
+
+  public init() {}
+
+  public func activate(_ request: PraxisProviderSkillActivationRequest) async throws -> PraxisProviderSkillActivationReceipt {
+    requests.append(request)
+    return PraxisProviderSkillActivationReceipt(
+      skillKey: request.skillKey,
+      activated: !request.skillKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    )
+  }
+
+  public func allRequests() async -> [PraxisProviderSkillActivationRequest] {
+    requests
+  }
+}
+
+public struct PraxisLocalBrowserGroundingCollector: PraxisBrowserGroundingCollector, Sendable {
+  public let rootDirectory: URL
+
+  public init(rootDirectory: URL) {
+    self.rootDirectory = rootDirectory
+  }
+
+  public func collectEvidence(_ request: PraxisBrowserGroundingRequest) async throws -> PraxisBrowserGroundingEvidenceBundle {
+    let generatedAt = localRuntimeNow()
+    guard let exampleURL = request.exampleURL,
+          let url = URL(string: exampleURL) else {
+      let blockedFacts = request.requestedFacts.map {
+        PraxisBrowserGroundingFactEvidence(
+          name: $0,
+          status: .blocked,
+          detail: "Local browser grounding baseline requires a valid example URL."
+        )
+      }
+      return PraxisBrowserGroundingEvidenceBundle(
+        request: request,
+        pages: [],
+        facts: blockedFacts,
+        generatedAt: generatedAt,
+        blockedReason: "No valid example URL was provided to the local browser grounding baseline."
+      )
+    }
+
+    let snapshotSlug = PraxisLocalBrowserGroundingBaseline.slug(from: request.taskSummary)
+    let snapshotRoot = rootDirectory.appendingPathComponent("browser-grounding", isDirectory: true)
+    let snapshotPath = snapshotRoot.appendingPathComponent("\(snapshotSlug).txt", isDirectory: false).path
+    try PraxisLocalBrowserArtifactWriter.writeSnapshot(
+      at: snapshotPath,
+      lines: [
+        "Local browser grounding baseline snapshot",
+        "Task: \(request.taskSummary)",
+        "Example URL: \(url.absoluteString)",
+        "Fetch status: not fetched",
+        "Note: Facts in this artifact were derived from the input URL only and remain unverified until a live browser fetch runs."
+      ]
+    )
+
+    let page = PraxisBrowserGroundingPageEvidence(
+      role: .example,
+      url: url.absoluteString,
+      snapshotPath: snapshotPath,
+      capturedAt: generatedAt
+    )
+
+    let facts = request.requestedFacts.map { factName in
+      if let value = PraxisLocalBrowserGroundingBaseline.factValue(named: factName, for: url) {
+        return PraxisBrowserGroundingFactEvidence(
+          name: factName,
+          status: .candidate,
+          value: value,
+          detail: "Derived from the example URL without fetching the page, so redirects and live document state remain unverified.",
+          sourceRole: .example,
+          sourceURL: url.absoluteString,
+          citationSnippet: "Example URL: \(url.absoluteString)"
+        )
+      }
+
+      return PraxisBrowserGroundingFactEvidence(
+        name: factName,
+        status: .candidate,
+        detail: "Local browser grounding baseline did not fetch the page, so this fact remains unverified.",
+        sourceRole: .example,
+        sourceURL: url.absoluteString,
+        citationSnippet: "Example URL: \(url.absoluteString)"
+      )
+    }
+
+    return PraxisBrowserGroundingEvidenceBundle(
+      request: request,
+      pages: [page],
+      facts: facts,
+      generatedAt: generatedAt
+    )
+  }
+}
+
+public struct PraxisLocalBrowserExecutor: PraxisBrowserExecutor, Sendable {
+  public let rootDirectory: URL
+
+  public init(rootDirectory: URL) {
+    self.rootDirectory = rootDirectory
+  }
+
+  public func navigate(_ request: PraxisBrowserNavigationRequest) async throws -> PraxisBrowserNavigationReceipt {
+    guard let url = URL(string: request.url) else {
+      throw PraxisError.invalidInput("Local browser baseline received an invalid URL: \(request.url)")
+    }
+    let title = PraxisLocalBrowserGroundingBaseline.pageTitle(from: url)
+    let snapshotPath = request.captureSnapshot
+      ? PraxisLocalHostBaseline.assetReference(
+        kind: "browser-snapshots",
+        label: request.url,
+        rootDirectory: rootDirectory,
+        extension: "txt"
+      )
+      : nil
+    if let snapshotPath {
+      try PraxisLocalBrowserArtifactWriter.writeSnapshot(
+        at: snapshotPath,
+        lines: [
+          "Local browser navigation baseline snapshot",
+          "Requested URL: \(request.url)",
+          "Resolved URL: \(url.absoluteString)",
+          "Wait policy: \(request.waitPolicy.rawValue)",
+          "Fetch status: not fetched",
+          "Note: This artifact records the navigation request only; it does not contain fetched page contents."
+        ]
+      )
+    }
+    return PraxisBrowserNavigationReceipt(
+      requestedURL: request.url,
+      finalURL: url.absoluteString,
+      title: request.preferredTitle ?? title,
+      snapshotPath: snapshotPath
+    )
+  }
+}
+
+public struct PraxisLocalProviderMCPExecutor: PraxisProviderMCPExecutor, Sendable {
+  public init() {}
+
+  public func callTool(_ request: PraxisProviderMCPToolCallRequest) async throws -> PraxisProviderMCPToolCallReceipt {
+    let summaryText = PraxisLocalInferenceBaseline.condensedText(from: request.summary, limit: 140)
+    let serverLabel = request.serverName ?? "local-runtime"
+    return PraxisProviderMCPToolCallReceipt(
+      toolName: request.toolName,
+      status: .succeeded,
+      summary: "Local MCP baseline accepted \(request.toolName) for \(serverLabel): \(summaryText)"
+    )
+  }
+}
+
+public struct PraxisLocalUserInputDriver: PraxisUserInputDriver, Sendable {
+  public init() {}
+
+  public func prompt(_ request: PraxisPromptRequest) async throws -> PraxisPromptResponse {
+    if let defaultValue = request.defaultValue {
+      let selectedChoiceID = request.choices.first {
+        $0.id == defaultValue || $0.label == defaultValue
+      }?.id
+      return PraxisPromptResponse(
+        content: defaultValue,
+        selectedChoiceID: selectedChoiceID,
+        acceptedDefault: true
+      )
+    }
+
+    if let firstChoice = request.choices.first {
+      return PraxisPromptResponse(
+        content: firstChoice.label,
+        selectedChoiceID: firstChoice.id,
+        acceptedDefault: false
+      )
+    }
+
+    return PraxisPromptResponse(
+      content: "Local baseline acknowledged: \(PraxisLocalHostBaseline.condensedText(from: request.summary, limit: 80))",
+      acceptedDefault: false
+    )
+  }
+}
+
+public struct PraxisLocalPermissionDriver: PraxisPermissionDriver, Sendable {
+  public init() {}
+
+  public func request(_ request: PraxisPermissionRequest) async throws -> PraxisPermissionDecision {
+    let normalizedScope = request.scope.lowercased()
+    let granted: Bool
+    if normalizedScope.contains("push")
+      || normalizedScope.contains("delete")
+      || normalizedScope.contains("destroy")
+      || normalizedScope.contains("write")
+      || normalizedScope.contains("execute") {
+      granted = false
+    } else if request.urgency == .high {
+      granted = false
+    } else {
+      granted = true
+    }
+
+    let reason = granted
+      ? "Local runtime baseline auto-approved non-destructive scope \(request.scope)."
+      : "Local runtime baseline requires an interactive host before granting \(request.scope)."
+    return PraxisPermissionDecision(granted: granted, reason: reason)
+  }
+}
+
+public actor PraxisLocalTerminalPresenter: PraxisTerminalPresenter {
+  private var events: [PraxisTerminalEvent] = []
+
+  public init() {}
+
+  public func present(_ event: PraxisTerminalEvent) async {
+    events.append(event)
+  }
+
+  public func allEvents() async -> [PraxisTerminalEvent] {
+    events
+  }
+}
+
+public actor PraxisLocalConversationPresenter: PraxisConversationPresenter {
+  private var presentations: [PraxisConversationPresentation] = []
+
+  public init() {}
+
+  public func present(_ presentation: PraxisConversationPresentation) async {
+    presentations.append(presentation)
+  }
+
+  public func allPresentations() async -> [PraxisConversationPresentation] {
+    presentations
+  }
+}
+
+public struct PraxisLocalAudioTranscriptionDriver: PraxisAudioTranscriptionDriver, Sendable {
+  public init() {}
+
+  public func transcribe(_ request: PraxisAudioTranscriptionRequest) async throws -> PraxisAudioTranscriptionResponse {
+    let transcript = [
+      "Local transcript",
+      PraxisLocalHostBaseline.condensedText(from: request.sourceRef, limit: 60),
+      request.hint.map { "hint: \(PraxisLocalHostBaseline.condensedText(from: $0, limit: 40))" }
+    ]
+      .compactMap { $0 }
+      .joined(separator: " | ")
+    return PraxisAudioTranscriptionResponse(
+      transcript: transcript,
+      durationSeconds: request.diarizationEnabled ? 12 : 10,
+      language: request.locale
+    )
+  }
+}
+
+public struct PraxisLocalSpeechSynthesisDriver: PraxisSpeechSynthesisDriver, Sendable {
+  public let rootDirectory: URL
+
+  public init(rootDirectory: URL) {
+    self.rootDirectory = rootDirectory
+  }
+
+  public func synthesize(_ request: PraxisSpeechSynthesisRequest) async throws -> PraxisSpeechSynthesisResponse {
+    let format = request.format ?? "wav"
+    return PraxisSpeechSynthesisResponse(
+      audioAssetRef: PraxisLocalHostBaseline.assetReference(
+        kind: "speech",
+        label: request.text,
+        rootDirectory: rootDirectory,
+        extension: format
+      ),
+      format: format,
+      durationSeconds: Double(max(request.text.count, 1)) / 12
+    )
+  }
+}
+
+public struct PraxisLocalImageGenerationDriver: PraxisImageGenerationDriver, Sendable {
+  public let rootDirectory: URL
+
+  public init(rootDirectory: URL) {
+    self.rootDirectory = rootDirectory
+  }
+
+  public func generate(_ request: PraxisImageGenerationRequest) async throws -> PraxisImageGenerationResponse {
+    let mimeType = request.transparentBackground ? "image/png" : "image/jpeg"
+    let fileExtension = request.transparentBackground ? "png" : "jpg"
+    let revisedPromptParts = [
+      request.prompt,
+      request.style,
+      request.size
+    ].compactMap { $0 }.joined(separator: " | ")
+    return PraxisImageGenerationResponse(
+      assetRef: PraxisLocalHostBaseline.assetReference(
+        kind: "images",
+        label: revisedPromptParts,
+        rootDirectory: rootDirectory,
+        extension: fileExtension
+      ),
+      mimeType: mimeType,
+      revisedPrompt: "\(request.prompt) [local-runtime baseline]"
+    )
+  }
+}
+
+public struct PraxisLocalProcessSupervisor: PraxisProcessSupervisor, Sendable {
+  public init() {}
+
+  public func poll(handle: PraxisLongRunningTaskHandle) async throws -> PraxisLongRunningTaskUpdate {
+    guard let descriptor = PraxisLocalProcessHandleParser.descriptor(from: handle.identifier) else {
+      return PraxisLongRunningTaskUpdate(
+        handle: handle,
+        status: .failed,
+        stderrTail: "Local process supervisor expected a pid-based handle identifier.",
+        finishedAt: localRuntimeNow()
+      )
+    }
+    let processID = descriptor.processID
+
+    if kill(processID, 0) == 0 {
+      return PraxisLongRunningTaskUpdate(
+        handle: handle,
+        status: .running,
+        stdoutTail: await commandSummary(for: processID)
+      )
+    }
+
+    let errorCode = errno
+    if errorCode == ESRCH {
+      if let terminalStatus = descriptor.terminalStatus, terminalStatus != .running {
+        return PraxisLongRunningTaskUpdate(
+          handle: handle,
+          status: terminalStatus,
+          stderrTail: terminalStatus == .failed
+            ? "Process \(processID) exited before polling; preserved terminal metadata indicates failure."
+            : "Process \(processID) exited before polling; preserved terminal metadata was used.",
+          exitCode: descriptor.exitCode,
+          finishedAt: localRuntimeNow()
+        )
+      }
+      return PraxisLongRunningTaskUpdate(
+        handle: handle,
+        status: .failed,
+        stderrTail: "Process \(processID) is no longer running, and the handle did not preserve a terminal status or exit code.",
+        finishedAt: localRuntimeNow()
+      )
+    }
+
+    return PraxisLongRunningTaskUpdate(
+      handle: handle,
+      status: .failed,
+      stderrTail: "Failed to inspect process \(processID): \(String(cString: strerror(errorCode))).",
+      finishedAt: localRuntimeNow()
+    )
+  }
+
+  private func commandSummary(for processID: Int32) async -> String? {
+    do {
+      let result = try await PraxisLocalProcessRunner.run(
+        executableURL: URL(fileURLWithPath: "/bin/ps", isDirectory: false),
+        arguments: ["-o", "command=", "-p", String(processID)],
+        timeoutSeconds: 2
+      )
+      guard result.exitCode == 0 else {
+        return nil
+      }
+      let lines = result.stdout
+        .split(separator: "\n")
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      return lines.first
+    } catch {
+      return nil
+    }
+  }
+}
+
 public struct PraxisSystemShellExecutor: PraxisShellExecutor, Sendable {
   public init() {}
 
@@ -2093,7 +2765,6 @@ public struct PraxisSystemGitAvailabilityProbe: PraxisGitAvailabilityProbe, Send
 
 public extension PraxisHostAdapterRegistry {
   static func localDefaults(rootDirectory: URL? = nil) -> PraxisHostAdapterRegistry {
-    let scaffold = scaffoldDefaults()
     let resolvedRootDirectory = PraxisLocalRuntimePaths.resolveRootDirectory(rootDirectory)
     let paths = PraxisLocalRuntimePaths(rootDirectory: resolvedRootDirectory)
     let workspaceRootDirectory = PraxisLocalWorkspaceContext.resolveRootDirectory(rootDirectory)
@@ -2101,23 +2772,23 @@ public extension PraxisHostAdapterRegistry {
     return PraxisHostAdapterRegistry(
       runtimeRootDirectory: resolvedRootDirectory,
       workspaceRootDirectory: workspaceRootDirectory,
-      capabilityExecutor: scaffold.capabilityExecutor,
-      providerInferenceExecutor: scaffold.providerInferenceExecutor,
-      providerEmbeddingExecutor: scaffold.providerEmbeddingExecutor,
-      providerFileStore: scaffold.providerFileStore,
-      providerBatchExecutor: scaffold.providerBatchExecutor,
-      providerSkillRegistry: scaffold.providerSkillRegistry,
-      providerSkillActivator: scaffold.providerSkillActivator,
-      providerMCPExecutor: scaffold.providerMCPExecutor,
+      capabilityExecutor: PraxisLocalCapabilityExecutor(),
+      providerInferenceExecutor: PraxisLocalProviderInferenceExecutor(),
+      providerEmbeddingExecutor: PraxisLocalProviderEmbeddingExecutor(),
+      providerFileStore: PraxisLocalProviderFileStore(rootDirectory: resolvedRootDirectory),
+      providerBatchExecutor: PraxisLocalProviderBatchExecutor(),
+      providerSkillRegistry: PraxisLocalProviderSkillRegistry(),
+      providerSkillActivator: PraxisLocalProviderSkillActivator(),
+      providerMCPExecutor: PraxisLocalProviderMCPExecutor(),
       workspaceReader: PraxisLocalWorkspaceReader(rootDirectory: workspaceRootDirectory),
       workspaceSearcher: PraxisLocalWorkspaceSearcher(rootDirectory: workspaceRootDirectory),
       workspaceWriter: PraxisLocalWorkspaceWriter(rootDirectory: workspaceRootDirectory),
       shellExecutor: PraxisSystemShellExecutor(),
-      browserExecutor: scaffold.browserExecutor,
-      browserGroundingCollector: scaffold.browserGroundingCollector,
+      browserExecutor: PraxisLocalBrowserExecutor(rootDirectory: resolvedRootDirectory),
+      browserGroundingCollector: PraxisLocalBrowserGroundingCollector(rootDirectory: resolvedRootDirectory),
       gitAvailabilityProbe: PraxisSystemGitAvailabilityProbe(),
       gitExecutor: PraxisSystemGitExecutor(),
-      processSupervisor: scaffold.processSupervisor,
+      processSupervisor: PraxisLocalProcessSupervisor(),
       checkpointStore: PraxisLocalCheckpointStore(fileURL: paths.databaseFileURL),
       journalStore: PraxisLocalJournalStore(fileURL: paths.databaseFileURL),
       projectionStore: PraxisLocalProjectionStore(fileURL: paths.databaseFileURL),
@@ -2131,13 +2802,13 @@ public extension PraxisHostAdapterRegistry {
       semanticSearchIndex: PraxisLocalSemanticSearchIndex(databaseFileURL: paths.databaseFileURL),
       semanticMemoryStore: PraxisLocalSemanticMemoryStore(fileURL: paths.databaseFileURL),
       lineageStore: PraxisLocalLineageStore(fileURL: paths.databaseFileURL),
-      userInputDriver: scaffold.userInputDriver,
-      permissionDriver: scaffold.permissionDriver,
-      terminalPresenter: scaffold.terminalPresenter,
-      conversationPresenter: scaffold.conversationPresenter,
-      audioTranscriptionDriver: scaffold.audioTranscriptionDriver,
-      speechSynthesisDriver: scaffold.speechSynthesisDriver,
-      imageGenerationDriver: scaffold.imageGenerationDriver
+      userInputDriver: PraxisLocalUserInputDriver(),
+      permissionDriver: PraxisLocalPermissionDriver(),
+      terminalPresenter: PraxisLocalTerminalPresenter(),
+      conversationPresenter: PraxisLocalConversationPresenter(),
+      audioTranscriptionDriver: PraxisLocalAudioTranscriptionDriver(),
+      speechSynthesisDriver: PraxisLocalSpeechSynthesisDriver(rootDirectory: resolvedRootDirectory),
+      imageGenerationDriver: PraxisLocalImageGenerationDriver(rootDirectory: resolvedRootDirectory)
     )
   }
 }

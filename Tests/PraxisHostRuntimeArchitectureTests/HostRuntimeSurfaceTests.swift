@@ -1527,12 +1527,150 @@ struct HostRuntimeSurfaceTests {
     let packageDescriptors = try await secondRegistry.cmpContextPackageStore?.describe(
       .init(projectID: "cmp.local-runtime", targetAgentID: "checker.local")
     )
+    let runningProcessUpdate = try await secondRegistry.processSupervisor?.poll(
+      handle: .init(
+        identifier: "pid:\(ProcessInfo.processInfo.processIdentifier)",
+        origin: .shell,
+        startedAt: "2026-04-11T03:00:00Z"
+      )
+    )
+    let invalidProcessUpdate = try await secondRegistry.processSupervisor?.poll(
+      handle: .init(identifier: "not-a-pid", origin: .shell)
+    )
+    let inferenceResponse = try await secondRegistry.providerInferenceExecutor?.infer(
+      .init(
+        systemPrompt: "Be precise",
+        prompt: "Summarize the local runtime baseline and next action",
+        contextSummary: "Workspace and lineage adapters are already persisted locally.",
+        preferredModel: "local-smoke-model",
+        temperature: 0.1,
+        requiredCapabilities: ["workspace.read", "tool.git"],
+        metadata: ["traceID": .string("local-inference-test")]
+      )
+    )
+    let mcpReceipt = try await secondRegistry.providerMCPExecutor?.callTool(
+      .init(
+        toolName: "web.search",
+        summary: "Find Swift runtime interface docs",
+        serverName: "local-provider"
+      )
+    )
+    let groundingBundle = try await secondRegistry.browserGroundingCollector?.collectEvidence(
+      .init(
+        taskSummary: "Verify runtime docs page",
+        exampleURL: "https://example.com/runtime/docs?lang=swift",
+        requestedFacts: ["final_url", "host", "page_title", "release_notes"],
+        locale: "en-US",
+        maxPages: 2
+      )
+    )
+    let capabilityReceipt = try await secondRegistry.capabilityExecutor?.execute(
+      .init(capabilityKey: "workspace.read", payloadSummary: "Read local runtime note")
+    )
+    let embeddingResponse = try await secondRegistry.providerEmbeddingExecutor?.embed(
+      .init(content: "local runtime semantic search baseline", preferredModel: "local-embed-smoke")
+    )
+    let fileReceipt = try await secondRegistry.providerFileStore?.upload(
+      .init(summary: "runtime local transcript", purpose: "analysis")
+    )
+    let batchReceipt = try await secondRegistry.providerBatchExecutor?.enqueue(
+      .init(summary: "runtime local batch", itemCount: 3)
+    )
+    let skillKeys = try await secondRegistry.providerSkillRegistry?.listSkillKeys()
+    let skillActivationReceipt = try await secondRegistry.providerSkillActivator?.activate(
+      .init(skillKey: "runtime.inspect", reason: "Local smoke")
+    )
+    let browserReceipt = try await secondRegistry.browserExecutor?.navigate(
+      .init(
+        url: "https://example.com/runtime/docs?lang=swift",
+        waitPolicy: .domReady,
+        timeoutSeconds: 2,
+        preferredTitle: "Runtime Docs",
+        captureSnapshot: true
+      )
+    )
+    let promptResponse = try await secondRegistry.userInputDriver?.prompt(
+      .init(
+        summary: "Choose mode",
+        kind: .choice,
+        defaultValue: "review",
+        choices: [
+          .init(id: "review", label: "Review"),
+          .init(id: "run", label: "Run")
+        ]
+      )
+    )
+    let permissionDecision = try await secondRegistry.permissionDriver?.request(
+      .init(scope: "workspace.read", summary: "Read workspace", urgency: .medium)
+    )
+    let deniedPermissionDecision = try await secondRegistry.permissionDriver?.request(
+      .init(scope: "git.push", summary: "Push branch", urgency: .high)
+    )
+    await secondRegistry.terminalPresenter?.present(
+      .init(title: "Sync", detail: "local baseline", kind: .progress)
+    )
+    await secondRegistry.conversationPresenter?.present(
+      .init(summary: "Runtime ready", kind: .status, chips: [.init(kind: .audioTranscribe, label: "Audio", summary: "Local audio")])
+    )
+    let audioResponse = try await secondRegistry.audioTranscriptionDriver?.transcribe(
+      .init(sourceRef: "file://meeting.m4a", locale: "en-US", hint: "runtime sync", diarizationEnabled: true)
+    )
+    let speechResponse = try await secondRegistry.speechSynthesisDriver?.synthesize(
+      .init(text: "Runtime ready", voice: "alloy", locale: "en-US", format: "wav")
+    )
+    let imageResponse = try await secondRegistry.imageGenerationDriver?.generate(
+      .init(prompt: "runtime architecture diagram", style: "technical", size: "1024x1024", transparentBackground: true)
+    )
+    let terminalEvents = await (secondRegistry.terminalPresenter as? PraxisLocalTerminalPresenter)?.allEvents()
+    let conversationPresentations = await (secondRegistry.conversationPresenter as? PraxisLocalConversationPresenter)?.allPresentations()
 
     #expect(rangedRead?.content == "beta\nrelease")
     #expect(rangedRead?.revisionToken != nil)
     #expect(searchMatches?.first?.path == "notes/runtime.txt")
     #expect(lineageDescriptor?.branchRef == "cmp/local")
     #expect(packageDescriptors?.first?.packageID == .init(rawValue: "package.local"))
+    #expect(runningProcessUpdate?.status == .running)
+    #expect(runningProcessUpdate?.stdoutTail != nil)
+    #expect(invalidProcessUpdate?.status == .failed)
+    #expect(inferenceResponse?.receipt.backend == "local-runtime")
+    #expect(inferenceResponse?.output.summary.contains("local runtime baseline") == true)
+    #expect(inferenceResponse?.output.structuredFields["inferenceMode"]?.stringValue == "heuristic_baseline")
+    #expect(inferenceResponse?.output.structuredFields["effectiveModel"]?.stringValue == "local-smoke-model")
+    #expect(mcpReceipt?.status == .succeeded)
+    #expect(mcpReceipt?.summary.contains("Local MCP baseline") == true)
+    #expect(groundingBundle?.pages.count == 1)
+    #expect(groundingBundle?.pages.first?.url == "https://example.com/runtime/docs?lang=swift")
+    #expect(groundingBundle?.facts.first(where: { $0.name == "final_url" })?.status == .candidate)
+    #expect(groundingBundle?.facts.first(where: { $0.name == "host" })?.value == "example.com")
+    #expect(groundingBundle?.facts.first(where: { $0.name == "page_title" })?.status == .candidate)
+    #expect(groundingBundle?.facts.first(where: { $0.name == "release_notes" })?.status == .candidate)
+    #expect(
+      groundingBundle?.pages.first?.snapshotPath.map { FileManager.default.fileExists(atPath: $0) } == true
+    )
+    #expect(groundingBundle?.blockedReason == nil)
+    #expect(capabilityReceipt?.backend == "local-runtime")
+    #expect(embeddingResponse?.model == "local-embed-smoke")
+    #expect(embeddingResponse?.vectorLength == 5)
+    #expect(fileReceipt?.backend == "local-runtime")
+    #expect(fileReceipt?.fileID.contains("provider-files") == true)
+    #expect(batchReceipt?.backend == "local-runtime")
+    #expect(skillKeys?.contains("runtime.inspect") == true)
+    #expect(skillActivationReceipt?.activated == true)
+    #expect(browserReceipt?.title == "Runtime Docs")
+    #expect(browserReceipt?.snapshotPath?.contains("browser-snapshots") == true)
+    #expect(browserReceipt?.snapshotPath.map { FileManager.default.fileExists(atPath: $0) } == true)
+    #expect(promptResponse?.selectedChoiceID == "review")
+    #expect(promptResponse?.acceptedDefault == true)
+    #expect(permissionDecision?.granted == true)
+    #expect(deniedPermissionDecision?.granted == false)
+    #expect(terminalEvents?.first?.title == "Sync")
+    #expect(conversationPresentations?.first?.chips.first?.kind == .audioTranscribe)
+    #expect(audioResponse?.language == "en-US")
+    #expect(audioResponse?.transcript.contains("runtime sync") == true)
+    #expect(speechResponse?.format == "wav")
+    #expect(speechResponse?.audioAssetRef.contains("speech") == true)
+    #expect(imageResponse?.mimeType == "image/png")
+    #expect(imageResponse?.assetRef.contains("images") == true)
   }
 
   @Test
@@ -1590,6 +1728,37 @@ struct HostRuntimeSurfaceTests {
     #expect(cmpSnapshot.hostRuntimeSummary.contains("lineage store (ready)"))
     #expect(cmpSnapshot.hostRuntimeSummary.contains("system git executor (ready)"))
     #expect(cmpSnapshot.persistenceSummary.contains("Lineage persistence resolved 1 of 1 projected lineages"))
+  }
+
+  @Test
+  func localProcessSupervisorPreservesEncodedTerminalStatusForExitedProcesses() async throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh", isDirectory: false)
+    process.arguments = ["-c", "exit 7"]
+    try process.run()
+    let processID = process.processIdentifier
+    process.waitUntilExit()
+
+    let supervisor = PraxisLocalProcessSupervisor()
+    let failedHandle = PraxisLongRunningTaskHandle(
+      identifier: "pid:\(processID):status=failed:exit=7",
+      origin: .shell,
+      startedAt: "2026-04-11T03:00:00Z"
+    )
+    let failedUpdate = try await supervisor.poll(handle: failedHandle)
+    let bareHandle = PraxisLongRunningTaskHandle(
+      identifier: "pid:\(processID)",
+      origin: .shell,
+      startedAt: "2026-04-11T03:00:00Z"
+    )
+    let bareUpdate = try await supervisor.poll(handle: bareHandle)
+
+    #expect(failedUpdate.status == .failed)
+    #expect(failedUpdate.exitCode == 7)
+    #expect(failedUpdate.stderrTail?.contains("preserved terminal metadata") == true)
+    #expect(bareUpdate.status == .failed)
+    #expect(bareUpdate.exitCode == nil)
+    #expect(bareUpdate.stderrTail?.contains("did not preserve a terminal status") == true)
   }
 
   @Test
