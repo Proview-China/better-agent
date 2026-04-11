@@ -15,6 +15,10 @@ import PraxisCoreTypes
 import PraxisGoal
 import PraxisInfraContracts
 import PraxisJournal
+import PraxisMpFiveAgent
+import PraxisMpMemory
+import PraxisMpSearch
+import PraxisMpTypes
 import PraxisProviderContracts
 import PraxisRun
 import PraxisRuntimeComposition
@@ -75,6 +79,10 @@ public enum PraxisRuntimePresentationBridgeModule {
       PraxisTapProvisionModule.boundary,
       PraxisTapRuntimeModule.boundary,
       PraxisTapAvailabilityModule.boundary,
+      PraxisMpTypesModule.boundary,
+      PraxisMpSearchModule.boundary,
+      PraxisMpMemoryModule.boundary,
+      PraxisMpFiveAgentModule.boundary,
       PraxisCmpTypesModule.boundary,
       PraxisCmpSectionsModule.boundary,
       PraxisCmpProjectionModule.boundary,

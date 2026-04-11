@@ -3,15 +3,27 @@ import Testing
 import PraxisCmpTypes
 import PraxisCapabilityResults
 import PraxisInfraContracts
+import PraxisMpMemory
+import PraxisMpTypes
 import PraxisProviderContracts
 import PraxisRuntimeComposition
 import PraxisRuntimeFacades
 import PraxisRuntimeGateway
 import PraxisRuntimeUseCases
 import PraxisTapTypes
+import PraxisToolingContracts
 
 private struct StubSemanticMemoryStore: PraxisSemanticMemoryStoreContract {
   let bundleResult: PraxisSemanticMemoryBundle
+  let searchResults: [PraxisSemanticMemoryRecord]
+
+  init(
+    bundleResult: PraxisSemanticMemoryBundle,
+    searchResults: [PraxisSemanticMemoryRecord] = []
+  ) {
+    self.bundleResult = bundleResult
+    self.searchResults = searchResults
+  }
 
   func save(_ record: PraxisSemanticMemoryRecord) async throws -> PraxisSemanticMemoryWriteReceipt {
     PraxisSemanticMemoryWriteReceipt(memoryID: record.id, storageKey: record.storageKey)
@@ -22,7 +34,7 @@ private struct StubSemanticMemoryStore: PraxisSemanticMemoryStoreContract {
   }
 
   func search(_ request: PraxisSemanticMemorySearchRequest) async throws -> [PraxisSemanticMemoryRecord] {
-    []
+    Array(searchResults.prefix(request.limit))
   }
 
   func bundle(_ request: PraxisSemanticMemoryBundleRequest) async throws -> PraxisSemanticMemoryBundle {
@@ -196,5 +208,225 @@ struct PraxisRuntimeFacadesTests {
     #expect(inspection.memoryStoreSummary.contains("Semantic search matches for inspection query: 1."))
     #expect(inspection.multimodalSummary == "No multimodal host chips are currently registered.")
     #expect(compatibilityInspection == inspection)
+  }
+
+  @Test
+  func mpFacadeSearchReadbackAndSmokeExposeDedicatedNeutralSnapshots() async throws {
+    let memoryStore = StubSemanticMemoryStore(
+      bundleResult: .init(
+        primaryMemoryIDs: ["memory.primary"],
+        supportingMemoryIDs: ["memory.supporting"],
+        omittedSupersededMemoryIDs: ["memory.superseded"]
+      ),
+      searchResults: [
+        PraxisSemanticMemoryRecord(
+          id: "memory.primary",
+          projectID: "mp.local-runtime",
+          agentID: "runtime.local",
+          scopeLevel: .agent,
+          memoryKind: .semantic,
+          summary: "Host runtime onboarding note",
+          storageKey: "memory/primary",
+          freshnessStatus: .fresh,
+          alignmentStatus: .aligned,
+          embeddingStorageKey: "embed/primary"
+        ),
+        PraxisSemanticMemoryRecord(
+          id: "memory.supporting",
+          projectID: "mp.local-runtime",
+          agentID: "checker.local",
+          scopeLevel: .project,
+          memoryKind: .summary,
+          summary: "Shared onboarding summary",
+          storageKey: "memory/supporting",
+          freshnessStatus: .aging,
+          alignmentStatus: .unreviewed,
+          embeddingStorageKey: "embed/supporting"
+        ),
+      ]
+    )
+
+    let facade = try PraxisRuntimeGatewayFactory.makeRuntimeFacade(
+      hostAdapters: PraxisHostAdapterRegistry(
+        providerInferenceExecutor: PraxisStubProviderInferenceExecutor { _ in
+          PraxisProviderInferenceResponse(
+            output: .init(summary: "stubbed inference"),
+            receipt: .init(
+              capabilityKey: "provider.infer",
+              backend: "stub-provider",
+              status: .succeeded,
+              summary: "Inference is stubbed for MP facade tests."
+            )
+          )
+        },
+        browserGroundingCollector: PraxisStubBrowserGroundingCollector { _ in
+          PraxisBrowserGroundingEvidenceBundle(
+            pages: [
+              .init(role: .verifiedSource, url: "https://example.com/mp")
+            ],
+            facts: [
+              .init(name: "mp-smoke", status: .verified, value: "reachable")
+            ]
+          )
+        },
+        semanticSearchIndex: PraxisStubSemanticSearchIndex(
+          cannedResults: [
+            "onboarding": [
+              .init(id: "match-1", score: 0.91, contentSummary: "Host runtime onboarding note", storageKey: "memory/primary"),
+              .init(id: "match-2", score: 0.63, contentSummary: "Shared onboarding summary", storageKey: "memory/supporting"),
+            ]
+          ]
+        ),
+        semanticMemoryStore: memoryStore
+      ),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
+
+    let search = try await facade.mpFacade.search(
+      .init(
+        projectID: "mp.local-runtime",
+        query: "onboarding",
+        scopeLevels: [.agentIsolated, .project],
+        limit: 5
+      )
+    )
+    let readback = try await facade.mpFacade.readback(
+      .init(
+        projectID: "mp.local-runtime",
+        query: "onboarding",
+        scopeLevels: [.agentIsolated, .project],
+        limit: 5
+      )
+    )
+    let smoke = try await facade.mpFacade.smoke(.init(projectID: "mp.local-runtime"))
+
+    #expect(search.projectID == "mp.local-runtime")
+    #expect(search.hits.map(\.memoryID) == ["memory.primary", "memory.supporting"])
+    #expect(search.hits.first?.scopeLevel == PraxisMpScopeLevel.agentIsolated.rawValue)
+    #expect(readback.totalMemoryCount == 2)
+    #expect(readback.primaryCount == 1)
+    #expect(readback.supportingCount == 1)
+    #expect(readback.omittedSupersededCount == 1)
+    #expect(readback.scopeBreakdown[PraxisMpScopeLevel.agentIsolated.rawValue] == 1)
+    #expect(readback.scopeBreakdown[PraxisMpScopeLevel.project.rawValue] == 1)
+    #expect(smoke.projectID == "mp.local-runtime")
+    #expect(smoke.smokeResult.checks.count == 4)
+    #expect(smoke.smokeResult.checks.map(\.status).contains(.ready))
+  }
+
+  @Test
+  func mpFacadeWorkflowSnapshotsProjectHostNeutralMpRuntimeState() async throws {
+    let memoryStore = PraxisFakeSemanticMemoryStore()
+
+    let facade = try PraxisRuntimeGatewayFactory.makeRuntimeFacade(
+      hostAdapters: PraxisHostAdapterRegistry(
+        semanticMemoryStore: memoryStore
+      ),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
+
+    let ingest = try await facade.mpFacade.ingest(
+      .init(
+        projectID: "mp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "mp.session",
+        summary: "Host runtime onboarding note",
+        checkedSnapshotRef: "snapshot.mp.1",
+        branchRef: "main",
+        observedAt: "2026-04-11T10:00:00Z"
+      )
+    )
+    let align = try await facade.mpFacade.align(
+      .init(
+        projectID: "mp.local-runtime",
+        memoryID: ingest.primaryMemoryID,
+        alignedAt: "2026-04-11T10:05:00Z"
+      )
+    )
+    let submitted = try await facade.mpFacade.promote(
+      .init(
+        projectID: "mp.local-runtime",
+        memoryID: ingest.primaryMemoryID,
+        targetPromotionState: .submittedToParent,
+        targetSessionID: "mp.session",
+        promotedAt: "2026-04-11T10:06:00Z"
+      )
+    )
+    let accepted = try await facade.mpFacade.promote(
+      .init(
+        projectID: "mp.local-runtime",
+        memoryID: ingest.primaryMemoryID,
+        targetPromotionState: .acceptedByParent,
+        targetSessionID: "mp.session",
+        promotedAt: "2026-04-11T10:07:00Z"
+      )
+    )
+    let promote = try await facade.mpFacade.promote(
+      .init(
+        projectID: "mp.local-runtime",
+        memoryID: ingest.primaryMemoryID,
+        targetPromotionState: .promotedToProject,
+        promotedAt: "2026-04-11T10:08:00Z",
+        reason: "Stabilized as project truth"
+      )
+    )
+    let resolve = try await facade.mpFacade.resolve(
+      .init(
+        projectID: "mp.local-runtime",
+        query: "onboarding",
+        requesterAgentID: "runtime.local",
+        scopeLevels: [.project],
+        limit: 5
+      )
+    )
+    let history = try await facade.mpFacade.requestHistory(
+      .init(
+        projectID: "mp.local-runtime",
+        requesterAgentID: "runtime.local",
+        reason: "Need historical context",
+        query: "onboarding",
+        scopeLevels: [.project],
+        limit: 5
+      )
+    )
+    let archive = try await facade.mpFacade.archive(
+      .init(
+        projectID: "mp.local-runtime",
+        memoryID: ingest.primaryMemoryID,
+        archivedAt: "2026-04-11T10:09:00Z",
+        reason: "Superseded by canonical project brief"
+      )
+    )
+
+    #expect(ingest.projectID == "mp.local-runtime")
+    #expect(ingest.agentID == "runtime.local")
+    #expect(ingest.sessionID == "mp.session")
+    #expect(ingest.decision == PraxisMpAlignmentDecision.keep.rawValue)
+    #expect(ingest.updatedMemoryIDs == [ingest.primaryMemoryID])
+    #expect(align.projectID == "mp.local-runtime")
+    #expect(align.memoryID == ingest.primaryMemoryID)
+    #expect(align.decision == PraxisMpAlignmentDecision.keep.rawValue)
+    #expect(submitted.promotionState == PraxisMpPromotionState.submittedToParent.rawValue)
+    #expect(submitted.sessionID == "mp.session")
+    #expect(accepted.promotionState == PraxisMpPromotionState.acceptedByParent.rawValue)
+    #expect(promote.projectID == "mp.local-runtime")
+    #expect(promote.memoryID == ingest.primaryMemoryID)
+    #expect(promote.scopeLevel == PraxisMpScopeLevel.project.rawValue)
+    #expect(promote.visibilityState == PraxisMpVisibilityState.projectShared.rawValue)
+    #expect(promote.promotionState == PraxisMpPromotionState.promotedToProject.rawValue)
+    #expect(resolve.projectID == "mp.local-runtime")
+    #expect(resolve.primaryMemoryIDs == [ingest.primaryMemoryID])
+    #expect(resolve.rerankComposition.superseded == 0)
+    #expect(resolve.roleCounts["dispatcher"] == 1)
+    #expect(resolve.roleStages["dispatcher"] == "assemble_bundle")
+    #expect(history.projectID == "mp.local-runtime")
+    #expect(history.requesterAgentID == "runtime.local")
+    #expect(history.reason == "Need historical context")
+    #expect(history.primaryMemoryIDs == [ingest.primaryMemoryID])
+    #expect(history.roleCounts["dispatcher"] == 1)
+    #expect(archive.projectID == "mp.local-runtime")
+    #expect(archive.memoryID == ingest.primaryMemoryID)
+    #expect(archive.visibilityState == PraxisMpVisibilityState.archived.rawValue)
+    #expect(archive.promotionState == PraxisMpPromotionState.archived.rawValue)
   }
 }

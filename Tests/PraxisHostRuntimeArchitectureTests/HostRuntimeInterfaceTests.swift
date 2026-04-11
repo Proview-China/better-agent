@@ -5,6 +5,8 @@ import PraxisCmpTypes
 import PraxisCoreTypes
 import PraxisInfraContracts
 import PraxisJournal
+import PraxisMpMemory
+import PraxisMpTypes
 import PraxisRun
 import PraxisSession
 import PraxisState
@@ -146,6 +148,78 @@ private struct StubInspectCmpUseCase: PraxisInspectCmpUseCaseProtocol {
 
   func execute() async throws -> PraxisCmpInspection {
     try await executeBody()
+  }
+}
+
+private struct StubSearchMpUseCase: PraxisSearchMpUseCaseProtocol {
+  let executeBody: @Sendable (PraxisSearchMpCommand) async throws -> PraxisMpSearchResult
+
+  func execute(_ command: PraxisSearchMpCommand) async throws -> PraxisMpSearchResult {
+    try await executeBody(command)
+  }
+}
+
+private struct StubReadbackMpUseCase: PraxisReadbackMpUseCaseProtocol {
+  let executeBody: @Sendable (PraxisReadbackMpCommand) async throws -> PraxisMpReadback
+
+  func execute(_ command: PraxisReadbackMpCommand) async throws -> PraxisMpReadback {
+    try await executeBody(command)
+  }
+}
+
+private struct StubSmokeMpUseCase: PraxisSmokeMpUseCaseProtocol {
+  let executeBody: @Sendable (PraxisSmokeMpCommand) async throws -> PraxisMpSmoke
+
+  func execute(_ command: PraxisSmokeMpCommand) async throws -> PraxisMpSmoke {
+    try await executeBody(command)
+  }
+}
+
+private struct StubIngestMpUseCase: PraxisIngestMpUseCaseProtocol {
+  let executeBody: @Sendable (PraxisIngestMpCommand) async throws -> PraxisMpIngestResult
+
+  func execute(_ command: PraxisIngestMpCommand) async throws -> PraxisMpIngestResult {
+    try await executeBody(command)
+  }
+}
+
+private struct StubAlignMpUseCase: PraxisAlignMpUseCaseProtocol {
+  let executeBody: @Sendable (PraxisAlignMpCommand) async throws -> PraxisMpAlignResult
+
+  func execute(_ command: PraxisAlignMpCommand) async throws -> PraxisMpAlignResult {
+    try await executeBody(command)
+  }
+}
+
+private struct StubResolveMpUseCase: PraxisResolveMpUseCaseProtocol {
+  let executeBody: @Sendable (PraxisResolveMpCommand) async throws -> PraxisMpResolveResult
+
+  func execute(_ command: PraxisResolveMpCommand) async throws -> PraxisMpResolveResult {
+    try await executeBody(command)
+  }
+}
+
+private struct StubRequestMpHistoryUseCase: PraxisRequestMpHistoryUseCaseProtocol {
+  let executeBody: @Sendable (PraxisRequestMpHistoryCommand) async throws -> PraxisMpHistoryResult
+
+  func execute(_ command: PraxisRequestMpHistoryCommand) async throws -> PraxisMpHistoryResult {
+    try await executeBody(command)
+  }
+}
+
+private struct StubPromoteMpUseCase: PraxisPromoteMpUseCaseProtocol {
+  let executeBody: @Sendable (PraxisPromoteMpCommand) async throws -> PraxisMpPromoteResult
+
+  func execute(_ command: PraxisPromoteMpCommand) async throws -> PraxisMpPromoteResult {
+    try await executeBody(command)
+  }
+}
+
+private struct StubArchiveMpUseCase: PraxisArchiveMpUseCaseProtocol {
+  let executeBody: @Sendable (PraxisArchiveMpCommand) async throws -> PraxisMpArchiveResult
+
+  func execute(_ command: PraxisArchiveMpCommand) async throws -> PraxisMpArchiveResult {
+    try await executeBody(command)
   }
 }
 
@@ -536,6 +610,41 @@ private func makeUnexpectedInspectionFacade() -> PraxisInspectionFacade {
     },
     buildCapabilityCatalogUseCase: StubBuildCapabilityCatalogUseCase {
       throw RuntimeInterfaceUnexpectedInvocationError(operation: "buildCapabilityCatalog")
+    }
+  )
+}
+
+private func makeUnexpectedMpFacade() -> PraxisMpFacade {
+  PraxisMpFacade(
+    inspectMpUseCase: StubInspectMpUseCase {
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "inspectMp")
+    },
+    searchMpUseCase: StubSearchMpUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "searchMp")
+    },
+    readbackMpUseCase: StubReadbackMpUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackMp")
+    },
+    smokeMpUseCase: StubSmokeMpUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "smokeMp")
+    },
+    ingestMpUseCase: StubIngestMpUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "ingestMp")
+    },
+    alignMpUseCase: StubAlignMpUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "alignMp")
+    },
+    resolveMpUseCase: StubResolveMpUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "resolveMp")
+    },
+    requestMpHistoryUseCase: StubRequestMpHistoryUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "requestMpHistory")
+    },
+    promoteMpUseCase: StubPromoteMpUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "promoteMp")
+    },
+    archiveMpUseCase: StubArchiveMpUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "archiveMp")
     }
   )
 }
@@ -1356,6 +1465,33 @@ struct HostRuntimeInterfaceTests {
             multimodalSummary: "No multimodal host chips are currently registered.",
             issues: []
           )
+        },
+        searchMpUseCase: StubSearchMpUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "searchMp")
+        },
+        readbackMpUseCase: StubReadbackMpUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackMp")
+        },
+        smokeMpUseCase: StubSmokeMpUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "smokeMp")
+        },
+        ingestMpUseCase: StubIngestMpUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "ingestMp")
+        },
+        alignMpUseCase: StubAlignMpUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "alignMp")
+        },
+        resolveMpUseCase: StubResolveMpUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "resolveMp")
+        },
+        requestMpHistoryUseCase: StubRequestMpHistoryUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "requestMpHistory")
+        },
+        promoteMpUseCase: StubPromoteMpUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "promoteMp")
+        },
+        archiveMpUseCase: StubArchiveMpUseCase { _ in
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "archiveMp")
         }
       )
     )
@@ -1369,6 +1505,306 @@ struct HostRuntimeInterfaceTests {
     #expect(response.snapshot?.title == "MP Inspection")
     #expect(response.snapshot?.summary == "MP workflow surface is now reading HostRuntime memory and multimodal adapter state. Store: Semantic memory bundle exposes 1 primary records and omits 0 superseded records. Semantic search matches for inspection query: 1.")
     #expect(response.snapshot?.projectID == nil)
+  }
+
+  @Test
+  func runtimeInterfaceRoutesDedicatedMpCommandsIntoStableSnapshotKinds() async throws {
+    let runtimeInterface = makeStubbedRuntimeInterface(
+      mpFacade: PraxisMpFacade(
+        inspectMpUseCase: StubInspectMpUseCase {
+          throw RuntimeInterfaceUnexpectedInvocationError(operation: "inspectMp")
+        },
+        searchMpUseCase: StubSearchMpUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          #expect(command.query == "onboarding")
+          return PraxisMpSearchResult(
+            projectID: command.projectID,
+            query: command.query,
+            summary: "MP search ranked 1 hit(s) from 2 candidate memory record(s) across 2 scope level(s).",
+            hits: [
+              .init(
+                memoryID: "memory.primary",
+                agentID: "runtime.local",
+                scopeLevel: .agentIsolated,
+                memoryKind: .semantic,
+                freshnessStatus: .fresh,
+                alignmentStatus: .aligned,
+                summary: "Host runtime onboarding note",
+                storageKey: "memory/primary",
+                semanticScore: 0.91,
+                finalScore: 1.0,
+                rankExplanation: "freshness=fresh"
+              )
+            ],
+            issues: []
+          )
+        },
+        readbackMpUseCase: StubReadbackMpUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          return PraxisMpReadback(
+            projectID: command.projectID,
+            summary: "MP readback bundled 1 primary and 1 supporting record(s) while omitting 1 superseded record(s).",
+            totalMemoryCount: 2,
+            primaryCount: 1,
+            supportingCount: 1,
+            omittedSupersededCount: 1,
+            freshnessBreakdown: ["fresh": 1, "aging": 1],
+            alignmentBreakdown: ["aligned": 1, "unreviewed": 1],
+            scopeBreakdown: ["agent_isolated": 1, "project": 1],
+            issues: []
+          )
+        },
+        smokeMpUseCase: StubSmokeMpUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          return PraxisMpSmoke(
+            projectID: command.projectID,
+            summary: "MP smoke checks passed for semantic memory, semantic search, provider inference, and browser grounding.",
+            checks: [
+              .init(id: "semantic_memory_store", gate: "semantic_memory_store", status: "ready", summary: "ok"),
+              .init(id: "semantic_search", gate: "semantic_search", status: "ready", summary: "ok"),
+              .init(id: "provider_inference", gate: "provider_inference", status: "ready", summary: "ok"),
+              .init(id: "browser_grounding", gate: "browser_grounding", status: "ready", summary: "ok"),
+            ]
+          )
+        },
+        ingestMpUseCase: StubIngestMpUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          #expect(command.agentID == "runtime.local")
+          return PraxisMpIngestResult(
+            projectID: command.projectID,
+            agentID: command.agentID,
+            sessionID: command.sessionID,
+            summary: "MP ingest stored 1 record update(s) and finished with keep for memory.primary.",
+            primaryMemoryID: "memory.primary",
+            storageKey: "memory/primary",
+            updatedMemoryIDs: ["memory.primary"],
+            supersededMemoryIDs: [],
+            staleMemoryIDs: [],
+            decision: .keep,
+            freshnessStatus: .fresh,
+            alignmentStatus: .aligned,
+            issues: []
+          )
+        },
+        alignMpUseCase: StubAlignMpUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          #expect(command.memoryID == "memory.primary")
+          return PraxisMpAlignResult(
+            projectID: command.projectID,
+            memoryID: command.memoryID,
+            summary: "MP align updated 1 record(s) and produced keep for memory.primary.",
+            primaryMemoryID: "memory.primary",
+            updatedMemoryIDs: ["memory.primary"],
+            supersededMemoryIDs: [],
+            staleMemoryIDs: [],
+            decision: .keep,
+            freshnessStatus: .fresh,
+            alignmentStatus: .aligned,
+            issues: []
+          )
+        },
+        resolveMpUseCase: StubResolveMpUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          #expect(command.requesterAgentID == "runtime.local")
+          return PraxisMpResolveResult(
+            projectID: command.projectID,
+            query: command.query,
+            summary: "MP resolve assembled 1 primary and 1 supporting memory record(s) for query onboarding.",
+            primaryMemoryIDs: ["memory.primary"],
+            supportingMemoryIDs: ["memory.supporting"],
+            omittedSupersededMemoryIDs: ["memory.superseded"],
+            rerankComposition: .init(fresh: 1, aging: 1, stale: 0, superseded: 1, aligned: 1, unreviewed: 1, drifted: 0),
+            roleCounts: ["dispatcher": 1],
+            roleStages: ["dispatcher": "assemble_bundle"],
+            issues: []
+          )
+        },
+        requestMpHistoryUseCase: StubRequestMpHistoryUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          #expect(command.requesterAgentID == "runtime.local")
+          return PraxisMpHistoryResult(
+            projectID: command.projectID,
+            requesterAgentID: command.requesterAgentID,
+            query: command.query,
+            reason: command.reason,
+            summary: "MP history returned 1 primary and 0 supporting memory record(s) for runtime.local.",
+            primaryMemoryIDs: ["memory.primary"],
+            supportingMemoryIDs: [],
+            omittedSupersededMemoryIDs: [],
+            rerankComposition: .init(fresh: 1, aging: 0, stale: 0, superseded: 0, aligned: 1, unreviewed: 0, drifted: 0),
+            roleCounts: ["dispatcher": 1],
+            roleStages: ["dispatcher": "assemble_bundle"],
+            issues: []
+          )
+        },
+        promoteMpUseCase: StubPromoteMpUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          #expect(command.memoryID == "memory.primary")
+          #expect(command.targetPromotionState == .promotedToProject)
+          return PraxisMpPromoteResult(
+            projectID: command.projectID,
+            memoryID: command.memoryID,
+            summary: "MP promotion moved memory.primary to promoted_to_project with project_shared visibility.",
+            scopeLevel: .project,
+            sessionID: nil,
+            sessionMode: .shared,
+            visibilityState: .projectShared,
+            promotionState: .promotedToProject,
+            updatedAt: "2026-04-11T10:10:00Z",
+            issues: []
+          )
+        },
+        archiveMpUseCase: StubArchiveMpUseCase { command in
+          #expect(command.projectID == "mp.local-runtime")
+          #expect(command.memoryID == "memory.primary")
+          return PraxisMpArchiveResult(
+            projectID: command.projectID,
+            memoryID: command.memoryID,
+            summary: "MP archive marked memory.primary archived while preserving persisted memory truth.",
+            scopeLevel: .project,
+            sessionID: nil,
+            sessionMode: .shared,
+            visibilityState: .archived,
+            promotionState: .archived,
+            updatedAt: "2026-04-11T10:15:00Z",
+            issues: []
+          )
+        }
+      )
+    )
+
+    let searchResponse = await runtimeInterface.handle(
+      .searchMp(
+        .init(
+          payloadSummary: "Search MP memory",
+          projectID: "mp.local-runtime",
+          query: "onboarding",
+          scopeLevels: [.agentIsolated, .project],
+          limit: 5
+        )
+      )
+    )
+    let readbackResponse = await runtimeInterface.handle(
+      .readbackMp(
+        .init(
+          payloadSummary: "Read back MP memory",
+          projectID: "mp.local-runtime",
+          query: "onboarding",
+          scopeLevels: [.agentIsolated, .project],
+          limit: 5
+        )
+      )
+    )
+    let smokeResponse = await runtimeInterface.handle(
+      .smokeMp(
+        .init(
+          payloadSummary: "Smoke MP host wiring",
+          projectID: "mp.local-runtime"
+        )
+      )
+    )
+    let ingestResponse = await runtimeInterface.handle(
+      .ingestMp(
+        .init(
+          payloadSummary: "Ingest MP memory",
+          projectID: "mp.local-runtime",
+          agentID: "runtime.local",
+          sessionID: "mp.session",
+          summary: "Host runtime onboarding note",
+          checkedSnapshotRef: "snapshot.mp.1",
+          branchRef: "main"
+        )
+      )
+    )
+    let alignResponse = await runtimeInterface.handle(
+      .alignMp(
+        .init(
+          payloadSummary: "Align MP memory",
+          projectID: "mp.local-runtime",
+          memoryID: "memory.primary"
+        )
+      )
+    )
+    let promoteResponse = await runtimeInterface.handle(
+      .promoteMp(
+        .init(
+          payloadSummary: "Promote MP memory",
+          projectID: "mp.local-runtime",
+          memoryID: "memory.primary",
+          targetPromotionState: .promotedToProject
+        )
+      )
+    )
+    let archiveResponse = await runtimeInterface.handle(
+      .archiveMp(
+        .init(
+          payloadSummary: "Archive MP memory",
+          projectID: "mp.local-runtime",
+          memoryID: "memory.primary",
+          reason: "Superseded by project summary"
+        )
+      )
+    )
+    let resolveResponse = await runtimeInterface.handle(
+      .resolveMp(
+        .init(
+          payloadSummary: "Resolve MP bundle",
+          projectID: "mp.local-runtime",
+          query: "onboarding",
+          requesterAgentID: "runtime.local",
+          sessionID: "mp.session"
+        )
+      )
+    )
+    let historyResponse = await runtimeInterface.handle(
+      .requestMpHistory(
+        .init(
+          payloadSummary: "Request MP history",
+          projectID: "mp.local-runtime",
+          requesterAgentID: "runtime.local",
+          sessionID: "mp.session",
+          reason: "Need historical context",
+          query: "onboarding"
+        )
+      )
+    )
+
+    #expect(searchResponse.status == .success)
+    #expect(searchResponse.snapshot?.kind == .mpSearch)
+    #expect(searchResponse.snapshot?.title == "MP Search")
+    #expect(searchResponse.snapshot?.projectID == "mp.local-runtime")
+    #expect(readbackResponse.status == .success)
+    #expect(readbackResponse.snapshot?.kind == .mpReadback)
+    #expect(readbackResponse.snapshot?.title == "MP Readback")
+    #expect(readbackResponse.snapshot?.projectID == "mp.local-runtime")
+    #expect(smokeResponse.status == .success)
+    #expect(smokeResponse.snapshot?.kind == .mpSmoke)
+    #expect(smokeResponse.snapshot?.title == "MP Smoke")
+    #expect(smokeResponse.snapshot?.projectID == "mp.local-runtime")
+    #expect(ingestResponse.status == .success)
+    #expect(ingestResponse.snapshot?.kind == .mpIngest)
+    #expect(ingestResponse.snapshot?.title == "MP Ingest")
+    #expect(ingestResponse.snapshot?.projectID == "mp.local-runtime")
+    #expect(ingestResponse.snapshot?.sessionID?.rawValue == "mp.session")
+    #expect(alignResponse.status == .success)
+    #expect(alignResponse.snapshot?.kind == .mpAlign)
+    #expect(alignResponse.snapshot?.title == "MP Align")
+    #expect(promoteResponse.status == .success)
+    #expect(promoteResponse.snapshot?.kind == .mpPromote)
+    #expect(promoteResponse.snapshot?.title == "MP Promote")
+    #expect(promoteResponse.snapshot?.projectID == "mp.local-runtime")
+    #expect(archiveResponse.status == .success)
+    #expect(archiveResponse.snapshot?.kind == .mpArchive)
+    #expect(archiveResponse.snapshot?.title == "MP Archive")
+    #expect(archiveResponse.snapshot?.projectID == "mp.local-runtime")
+    #expect(resolveResponse.status == .success)
+    #expect(resolveResponse.snapshot?.kind == .mpResolve)
+    #expect(resolveResponse.snapshot?.title == "MP Resolve")
+    #expect(resolveResponse.snapshot?.sessionID?.rawValue == "mp.session")
+    #expect(historyResponse.status == .success)
+    #expect(historyResponse.snapshot?.kind == .mpHistory)
+    #expect(historyResponse.snapshot?.title == "MP History")
+    #expect(historyResponse.snapshot?.sessionID?.rawValue == "mp.session")
   }
 
   @Test

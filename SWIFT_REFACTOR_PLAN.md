@@ -552,6 +552,15 @@ Core 禁止直接依赖：
   - 流式 token / partial update 协议
   - 最终的句柄释放与缓冲区所有权模型
 
+进度记录（`2026-04-12`）：
+
+- MP host workflow 这一轮补了 3 个已经被 review 暴露出来的真实语义缺口：
+  - `PraxisAlignMpUseCase` 现在会像 `promote/archive` 一样校验 memory 的 `project ownership`，避免跨 project 误改 foreign memory
+  - `PraxisResolveMpUseCase` / `PraxisRequestMpHistoryUseCase` 不再把 shared bundle 检索错误收窄到 `requesterAgentID`，project-shared memory 可以被其他 agent 正常读到
+  - `PraxisMpHostRetrievalService` 现在会在 pre-rank candidate snapshot 阶段保留 superseded memory ID，用于稳定产出 `omittedSupersededMemoryIDs` diagnostics
+- 这说明当前 Wave 6 不只是“neutral surface 已接通”，也开始进入对 MP shared retrieval / governance / diagnostics 做真实语义收口的阶段
+- 本轮已补对应验证并执行 `swift test`，结果为 `220 tests / 51 suites` 全通过
+
 覆盖 target：
 
 - `PraxisRuntimeComposition`

@@ -1001,6 +1001,205 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
           summary: "\(inspection.summary) Store: \(inspection.memoryStoreSummary)"
         )
       )
+    case .searchMp(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let query = try requireRuntimeInterfaceText(payload.query, named: "query")
+      let search = try await runtimeFacade.mpFacade.search(
+        .init(
+          projectID: projectID,
+          query: query,
+          scopeLevels: payload.scopeLevels,
+          limit: payload.limit,
+          agentID: payload.agentID,
+          sessionID: payload.sessionID,
+          includeSuperseded: payload.includeSuperseded
+        )
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpSearch,
+          title: "MP Search",
+          summary: search.summary,
+          projectID: search.projectID
+        )
+      )
+    case .readbackMp(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let readback = try await runtimeFacade.mpFacade.readback(
+        .init(
+          projectID: projectID,
+          query: payload.query,
+          scopeLevels: payload.scopeLevels,
+          limit: payload.limit,
+          agentID: payload.agentID,
+          sessionID: payload.sessionID,
+          includeSuperseded: payload.includeSuperseded
+        )
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpReadback,
+          title: "MP Readback",
+          summary: readback.summary,
+          projectID: readback.projectID
+        )
+      )
+    case .smokeMp(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let smoke = try await runtimeFacade.mpFacade.smoke(
+        .init(projectID: projectID)
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpSmoke,
+          title: "MP Smoke",
+          summary: smoke.summary,
+          projectID: smoke.projectID
+        )
+      )
+    case .ingestMp(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let summary = try requireRuntimeInterfaceText(payload.summary, named: "summary")
+      let checkedSnapshotRef = try requireRuntimeInterfaceText(payload.checkedSnapshotRef, named: "checkedSnapshotRef")
+      let branchRef = try requireRuntimeInterfaceText(payload.branchRef, named: "branchRef")
+      let ingest = try await runtimeFacade.mpFacade.ingest(
+        .init(
+          projectID: projectID,
+          agentID: agentID,
+          sessionID: payload.sessionID,
+          scopeLevel: payload.scopeLevel,
+          summary: summary,
+          checkedSnapshotRef: checkedSnapshotRef,
+          branchRef: branchRef,
+          storageKey: payload.storageKey,
+          memoryKind: payload.memoryKind,
+          observedAt: payload.observedAt,
+          capturedAt: payload.capturedAt,
+          semanticGroupID: payload.semanticGroupID,
+          tags: payload.tags,
+          sourceRefs: payload.sourceRefs,
+          confidence: payload.confidence
+        )
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpIngest,
+          title: "MP Ingest",
+          summary: ingest.summary,
+          projectID: ingest.projectID,
+          sessionID: ingest.sessionID.map(PraxisSessionID.init(rawValue:))
+        )
+      )
+    case .alignMp(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let memoryID = try requireRuntimeInterfaceField(payload.memoryID, named: "memoryID")
+      let align = try await runtimeFacade.mpFacade.align(
+        .init(
+          projectID: projectID,
+          memoryID: memoryID,
+          alignedAt: payload.alignedAt,
+          queryText: payload.queryText
+        )
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpAlign,
+          title: "MP Align",
+          summary: align.summary,
+          projectID: align.projectID
+        )
+      )
+    case .promoteMp(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let memoryID = try requireRuntimeInterfaceField(payload.memoryID, named: "memoryID")
+      let promote = try await runtimeFacade.mpFacade.promote(
+        .init(
+          projectID: projectID,
+          memoryID: memoryID,
+          targetPromotionState: payload.targetPromotionState,
+          targetSessionID: payload.targetSessionID,
+          promotedAt: payload.promotedAt,
+          reason: payload.reason
+        )
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpPromote,
+          title: "MP Promote",
+          summary: promote.summary,
+          projectID: promote.projectID,
+          sessionID: promote.sessionID.map(PraxisSessionID.init(rawValue:))
+        )
+      )
+    case .archiveMp(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let memoryID = try requireRuntimeInterfaceField(payload.memoryID, named: "memoryID")
+      let archive = try await runtimeFacade.mpFacade.archive(
+        .init(
+          projectID: projectID,
+          memoryID: memoryID,
+          archivedAt: payload.archivedAt,
+          reason: payload.reason
+        )
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpArchive,
+          title: "MP Archive",
+          summary: archive.summary,
+          projectID: archive.projectID,
+          sessionID: archive.sessionID.map(PraxisSessionID.init(rawValue:))
+        )
+      )
+    case .resolveMp(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let requesterAgentID = try requireRuntimeInterfaceField(payload.requesterAgentID, named: "requesterAgentID")
+      let query = try requireRuntimeInterfaceText(payload.query, named: "query")
+      let resolve = try await runtimeFacade.mpFacade.resolve(
+        .init(
+          projectID: projectID,
+          query: query,
+          requesterAgentID: requesterAgentID,
+          requesterSessionID: payload.sessionID,
+          scopeLevels: payload.scopeLevels,
+          limit: payload.limit
+        )
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpResolve,
+          title: "MP Resolve",
+          summary: resolve.summary,
+          projectID: resolve.projectID,
+          sessionID: payload.sessionID.map(PraxisSessionID.init(rawValue:))
+        )
+      )
+    case .requestMpHistory(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let requesterAgentID = try requireRuntimeInterfaceField(payload.requesterAgentID, named: "requesterAgentID")
+      let reason = try requireRuntimeInterfaceText(payload.reason, named: "reason")
+      let query = try requireRuntimeInterfaceText(payload.query, named: "query")
+      let history = try await runtimeFacade.mpFacade.requestHistory(
+        .init(
+          projectID: projectID,
+          requesterAgentID: requesterAgentID,
+          requesterSessionID: payload.sessionID,
+          reason: reason,
+          query: query,
+          scopeLevels: payload.scopeLevels,
+          limit: payload.limit
+        )
+      )
+      return .success(
+        snapshot: .init(
+          kind: .mpHistory,
+          title: "MP History",
+          summary: history.summary,
+          projectID: history.projectID,
+          sessionID: payload.sessionID.map(PraxisSessionID.init(rawValue:))
+        )
+      )
     case .buildCapabilityCatalog:
       let inspection = try await runtimeFacade.inspectionFacade.buildCapabilityCatalogSnapshot()
       return .success(

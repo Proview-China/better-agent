@@ -1,4 +1,5 @@
 import PraxisRun
+import PraxisMpTypes
 
 public protocol PraxisRunGoalUseCaseProtocol: Sendable {
   func execute(_ command: PraxisRunGoalCommand) async throws -> PraxisRunExecution
@@ -102,6 +103,42 @@ public protocol PraxisSmokeCmpProjectUseCaseProtocol: Sendable {
 
 public protocol PraxisInspectMpUseCaseProtocol: Sendable {
   func execute() async throws -> PraxisMpInspection
+}
+
+public protocol PraxisSearchMpUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisSearchMpCommand) async throws -> PraxisMpSearchResult
+}
+
+public protocol PraxisReadbackMpUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisReadbackMpCommand) async throws -> PraxisMpReadback
+}
+
+public protocol PraxisSmokeMpUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisSmokeMpCommand) async throws -> PraxisMpSmoke
+}
+
+public protocol PraxisIngestMpUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisIngestMpCommand) async throws -> PraxisMpIngestResult
+}
+
+public protocol PraxisAlignMpUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisAlignMpCommand) async throws -> PraxisMpAlignResult
+}
+
+public protocol PraxisResolveMpUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisResolveMpCommand) async throws -> PraxisMpResolveResult
+}
+
+public protocol PraxisRequestMpHistoryUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisRequestMpHistoryCommand) async throws -> PraxisMpHistoryResult
+}
+
+public protocol PraxisPromoteMpUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisPromoteMpCommand) async throws -> PraxisMpPromoteResult
+}
+
+public protocol PraxisArchiveMpUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisArchiveMpCommand) async throws -> PraxisMpArchiveResult
 }
 
 public protocol PraxisBuildCapabilityCatalogUseCaseProtocol: Sendable {

@@ -3,6 +3,7 @@ import Testing
 @testable import PraxisCmpTypes
 @testable import PraxisInfraContracts
 @testable import PraxisJournal
+@testable import PraxisMpTypes
 @testable import PraxisSession
 
 struct PraxisInfraContractsTests {
@@ -76,6 +77,70 @@ struct PraxisInfraContractsTests {
 
     #expect(queriedDescriptors.count == 1)
     #expect(queriedDescriptors.first?.projectionID == .init(rawValue: "projection-1"))
+  }
+
+  @Test
+  func semanticMemoryStoreRoundTripsMpNativeFieldsAndFiltersBySessionID() async throws {
+    let semanticMemoryStore = PraxisFakeSemanticMemoryStore()
+    let sessionRecord = PraxisSemanticMemoryRecord(
+      id: "memory-session",
+      projectID: "project-1",
+      agentID: "agent-main",
+      sessionID: "session-1",
+      scopeLevel: .session,
+      sessionMode: .bridged,
+      visibilityState: .sessionBridged,
+      promotionState: .submittedToParent,
+      memoryKind: .semantic,
+      summary: "Session scoped workflow baseline",
+      storageKey: "sqlite://mp/memory-session",
+      freshnessStatus: .fresh,
+      alignmentStatus: .aligned,
+      sourceRefs: ["workspace://note.md"],
+      tags: ["workflow", "session"],
+      semanticGroupID: "group-1",
+      confidence: .high,
+      lineagePath: ["agent-main", "agent-parent"],
+      createdAt: "2026-04-11T12:00:00Z",
+      updatedAt: "2026-04-11T12:05:00Z",
+      metadata: ["lane": .string("session")]
+    )
+    let archivedRecord = PraxisSemanticMemoryRecord(
+      id: "memory-archived",
+      projectID: "project-1",
+      agentID: "agent-main",
+      scopeLevel: .project,
+      visibilityState: .archived,
+      promotionState: .archived,
+      memoryKind: .summary,
+      summary: "Archived workflow baseline",
+      storageKey: "sqlite://mp/memory-archived",
+      freshnessStatus: .superseded,
+      alignmentStatus: .aligned
+    )
+
+    _ = try await semanticMemoryStore.save(sessionRecord)
+    _ = try await semanticMemoryStore.save(archivedRecord)
+
+    let loaded = try await semanticMemoryStore.load(memoryID: "memory-session")
+    let sessionSearch = try await semanticMemoryStore.search(
+      .init(
+        projectID: "project-1",
+        query: "workflow baseline",
+        scopeLevels: [.session, .project],
+        limit: 10,
+        sessionID: "session-1"
+      )
+    )
+
+    #expect(loaded?.sessionID == "session-1")
+    #expect(loaded?.visibilityState == .sessionBridged)
+    #expect(loaded?.promotionState == .submittedToParent)
+    #expect(loaded?.tags == ["session", "workflow"])
+    #expect(loaded?.sourceRefs == ["workspace://note.md"])
+    #expect(loaded?.confidence == .high)
+    #expect(loaded?.metadata["lane"] == .string("session"))
+    #expect(sessionSearch.map(\.id) == ["memory-session"])
   }
 
   @Test
@@ -371,7 +436,7 @@ struct PraxisInfraContractsTests {
     )
 
     #expect(searchMatches.count == 2)
-    #expect(scopedMatches.map(\.id) == ["memory-1", "memory-2", "memory-3"])
+    #expect(scopedMatches.map(\.id) == ["memory-1", "memory-2"])
     #expect(bundle.primaryMemoryIDs == ["memory-1"])
     #expect(bundle.omittedSupersededMemoryIDs == ["memory-2"])
 

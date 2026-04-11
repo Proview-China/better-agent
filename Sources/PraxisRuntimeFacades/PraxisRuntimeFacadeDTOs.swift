@@ -747,3 +747,390 @@ public struct PraxisMpInspectionSnapshot: Sendable, Equatable, Codable {
     self.multimodalSummary = multimodalSummary
   }
 }
+
+public struct PraxisMpSearchHitSnapshot: Sendable, Equatable, Codable, Identifiable {
+  public let memoryID: String
+  public let agentID: String
+  public let scopeLevel: String
+  public let memoryKind: String
+  public let freshnessStatus: String
+  public let alignmentStatus: String
+  public let summary: String
+  public let storageKey: String
+  public let semanticScore: Double?
+  public let finalScore: Double
+  public let rankExplanation: String
+
+  public var id: String {
+    memoryID
+  }
+
+  public init(
+    memoryID: String,
+    agentID: String,
+    scopeLevel: String,
+    memoryKind: String,
+    freshnessStatus: String,
+    alignmentStatus: String,
+    summary: String,
+    storageKey: String,
+    semanticScore: Double?,
+    finalScore: Double,
+    rankExplanation: String
+  ) {
+    self.memoryID = memoryID
+    self.agentID = agentID
+    self.scopeLevel = scopeLevel
+    self.memoryKind = memoryKind
+    self.freshnessStatus = freshnessStatus
+    self.alignmentStatus = alignmentStatus
+    self.summary = summary
+    self.storageKey = storageKey
+    self.semanticScore = semanticScore
+    self.finalScore = finalScore
+    self.rankExplanation = rankExplanation
+  }
+}
+
+public struct PraxisMpSearchSnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let query: String
+  public let summary: String
+  public let hits: [PraxisMpSearchHitSnapshot]
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    query: String,
+    summary: String,
+    hits: [PraxisMpSearchHitSnapshot],
+    issues: [String]
+  ) {
+    self.projectID = projectID
+    self.query = query
+    self.summary = summary
+    self.hits = hits
+    self.issues = issues
+  }
+}
+
+public struct PraxisMpReadbackSnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let summary: String
+  public let totalMemoryCount: Int
+  public let primaryCount: Int
+  public let supportingCount: Int
+  public let omittedSupersededCount: Int
+  public let freshnessBreakdown: [String: Int]
+  public let alignmentBreakdown: [String: Int]
+  public let scopeBreakdown: [String: Int]
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    summary: String,
+    totalMemoryCount: Int,
+    primaryCount: Int,
+    supportingCount: Int,
+    omittedSupersededCount: Int,
+    freshnessBreakdown: [String: Int],
+    alignmentBreakdown: [String: Int],
+    scopeBreakdown: [String: Int],
+    issues: [String]
+  ) {
+    self.projectID = projectID
+    self.summary = summary
+    self.totalMemoryCount = totalMemoryCount
+    self.primaryCount = primaryCount
+    self.supportingCount = supportingCount
+    self.omittedSupersededCount = omittedSupersededCount
+    self.freshnessBreakdown = freshnessBreakdown
+    self.alignmentBreakdown = alignmentBreakdown
+    self.scopeBreakdown = scopeBreakdown
+    self.issues = issues
+  }
+}
+
+public struct PraxisMpSmokeSnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let summary: String
+  public let smokeResult: PraxisRuntimeSmokeResult
+
+  public init(
+    projectID: String,
+    summary: String,
+    smokeResult: PraxisRuntimeSmokeResult
+  ) {
+    self.projectID = projectID
+    self.summary = summary
+    self.smokeResult = smokeResult
+  }
+}
+
+public struct PraxisMpRerankCompositionSnapshot: Sendable, Equatable, Codable {
+  public let fresh: Int
+  public let aging: Int
+  public let stale: Int
+  public let superseded: Int
+  public let aligned: Int
+  public let unreviewed: Int
+  public let drifted: Int
+
+  public init(
+    fresh: Int,
+    aging: Int,
+    stale: Int,
+    superseded: Int,
+    aligned: Int,
+    unreviewed: Int,
+    drifted: Int
+  ) {
+    self.fresh = fresh
+    self.aging = aging
+    self.stale = stale
+    self.superseded = superseded
+    self.aligned = aligned
+    self.unreviewed = unreviewed
+    self.drifted = drifted
+  }
+}
+
+public struct PraxisMpIngestSnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let agentID: String
+  public let sessionID: String?
+  public let summary: String
+  public let primaryMemoryID: String
+  public let storageKey: String
+  public let updatedMemoryIDs: [String]
+  public let supersededMemoryIDs: [String]
+  public let staleMemoryIDs: [String]
+  public let decision: String
+  public let freshnessStatus: String
+  public let alignmentStatus: String
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    agentID: String,
+    sessionID: String? = nil,
+    summary: String,
+    primaryMemoryID: String,
+    storageKey: String,
+    updatedMemoryIDs: [String],
+    supersededMemoryIDs: [String],
+    staleMemoryIDs: [String],
+    decision: String,
+    freshnessStatus: String,
+    alignmentStatus: String,
+    issues: [String]
+  ) {
+    self.projectID = projectID
+    self.agentID = agentID
+    self.sessionID = sessionID
+    self.summary = summary
+    self.primaryMemoryID = primaryMemoryID
+    self.storageKey = storageKey
+    self.updatedMemoryIDs = updatedMemoryIDs
+    self.supersededMemoryIDs = supersededMemoryIDs
+    self.staleMemoryIDs = staleMemoryIDs
+    self.decision = decision
+    self.freshnessStatus = freshnessStatus
+    self.alignmentStatus = alignmentStatus
+    self.issues = issues
+  }
+}
+
+public struct PraxisMpAlignSnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let memoryID: String
+  public let summary: String
+  public let primaryMemoryID: String
+  public let updatedMemoryIDs: [String]
+  public let supersededMemoryIDs: [String]
+  public let staleMemoryIDs: [String]
+  public let decision: String
+  public let freshnessStatus: String
+  public let alignmentStatus: String
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    memoryID: String,
+    summary: String,
+    primaryMemoryID: String,
+    updatedMemoryIDs: [String],
+    supersededMemoryIDs: [String],
+    staleMemoryIDs: [String],
+    decision: String,
+    freshnessStatus: String,
+    alignmentStatus: String,
+    issues: [String]
+  ) {
+    self.projectID = projectID
+    self.memoryID = memoryID
+    self.summary = summary
+    self.primaryMemoryID = primaryMemoryID
+    self.updatedMemoryIDs = updatedMemoryIDs
+    self.supersededMemoryIDs = supersededMemoryIDs
+    self.staleMemoryIDs = staleMemoryIDs
+    self.decision = decision
+    self.freshnessStatus = freshnessStatus
+    self.alignmentStatus = alignmentStatus
+    self.issues = issues
+  }
+}
+
+public struct PraxisMpPromoteSnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let memoryID: String
+  public let summary: String
+  public let scopeLevel: String
+  public let sessionID: String?
+  public let sessionMode: String
+  public let visibilityState: String
+  public let promotionState: String
+  public let updatedAt: String?
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    memoryID: String,
+    summary: String,
+    scopeLevel: String,
+    sessionID: String? = nil,
+    sessionMode: String,
+    visibilityState: String,
+    promotionState: String,
+    updatedAt: String? = nil,
+    issues: [String]
+  ) {
+    self.projectID = projectID
+    self.memoryID = memoryID
+    self.summary = summary
+    self.scopeLevel = scopeLevel
+    self.sessionID = sessionID
+    self.sessionMode = sessionMode
+    self.visibilityState = visibilityState
+    self.promotionState = promotionState
+    self.updatedAt = updatedAt
+    self.issues = issues
+  }
+}
+
+public struct PraxisMpArchiveSnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let memoryID: String
+  public let summary: String
+  public let scopeLevel: String
+  public let sessionID: String?
+  public let sessionMode: String
+  public let visibilityState: String
+  public let promotionState: String
+  public let updatedAt: String?
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    memoryID: String,
+    summary: String,
+    scopeLevel: String,
+    sessionID: String? = nil,
+    sessionMode: String,
+    visibilityState: String,
+    promotionState: String,
+    updatedAt: String? = nil,
+    issues: [String]
+  ) {
+    self.projectID = projectID
+    self.memoryID = memoryID
+    self.summary = summary
+    self.scopeLevel = scopeLevel
+    self.sessionID = sessionID
+    self.sessionMode = sessionMode
+    self.visibilityState = visibilityState
+    self.promotionState = promotionState
+    self.updatedAt = updatedAt
+    self.issues = issues
+  }
+}
+
+public struct PraxisMpResolveSnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let query: String
+  public let summary: String
+  public let primaryMemoryIDs: [String]
+  public let supportingMemoryIDs: [String]
+  public let omittedSupersededMemoryIDs: [String]
+  public let rerankComposition: PraxisMpRerankCompositionSnapshot
+  public let roleCounts: [String: Int]
+  public let roleStages: [String: String]
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    query: String,
+    summary: String,
+    primaryMemoryIDs: [String],
+    supportingMemoryIDs: [String],
+    omittedSupersededMemoryIDs: [String],
+    rerankComposition: PraxisMpRerankCompositionSnapshot,
+    roleCounts: [String: Int],
+    roleStages: [String: String],
+    issues: [String]
+  ) {
+    self.projectID = projectID
+    self.query = query
+    self.summary = summary
+    self.primaryMemoryIDs = primaryMemoryIDs
+    self.supportingMemoryIDs = supportingMemoryIDs
+    self.omittedSupersededMemoryIDs = omittedSupersededMemoryIDs
+    self.rerankComposition = rerankComposition
+    self.roleCounts = roleCounts
+    self.roleStages = roleStages
+    self.issues = issues
+  }
+}
+
+public struct PraxisMpHistorySnapshot: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let requesterAgentID: String
+  public let query: String
+  public let reason: String
+  public let summary: String
+  public let primaryMemoryIDs: [String]
+  public let supportingMemoryIDs: [String]
+  public let omittedSupersededMemoryIDs: [String]
+  public let rerankComposition: PraxisMpRerankCompositionSnapshot
+  public let roleCounts: [String: Int]
+  public let roleStages: [String: String]
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    requesterAgentID: String,
+    query: String,
+    reason: String,
+    summary: String,
+    primaryMemoryIDs: [String],
+    supportingMemoryIDs: [String],
+    omittedSupersededMemoryIDs: [String],
+    rerankComposition: PraxisMpRerankCompositionSnapshot,
+    roleCounts: [String: Int],
+    roleStages: [String: String],
+    issues: [String]
+  ) {
+    self.projectID = projectID
+    self.requesterAgentID = requesterAgentID
+    self.query = query
+    self.reason = reason
+    self.summary = summary
+    self.primaryMemoryIDs = primaryMemoryIDs
+    self.supportingMemoryIDs = supportingMemoryIDs
+    self.omittedSupersededMemoryIDs = omittedSupersededMemoryIDs
+    self.rerankComposition = rerankComposition
+    self.roleCounts = roleCounts
+    self.roleStages = roleStages
+    self.issues = issues
+  }
+}

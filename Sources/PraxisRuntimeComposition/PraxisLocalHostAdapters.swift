@@ -1569,10 +1569,18 @@ public actor PraxisLocalSemanticMemoryStore: PraxisSemanticMemoryStoreContract {
     let records = try loadRecords(projectID: request.projectID)
     return records
       .filter { record in
+        guard record.visibilityState != .archived else {
+          return false
+        }
         guard request.scopeLevels.contains(record.scopeLevel) else {
           return false
         }
         if let agentID = request.agentID, record.agentID != agentID {
+          return false
+        }
+        if let sessionID = request.sessionID,
+           record.scopeLevel == .session,
+           record.sessionID != sessionID {
           return false
         }
         if request.query.isEmpty {
@@ -1587,10 +1595,18 @@ public actor PraxisLocalSemanticMemoryStore: PraxisSemanticMemoryStoreContract {
 
   public func bundle(_ request: PraxisSemanticMemoryBundleRequest) async throws -> PraxisSemanticMemoryBundle {
     let filteredRecords = try loadRecords(projectID: request.projectID).filter { record in
+      guard record.visibilityState != .archived else {
+        return false
+      }
       guard request.scopeLevels.contains(record.scopeLevel) else {
         return false
       }
       if let agentID = request.agentID, record.agentID != agentID {
+        return false
+      }
+      if let sessionID = request.sessionID,
+         record.scopeLevel == .session,
+         record.sessionID != sessionID {
         return false
       }
       if request.query.isEmpty {

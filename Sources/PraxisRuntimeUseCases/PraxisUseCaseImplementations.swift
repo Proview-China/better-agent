@@ -699,21 +699,6 @@ private func cmpLineageSummary(
   return (statusWord, summary, issue)
 }
 
-private func mpMultimodalSummary(from dependencies: PraxisDependencyGraph) -> String {
-  let adapters = dependencies.hostAdapters
-  let chips = [
-    adapters.audioTranscriptionDriver != nil ? "audio.transcribe" : nil,
-    adapters.speechSynthesisDriver != nil ? "speech.synthesize" : nil,
-    adapters.imageGenerationDriver != nil ? "image.generate" : nil,
-    adapters.browserGroundingCollector != nil ? "browser.ground" : nil,
-  ].compactMap { $0 }
-
-  if chips.isEmpty {
-    return "No multimodal host chips are currently registered."
-  }
-  return "Multimodal host chips: \(chips.joined(separator: ", "))"
-}
-
 private func cmpComponentStatus(
   ready: Bool,
   missing: Bool = false
@@ -4240,67 +4225,6 @@ public final class PraxisSmokeCmpProjectUseCase: PraxisSmokeCmpProjectUseCasePro
           summary: readback.issues.first(where: { $0.contains("Lineage") }) ?? "Lineage readiness is \(readback.componentStatuses["lineageStore"] ?? "missing")."
         ),
       ]
-    )
-  }
-}
-
-public final class PraxisInspectMpUseCase: PraxisInspectMpUseCaseProtocol {
-  public let dependencies: PraxisDependencyGraph
-
-  public init(dependencies: PraxisDependencyGraph) {
-    self.dependencies = dependencies
-  }
-
-  /// Builds the inspection output for the current reserved MP workflow surface.
-  ///
-  /// - Returns: An inspection result that describes the MP workflow, memory store, and multimodal surface.
-  /// - Throws: This implementation does not actively throw, but it propagates underlying errors from the call chain.
-  public func execute() async throws -> PraxisMpInspection {
-    let memoryBundle = try await dependencies.hostAdapters.semanticMemoryStore?.bundle(
-      .init(
-        projectID: "mp.local-runtime",
-        query: "",
-        scopeLevels: [.global, .project, .agent, .session],
-        includeSuperseded: false
-      )
-    )
-    let semanticMatches = try await dependencies.hostAdapters.semanticSearchIndex?.search(
-      .init(query: "host runtime", limit: 3)
-    ) ?? []
-    let memoryStoreSummary: String
-    if let memoryBundle {
-      memoryStoreSummary = "Semantic memory bundle exposes \(memoryBundle.primaryMemoryIDs.count) primary records and omits \(memoryBundle.omittedSupersededMemoryIDs.count) superseded records."
-    } else {
-      memoryStoreSummary = "Semantic memory store is not wired into HostRuntime yet."
-    }
-
-    let workflowSummary = dependencies.hostAdapters.providerInferenceExecutor != nil
-      ? "ICMA / Iterator / Checker / DbAgent / Dispatcher lanes now have a provider inference surface available for future host-backed execution."
-      : "Five-agent lanes remain Core-side protocols until a provider inference surface is composed."
-
-    var issues: [String] = []
-    if dependencies.hostAdapters.semanticMemoryStore == nil {
-      issues.append("MP runtime still needs a semantic memory store adapter on the Swift side.")
-    }
-    if dependencies.hostAdapters.semanticSearchIndex == nil {
-      issues.append("MP runtime still needs a semantic search index adapter on the Swift side.")
-    }
-    if semanticMatches.isEmpty {
-      issues.append("No semantic search matches are currently available for the local MP inspection query.")
-    }
-    if dependencies.hostAdapters.browserGroundingCollector == nil
-      || dependencies.hostAdapters.audioTranscriptionDriver == nil
-      || dependencies.hostAdapters.speechSynthesisDriver == nil
-      || dependencies.hostAdapters.imageGenerationDriver == nil {
-      issues.append("Browser grounding and multimodal chips still need the full host adapter set.")
-    }
-
-    return PraxisMpInspection(
-      summary: "MP workflow surface is now reading HostRuntime memory and multimodal adapter state.",
-      workflowSummary: workflowSummary,
-      memoryStoreSummary: "\(memoryStoreSummary) Semantic search matches for inspection query: \(semanticMatches.count).",
-      multimodalSummary: mpMultimodalSummary(from: dependencies),
-      issues: issues
     )
   }
 }

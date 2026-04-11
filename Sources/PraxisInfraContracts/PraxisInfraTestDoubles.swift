@@ -418,6 +418,9 @@ public actor PraxisFakeSemanticMemoryStore: PraxisSemanticMemoryStoreContract {
       guard record.projectID == request.projectID else {
         return false
       }
+      guard record.visibilityState != .archived else {
+        return false
+      }
       guard request.scopeLevels.contains(record.scopeLevel) else {
         return false
       }
@@ -426,9 +429,12 @@ public actor PraxisFakeSemanticMemoryStore: PraxisSemanticMemoryStoreContract {
       }
       if let sessionID = request.sessionID {
         if record.scopeLevel == .session,
-           !record.storageKey.contains(sessionID) {
+           record.sessionID != sessionID {
           return false
         }
+      }
+      if request.query.isEmpty {
+        return true
       }
       return record.summary.lowercased().contains(request.query.lowercased())
     }

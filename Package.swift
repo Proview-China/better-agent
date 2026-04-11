@@ -40,6 +40,13 @@ let cmpTargets = [
   "PraxisCmpFiveAgent",
 ]
 
+let mpTargets = [
+  "PraxisMpTypes",
+  "PraxisMpSearch",
+  "PraxisMpMemory",
+  "PraxisMpFiveAgent",
+]
+
 let hostContractTargets = [
   "PraxisProviderContracts",
   "PraxisWorkspaceContracts",
@@ -111,6 +118,7 @@ hostRuntimeArchitectureTestsTarget = .testTarget(
     "PraxisRuntimeFacades",
     "PraxisRuntimeInterface",
     "PraxisRuntimePresentationBridge",
+    "PraxisMpTypes",
     "PraxisAppleUI",
   ],
   path: "Tests/PraxisHostRuntimeArchitectureTests",
@@ -126,6 +134,7 @@ hostRuntimeArchitectureTestsTarget = .testTarget(
     "PraxisRuntimeFacades",
     "PraxisRuntimeInterface",
     "PraxisRuntimePresentationBridge",
+    "PraxisMpTypes",
   ],
   path: "Tests/PraxisHostRuntimeArchitectureTests",
 )
@@ -145,6 +154,7 @@ let package = Package(
     .library(name: "PraxisCapabilityDomain", targets: capabilityTargets),
     .library(name: "PraxisTapDomain", targets: tapTargets),
     .library(name: "PraxisCmpDomain", targets: cmpTargets),
+    .library(name: "PraxisMpDomain", targets: mpTargets),
     .library(name: "PraxisHostContracts", targets: hostContractTargets),
     .library(name: "PraxisHostRuntime", targets: hostRuntimeTargets),
     .library(name: "PraxisArchitectureTests", targets: architectureTestTargets),
@@ -386,6 +396,39 @@ let package = Package(
       path: "Sources/PraxisCmpFiveAgent",
     ),
     .target(
+      name: "PraxisMpTypes",
+      dependencies: [
+        "PraxisCoreTypes",
+      ],
+      path: "Sources/PraxisMpTypes",
+    ),
+    .target(
+      name: "PraxisMpSearch",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisMpTypes",
+      ],
+      path: "Sources/PraxisMpSearch",
+    ),
+    .target(
+      name: "PraxisMpMemory",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisMpTypes",
+      ],
+      path: "Sources/PraxisMpMemory",
+    ),
+    .target(
+      name: "PraxisMpFiveAgent",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisMpTypes",
+        "PraxisMpSearch",
+        "PraxisMpMemory",
+      ],
+      path: "Sources/PraxisMpFiveAgent",
+    ),
+    .target(
       name: "PraxisProviderContracts",
       dependencies: [
         "PraxisCoreTypes",
@@ -417,6 +460,7 @@ let package = Package(
         "PraxisCheckpoint",
         "PraxisCmpTypes",
         "PraxisCmpDelivery",
+        "PraxisMpTypes",
       ],
       path: "Sources/PraxisInfraContracts",
     ),
@@ -456,6 +500,10 @@ let package = Package(
         "PraxisCmpDbModel",
         "PraxisCmpMqModel",
         "PraxisCmpFiveAgent",
+        "PraxisMpTypes",
+        "PraxisMpSearch",
+        "PraxisMpMemory",
+        "PraxisMpFiveAgent",
         "PraxisProviderContracts",
         "PraxisWorkspaceContracts",
         "PraxisToolingContracts",
@@ -477,6 +525,10 @@ let package = Package(
         "PraxisCmpProjection",
         "PraxisCmpSections",
         "PraxisCmpTypes",
+        "PraxisMpTypes",
+        "PraxisMpSearch",
+        "PraxisMpMemory",
+        "PraxisMpFiveAgent",
         "PraxisRuntimeComposition",
         "PraxisTapTypes",
         "PraxisTapGovernance",
@@ -499,6 +551,7 @@ let package = Package(
         "PraxisCmpTypes",
         "PraxisCoreTypes",
         "PraxisGoal",
+        "PraxisMpTypes",
         "PraxisRun",
         "PraxisSession",
         "PraxisRuntimeFacades",
@@ -534,6 +587,10 @@ let package = Package(
         "PraxisCmpDbModel",
         "PraxisCmpMqModel",
         "PraxisCmpFiveAgent",
+        "PraxisMpTypes",
+        "PraxisMpSearch",
+        "PraxisMpMemory",
+        "PraxisMpFiveAgent",
         "PraxisProviderContracts",
         "PraxisWorkspaceContracts",
         "PraxisToolingContracts",
@@ -575,6 +632,10 @@ let package = Package(
         "PraxisCmpDbModel",
         "PraxisCmpMqModel",
         "PraxisCmpFiveAgent",
+        "PraxisMpTypes",
+        "PraxisMpSearch",
+        "PraxisMpMemory",
+        "PraxisMpFiveAgent",
         "PraxisProviderContracts",
         "PraxisWorkspaceContracts",
         "PraxisToolingContracts",
@@ -853,6 +914,21 @@ let package = Package(
       path: "Tests/PraxisCmpFiveAgentTests",
     ),
     .testTarget(
+      name: "PraxisMpTypesTests",
+      dependencies: [
+        "PraxisMpTypes",
+      ],
+      path: "Tests/PraxisMpTypesTests",
+    ),
+    .testTarget(
+      name: "PraxisMpSearchTests",
+      dependencies: [
+        "PraxisMpTypes",
+        "PraxisMpSearch",
+      ],
+      path: "Tests/PraxisMpSearchTests",
+    ),
+    .testTarget(
       name: "PraxisCmpArchitectureTests",
       dependencies: [
         "PraxisCmpTypes",
@@ -924,10 +1000,12 @@ let package = Package(
         "PraxisCapabilityResults",
         "PraxisCmpTypes",
         "PraxisInfraContracts",
+        "PraxisToolingContracts",
         "PraxisProviderContracts",
         "PraxisRuntimeComposition",
         "PraxisRuntimeFacades",
         "PraxisRuntimeGateway",
+        "PraxisMpTypes",
         "PraxisRuntimeUseCases",
         "PraxisTapTypes",
       ],
@@ -939,13 +1017,33 @@ let package = Package(
         "PraxisCapabilityResults",
         "PraxisCmpTypes",
         "PraxisInfraContracts",
+        "PraxisToolingContracts",
         "PraxisProviderContracts",
+        "PraxisMpTypes",
         "PraxisRuntimeComposition",
         "PraxisRuntimeGateway",
         "PraxisRuntimeUseCases",
         "PraxisTapTypes",
       ],
       path: "Tests/PraxisRuntimeUseCasesTests",
+    ),
+    .testTarget(
+      name: "PraxisMpMemoryTests",
+      dependencies: [
+        "PraxisMpTypes",
+        "PraxisMpMemory",
+      ],
+      path: "Tests/PraxisMpMemoryTests",
+    ),
+    .testTarget(
+      name: "PraxisMpFiveAgentTests",
+      dependencies: [
+        "PraxisMpTypes",
+        "PraxisMpSearch",
+        "PraxisMpMemory",
+        "PraxisMpFiveAgent",
+      ],
+      path: "Tests/PraxisMpFiveAgentTests",
     ),
     .testTarget(
       name: "PraxisCLITests",

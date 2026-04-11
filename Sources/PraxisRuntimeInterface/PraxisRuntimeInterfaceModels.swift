@@ -1,4 +1,5 @@
 import PraxisCmpTypes
+import PraxisMpTypes
 import PraxisRun
 import PraxisRuntimeFacades
 import PraxisSession
@@ -53,6 +54,15 @@ public enum PraxisRuntimeInterfaceCommandKind: String, Sendable, Equatable, Coda
   case smokeCmpProject
   case inspectCmp
   case inspectMp
+  case searchMp
+  case readbackMp
+  case smokeMp
+  case ingestMp
+  case alignMp
+  case promoteMp
+  case archiveMp
+  case resolveMp
+  case requestMpHistory
   case buildCapabilityCatalog
 }
 
@@ -595,6 +605,264 @@ public struct PraxisRuntimeInterfaceRequestCmpHistoryPayload: Sendable, Equatabl
   }
 }
 
+public struct PraxisRuntimeInterfaceMpSearchRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+  public let query: String
+  public let scopeLevels: [PraxisMpScopeLevel]
+  public let limit: Int
+  public let agentID: String?
+  public let sessionID: String?
+  public let includeSuperseded: Bool
+
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    query: String,
+    scopeLevels: [PraxisMpScopeLevel] = PraxisMpScopeLevel.allCases,
+    limit: Int = 5,
+    agentID: String? = nil,
+    sessionID: String? = nil,
+    includeSuperseded: Bool = false
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.query = query
+    self.scopeLevels = scopeLevels
+    self.limit = limit
+    self.agentID = agentID
+    self.sessionID = sessionID
+    self.includeSuperseded = includeSuperseded
+  }
+}
+
+public struct PraxisRuntimeInterfaceMpReadbackRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+  public let query: String
+  public let scopeLevels: [PraxisMpScopeLevel]
+  public let limit: Int
+  public let agentID: String?
+  public let sessionID: String?
+  public let includeSuperseded: Bool
+
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    query: String = "",
+    scopeLevels: [PraxisMpScopeLevel] = PraxisMpScopeLevel.allCases,
+    limit: Int = 10,
+    agentID: String? = nil,
+    sessionID: String? = nil,
+    includeSuperseded: Bool = false
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.query = query
+    self.scopeLevels = scopeLevels
+    self.limit = limit
+    self.agentID = agentID
+    self.sessionID = sessionID
+    self.includeSuperseded = includeSuperseded
+  }
+}
+
+public struct PraxisRuntimeInterfaceMpSmokeRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+
+  public init(payloadSummary: String, projectID: String) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+  }
+}
+
+public struct PraxisRuntimeInterfaceMpIngestRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+  public let agentID: String
+  public let sessionID: String?
+  public let scopeLevel: PraxisMpScopeLevel
+  public let summary: String
+  public let checkedSnapshotRef: String
+  public let branchRef: String
+  public let storageKey: String?
+  public let memoryKind: PraxisMpMemoryKind
+  public let observedAt: String?
+  public let capturedAt: String?
+  public let semanticGroupID: String?
+  public let tags: [String]
+  public let sourceRefs: [String]
+  public let confidence: PraxisMpMemoryConfidenceLevel
+
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    agentID: String,
+    sessionID: String? = nil,
+    scopeLevel: PraxisMpScopeLevel = .agentIsolated,
+    summary: String,
+    checkedSnapshotRef: String,
+    branchRef: String,
+    storageKey: String? = nil,
+    memoryKind: PraxisMpMemoryKind = .semantic,
+    observedAt: String? = nil,
+    capturedAt: String? = nil,
+    semanticGroupID: String? = nil,
+    tags: [String] = [],
+    sourceRefs: [String] = [],
+    confidence: PraxisMpMemoryConfidenceLevel = .medium
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.agentID = agentID
+    self.sessionID = sessionID
+    self.scopeLevel = scopeLevel
+    self.summary = summary
+    self.checkedSnapshotRef = checkedSnapshotRef
+    self.branchRef = branchRef
+    self.storageKey = storageKey
+    self.memoryKind = memoryKind
+    self.observedAt = observedAt
+    self.capturedAt = capturedAt
+    self.semanticGroupID = semanticGroupID
+    self.tags = tags
+    self.sourceRefs = sourceRefs
+    self.confidence = confidence
+  }
+}
+
+public struct PraxisRuntimeInterfaceMpAlignRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+  public let memoryID: String
+  public let alignedAt: String?
+  public let queryText: String?
+
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    memoryID: String,
+    alignedAt: String? = nil,
+    queryText: String? = nil
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.memoryID = memoryID
+    self.alignedAt = alignedAt
+    self.queryText = queryText
+  }
+}
+
+public struct PraxisRuntimeInterfaceMpPromoteRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+  public let memoryID: String
+  public let targetPromotionState: PraxisMpPromotionState
+  public let targetSessionID: String?
+  public let promotedAt: String?
+  public let reason: String?
+
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    memoryID: String,
+    targetPromotionState: PraxisMpPromotionState,
+    targetSessionID: String? = nil,
+    promotedAt: String? = nil,
+    reason: String? = nil
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.memoryID = memoryID
+    self.targetPromotionState = targetPromotionState
+    self.targetSessionID = targetSessionID
+    self.promotedAt = promotedAt
+    self.reason = reason
+  }
+}
+
+public struct PraxisRuntimeInterfaceMpArchiveRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+  public let memoryID: String
+  public let archivedAt: String?
+  public let reason: String?
+
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    memoryID: String,
+    archivedAt: String? = nil,
+    reason: String? = nil
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.memoryID = memoryID
+    self.archivedAt = archivedAt
+    self.reason = reason
+  }
+}
+
+public struct PraxisRuntimeInterfaceMpResolveRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+  public let query: String
+  public let requesterAgentID: String
+  public let sessionID: String?
+  public let scopeLevels: [PraxisMpScopeLevel]
+  public let limit: Int
+
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    query: String,
+    requesterAgentID: String,
+    sessionID: String? = nil,
+    scopeLevels: [PraxisMpScopeLevel] = PraxisMpScopeLevel.allCases,
+    limit: Int = 5
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.query = query
+    self.requesterAgentID = requesterAgentID
+    self.sessionID = sessionID
+    self.scopeLevels = scopeLevels
+    self.limit = limit
+  }
+}
+
+public struct PraxisRuntimeInterfaceRequestMpHistoryPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+  public let requesterAgentID: String
+  public let sessionID: String?
+  public let reason: String
+  public let query: String
+  public let scopeLevels: [PraxisMpScopeLevel]
+  public let limit: Int
+
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    requesterAgentID: String,
+    sessionID: String? = nil,
+    reason: String,
+    query: String,
+    scopeLevels: [PraxisMpScopeLevel] = PraxisMpScopeLevel.allCases,
+    limit: Int = 5
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.requesterAgentID = requesterAgentID
+    self.sessionID = sessionID
+    self.reason = reason
+    self.query = query
+    self.scopeLevels = scopeLevels
+    self.limit = limit
+  }
+}
+
 public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
   case inspectArchitecture
   case runGoal(PraxisRuntimeInterfaceRunGoalRequestPayload)
@@ -623,6 +891,15 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
   case smokeCmpProject(PraxisRuntimeInterfaceCmpProjectRequestPayload)
   case inspectCmp
   case inspectMp
+  case searchMp(PraxisRuntimeInterfaceMpSearchRequestPayload)
+  case readbackMp(PraxisRuntimeInterfaceMpReadbackRequestPayload)
+  case smokeMp(PraxisRuntimeInterfaceMpSmokeRequestPayload)
+  case ingestMp(PraxisRuntimeInterfaceMpIngestRequestPayload)
+  case alignMp(PraxisRuntimeInterfaceMpAlignRequestPayload)
+  case promoteMp(PraxisRuntimeInterfaceMpPromoteRequestPayload)
+  case archiveMp(PraxisRuntimeInterfaceMpArchiveRequestPayload)
+  case resolveMp(PraxisRuntimeInterfaceMpResolveRequestPayload)
+  case requestMpHistory(PraxisRuntimeInterfaceRequestMpHistoryPayload)
   case buildCapabilityCatalog
 
   public var kind: PraxisRuntimeInterfaceCommandKind {
@@ -681,6 +958,24 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       return .inspectCmp
     case .inspectMp:
       return .inspectMp
+    case .searchMp:
+      return .searchMp
+    case .readbackMp:
+      return .readbackMp
+    case .smokeMp:
+      return .smokeMp
+    case .ingestMp:
+      return .ingestMp
+    case .alignMp:
+      return .alignMp
+    case .promoteMp:
+      return .promoteMp
+    case .archiveMp:
+      return .archiveMp
+    case .resolveMp:
+      return .resolveMp
+    case .requestMpHistory:
+      return .requestMpHistory
     case .buildCapabilityCatalog:
       return .buildCapabilityCatalog
     }
@@ -734,6 +1029,24 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       return payload.payloadSummary
     case .smokeCmpProject(let payload):
       return payload.payloadSummary
+    case .searchMp(let payload):
+      return payload.payloadSummary
+    case .readbackMp(let payload):
+      return payload.payloadSummary
+    case .smokeMp(let payload):
+      return payload.payloadSummary
+    case .ingestMp(let payload):
+      return payload.payloadSummary
+    case .alignMp(let payload):
+      return payload.payloadSummary
+    case .promoteMp(let payload):
+      return payload.payloadSummary
+    case .archiveMp(let payload):
+      return payload.payloadSummary
+    case .resolveMp(let payload):
+      return payload.payloadSummary
+    case .requestMpHistory(let payload):
+      return payload.payloadSummary
     case .inspectArchitecture, .inspectTap, .inspectCmp, .inspectMp, .buildCapabilityCatalog:
       return ""
     }
@@ -749,7 +1062,19 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       return payload.sessionID
     case .commitCmpFlow(let payload):
       return payload.sessionID
-    case .inspectArchitecture, .resumeRun, .inspectTap, .readbackTapStatus, .readbackTapHistory, .readbackCmpProject, .readbackCmpRoles, .readbackCmpControl, .updateCmpControl, .requestCmpPeerApproval, .decideCmpPeerApproval, .readbackCmpPeerApproval, .readbackCmpStatus, .bootstrapCmpProject, .recoverCmpProject, .resolveCmpFlow, .materializeCmpFlow, .dispatchCmpFlow, .retryCmpDispatch, .requestCmpHistory, .smokeCmpProject, .inspectCmp, .inspectMp, .buildCapabilityCatalog:
+    case .searchMp(let payload):
+      return payload.sessionID
+    case .readbackMp(let payload):
+      return payload.sessionID
+    case .ingestMp(let payload):
+      return payload.sessionID
+    case .promoteMp(let payload):
+      return payload.targetSessionID
+    case .resolveMp(let payload):
+      return payload.sessionID
+    case .requestMpHistory(let payload):
+      return payload.sessionID
+    case .inspectArchitecture, .resumeRun, .inspectTap, .readbackTapStatus, .readbackTapHistory, .readbackCmpProject, .readbackCmpRoles, .readbackCmpControl, .updateCmpControl, .requestCmpPeerApproval, .decideCmpPeerApproval, .readbackCmpPeerApproval, .readbackCmpStatus, .bootstrapCmpProject, .recoverCmpProject, .resolveCmpFlow, .materializeCmpFlow, .dispatchCmpFlow, .retryCmpDispatch, .requestCmpHistory, .smokeCmpProject, .inspectCmp, .inspectMp, .smokeMp, .alignMp, .archiveMp, .buildCapabilityCatalog:
       return nil
     }
   }
@@ -762,7 +1087,7 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       return payload.runID
     case .commitCmpFlow(let payload):
       return payload.runID
-    case .inspectArchitecture, .runGoal, .inspectTap, .openCmpSession, .readbackTapStatus, .readbackTapHistory, .readbackCmpProject, .readbackCmpRoles, .readbackCmpControl, .updateCmpControl, .requestCmpPeerApproval, .decideCmpPeerApproval, .readbackCmpPeerApproval, .readbackCmpStatus, .bootstrapCmpProject, .recoverCmpProject, .resolveCmpFlow, .materializeCmpFlow, .dispatchCmpFlow, .retryCmpDispatch, .requestCmpHistory, .smokeCmpProject, .inspectCmp, .inspectMp, .buildCapabilityCatalog:
+    case .inspectArchitecture, .runGoal, .inspectTap, .openCmpSession, .readbackTapStatus, .readbackTapHistory, .readbackCmpProject, .readbackCmpRoles, .readbackCmpControl, .updateCmpControl, .requestCmpPeerApproval, .decideCmpPeerApproval, .readbackCmpPeerApproval, .readbackCmpStatus, .bootstrapCmpProject, .recoverCmpProject, .resolveCmpFlow, .materializeCmpFlow, .dispatchCmpFlow, .retryCmpDispatch, .requestCmpHistory, .smokeCmpProject, .inspectCmp, .inspectMp, .searchMp, .readbackMp, .smokeMp, .ingestMp, .alignMp, .promoteMp, .archiveMp, .resolveMp, .requestMpHistory, .buildCapabilityCatalog:
       return nil
     }
   }
@@ -811,6 +1136,24 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       return payload.projectID
     case .smokeCmpProject(let payload):
       return payload.projectID
+    case .searchMp(let payload):
+      return payload.projectID
+    case .readbackMp(let payload):
+      return payload.projectID
+    case .smokeMp(let payload):
+      return payload.projectID
+    case .ingestMp(let payload):
+      return payload.projectID
+    case .alignMp(let payload):
+      return payload.projectID
+    case .promoteMp(let payload):
+      return payload.projectID
+    case .archiveMp(let payload):
+      return payload.projectID
+    case .resolveMp(let payload):
+      return payload.projectID
+    case .requestMpHistory(let payload):
+      return payload.projectID
     case .inspectArchitecture, .runGoal, .resumeRun, .inspectTap, .inspectCmp, .inspectMp, .buildCapabilityCatalog:
       return nil
     }
@@ -841,6 +1184,15 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
     case retryCmpDispatch
     case requestCmpHistory
     case smokeCmpProject
+    case searchMp
+    case readbackMp
+    case smokeMp
+    case ingestMp
+    case alignMp
+    case promoteMp
+    case archiveMp
+    case resolveMp
+    case requestMpHistory
     case payloadSummary
     case goalID
     case goalTitle
@@ -1033,6 +1385,69 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       self = .inspectCmp
     case .inspectMp:
       self = .inspectMp
+    case .searchMp:
+      self = .searchMp(
+        try container.decode(
+          PraxisRuntimeInterfaceMpSearchRequestPayload.self,
+          forKey: .searchMp
+        )
+      )
+    case .readbackMp:
+      self = .readbackMp(
+        try container.decode(
+          PraxisRuntimeInterfaceMpReadbackRequestPayload.self,
+          forKey: .readbackMp
+        )
+      )
+    case .smokeMp:
+      self = .smokeMp(
+        try container.decode(
+          PraxisRuntimeInterfaceMpSmokeRequestPayload.self,
+          forKey: .smokeMp
+        )
+      )
+    case .ingestMp:
+      self = .ingestMp(
+        try container.decode(
+          PraxisRuntimeInterfaceMpIngestRequestPayload.self,
+          forKey: .ingestMp
+        )
+      )
+    case .alignMp:
+      self = .alignMp(
+        try container.decode(
+          PraxisRuntimeInterfaceMpAlignRequestPayload.self,
+          forKey: .alignMp
+        )
+      )
+    case .promoteMp:
+      self = .promoteMp(
+        try container.decode(
+          PraxisRuntimeInterfaceMpPromoteRequestPayload.self,
+          forKey: .promoteMp
+        )
+      )
+    case .archiveMp:
+      self = .archiveMp(
+        try container.decode(
+          PraxisRuntimeInterfaceMpArchiveRequestPayload.self,
+          forKey: .archiveMp
+        )
+      )
+    case .resolveMp:
+      self = .resolveMp(
+        try container.decode(
+          PraxisRuntimeInterfaceMpResolveRequestPayload.self,
+          forKey: .resolveMp
+        )
+      )
+    case .requestMpHistory:
+      self = .requestMpHistory(
+        try container.decode(
+          PraxisRuntimeInterfaceRequestMpHistoryPayload.self,
+          forKey: .requestMpHistory
+        )
+      )
     case .buildCapabilityCatalog:
       self = .buildCapabilityCatalog
     }
@@ -1089,6 +1504,24 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       try container.encode(payload, forKey: .requestCmpHistory)
     case .smokeCmpProject(let payload):
       try container.encode(payload, forKey: .smokeCmpProject)
+    case .searchMp(let payload):
+      try container.encode(payload, forKey: .searchMp)
+    case .readbackMp(let payload):
+      try container.encode(payload, forKey: .readbackMp)
+    case .smokeMp(let payload):
+      try container.encode(payload, forKey: .smokeMp)
+    case .ingestMp(let payload):
+      try container.encode(payload, forKey: .ingestMp)
+    case .alignMp(let payload):
+      try container.encode(payload, forKey: .alignMp)
+    case .promoteMp(let payload):
+      try container.encode(payload, forKey: .promoteMp)
+    case .archiveMp(let payload):
+      try container.encode(payload, forKey: .archiveMp)
+    case .resolveMp(let payload):
+      try container.encode(payload, forKey: .resolveMp)
+    case .requestMpHistory(let payload):
+      try container.encode(payload, forKey: .requestMpHistory)
     case .inspectArchitecture, .inspectTap, .inspectCmp, .inspectMp, .buildCapabilityCatalog:
       break
     }
@@ -1111,6 +1544,15 @@ public enum PraxisRuntimeInterfaceSnapshotKind: String, Sendable, Equatable, Cod
   case cmpFlow
   case smoke
   case inspection
+  case mpSearch
+  case mpReadback
+  case mpSmoke
+  case mpIngest
+  case mpAlign
+  case mpPromote
+  case mpArchive
+  case mpResolve
+  case mpHistory
   case catalog
 }
 

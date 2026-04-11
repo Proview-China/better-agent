@@ -1,5 +1,6 @@
 import Testing
 @testable import PraxisInfraContracts
+@testable import PraxisMpTypes
 @testable import PraxisProviderContracts
 @testable import PraxisToolingContracts
 @testable import PraxisUserIOContracts
@@ -241,6 +242,10 @@ struct HostContractSurfaceTests {
     )
 
     #expect(memory.scopeLevel == .project)
+    #expect(memory.sessionMode == .shared)
+    #expect(memory.visibilityState == .projectShared)
+    #expect(memory.promotionState == .promotedToProject)
+    #expect(memory.confidence == .medium)
     #expect(request.scopeLevels.count == 2)
     #expect(bundle.primaryMemoryIDs == [memory.id])
   }
