@@ -414,7 +414,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpRoles,
         title: "CMP Roles \(roles.projectID)",
         summary: roles.summary,
-        projectID: roles.projectID
+        projectID: roles.projectID,
+        latestDispatchStatus: roles.latestDispatchStatus
       ),
       events: [
         .init(
@@ -431,7 +432,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpControl,
         title: "CMP Control \(control.projectID)",
         summary: control.summary,
-        projectID: control.projectID
+        projectID: control.projectID,
+        latestDispatchStatus: control.latestDispatchStatus
       ),
       events: [
         .init(
@@ -506,7 +508,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpStatus,
         title: "CMP Status \(status.projectID)",
         summary: status.summary,
-        projectID: status.projectID
+        projectID: status.projectID,
+        latestDispatchStatus: status.latestDispatchStatus
       ),
       events: [
         .init(
@@ -577,7 +580,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpFlow,
         title: "CMP Commit \(commit.projectID)",
         summary: commit.summary,
-        projectID: commit.projectID
+        projectID: commit.projectID,
+        activeLineStage: commit.activeLineStage
       ),
       events: [
         .init(
@@ -595,7 +599,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpFlow,
         title: "CMP Resolve \(resolve.projectID)",
         summary: resolve.summary,
-        projectID: resolve.projectID
+        projectID: resolve.projectID,
+        qualityLabel: resolve.qualityLabel
       ),
       events: [
         .init(
@@ -613,7 +618,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpFlow,
         title: "CMP Materialize \(materialize.projectID)",
         summary: materialize.summary,
-        projectID: materialize.projectID
+        projectID: materialize.projectID,
+        packageKind: materialize.packageKind
       ),
       events: [
         .init(
@@ -635,7 +641,9 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpFlow,
         title: "\(titlePrefix) \(dispatch.projectID)",
         summary: dispatch.summary,
-        projectID: dispatch.projectID
+        projectID: dispatch.projectID,
+        targetKind: dispatch.targetKind,
+        dispatchStatus: dispatch.status
       ),
       events: [
         .init(

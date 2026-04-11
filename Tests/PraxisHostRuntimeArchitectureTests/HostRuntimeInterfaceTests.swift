@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import PraxisCheckpoint
+import PraxisCmpDelivery
 import PraxisCmpTypes
 import PraxisCoreTypes
 import PraxisInfraContracts
@@ -1061,6 +1062,33 @@ struct HostRuntimeInterfaceTests {
         )
       )
     )
+    let checkerRolesAfterDispatchResponse = await runtimeInterface.handle(
+      .readbackCmpRoles(
+        .init(
+          payloadSummary: "Read back CMP roles after dispatch",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
+    let checkerControlAfterDispatchResponse = await runtimeInterface.handle(
+      .readbackCmpControl(
+        .init(
+          payloadSummary: "Read back CMP control after dispatch",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
+    let checkerStatusAfterDispatchResponse = await runtimeInterface.handle(
+      .readbackCmpStatus(
+        .init(
+          payloadSummary: "Read back CMP status after dispatch",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
     let historyResponse = await runtimeInterface.handle(
       .requestCmpHistory(
         .init(
@@ -1140,21 +1168,32 @@ struct HostRuntimeInterfaceTests {
     #expect(commitResponse.status == .success)
     #expect(commitResponse.snapshot?.kind == .cmpFlow)
     #expect(commitResponse.snapshot?.title == "CMP Commit cmp.local-runtime")
+    #expect(commitResponse.snapshot?.activeLineStage == .candidateReady)
     #expect(commitResponse.events.map(\.name) == ["cmp.flow.committed"])
     #expect(resolveResponse.status == .success)
     #expect(resolveResponse.snapshot?.kind == .cmpFlow)
     #expect(resolveResponse.snapshot?.title == "CMP Resolve cmp.local-runtime")
+    #expect(resolveResponse.snapshot?.qualityLabel == .usable)
     #expect(resolveResponse.events.map(\.name) == ["cmp.flow.resolved"])
     #expect(materializeResponse.status == .success)
     #expect(materializeSnapshot.kind == .cmpFlow)
     #expect(materializeSnapshot.title == "CMP Materialize cmp.local-runtime")
+    #expect(materializeSnapshot.packageKind == .runtimeFill)
     #expect(materializeResponse.events.map(\.name) == ["cmp.flow.materialized"])
     #expect(dispatchResponse.status == .success)
     #expect(dispatchResponse.snapshot?.kind == .cmpFlow)
     #expect(dispatchResponse.snapshot?.title == "CMP Dispatch cmp.local-runtime")
+    #expect(dispatchResponse.snapshot?.targetKind == .peer)
+    #expect(dispatchResponse.snapshot?.dispatchStatus == .rejected)
     #expect(dispatchResponse.events.map(\.name) == ["cmp.flow.dispatched"])
     #expect(dispatchResponse.events.first?.detail == dispatchResponse.snapshot?.summary)
     #expect(dispatchResponse.events.first?.intentID != nil)
+    #expect(checkerRolesAfterDispatchResponse.snapshot?.kind == .cmpRoles)
+    #expect(checkerRolesAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
+    #expect(checkerControlAfterDispatchResponse.snapshot?.kind == .cmpControl)
+    #expect(checkerControlAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
+    #expect(checkerStatusAfterDispatchResponse.snapshot?.kind == .cmpStatus)
+    #expect(checkerStatusAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
     #expect(historyResponse.status == .success)
     #expect(historyResponse.snapshot?.kind == .cmpFlow)
     #expect(historyResponse.snapshot?.title == "CMP History cmp.local-runtime")
@@ -1286,10 +1325,14 @@ struct HostRuntimeInterfaceTests {
     #expect(blockedDispatchResponse.status == .success)
     #expect(blockedDispatchResponse.snapshot?.kind == .cmpFlow)
     #expect(blockedDispatchResponse.snapshot?.title == "CMP Dispatch cmp.local-runtime")
+    #expect(blockedDispatchResponse.snapshot?.targetKind == .peer)
+    #expect(blockedDispatchResponse.snapshot?.dispatchStatus == .rejected)
     #expect(blockedDispatchResponse.snapshot?.summary.contains("held package") == true)
     #expect(retryResponse.status == .success)
     #expect(retryResponse.snapshot?.kind == .cmpFlow)
     #expect(retryResponse.snapshot?.title == "CMP Retry Dispatch cmp.local-runtime")
+    #expect(retryResponse.snapshot?.targetKind == .peer)
+    #expect(retryResponse.snapshot?.dispatchStatus == .delivered)
     #expect(retryResponse.events.map(\.name) == ["cmp.flow.dispatch_retried"])
     #expect(retryResponse.events.first?.detail == retryResponse.snapshot?.summary)
     #expect(retryResponse.events.first?.intentID != nil)
@@ -2591,6 +2634,103 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceSurfacesCorruptedPersistedCmpDispatchMetadataAsInvalidInput() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-interface-corrupted-dispatch-metadata-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: .init(rawValue: "projection.runtime.local:checker.local:runtimeFill"),
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .materialized,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:00:00Z",
+        metadata: [
+          "blocked_by_tap_gate": .bool(true),
+          "dispatch_target_kind": .string("broken_target_kind"),
+          "last_dispatch_status": .string(PraxisCmpDispatchStatus.rejected.rawValue),
+        ]
+      )
+    )
+    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+
+    let response = await runtimeInterface.handle(
+      .retryCmpDispatch(
+        .init(
+          payloadSummary: "Retry corrupted dispatch metadata",
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          packageID: "projection.runtime.local:checker.local:runtimeFill"
+        )
+      )
+    )
+
+    #expect(response.status == .failure)
+    #expect(response.snapshot == nil)
+    #expect(response.events.isEmpty)
+    #expect(response.error?.code == .invalidInput)
+    #expect(response.error?.message.contains("dispatch_target_kind") == true)
+    #expect(response.error?.message.contains("broken_target_kind") == true)
+  }
+
+  @Test
+  func runtimeInterfaceSurfacesCorruptedPersistedCmpReadbackDispatchStatusAsInvalidInput() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-interface-corrupted-readback-dispatch-status-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: .init(rawValue: "projection.runtime.local:checker.local:runtimeFill"),
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .dispatched,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:00:00Z",
+        metadata: [
+          "last_dispatch_status": .string("broken_dispatch_status"),
+        ]
+      )
+    )
+    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+
+    let response = await runtimeInterface.handle(
+      .readbackCmpStatus(
+        .init(
+          payloadSummary: "Read corrupted CMP status",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
+
+    #expect(response.status == .failure)
+    #expect(response.snapshot == nil)
+    #expect(response.events.isEmpty)
+    #expect(response.error?.code == .invalidInput)
+    #expect(response.error?.message.contains("last_dispatch_status") == true)
+    #expect(response.error?.message.contains("broken_dispatch_status") == true)
+  }
+
+  @Test
   func runtimeInterfaceMapsUnsupportedOperationAndInvariantViolationIntoStableErrorCodes() async throws {
     let unsupportedInterface = makeThrowingRuntimeInterface(
       inspectMpError: PraxisError.unsupportedOperation("MP inspection is not available in this host profile.")
@@ -2792,6 +2932,37 @@ struct HostRuntimeInterfaceTests {
     #expect(!responseJSON.contains(#""error":"#))
     #expect(responseJSON.contains(#""snapshot":{"#))
     #expect(decodedRequest == request)
+    #expect(decodedResponse == response)
+  }
+
+  @Test
+  func runtimeInterfaceCodecRoundTripsTypedCmpSnapshotFieldsAsStableRawValues() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let response = PraxisRuntimeInterfaceResponse.success(
+      snapshot: .init(
+        kind: .cmpFlow,
+        title: "CMP Dispatch cmp.local-runtime",
+        summary: "Typed CMP flow snapshot",
+        projectID: "cmp.local-runtime",
+        activeLineStage: .candidateReady,
+        qualityLabel: .usable,
+        packageKind: .runtimeFill,
+        targetKind: .peer,
+        dispatchStatus: .delivered,
+        latestDispatchStatus: .delivered
+      )
+    )
+
+    let responseData = try codec.encode(response)
+    let responseJSON = String(decoding: responseData, as: UTF8.self)
+    let decodedResponse = try codec.decodeResponse(responseData)
+
+    #expect(responseJSON.contains(#""activeLineStage":"candidateReady""#))
+    #expect(responseJSON.contains(#""qualityLabel":"usable""#))
+    #expect(responseJSON.contains(#""packageKind":"runtimeFill""#))
+    #expect(responseJSON.contains(#""targetKind":"peer""#))
+    #expect(responseJSON.contains(#""dispatchStatus":"delivered""#))
+    #expect(responseJSON.contains(#""latestDispatchStatus":"delivered""#))
     #expect(decodedResponse == response)
   }
 

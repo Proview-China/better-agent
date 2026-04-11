@@ -1,3 +1,5 @@
+import PraxisCmpDelivery
+import PraxisCmpTypes
 import PraxisRun
 import PraxisSession
 import PraxisRuntimeUseCases
@@ -348,7 +350,7 @@ public struct PraxisCmpFlowCommitSnapshot: Sendable, Equatable, Codable {
   public let agentID: String
   public let deltaID: String
   public let snapshotCandidateID: String?
-  public let activeLineStage: String
+  public let activeLineStage: PraxisCmpActiveLineStage
   public let branchRef: String
 
   public init(
@@ -357,7 +359,7 @@ public struct PraxisCmpFlowCommitSnapshot: Sendable, Equatable, Codable {
     agentID: String,
     deltaID: String,
     snapshotCandidateID: String?,
-    activeLineStage: String,
+    activeLineStage: PraxisCmpActiveLineStage,
     branchRef: String
   ) {
     self.summary = summary
@@ -377,7 +379,7 @@ public struct PraxisCmpFlowResolveSnapshot: Sendable, Equatable, Codable {
   public let found: Bool
   public let snapshotID: String?
   public let branchRef: String?
-  public let qualityLabel: String?
+  public let qualityLabel: PraxisCmpCheckedSnapshotQualityLabel?
 
   public init(
     summary: String,
@@ -386,7 +388,7 @@ public struct PraxisCmpFlowResolveSnapshot: Sendable, Equatable, Codable {
     found: Bool,
     snapshotID: String?,
     branchRef: String?,
-    qualityLabel: String?
+    qualityLabel: PraxisCmpCheckedSnapshotQualityLabel?
   ) {
     self.summary = summary
     self.projectID = projectID
@@ -404,7 +406,7 @@ public struct PraxisCmpFlowMaterializeSnapshot: Sendable, Equatable, Codable {
   public let agentID: String
   public let packageID: String
   public let targetAgentID: String
-  public let packageKind: String
+  public let packageKind: PraxisCmpContextPackageKind
   public let selectedSectionCount: Int
 
   public init(
@@ -413,7 +415,7 @@ public struct PraxisCmpFlowMaterializeSnapshot: Sendable, Equatable, Codable {
     agentID: String,
     packageID: String,
     targetAgentID: String,
-    packageKind: String,
+    packageKind: PraxisCmpContextPackageKind,
     selectedSectionCount: Int
   ) {
     self.summary = summary
@@ -432,8 +434,8 @@ public struct PraxisCmpFlowDispatchSnapshot: Sendable, Equatable, Codable {
   public let agentID: String
   public let dispatchID: String
   public let targetAgentID: String
-  public let targetKind: String
-  public let status: String
+  public let targetKind: PraxisCmpDispatchTargetKind
+  public let status: PraxisCmpDispatchStatus
 
   public init(
     summary: String,
@@ -441,8 +443,8 @@ public struct PraxisCmpFlowDispatchSnapshot: Sendable, Equatable, Codable {
     agentID: String,
     dispatchID: String,
     targetAgentID: String,
-    targetKind: String,
-    status: String
+    targetKind: PraxisCmpDispatchTargetKind,
+    status: PraxisCmpDispatchStatus
   ) {
     self.summary = summary
     self.projectID = projectID
@@ -486,7 +488,7 @@ public struct PraxisCmpRolesPanelSnapshot: Sendable, Equatable, Codable {
   public let roleCounts: [String: Int]
   public let roleStages: [String: String]
   public let latestPackageID: String?
-  public let latestDispatchStatus: String?
+  public let latestDispatchStatus: PraxisCmpDispatchStatus?
 
   public init(
     summary: String,
@@ -495,7 +497,7 @@ public struct PraxisCmpRolesPanelSnapshot: Sendable, Equatable, Codable {
     roleCounts: [String: Int],
     roleStages: [String: String],
     latestPackageID: String? = nil,
-    latestDispatchStatus: String? = nil
+    latestDispatchStatus: PraxisCmpDispatchStatus? = nil
   ) {
     self.summary = summary
     self.projectID = projectID
@@ -518,7 +520,7 @@ public struct PraxisCmpControlPanelSnapshot: Sendable, Equatable, Codable {
   public let recoveryPreference: PraxisCmpRecoveryPreference
   public let automation: [String: Bool]
   public let latestPackageID: String?
-  public let latestDispatchStatus: String?
+  public let latestDispatchStatus: PraxisCmpDispatchStatus?
   public let latestTargetAgentID: String?
 
   public init(
@@ -532,7 +534,7 @@ public struct PraxisCmpControlPanelSnapshot: Sendable, Equatable, Codable {
     recoveryPreference: PraxisCmpRecoveryPreference,
     automation: [String: Bool],
     latestPackageID: String? = nil,
-    latestDispatchStatus: String? = nil,
+    latestDispatchStatus: PraxisCmpDispatchStatus? = nil,
     latestTargetAgentID: String? = nil
   ) {
     self.summary = summary
@@ -690,7 +692,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
   public let readbackPriority: PraxisCmpReadbackPriority
   public let packageCount: Int
   public let latestPackageID: String?
-  public let latestDispatchStatus: String?
+  public let latestDispatchStatus: PraxisCmpDispatchStatus?
   public let roleCounts: [String: Int]
   public let roleStages: [String: String]
 
@@ -702,7 +704,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
     readbackPriority: PraxisCmpReadbackPriority,
     packageCount: Int,
     latestPackageID: String? = nil,
-    latestDispatchStatus: String? = nil,
+    latestDispatchStatus: PraxisCmpDispatchStatus? = nil,
     roleCounts: [String: Int],
     roleStages: [String: String]
   ) {

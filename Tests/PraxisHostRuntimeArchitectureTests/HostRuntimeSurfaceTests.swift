@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import PraxisCheckpoint
+import PraxisCmpDelivery
 import PraxisCmpTypes
 import PraxisCoreTypes
 import PraxisGoal
@@ -419,18 +420,20 @@ struct HostRuntimeSurfaceTests {
     #expect(ingest.acceptedEventCount == 1)
     #expect(ingest.nextAction == "commit_context_delta")
     #expect(commit.projectID == "cmp.local-runtime")
-    #expect(commit.activeLineStage == "candidateReady")
+    #expect(commit.activeLineStage == .candidateReady)
     #expect(commit.snapshotCandidateID != nil)
     #expect(resolve.projectID == "cmp.local-runtime")
     #expect(resolve.found)
     #expect(resolve.snapshotID != nil)
+    #expect(resolve.qualityLabel == .usable)
     #expect(materialize.projectID == "cmp.local-runtime")
     #expect(materialize.targetAgentID == "checker.local")
-    #expect(materialize.packageKind == "runtimeFill")
+    #expect(materialize.packageKind == .runtimeFill)
     #expect(materialize.selectedSectionCount > 0)
     #expect(dispatch.projectID == "cmp.local-runtime")
     #expect(dispatch.targetAgentID == "checker.local")
-    #expect(dispatch.status == "delivered")
+    #expect(dispatch.targetKind == .peer)
+    #expect(dispatch.status == .delivered)
     #expect(history.projectID == "cmp.local-runtime")
     #expect(history.requesterAgentID == "checker.local")
     #expect(history.found)
@@ -446,6 +449,8 @@ struct HostRuntimeSurfaceTests {
     #expect(rolesPanel.agentID == "checker.local")
     #expect(rolesPanel.roleCounts["dispatcher"] == 1)
     #expect(rolesPanel.latestPackageID == materialize.packageID)
+    #expect(!rolesPanel.summary.contains("CLI"))
+    #expect(!rolesPanel.summary.contains("GUI"))
     #expect(controlPanel.projectID == "cmp.local-runtime")
     #expect(controlPanel.agentID == "checker.local")
     #expect(controlPanel.executionStyle == .manual)
@@ -454,7 +459,10 @@ struct HostRuntimeSurfaceTests {
     #expect(controlPanel.fallbackPolicy == .registryOnly)
     #expect(controlPanel.recoveryPreference == .resumeLatest)
     #expect(controlPanel.automation["autoDispatch"] == false)
+    #expect(controlPanel.latestDispatchStatus == .delivered)
     #expect(controlPanel.latestTargetAgentID == "checker.local")
+    #expect(!controlPanel.summary.contains("CLI"))
+    #expect(!controlPanel.summary.contains("GUI"))
     #expect(peerApproval.projectID == "cmp.local-runtime")
     #expect(peerApproval.targetAgentID == "checker.local")
     #expect(peerApproval.capabilityKey == "tool.git")
@@ -494,7 +502,7 @@ struct HostRuntimeSurfaceTests {
     #expect(checkerStatusPanel.agentID == "checker.local")
     #expect(checkerStatusPanel.packageCount >= 1)
     #expect(checkerStatusPanel.latestPackageID == materialize.packageID)
-    #expect(checkerStatusPanel.latestDispatchStatus == "published")
+    #expect(checkerStatusPanel.latestDispatchStatus == .delivered)
     #expect(readback.projectSummary.projectID == "cmp.local-runtime")
     #expect(readback.projectSummary.hostProfile.structuredStore == "sqlite")
     #expect(readback.persistenceSummary.contains("Checkpoint and journal persistence"))
@@ -1237,7 +1245,7 @@ struct HostRuntimeSurfaceTests {
       .init(packageID: contextPackage.id)
     ) ?? []
 
-    #expect(dispatch.status == "rejected")
+    #expect(dispatch.status == .rejected)
     #expect(dispatch.targetAgentID == "checker.local")
     #expect(tapHistory.entries.contains { $0.capabilityKey == "dispatch_blocked" })
     #expect(tapHistory.entries.contains { $0.route == "tapBridge" && $0.outcome == "dispatch_blocked" })
@@ -1311,8 +1319,8 @@ struct HostRuntimeSurfaceTests {
       .init(projectID: "cmp.local-runtime", agentID: "checker.local", limit: 10)
     )
 
-    #expect(blockedDispatch.status == "rejected")
-    #expect(retryDispatch.status == "delivered")
+    #expect(blockedDispatch.status == .rejected)
+    #expect(retryDispatch.status == .delivered)
     #expect(storedPackage?.status == .dispatched)
     #expect(storedPackage?.metadata["dispatch_target_kind"] == .string("peer"))
     #expect(storedPackage?.metadata["dispatch_reason"] == .string("Attempt gated dispatch"))
@@ -1368,7 +1376,57 @@ struct HostRuntimeSurfaceTests {
       }
       #expect(message.contains("CMP dispatch retry is not available"))
     }
-    #expect(dispatched.status == "delivered")
+    #expect(dispatched.status == .delivered)
+  }
+
+  @Test
+  func retryDispatchRejectsCorruptedPersistedTargetKindMetadata() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-dispatch-retry-corrupted-target-kind-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let runtimeFacade = try PraxisRuntimeBridgeFactory.makeRuntimeFacade(hostAdapters: registry)
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: .init(rawValue: "projection.runtime.local:checker.local:runtimeFill"),
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .materialized,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:00:00Z",
+        metadata: [
+          "blocked_by_tap_gate": .bool(true),
+          "dispatch_target_kind": .string("broken_target_kind"),
+          "last_dispatch_status": .string(PraxisCmpDispatchStatus.rejected.rawValue),
+        ]
+      )
+    )
+
+    do {
+      _ = try await runtimeFacade.cmpFacade.retryDispatch(
+        .init(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          packageID: "projection.runtime.local:checker.local:runtimeFill"
+        )
+      )
+      Issue.record("Retrying a package with corrupted persisted dispatch target metadata should fail.")
+    } catch let error as PraxisError {
+      guard case .invalidInput(let message) = error else {
+        Issue.record("Expected invalidInput but received \(error).")
+        return
+      }
+      #expect(message.contains("dispatch_target_kind"))
+      #expect(message.contains("broken_target_kind"))
+    }
   }
 
   @Test

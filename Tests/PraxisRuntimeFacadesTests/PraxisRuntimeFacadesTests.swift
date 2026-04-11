@@ -1,7 +1,9 @@
 import Foundation
 import Testing
+import PraxisCmpDelivery
 import PraxisCmpTypes
 import PraxisCapabilityResults
+import PraxisGoal
 import PraxisInfraContracts
 import PraxisMpMemory
 import PraxisMpTypes
@@ -10,6 +12,7 @@ import PraxisRuntimeComposition
 import PraxisRuntimeFacades
 import PraxisRuntimeGateway
 import PraxisRuntimeUseCases
+import PraxisSession
 import PraxisTapTypes
 import PraxisToolingContracts
 
@@ -108,6 +111,54 @@ struct PraxisRuntimeFacadesTests {
         syncIntent: .toParent
       )
     )
+    _ = try await facade.runFacade.runGoal(
+      PraxisRunGoalCommand(
+        goal: .init(
+          normalizedGoal: .init(
+            id: .init(rawValue: "goal.cmp-facades-resolve"),
+            title: "CMP Facade Resolve Seed",
+            summary: "Seed projection for facade resolve coverage"
+          ),
+          intentSummary: "Seed projection for facade resolve coverage"
+        ),
+        sessionID: .init(rawValue: "session.cmp-facades-resolve")
+      )
+    )
+    let resolve = try await facade.cmpFlowFacade.resolveFlow(
+      PraxisResolveCmpFlowCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local"
+      )
+    )
+    let materialize = try await facade.cmpFlowFacade.materializeFlow(
+      PraxisMaterializeCmpFlowCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal
+      )
+    )
+    let dispatch = try await facade.cmpFlowFacade.dispatchFlow(
+      PraxisDispatchCmpFlowCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        contextPackage: PraxisCmpContextPackage(
+          id: .init(rawValue: materialize.packageID),
+          sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+          sourceSnapshotID: .init(rawValue: try #require(resolve.snapshotID)),
+          sourceAgentID: "runtime.local",
+          targetAgentID: "checker.local",
+          kind: .runtimeFill,
+          packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+          fidelityLabel: .highSignal,
+          createdAt: "2026-04-11T00:00:00Z",
+          sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")]
+        ),
+        targetKind: .peer,
+        reason: "Dispatch runtime fill to checker"
+      )
+    )
     let controlUpdate = try await facade.cmpControlFacade.updateControl(
       PraxisUpdateCmpControlCommand(
         projectID: "cmp.local-runtime",
@@ -144,6 +195,12 @@ struct PraxisRuntimeFacadesTests {
     let statusReadback = try await facade.cmpReadbackFacade.readbackStatus(
       PraxisReadbackCmpStatusCommand(projectID: "cmp.local-runtime", agentID: "runtime.local")
     )
+    let checkerRolesReadback = try await facade.cmpRolesFacade.readbackRoles(
+      PraxisReadbackCmpRolesCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let checkerControlReadback = try await facade.cmpControlFacade.readbackControl(
+      PraxisReadbackCmpControlCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
 
     #expect(session.projectID == "cmp.local-runtime")
     #expect(session.sessionID == "cmp.session.split")
@@ -154,6 +211,12 @@ struct PraxisRuntimeFacadesTests {
     #expect(ingest.acceptedEventCount == 1)
     #expect(commit.projectID == "cmp.local-runtime")
     #expect(!commit.deltaID.isEmpty)
+    #expect(commit.activeLineStage == .candidateReady)
+    #expect(resolve.found)
+    #expect(resolve.qualityLabel == .usable)
+    #expect(materialize.packageKind == .runtimeFill)
+    #expect(dispatch.targetKind == .peer)
+    #expect(dispatch.status == .delivered)
     #expect(controlUpdate.executionStyle == .guided)
     #expect(controlUpdate.fallbackPolicy == .registryOnly)
     #expect(controlUpdate.recoveryPreference == .resumeLatest)
@@ -162,12 +225,19 @@ struct PraxisRuntimeFacadesTests {
     #expect(controlReadback.recoveryPreference == .resumeLatest)
     #expect(controlReadback.automation["autoDispatch"] == false)
     #expect(rolesReadback.projectID == "cmp.local-runtime")
+    #expect(!rolesReadback.summary.contains("CLI"))
+    #expect(!rolesReadback.summary.contains("GUI"))
     #expect(requestedApproval.capabilityKey == "tool.shell.exec")
     #expect(approvalReadback.found)
     #expect(approvalReadback.capabilityKey == "tool.shell.exec")
     #expect(statusReadback.projectID == "cmp.local-runtime")
     #expect(statusReadback.executionStyle == .guided)
+    #expect(statusReadback.latestDispatchStatus == .delivered)
     #expect(statusReadback.roleCounts.isEmpty == false)
+    #expect(checkerRolesReadback.latestDispatchStatus == .delivered)
+    #expect(checkerControlReadback.latestDispatchStatus == .delivered)
+    #expect(!checkerControlReadback.summary.contains("CLI"))
+    #expect(!checkerControlReadback.summary.contains("GUI"))
   }
 
   @Test

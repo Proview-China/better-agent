@@ -1,8 +1,10 @@
 import Foundation
 import Testing
+import PraxisCmpDelivery
 import PraxisCoreTypes
 import PraxisCmpTypes
 import PraxisCapabilityResults
+import PraxisGoal
 import PraxisInfraContracts
 import PraxisMpMemory
 import PraxisMpSearch
@@ -11,6 +13,7 @@ import PraxisProviderContracts
 import PraxisRuntimeComposition
 import PraxisRuntimeGateway
 import PraxisRuntimeUseCases
+import PraxisSession
 import PraxisTapTypes
 import PraxisToolingContracts
 import PraxisUserIOContracts
@@ -692,7 +695,12 @@ struct PraxisRuntimeUseCasesTests {
     let bootstrapProjectUseCase = PraxisBootstrapCmpProjectUseCase(dependencies: dependencies)
     let ingestFlowUseCase = PraxisIngestCmpFlowUseCase(dependencies: dependencies)
     let commitFlowUseCase = PraxisCommitCmpFlowUseCase(dependencies: dependencies)
+    let runGoalUseCase = PraxisRunGoalUseCase(dependencies: dependencies)
+    let resolveFlowUseCase = PraxisResolveCmpFlowUseCase(dependencies: dependencies)
+    let materializeFlowUseCase = PraxisMaterializeCmpFlowUseCase(dependencies: dependencies)
+    let dispatchFlowUseCase = PraxisDispatchCmpFlowUseCase(dependencies: dependencies)
     let readbackRolesUseCase = PraxisReadbackCmpRolesUseCase(dependencies: dependencies)
+    let readbackStatusUseCase = PraxisReadbackCmpStatusUseCase(dependencies: dependencies)
 
     _ = try await bootstrapProjectUseCase.execute(
       PraxisBootstrapCmpProjectCommand(
@@ -723,8 +731,48 @@ struct PraxisRuntimeUseCasesTests {
         syncIntent: .toParent
       )
     )
+    _ = try await runGoalUseCase.execute(
+      PraxisRunGoalCommand(
+        goal: .init(
+          normalizedGoal: .init(
+            id: .init(rawValue: "goal.cmp-usecases-resolve"),
+            title: "CMP Use Case Resolve Seed",
+            summary: "Seed projection for CMP flow readback typing"
+          ),
+          intentSummary: "Seed projection for CMP flow readback typing"
+        ),
+        sessionID: .init(rawValue: "session.cmp-usecases-resolve")
+      )
+    )
+    let resolve = try await resolveFlowUseCase.execute(
+      PraxisResolveCmpFlowCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local"
+      )
+    )
+    let materialize = try await materializeFlowUseCase.execute(
+      PraxisMaterializeCmpFlowCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal
+      )
+    )
+    let dispatch = try await dispatchFlowUseCase.execute(
+      PraxisDispatchCmpFlowCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        contextPackage: materialize.result.contextPackage,
+        targetKind: .peer,
+        reason: "Dispatch runtime fill to checker"
+      )
+    )
     let roles = try await readbackRolesUseCase.execute(
-      PraxisReadbackCmpRolesCommand(projectID: "cmp.local-runtime", agentID: "runtime.local")
+      PraxisReadbackCmpRolesCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let status = try await readbackStatusUseCase.execute(
+      PraxisReadbackCmpStatusCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
     )
 
     #expect(ingest.projectID == "cmp.local-runtime")
@@ -739,10 +787,235 @@ struct PraxisRuntimeUseCasesTests {
     #expect(commit.result.delta.eventRefs.map(\.rawValue) == ["evt.usecases.1"])
     #expect(commit.activeLine.stage == .candidateReady)
     #expect(commit.snapshotCandidate.deltaRefs == [commit.result.delta.id])
+    #expect(resolve.result.status == .resolved)
+    #expect(resolve.snapshot?.qualityLabel == .usable)
+    #expect(materialize.result.contextPackage.kind == .runtimeFill)
+    #expect(dispatch.result.receipt.targetKind == .peer)
+    #expect(dispatch.result.receipt.status == .delivered)
     #expect(roles.projectID == "cmp.local-runtime")
-    #expect(roles.agentID == "runtime.local")
+    #expect(roles.agentID == "checker.local")
     #expect(roles.roles.map(\.role) == [.icma, .iterator, .checker, .dbAgent, .dispatcher])
-    #expect(roles.issues.contains { $0.contains("no package descriptors") })
+    #expect(roles.latestDispatchStatus == .delivered)
+    #expect(!roles.summary.contains("CLI"))
+    #expect(!roles.summary.contains("GUI"))
+    #expect(status.projectID == "cmp.local-runtime")
+    #expect(status.agentID == "checker.local")
+    #expect(status.latestDispatchStatus == .delivered)
+    #expect(status.roles.isEmpty == false)
+  }
+
+  @Test
+  func retryDispatchUseCaseRejectsCorruptedPersistedDispatchTargetMetadata() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-corrupted-dispatch-target-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let retryDispatchUseCase = PraxisRetryCmpDispatchUseCase(dependencies: dependencies)
+
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: .init(rawValue: "projection.runtime.local:checker.local:runtimeFill"),
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .materialized,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:00:00Z",
+        metadata: [
+          "blocked_by_tap_gate": .bool(true),
+          "dispatch_target_kind": .string("broken_target_kind"),
+          "last_dispatch_status": .string(PraxisCmpDispatchStatus.rejected.rawValue),
+        ]
+      )
+    )
+
+    do {
+      _ = try await retryDispatchUseCase.execute(
+        .init(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          packageID: "projection.runtime.local:checker.local:runtimeFill"
+        )
+      )
+      Issue.record("Expected retryCmpDispatch to reject corrupted persisted dispatch target metadata.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput from retryCmpDispatch, got \(error).")
+        return
+      }
+      #expect(message.contains("dispatch_target_kind"))
+      #expect(message.contains("broken_target_kind"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput from retryCmpDispatch, got \(error).")
+    }
+  }
+
+  @Test
+  func retryDispatchUseCaseRejectsCorruptedPersistedDispatchStatusMetadata() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-corrupted-dispatch-status-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let retryDispatchUseCase = PraxisRetryCmpDispatchUseCase(dependencies: dependencies)
+
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: .init(rawValue: "projection.runtime.local:checker.local:runtimeFill"),
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .materialized,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:00:00Z",
+        metadata: [
+          "blocked_by_tap_gate": .bool(true),
+          "dispatch_target_kind": .string(PraxisCmpDispatchTargetKind.peer.rawValue),
+          "last_dispatch_status": .string("broken_dispatch_status"),
+        ]
+      )
+    )
+
+    do {
+      _ = try await retryDispatchUseCase.execute(
+        .init(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          packageID: "projection.runtime.local:checker.local:runtimeFill"
+        )
+      )
+      Issue.record("Expected retryCmpDispatch to reject corrupted persisted dispatch status metadata.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput from retryCmpDispatch, got \(error).")
+        return
+      }
+      #expect(message.contains("last_dispatch_status"))
+      #expect(message.contains("broken_dispatch_status"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput from retryCmpDispatch, got \(error).")
+    }
+  }
+
+  @Test
+  func cmpReadbackPrefersNewerDeliveryTruthAndNeutralizesDispatcherStage() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-newer-delivery-truth-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let readbackRolesUseCase = PraxisReadbackCmpRolesUseCase(dependencies: dependencies)
+    let readbackStatusUseCase = PraxisReadbackCmpStatusUseCase(dependencies: dependencies)
+    let packageID = PraxisCmpPackageID(rawValue: "projection.runtime.local:checker.local:runtimeFill")
+
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: packageID,
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .dispatched,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:00:00Z",
+        metadata: [
+          "last_dispatch_status": .string(PraxisCmpDispatchStatus.prepared.rawValue),
+        ]
+      )
+    )
+    _ = try await registry.deliveryTruthStore?.save(
+      .init(
+        id: "delivery.projection.runtime.local:checker.local:runtimeFill",
+        packageID: packageID,
+        topic: "cmp.dispatch.checker.local",
+        targetAgentID: "checker.local",
+        status: .published,
+        payloadSummary: "Dispatch runtime fill to checker",
+        updatedAt: "2026-04-11T00:05:00Z"
+      )
+    )
+
+    let roles = try await readbackRolesUseCase.execute(
+      .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let status = try await readbackStatusUseCase.execute(
+      .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let dispatcher = try #require(roles.roles.first(where: { $0.role == .dispatcher }))
+
+    #expect(roles.latestDispatchStatus == .delivered)
+    #expect(status.latestDispatchStatus == .delivered)
+    #expect(dispatcher.latestStage == PraxisCmpDispatchStatus.delivered.rawValue)
+    #expect(dispatcher.latestStage != PraxisDeliveryTruthStatus.published.rawValue)
+  }
+
+  @Test
+  func cmpReadbackStatusRejectsCorruptedPersistedDispatchStatusMetadata() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-corrupted-readback-dispatch-status-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let readbackStatusUseCase = PraxisReadbackCmpStatusUseCase(dependencies: dependencies)
+
+    _ = try await registry.cmpContextPackageStore?.save(
+      .init(
+        projectID: "cmp.local-runtime",
+        packageID: .init(rawValue: "projection.runtime.local:checker.local:runtimeFill"),
+        sourceProjectionID: .init(rawValue: "projection.runtime.local"),
+        sourceSnapshotID: .init(rawValue: "projection.runtime.local:checked"),
+        sourceAgentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal,
+        packageRef: "context://cmp.local-runtime/projection.runtime.local/checker.local/runtimeFill",
+        status: .dispatched,
+        sourceSectionIDs: [.init(rawValue: "projection.runtime.local:section")],
+        createdAt: "2026-04-11T00:00:00Z",
+        updatedAt: "2026-04-11T00:00:00Z",
+        metadata: [
+          "last_dispatch_status": .string("broken_dispatch_status"),
+        ]
+      )
+    )
+
+    do {
+      _ = try await readbackStatusUseCase.execute(
+        .init(projectID: "cmp.local-runtime", agentID: "checker.local")
+      )
+      Issue.record("Expected readbackCmpStatus to reject corrupted persisted dispatch status metadata.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput from readbackCmpStatus, got \(error).")
+        return
+      }
+      #expect(message.contains("last_dispatch_status"))
+      #expect(message.contains("broken_dispatch_status"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput from readbackCmpStatus, got \(error).")
+    }
   }
 
   @Test

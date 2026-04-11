@@ -1,3 +1,4 @@
+import PraxisCmpDelivery
 import PraxisCmpTypes
 import PraxisMpTypes
 import PraxisRun
@@ -1570,6 +1571,12 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
   public let checkpointReference: String?
   public let pendingIntentID: String?
   public let recoveredEventCount: Int?
+  public let activeLineStage: PraxisCmpActiveLineStage?
+  public let qualityLabel: PraxisCmpCheckedSnapshotQualityLabel?
+  public let packageKind: PraxisCmpContextPackageKind?
+  public let targetKind: PraxisCmpDispatchTargetKind?
+  public let dispatchStatus: PraxisCmpDispatchStatus?
+  public let latestDispatchStatus: PraxisCmpDispatchStatus?
 
   public init(
     kind: PraxisRuntimeInterfaceSnapshotKind,
@@ -1583,7 +1590,13 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     lifecycleDisposition: PraxisRunLifecycleDisposition? = nil,
     checkpointReference: String? = nil,
     pendingIntentID: String? = nil,
-    recoveredEventCount: Int? = nil
+    recoveredEventCount: Int? = nil,
+    activeLineStage: PraxisCmpActiveLineStage? = nil,
+    qualityLabel: PraxisCmpCheckedSnapshotQualityLabel? = nil,
+    packageKind: PraxisCmpContextPackageKind? = nil,
+    targetKind: PraxisCmpDispatchTargetKind? = nil,
+    dispatchStatus: PraxisCmpDispatchStatus? = nil,
+    latestDispatchStatus: PraxisCmpDispatchStatus? = nil
   ) {
     self.kind = kind
     self.title = title
@@ -1597,6 +1610,12 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     self.checkpointReference = checkpointReference
     self.pendingIntentID = pendingIntentID
     self.recoveredEventCount = recoveredEventCount
+    self.activeLineStage = activeLineStage
+    self.qualityLabel = qualityLabel
+    self.packageKind = packageKind
+    self.targetKind = targetKind
+    self.dispatchStatus = dispatchStatus
+    self.latestDispatchStatus = latestDispatchStatus
   }
 }
 

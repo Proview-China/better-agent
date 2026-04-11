@@ -1956,18 +1956,25 @@ private func retryCmpDispatch(
     )
   }
   let blockedByTapGate = packageDescriptor.metadata["blocked_by_tap_gate"]?.boolValue ?? false
-  let lastDispatchStatus = cmpPackageMetadataString(packageDescriptor.metadata, key: "last_dispatch_status")
+  let lastDispatchStatus = try cmpPersistedDispatchStatus(
+    from: packageDescriptor,
+    operation: "dispatch retry"
+  )
   guard packageDescriptor.status == .materialized,
         blockedByTapGate,
-        lastDispatchStatus == PraxisCmpDispatchStatus.rejected.rawValue else {
+        lastDispatchStatus == .rejected else {
     throw PraxisError.invalidInput(
       "CMP dispatch retry is not available for package \(command.packageID) with status \(packageDescriptor.status.rawValue)."
     )
   }
-  guard let targetKindRaw = cmpPackageMetadataString(packageDescriptor.metadata, key: "dispatch_target_kind"),
-        let targetKind = PraxisCmpDispatchTargetKind(rawValue: targetKindRaw) else {
+  guard let targetKindRaw = cmpPackageMetadataString(packageDescriptor.metadata, key: "dispatch_target_kind") else {
     throw PraxisError.invalidInput(
-      "CMP dispatch retry is not available for package \(command.packageID) because dispatch metadata is missing."
+      "CMP dispatch retry requires persisted dispatch_target_kind metadata for package \(command.packageID)."
+    )
+  }
+  guard let targetKind = PraxisCmpDispatchTargetKind(rawValue: targetKindRaw) else {
+    throw PraxisError.invalidInput(
+      "CMP dispatch retry received invalid dispatch_target_kind \(targetKindRaw) for package \(command.packageID)."
     )
   }
 
@@ -3012,6 +3019,73 @@ private struct PraxisCmpReadbackScope {
   let latestDispatchRecord: PraxisDeliveryTruthRecord?
 }
 
+private func cmpDispatchStatus(from deliveryTruthStatus: PraxisDeliveryTruthStatus) -> PraxisCmpDispatchStatus {
+  switch deliveryTruthStatus {
+  case .pending:
+    return .prepared
+  case .published:
+    return .delivered
+  case .acknowledged:
+    return .acknowledged
+  case .retryScheduled:
+    return .rejected
+  case .expired:
+    return .expired
+  }
+}
+
+private func cmpPersistedDispatchStatus(
+  from descriptor: PraxisCmpContextPackageDescriptor,
+  operation: String
+) throws -> PraxisCmpDispatchStatus? {
+  guard let rawStatus = cmpPackageMetadataString(descriptor.metadata, key: "last_dispatch_status") else {
+    return nil
+  }
+  guard let status = PraxisCmpDispatchStatus(rawValue: rawStatus) else {
+    throw PraxisError.invalidInput(
+      "CMP \(operation) received invalid last_dispatch_status \(rawStatus) for package \(descriptor.packageID.rawValue)."
+    )
+  }
+  return status
+}
+
+private func cmpLatestDispatchStatus(from scope: PraxisCmpReadbackScope) throws -> PraxisCmpDispatchStatus? {
+  let packageStatus: (status: PraxisCmpDispatchStatus, updatedAt: String)?
+  if let latestPackage = scope.latestPackage,
+     let status = try cmpPersistedDispatchStatus(from: latestPackage, operation: "readback") {
+    packageStatus = (status, latestPackage.updatedAt)
+  } else {
+    packageStatus = nil
+  }
+  let deliveryTruthStatus = scope.latestDispatchRecord.map { record in
+    (status: cmpDispatchStatus(from: record.status), updatedAt: record.updatedAt)
+  }
+  switch (packageStatus, deliveryTruthStatus) {
+  case let ((packageStatus, packageUpdatedAt)?, (deliveryStatus, deliveryUpdatedAt)?):
+    return packageUpdatedAt >= deliveryUpdatedAt ? packageStatus : deliveryStatus
+  case let ((packageStatus, _)? , nil):
+    return packageStatus
+  case let (nil, (deliveryStatus, _)?):
+    return deliveryStatus
+  case (nil, nil):
+    return nil
+  }
+}
+
+private func cmpDispatcherLatestStage(
+  latestPackage: PraxisCmpContextPackageDescriptor?,
+  latestDispatchRecord: PraxisDeliveryTruthRecord?
+) throws -> String? {
+  let scope = PraxisCmpReadbackScope(
+    projectionDescriptors: [],
+    packageDescriptors: latestPackage.map { [$0] } ?? [],
+    deliveryTruthRecords: latestDispatchRecord.map { [$0] } ?? [],
+    latestPackage: latestPackage,
+    latestDispatchRecord: latestDispatchRecord
+  )
+  return try cmpLatestDispatchStatus(from: scope)?.rawValue ?? (latestPackage == nil ? nil : "prepared")
+}
+
 private func cmpReadbackScope(
   command: PraxisReadbackCmpStatusCommand,
   dependencies: PraxisDependencyGraph
@@ -3078,12 +3152,13 @@ private func cmpReadbackRoles(
   projectionDescriptors: [PraxisProjectionRecordDescriptor],
   packageDescriptors: [PraxisCmpContextPackageDescriptor],
   deliveryTruthRecords: [PraxisDeliveryTruthRecord]
-) -> [PraxisCmpRoleReadback] {
+) throws -> [PraxisCmpRoleReadback] {
   let latestPackage = packageDescriptors.sorted { $0.updatedAt > $1.updatedAt }.first
+  let latestDispatchRecord = deliveryTruthRecords.sorted { $0.updatedAt > $1.updatedAt }.first
   let fiveAgentPlanner = PraxisCmpFiveAgentPlanner()
   let protocolDefinition = fiveAgentPlanner.defaultProtocolDefinition()
 
-  return protocolDefinition.roles.map { roleDefinition in
+  return try protocolDefinition.roles.map { roleDefinition in
     let assignmentCount: Int
     let latestStage: String?
     switch roleDefinition.role {
@@ -3101,7 +3176,10 @@ private func cmpReadbackRoles(
       latestStage = packageDescriptors.isEmpty ? (projectionDescriptors.isEmpty ? nil : "projectionReady") : "materialized"
     case .dispatcher:
       assignmentCount = packageDescriptors.isEmpty && deliveryTruthRecords.isEmpty ? 0 : 1
-      latestStage = deliveryTruthRecords.sorted { $0.updatedAt > $1.updatedAt }.first?.status.rawValue ?? (latestPackage == nil ? nil : "prepared")
+      latestStage = try cmpDispatcherLatestStage(
+        latestPackage: latestPackage,
+        latestDispatchRecord: latestDispatchRecord
+      )
     }
     return PraxisCmpRoleReadback(
       role: roleDefinition.role,
@@ -3139,11 +3217,12 @@ private func readbackCmpRoles(
     command: .init(projectID: command.projectID, agentID: command.agentID),
     dependencies: dependencies
   )
-  let roles = cmpReadbackRoles(
+  let roles = try cmpReadbackRoles(
     projectionDescriptors: scope.projectionDescriptors,
     packageDescriptors: scope.packageDescriptors,
     deliveryTruthRecords: scope.deliveryTruthRecords
   )
+  let latestDispatchStatus = try cmpLatestDispatchStatus(from: scope)
   let issues = cmpReadbackIssues(
     projectID: command.projectID,
     packageDescriptors: scope.packageDescriptors,
@@ -3154,10 +3233,10 @@ private func readbackCmpRoles(
   return PraxisCmpRolesReadback(
     projectID: command.projectID,
     agentID: command.agentID,
-    summary: "CMP roles readback reconstructed five-agent assignment state from host-backed projections, packages, and delivery truth without binding callers to CLI or GUI.",
+    summary: "CMP roles readback reconstructed five-agent assignment state from host-backed projections, packages, and delivery truth without binding callers to any specific host surface.",
     roles: roles,
     latestPackageID: scope.latestPackage?.packageID.rawValue,
-    latestDispatchStatus: scope.latestDispatchRecord?.status.rawValue,
+    latestDispatchStatus: latestDispatchStatus,
     issues: issues
   )
 }
@@ -3170,6 +3249,7 @@ private func readbackCmpControl(
     command: .init(projectID: command.projectID, agentID: command.agentID),
     dependencies: dependencies
   )
+  let latestDispatchStatus = try cmpLatestDispatchStatus(from: scope)
   let issues = cmpReadbackIssues(
     projectID: command.projectID,
     packageDescriptors: scope.packageDescriptors,
@@ -3180,14 +3260,14 @@ private func readbackCmpControl(
   return PraxisCmpControlReadback(
     projectID: command.projectID,
     agentID: command.agentID,
-    summary: "CMP control readback reconstructed execution defaults, automation gates, and latest dispatch hints from host-backed runtime truth without coupling callers to CLI or GUI.",
+    summary: "CMP control readback reconstructed execution defaults, automation gates, and latest dispatch hints from host-backed runtime truth without coupling callers to any host-specific surface.",
     control: try await cmpResolvedControlSurface(
       projectID: command.projectID,
       agentID: command.agentID,
       dependencies: dependencies
     ),
     latestPackageID: scope.latestPackage?.packageID.rawValue,
-    latestDispatchStatus: scope.latestDispatchRecord?.status.rawValue,
+    latestDispatchStatus: latestDispatchStatus,
     latestTargetAgentID: scope.latestPackage?.targetAgentID,
     issues: issues
   )
@@ -3252,7 +3332,7 @@ private func readbackCmpStatus(
   dependencies: PraxisDependencyGraph
 ) async throws -> PraxisCmpStatusReadback {
   let scope = try await cmpReadbackScope(command: command, dependencies: dependencies)
-  let roles = cmpReadbackRoles(
+  let roles = try cmpReadbackRoles(
     projectionDescriptors: scope.projectionDescriptors,
     packageDescriptors: scope.packageDescriptors,
     deliveryTruthRecords: scope.deliveryTruthRecords
@@ -3273,6 +3353,7 @@ private func readbackCmpStatus(
     deliveryTruthRecords: scope.deliveryTruthRecords,
     dependencies: dependencies
   )
+  let latestDispatchStatus = try cmpLatestDispatchStatus(from: scope)
 
   let summary = "CMP status readback reconstructed role/control/object-model state from \(scope.projectionDescriptors.count) projection(s), \(scope.packageDescriptors.count) package(s), and \(scope.deliveryTruthRecords.count) delivery record(s) without coupling callers to presentation-specific surfaces."
   return PraxisCmpStatusReadback(
@@ -3287,7 +3368,7 @@ private func readbackCmpStatus(
     roles: roles,
     objectModel: objectModel,
     latestPackageID: scope.latestPackage?.packageID.rawValue,
-    latestDispatchStatus: scope.latestDispatchRecord?.status.rawValue,
+    latestDispatchStatus: latestDispatchStatus,
     latestTargetAgentID: scope.latestPackage?.targetAgentID,
     issues: issues
   )

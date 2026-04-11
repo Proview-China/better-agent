@@ -228,7 +228,7 @@ public final class PraxisCmpFlowFacade: Sendable {
       agentID: commit.agentID,
       deltaID: commit.result.delta.id.rawValue,
       snapshotCandidateID: commit.result.snapshotCandidateID?.rawValue,
-      activeLineStage: commit.activeLine.stage.rawValue,
+      activeLineStage: commit.activeLine.stage,
       branchRef: commit.snapshotCandidate.branchRef
     )
   }
@@ -242,7 +242,7 @@ public final class PraxisCmpFlowFacade: Sendable {
       found: resolve.result.found,
       snapshotID: resolve.snapshot?.id.rawValue,
       branchRef: resolve.snapshot?.branchRef,
-      qualityLabel: resolve.snapshot?.qualityLabel.rawValue
+      qualityLabel: resolve.snapshot?.qualityLabel
     )
   }
 
@@ -254,7 +254,7 @@ public final class PraxisCmpFlowFacade: Sendable {
       agentID: materialize.agentID,
       packageID: materialize.result.contextPackage.id.rawValue,
       targetAgentID: materialize.result.contextPackage.targetAgentID,
-      packageKind: materialize.result.contextPackage.kind.rawValue,
+      packageKind: materialize.result.contextPackage.kind,
       selectedSectionCount: materialize.materializationPlan.selectedSectionIDs.count
     )
   }
@@ -267,8 +267,8 @@ public final class PraxisCmpFlowFacade: Sendable {
       agentID: dispatch.agentID,
       dispatchID: dispatch.result.receipt.id.rawValue,
       targetAgentID: dispatch.result.receipt.targetAgentID,
-      targetKind: dispatch.result.receipt.targetKind.rawValue,
-      status: dispatch.result.receipt.status.rawValue
+      targetKind: dispatch.result.receipt.targetKind,
+      status: dispatch.result.receipt.status
     )
   }
 
@@ -280,8 +280,8 @@ public final class PraxisCmpFlowFacade: Sendable {
       agentID: dispatch.agentID,
       dispatchID: dispatch.result.receipt.id.rawValue,
       targetAgentID: dispatch.result.receipt.targetAgentID,
-      targetKind: dispatch.result.receipt.targetKind.rawValue,
-      status: dispatch.result.receipt.status.rawValue
+      targetKind: dispatch.result.receipt.targetKind,
+      status: dispatch.result.receipt.status
     )
   }
 

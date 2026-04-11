@@ -986,7 +986,7 @@ public struct PraxisCmpRolesReadback: Sendable, Equatable, Codable {
   public let summary: String
   public let roles: [PraxisCmpRoleReadback]
   public let latestPackageID: String?
-  public let latestDispatchStatus: String?
+  public let latestDispatchStatus: PraxisCmpDispatchStatus?
   public let issues: [String]
 
   public init(
@@ -995,7 +995,7 @@ public struct PraxisCmpRolesReadback: Sendable, Equatable, Codable {
     summary: String,
     roles: [PraxisCmpRoleReadback],
     latestPackageID: String? = nil,
-    latestDispatchStatus: String? = nil,
+    latestDispatchStatus: PraxisCmpDispatchStatus? = nil,
     issues: [String]
   ) {
     self.projectID = projectID
@@ -1024,7 +1024,7 @@ public struct PraxisCmpControlReadback: Sendable, Equatable, Codable {
   public let summary: String
   public let control: PraxisCmpControlSurface
   public let latestPackageID: String?
-  public let latestDispatchStatus: String?
+  public let latestDispatchStatus: PraxisCmpDispatchStatus?
   public let latestTargetAgentID: String?
   public let issues: [String]
 
@@ -1034,7 +1034,7 @@ public struct PraxisCmpControlReadback: Sendable, Equatable, Codable {
     summary: String,
     control: PraxisCmpControlSurface,
     latestPackageID: String? = nil,
-    latestDispatchStatus: String? = nil,
+    latestDispatchStatus: PraxisCmpDispatchStatus? = nil,
     latestTargetAgentID: String? = nil,
     issues: [String]
   ) {
@@ -1293,7 +1293,7 @@ public struct PraxisCmpStatusReadback: Sendable, Equatable, Codable {
   public let roles: [PraxisCmpRoleReadback]
   public let objectModel: PraxisCmpObjectModelReadback
   public let latestPackageID: String?
-  public let latestDispatchStatus: String?
+  public let latestDispatchStatus: PraxisCmpDispatchStatus?
   public let latestTargetAgentID: String?
   public let issues: [String]
 
@@ -1305,7 +1305,7 @@ public struct PraxisCmpStatusReadback: Sendable, Equatable, Codable {
     roles: [PraxisCmpRoleReadback],
     objectModel: PraxisCmpObjectModelReadback,
     latestPackageID: String? = nil,
-    latestDispatchStatus: String? = nil,
+    latestDispatchStatus: PraxisCmpDispatchStatus? = nil,
     latestTargetAgentID: String? = nil,
     issues: [String]
   ) {
