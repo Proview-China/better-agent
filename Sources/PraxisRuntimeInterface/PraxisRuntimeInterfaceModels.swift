@@ -2,6 +2,7 @@ import PraxisCmpTypes
 import PraxisMpTypes
 import PraxisRun
 import PraxisRuntimeFacades
+import PraxisRuntimeUseCases
 import PraxisSession
 import PraxisTapTypes
 
@@ -224,22 +225,22 @@ public struct PraxisRuntimeInterfaceUpdateCmpControlRequestPayload: Sendable, Eq
   public let payloadSummary: String
   public let projectID: String
   public let agentID: String?
-  public let executionStyle: String?
-  public let mode: String?
-  public let readbackPriority: String?
-  public let fallbackPolicy: String?
-  public let recoveryPreference: String?
+  public let executionStyle: PraxisCmpExecutionStyle?
+  public let mode: PraxisCmpControlMode?
+  public let readbackPriority: PraxisCmpReadbackPriority?
+  public let fallbackPolicy: PraxisCmpFallbackPolicy?
+  public let recoveryPreference: PraxisCmpRecoveryPreference?
   public let automation: [String: Bool]
 
   public init(
     payloadSummary: String,
     projectID: String,
     agentID: String? = nil,
-    executionStyle: String? = nil,
-    mode: String? = nil,
-    readbackPriority: String? = nil,
-    fallbackPolicy: String? = nil,
-    recoveryPreference: String? = nil,
+    executionStyle: PraxisCmpExecutionStyle? = nil,
+    mode: PraxisCmpControlMode? = nil,
+    readbackPriority: PraxisCmpReadbackPriority? = nil,
+    fallbackPolicy: PraxisCmpFallbackPolicy? = nil,
+    recoveryPreference: PraxisCmpRecoveryPreference? = nil,
     automation: [String: Bool] = [:]
   ) {
     self.payloadSummary = payloadSummary

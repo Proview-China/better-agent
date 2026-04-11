@@ -350,9 +350,11 @@ struct HostRuntimeSurfaceTests {
       .init(
         projectID: "cmp.local-runtime",
         agentID: "checker.local",
-        executionStyle: "manual",
-        mode: "peer_review",
-        readbackPriority: "package_first",
+        executionStyle: .manual,
+        mode: .peerReview,
+        readbackPriority: .packageFirst,
+        fallbackPolicy: .registryOnly,
+        recoveryPreference: .resumeLatest,
         automation: ["autoDispatch": false]
       )
     )
@@ -435,8 +437,10 @@ struct HostRuntimeSurfaceTests {
     #expect(history.packageID != nil)
     #expect(controlUpdate.projectID == "cmp.local-runtime")
     #expect(controlUpdate.agentID == "checker.local")
-    #expect(controlUpdate.executionStyle == "manual")
-    #expect(controlUpdate.mode == "peer_review")
+    #expect(controlUpdate.executionStyle == .manual)
+    #expect(controlUpdate.mode == .peerReview)
+    #expect(controlUpdate.fallbackPolicy == .registryOnly)
+    #expect(controlUpdate.recoveryPreference == .resumeLatest)
     #expect(controlUpdate.automation["autoDispatch"] == false)
     #expect(rolesPanel.projectID == "cmp.local-runtime")
     #expect(rolesPanel.agentID == "checker.local")
@@ -444,9 +448,11 @@ struct HostRuntimeSurfaceTests {
     #expect(rolesPanel.latestPackageID == materialize.packageID)
     #expect(controlPanel.projectID == "cmp.local-runtime")
     #expect(controlPanel.agentID == "checker.local")
-    #expect(controlPanel.executionStyle == "manual")
-    #expect(controlPanel.mode == "peer_review")
-    #expect(controlPanel.readbackPriority == "package_first")
+    #expect(controlPanel.executionStyle == .manual)
+    #expect(controlPanel.mode == .peerReview)
+    #expect(controlPanel.readbackPriority == .packageFirst)
+    #expect(controlPanel.fallbackPolicy == .registryOnly)
+    #expect(controlPanel.recoveryPreference == .resumeLatest)
     #expect(controlPanel.automation["autoDispatch"] == false)
     #expect(controlPanel.latestTargetAgentID == "checker.local")
     #expect(peerApproval.projectID == "cmp.local-runtime")
@@ -479,8 +485,8 @@ struct HostRuntimeSurfaceTests {
     #expect(Set(tapHistory.entries.map(\.humanGateState)) == Set(["waitingApproval", "notRequired"]))
     #expect(statusPanel.projectID == "cmp.local-runtime")
     #expect(statusPanel.agentID == "runtime.local")
-    #expect(statusPanel.executionStyle == "automatic")
-    #expect(statusPanel.readbackPriority == "git_first")
+    #expect(statusPanel.executionStyle == .automatic)
+    #expect(statusPanel.readbackPriority == .gitFirst)
     #expect(statusPanel.packageCount >= 1)
     #expect(statusPanel.roleCounts["dispatcher"] == 1)
     #expect(statusPanel.latestPackageID != nil)
@@ -1184,8 +1190,8 @@ struct HostRuntimeSurfaceTests {
       .init(
         projectID: "cmp.local-runtime",
         agentID: "checker.local",
-        executionStyle: "manual",
-        mode: "peer_review",
+        executionStyle: .manual,
+        mode: .peerReview,
         automation: ["autoDispatch": false]
       )
     )
@@ -1238,8 +1244,8 @@ struct HostRuntimeSurfaceTests {
       .init(
         projectID: "cmp.local-runtime",
         agentID: "checker.local",
-        executionStyle: "manual",
-        mode: "peer_review",
+        executionStyle: .manual,
+        mode: .peerReview,
         automation: ["autoDispatch": false]
       )
     )

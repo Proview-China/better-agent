@@ -2292,11 +2292,11 @@ private func cmpDefaultControlSurface(projectID: String, agentID: String?) -> Pr
   _ = projectID
   _ = agentID
   return PraxisCmpControlSurface(
-    executionStyle: "automatic",
-    mode: "active_preferred",
-    readbackPriority: "git_first",
-    fallbackPolicy: "git_rebuild",
-    recoveryPreference: "reconcile",
+    executionStyle: .automatic,
+    mode: .activePreferred,
+    readbackPriority: .gitFirst,
+    fallbackPolicy: .gitRebuild,
+    recoveryPreference: .reconcile,
     automation: [
       "autoIngest": true,
       "autoCommit": true,
@@ -2318,23 +2318,57 @@ private func cmpControlDescriptor(
   PraxisCmpControlDescriptor(
     projectID: projectID,
     agentID: agentID,
-    executionStyle: control.executionStyle,
-    mode: control.mode,
-    readbackPriority: control.readbackPriority,
-    fallbackPolicy: control.fallbackPolicy,
-    recoveryPreference: control.recoveryPreference,
+    executionStyle: control.executionStyle.rawValue,
+    mode: control.mode.rawValue,
+    readbackPriority: control.readbackPriority.rawValue,
+    fallbackPolicy: control.fallbackPolicy.rawValue,
+    recoveryPreference: control.recoveryPreference.rawValue,
     automation: control.automation,
     updatedAt: updatedAt
   )
 }
 
-private func cmpControlSurface(from descriptor: PraxisCmpControlDescriptor) -> PraxisCmpControlSurface {
+private func cmpDecodedControlEnum<Value>(
+  rawValue: String,
+  fieldName: String,
+  descriptor: PraxisCmpControlDescriptor,
+  as _: Value.Type = Value.self
+) throws -> Value where Value: RawRepresentable, Value.RawValue == String {
+  guard let value = Value(rawValue: rawValue) else {
+    throw PraxisError.invalidInput(
+      "CMP control descriptor for project \(descriptor.projectID) and agent \(descriptor.agentID ?? "project.default") contains invalid \(fieldName) raw value '\(rawValue)' at \(descriptor.updatedAt)."
+    )
+  }
+  return value
+}
+
+private func cmpControlSurface(from descriptor: PraxisCmpControlDescriptor) throws -> PraxisCmpControlSurface {
   PraxisCmpControlSurface(
-    executionStyle: descriptor.executionStyle,
-    mode: descriptor.mode,
-    readbackPriority: descriptor.readbackPriority,
-    fallbackPolicy: descriptor.fallbackPolicy,
-    recoveryPreference: descriptor.recoveryPreference,
+    executionStyle: try cmpDecodedControlEnum(
+      rawValue: descriptor.executionStyle,
+      fieldName: "executionStyle",
+      descriptor: descriptor
+    ),
+    mode: try cmpDecodedControlEnum(
+      rawValue: descriptor.mode,
+      fieldName: "mode",
+      descriptor: descriptor
+    ),
+    readbackPriority: try cmpDecodedControlEnum(
+      rawValue: descriptor.readbackPriority,
+      fieldName: "readbackPriority",
+      descriptor: descriptor
+    ),
+    fallbackPolicy: try cmpDecodedControlEnum(
+      rawValue: descriptor.fallbackPolicy,
+      fieldName: "fallbackPolicy",
+      descriptor: descriptor
+    ),
+    recoveryPreference: try cmpDecodedControlEnum(
+      rawValue: descriptor.recoveryPreference,
+      fieldName: "recoveryPreference",
+      descriptor: descriptor
+    ),
     automation: descriptor.automation
   )
 }
@@ -2349,10 +2383,10 @@ private func cmpResolvedControlSurface(
   }
   if let agentID,
     let descriptor = try await controlStore.describe(.init(projectID: projectID, agentID: agentID)) {
-    return cmpControlSurface(from: descriptor)
+    return try cmpControlSurface(from: descriptor)
   }
   if let descriptor = try await controlStore.describe(.init(projectID: projectID, agentID: nil)) {
-    return cmpControlSurface(from: descriptor)
+    return try cmpControlSurface(from: descriptor)
   }
   return cmpDefaultControlSurface(projectID: projectID, agentID: agentID)
 }
@@ -2361,39 +2395,31 @@ private func cmpMergedControlSurface(
   base: PraxisCmpControlSurface,
   command: PraxisUpdateCmpControlCommand
 ) -> PraxisCmpControlSurface {
-  let normalizedExecutionStyle = command.executionStyle?.trimmingCharacters(in: .whitespacesAndNewlines)
-  let normalizedMode = command.mode?.trimmingCharacters(in: .whitespacesAndNewlines)
-  let normalizedReadbackPriority = command.readbackPriority?.trimmingCharacters(in: .whitespacesAndNewlines)
-  let normalizedFallbackPolicy = command.fallbackPolicy?.trimmingCharacters(in: .whitespacesAndNewlines)
-  let normalizedRecoveryPreference = command.recoveryPreference?.trimmingCharacters(in: .whitespacesAndNewlines)
-
   return PraxisCmpControlSurface(
-    executionStyle: (normalizedExecutionStyle?.isEmpty == false) ? normalizedExecutionStyle! : base.executionStyle,
-    mode: (normalizedMode?.isEmpty == false) ? normalizedMode! : base.mode,
-    readbackPriority: (normalizedReadbackPriority?.isEmpty == false) ? normalizedReadbackPriority! : base.readbackPriority,
-    fallbackPolicy: (normalizedFallbackPolicy?.isEmpty == false) ? normalizedFallbackPolicy! : base.fallbackPolicy,
-    recoveryPreference: (normalizedRecoveryPreference?.isEmpty == false) ? normalizedRecoveryPreference! : base.recoveryPreference,
+    executionStyle: command.executionStyle ?? base.executionStyle,
+    mode: command.mode ?? base.mode,
+    readbackPriority: command.readbackPriority ?? base.readbackPriority,
+    fallbackPolicy: command.fallbackPolicy ?? base.fallbackPolicy,
+    recoveryPreference: command.recoveryPreference ?? base.recoveryPreference,
     automation: base.automation.merging(command.automation) { _, new in new }
   )
 }
 
-private func cmpTapMode(for controlMode: String) -> PraxisTapMode {
-  switch controlMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-  case "bapr":
+private func cmpTapMode(for controlMode: PraxisCmpControlMode) -> PraxisTapMode {
+  switch controlMode {
+  case .bapr:
     return .bapr
-  case "yolo":
+  case .yolo:
     return .yolo
-  case "permissive":
+  case .permissive:
     return .permissive
-  case "strict":
+  case .strict:
     return .strict
-  case "restricted", "peer_review", "manual", "human_gate":
+  case .restricted, .peerReview, .manual, .humanGate:
     return .restricted
-  case "balanced":
+  case .balanced:
     return .balanced
-  case "standard", "active_preferred", "automatic":
-    return .standard
-  default:
+  case .standard, .activePreferred, .automatic:
     return .standard
   }
 }
@@ -3198,12 +3224,12 @@ private func updateCmpControl(
     targetAgentID: command.agentID,
     eventKind: "control_updated",
     summary: "CMP control updated TAP mode \(cmpTapMode(for: resolvedControl.mode).rawValue) and automation gates for \(command.agentID ?? "project.default").",
-    detail: "autoDispatch=\(resolvedControl.automation["autoDispatch"] ?? true), mode=\(resolvedControl.mode), executionStyle=\(resolvedControl.executionStyle)",
+    detail: "autoDispatch=\(resolvedControl.automation["autoDispatch"] ?? true), mode=\(resolvedControl.mode.rawValue), executionStyle=\(resolvedControl.executionStyle.rawValue)",
     createdAt: updatedAt,
     metadata: [
       "tapMode": .string(cmpTapMode(for: resolvedControl.mode).rawValue),
-      "executionStyle": .string(resolvedControl.executionStyle),
-      "mode": .string(resolvedControl.mode),
+      "executionStyle": .string(resolvedControl.executionStyle.rawValue),
+      "mode": .string(resolvedControl.mode.rawValue),
       "autoDispatch": .bool(resolvedControl.automation["autoDispatch"] ?? true),
       "targetAgentID": command.agentID.map(PraxisValue.string) ?? .null,
       "decisionSummary": .string("CMP control updated without crossing into CLI or GUI."),

@@ -47,6 +47,29 @@ private func requireRuntimeInterfaceIdentifierElements(
   return elements
 }
 
+private func runtimeInterfaceDecodingPath(from codingPath: [CodingKey]) -> String {
+  let path = codingPath.map(\.stringValue).filter { !$0.isEmpty }
+  return path.isEmpty ? "request" : path.joined(separator: ".")
+}
+
+private func runtimeInterfaceInvalidRequestError(from error: DecodingError) -> PraxisError {
+  let message: String
+  switch error {
+  case .typeMismatch(_, let context):
+    message = "Failed to decode runtime interface request at \(runtimeInterfaceDecodingPath(from: context.codingPath)): \(context.debugDescription)"
+  case .valueNotFound(_, let context):
+    message = "Failed to decode runtime interface request at \(runtimeInterfaceDecodingPath(from: context.codingPath)): \(context.debugDescription)"
+  case .keyNotFound(let key, let context):
+    let path = runtimeInterfaceDecodingPath(from: context.codingPath + [key])
+    message = "Failed to decode runtime interface request at \(path): \(context.debugDescription)"
+  case .dataCorrupted(let context):
+    message = "Failed to decode runtime interface request at \(runtimeInterfaceDecodingPath(from: context.codingPath)): \(context.debugDescription)"
+  @unknown default:
+    message = "Failed to decode runtime interface request."
+  }
+  return .invalidInput(message)
+}
+
 public protocol PraxisRuntimeInterfaceServing: Sendable {
   /// Returns the baseline architecture snapshot without mutating runtime state.
   ///
@@ -110,7 +133,11 @@ public struct PraxisJSONRuntimeInterfaceCodec: Sendable, PraxisRuntimeInterfaceC
   }
 
   public func decodeRequest(_ data: Data) throws -> PraxisRuntimeInterfaceRequest {
-    try JSONDecoder().decode(PraxisRuntimeInterfaceRequest.self, from: data)
+    do {
+      return try JSONDecoder().decode(PraxisRuntimeInterfaceRequest.self, from: data)
+    } catch let error as DecodingError {
+      throw runtimeInterfaceInvalidRequestError(from: error)
+    }
   }
 
   public func encode(_ response: PraxisRuntimeInterfaceResponse) throws -> Data {

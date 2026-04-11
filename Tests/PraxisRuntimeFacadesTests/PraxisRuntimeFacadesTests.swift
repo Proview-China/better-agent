@@ -111,7 +111,9 @@ struct PraxisRuntimeFacadesTests {
     let controlUpdate = try await facade.cmpControlFacade.updateControl(
       PraxisUpdateCmpControlCommand(
         projectID: "cmp.local-runtime",
-        executionStyle: "guided",
+        executionStyle: .guided,
+        fallbackPolicy: .registryOnly,
+        recoveryPreference: .resumeLatest,
         automation: ["autoDispatch": false]
       )
     )
@@ -152,15 +154,19 @@ struct PraxisRuntimeFacadesTests {
     #expect(ingest.acceptedEventCount == 1)
     #expect(commit.projectID == "cmp.local-runtime")
     #expect(!commit.deltaID.isEmpty)
-    #expect(controlUpdate.executionStyle == "guided")
-    #expect(controlReadback.executionStyle == "guided")
+    #expect(controlUpdate.executionStyle == .guided)
+    #expect(controlUpdate.fallbackPolicy == .registryOnly)
+    #expect(controlUpdate.recoveryPreference == .resumeLatest)
+    #expect(controlReadback.executionStyle == .guided)
+    #expect(controlReadback.fallbackPolicy == .registryOnly)
+    #expect(controlReadback.recoveryPreference == .resumeLatest)
     #expect(controlReadback.automation["autoDispatch"] == false)
     #expect(rolesReadback.projectID == "cmp.local-runtime")
     #expect(requestedApproval.capabilityKey == "tool.shell.exec")
     #expect(approvalReadback.found)
     #expect(approvalReadback.capabilityKey == "tool.shell.exec")
     #expect(statusReadback.projectID == "cmp.local-runtime")
-    #expect(statusReadback.executionStyle == "guided")
+    #expect(statusReadback.executionStyle == .guided)
     #expect(statusReadback.roleCounts.isEmpty == false)
   }
 

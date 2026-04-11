@@ -511,11 +511,11 @@ public struct PraxisCmpControlPanelSnapshot: Sendable, Equatable, Codable {
   public let summary: String
   public let projectID: String
   public let agentID: String?
-  public let executionStyle: String
-  public let mode: String
-  public let readbackPriority: String
-  public let fallbackPolicy: String
-  public let recoveryPreference: String
+  public let executionStyle: PraxisCmpExecutionStyle
+  public let mode: PraxisCmpControlMode
+  public let readbackPriority: PraxisCmpReadbackPriority
+  public let fallbackPolicy: PraxisCmpFallbackPolicy
+  public let recoveryPreference: PraxisCmpRecoveryPreference
   public let automation: [String: Bool]
   public let latestPackageID: String?
   public let latestDispatchStatus: String?
@@ -525,11 +525,11 @@ public struct PraxisCmpControlPanelSnapshot: Sendable, Equatable, Codable {
     summary: String,
     projectID: String,
     agentID: String? = nil,
-    executionStyle: String,
-    mode: String,
-    readbackPriority: String,
-    fallbackPolicy: String,
-    recoveryPreference: String,
+    executionStyle: PraxisCmpExecutionStyle,
+    mode: PraxisCmpControlMode,
+    readbackPriority: PraxisCmpReadbackPriority,
+    fallbackPolicy: PraxisCmpFallbackPolicy,
+    recoveryPreference: PraxisCmpRecoveryPreference,
     automation: [String: Bool],
     latestPackageID: String? = nil,
     latestDispatchStatus: String? = nil,
@@ -554,11 +554,11 @@ public struct PraxisCmpControlUpdateSnapshot: Sendable, Equatable, Codable {
   public let summary: String
   public let projectID: String
   public let agentID: String?
-  public let executionStyle: String
-  public let mode: String
-  public let readbackPriority: String
-  public let fallbackPolicy: String
-  public let recoveryPreference: String
+  public let executionStyle: PraxisCmpExecutionStyle
+  public let mode: PraxisCmpControlMode
+  public let readbackPriority: PraxisCmpReadbackPriority
+  public let fallbackPolicy: PraxisCmpFallbackPolicy
+  public let recoveryPreference: PraxisCmpRecoveryPreference
   public let automation: [String: Bool]
   public let storedAt: String
 
@@ -566,11 +566,11 @@ public struct PraxisCmpControlUpdateSnapshot: Sendable, Equatable, Codable {
     summary: String,
     projectID: String,
     agentID: String? = nil,
-    executionStyle: String,
-    mode: String,
-    readbackPriority: String,
-    fallbackPolicy: String,
-    recoveryPreference: String,
+    executionStyle: PraxisCmpExecutionStyle,
+    mode: PraxisCmpControlMode,
+    readbackPriority: PraxisCmpReadbackPriority,
+    fallbackPolicy: PraxisCmpFallbackPolicy,
+    recoveryPreference: PraxisCmpRecoveryPreference,
     automation: [String: Bool],
     storedAt: String
   ) {
@@ -686,8 +686,8 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
   public let summary: String
   public let projectID: String
   public let agentID: String?
-  public let executionStyle: String
-  public let readbackPriority: String
+  public let executionStyle: PraxisCmpExecutionStyle
+  public let readbackPriority: PraxisCmpReadbackPriority
   public let packageCount: Int
   public let latestPackageID: String?
   public let latestDispatchStatus: String?
@@ -698,8 +698,8 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
     summary: String,
     projectID: String,
     agentID: String? = nil,
-    executionStyle: String,
-    readbackPriority: String,
+    executionStyle: PraxisCmpExecutionStyle,
+    readbackPriority: PraxisCmpReadbackPriority,
     packageCount: Int,
     latestPackageID: String? = nil,
     latestDispatchStatus: String? = nil,

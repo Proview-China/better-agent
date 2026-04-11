@@ -774,9 +774,11 @@ struct PraxisRuntimeUseCasesTests {
       PraxisUpdateCmpControlCommand(
         projectID: "cmp.local-runtime",
         agentID: "checker.local",
-        executionStyle: "manual",
-        mode: "peer_review",
-        readbackPriority: "package_first",
+        executionStyle: .manual,
+        mode: .peerReview,
+        readbackPriority: .packageFirst,
+        fallbackPolicy: .registryOnly,
+        recoveryPreference: .resumeLatest,
         automation: ["autoDispatch": false]
       )
     )
@@ -816,8 +818,10 @@ struct PraxisRuntimeUseCasesTests {
       PraxisReadbackCmpStatusCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
     )
 
-    #expect(updatedControl.control.executionStyle == "manual")
-    #expect(updatedControl.control.mode == "peer_review")
+    #expect(updatedControl.control.executionStyle == .manual)
+    #expect(updatedControl.control.mode == .peerReview)
+    #expect(updatedControl.control.fallbackPolicy == .registryOnly)
+    #expect(updatedControl.control.recoveryPreference == .resumeLatest)
     #expect(updatedControl.control.automation["autoDispatch"] == false)
     #expect(requestedApproval.route == "humanReview")
     #expect(requestedApproval.outcome == "escalated_to_human")
@@ -827,9 +831,11 @@ struct PraxisRuntimeUseCasesTests {
     #expect(decidedApproval.decisionSummary == "Approved git access for checker")
     #expect(controlReadback.projectID == "cmp.local-runtime")
     #expect(controlReadback.agentID == "checker.local")
-    #expect(controlReadback.control.executionStyle == "manual")
-    #expect(controlReadback.control.mode == "peer_review")
-    #expect(controlReadback.control.readbackPriority == "package_first")
+    #expect(controlReadback.control.executionStyle == .manual)
+    #expect(controlReadback.control.mode == .peerReview)
+    #expect(controlReadback.control.readbackPriority == .packageFirst)
+    #expect(controlReadback.control.fallbackPolicy == .registryOnly)
+    #expect(controlReadback.control.recoveryPreference == .resumeLatest)
     #expect(controlReadback.control.automation["autoDispatch"] == false)
     #expect(approvalReadback.found)
     #expect(approvalReadback.capabilityKey == "tool.git")
@@ -839,10 +845,74 @@ struct PraxisRuntimeUseCasesTests {
     #expect(approvalReadback.decisionSummary == "Approved git access for checker")
     #expect(statusReadback.projectID == "cmp.local-runtime")
     #expect(statusReadback.agentID == "checker.local")
-    #expect(statusReadback.control.executionStyle == "manual")
-    #expect(statusReadback.control.mode == "peer_review")
+    #expect(statusReadback.control.executionStyle == .manual)
+    #expect(statusReadback.control.mode == .peerReview)
+    #expect(statusReadback.control.fallbackPolicy == .registryOnly)
+    #expect(statusReadback.control.recoveryPreference == .resumeLatest)
     #expect(statusReadback.control.automation["autoDispatch"] == false)
     #expect(statusReadback.roles.isEmpty == false)
+  }
+
+  @Test
+  func cmpControlUseCasesRejectCorruptedPersistedDescriptorsInsteadOfNormalizingToBaseline() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-corrupted-control-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let readbackControlUseCase = PraxisReadbackCmpControlUseCase(dependencies: dependencies)
+    let updateControlUseCase = PraxisUpdateCmpControlUseCase(dependencies: dependencies)
+
+    _ = try await registry.cmpControlStore?.save(
+      PraxisCmpControlDescriptor(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: PraxisCmpExecutionStyle.manual.rawValue,
+        mode: PraxisCmpControlMode.peerReview.rawValue,
+        readbackPriority: PraxisCmpReadbackPriority.packageFirst.rawValue,
+        fallbackPolicy: "registry_only_but_corrupted",
+        recoveryPreference: PraxisCmpRecoveryPreference.resumeLatest.rawValue,
+        automation: ["autoDispatch": false],
+        updatedAt: "2026-04-12T00:00:00Z"
+      )
+    )
+
+    do {
+      _ = try await readbackControlUseCase.execute(
+        PraxisReadbackCmpControlCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+      )
+      Issue.record("Expected readbackCmpControl to reject corrupted persisted control descriptors.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput from readbackCmpControl, got \(error).")
+        return
+      }
+      #expect(message.contains("fallbackPolicy"))
+      #expect(message.contains("registry_only_but_corrupted"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput from readbackCmpControl, got \(error).")
+    }
+
+    do {
+      _ = try await updateControlUseCase.execute(
+        PraxisUpdateCmpControlCommand(
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local",
+          automation: ["autoDispatch": true]
+        )
+      )
+      Issue.record("Expected updateCmpControl to reject corrupted persisted control descriptors.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput from updateCmpControl, got \(error).")
+        return
+      }
+      #expect(message.contains("fallbackPolicy"))
+      #expect(message.contains("registry_only_but_corrupted"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput from updateCmpControl, got \(error).")
+    }
   }
 
   @Test

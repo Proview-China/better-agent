@@ -863,20 +863,61 @@ public struct PraxisCmpFlowHistory: Sendable, Equatable, Codable {
   }
 }
 
+/// Describes how CMP orchestration should execute work once a control surface is resolved.
+public enum PraxisCmpExecutionStyle: String, Sendable, Equatable, Codable {
+  case automatic
+  case manual
+  case guided
+}
+
+/// Describes the host-neutral CMP routing posture that should be projected into TAP mode.
+public enum PraxisCmpControlMode: String, Sendable, Equatable, Codable {
+  case activePreferred = "active_preferred"
+  case peerReview = "peer_review"
+  case manual
+  case humanGate = "human_gate"
+  case restricted
+  case bapr
+  case yolo
+  case permissive
+  case strict
+  case balanced
+  case standard
+  case automatic
+}
+
+/// Describes which persisted truth source CMP should prefer during readback.
+public enum PraxisCmpReadbackPriority: String, Sendable, Equatable, Codable {
+  case gitFirst = "git_first"
+  case packageFirst = "package_first"
+}
+
+/// Describes which fallback path CMP should use when preferred truth is unavailable.
+public enum PraxisCmpFallbackPolicy: String, Sendable, Equatable, Codable {
+  case gitRebuild = "git_rebuild"
+  case registryOnly = "registry_only"
+}
+
+/// Describes which recovery posture CMP should prefer when rebuilding runtime state.
+public enum PraxisCmpRecoveryPreference: String, Sendable, Equatable, Codable {
+  case reconcile
+  case resumeLatest = "resume_latest"
+}
+
 public struct PraxisCmpControlSurface: Sendable, Equatable, Codable {
-  public let executionStyle: String
-  public let mode: String
-  public let readbackPriority: String
-  public let fallbackPolicy: String
-  public let recoveryPreference: String
+  public let executionStyle: PraxisCmpExecutionStyle
+  public let mode: PraxisCmpControlMode
+  public let readbackPriority: PraxisCmpReadbackPriority
+  public let fallbackPolicy: PraxisCmpFallbackPolicy
+  public let recoveryPreference: PraxisCmpRecoveryPreference
   public let automation: [String: Bool]
 
   public init(
-    executionStyle: String,
-    mode: String,
-    readbackPriority: String,
-    fallbackPolicy: String,
-    recoveryPreference: String,
+    executionStyle: PraxisCmpExecutionStyle,
+    mode: PraxisCmpControlMode,
+    readbackPriority: PraxisCmpReadbackPriority,
+    fallbackPolicy: PraxisCmpFallbackPolicy,
+    recoveryPreference: PraxisCmpRecoveryPreference,
     automation: [String: Bool]
   ) {
     self.executionStyle = executionStyle
@@ -1011,21 +1052,21 @@ public struct PraxisCmpControlReadback: Sendable, Equatable, Codable {
 public struct PraxisUpdateCmpControlCommand: Sendable, Equatable, Codable {
   public let projectID: String
   public let agentID: String?
-  public let executionStyle: String?
-  public let mode: String?
-  public let readbackPriority: String?
-  public let fallbackPolicy: String?
-  public let recoveryPreference: String?
+  public let executionStyle: PraxisCmpExecutionStyle?
+  public let mode: PraxisCmpControlMode?
+  public let readbackPriority: PraxisCmpReadbackPriority?
+  public let fallbackPolicy: PraxisCmpFallbackPolicy?
+  public let recoveryPreference: PraxisCmpRecoveryPreference?
   public let automation: [String: Bool]
 
   public init(
     projectID: String,
     agentID: String? = nil,
-    executionStyle: String? = nil,
-    mode: String? = nil,
-    readbackPriority: String? = nil,
-    fallbackPolicy: String? = nil,
-    recoveryPreference: String? = nil,
+    executionStyle: PraxisCmpExecutionStyle? = nil,
+    mode: PraxisCmpControlMode? = nil,
+    readbackPriority: PraxisCmpReadbackPriority? = nil,
+    fallbackPolicy: PraxisCmpFallbackPolicy? = nil,
+    recoveryPreference: PraxisCmpRecoveryPreference? = nil,
     automation: [String: Bool] = [:]
   ) {
     self.projectID = projectID

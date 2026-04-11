@@ -911,9 +911,11 @@ struct HostRuntimeInterfaceTests {
           payloadSummary: "Update CMP control",
           projectID: "cmp.local-runtime",
           agentID: "checker.local",
-          executionStyle: "manual",
-          mode: "peer_review",
-          readbackPriority: "package_first",
+          executionStyle: .manual,
+          mode: .peerReview,
+          readbackPriority: .packageFirst,
+          fallbackPolicy: .registryOnly,
+          recoveryPreference: .resumeLatest,
           automation: ["autoDispatch": false]
         )
       )
@@ -1230,8 +1232,8 @@ struct HostRuntimeInterfaceTests {
           payloadSummary: "Disable auto dispatch",
           projectID: "cmp.local-runtime",
           agentID: "checker.local",
-          executionStyle: "manual",
-          mode: "peer_review",
+          executionStyle: .manual,
+          mode: .peerReview,
           automation: ["autoDispatch": false]
         )
       )
@@ -2532,6 +2534,63 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceSurfacesCorruptedPersistedCmpControlDescriptorsAsInvalidInput() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-interface-corrupted-control-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    _ = try await registry.cmpControlStore?.save(
+      PraxisCmpControlDescriptor(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: PraxisCmpExecutionStyle.manual.rawValue,
+        mode: PraxisCmpControlMode.peerReview.rawValue,
+        readbackPriority: PraxisCmpReadbackPriority.packageFirst.rawValue,
+        fallbackPolicy: "broken_fallback",
+        recoveryPreference: PraxisCmpRecoveryPreference.resumeLatest.rawValue,
+        automation: ["autoDispatch": false],
+        updatedAt: "2026-04-12T00:00:00Z"
+      )
+    )
+    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+
+    let readbackResponse = await runtimeInterface.handle(
+      .readbackCmpControl(
+        .init(
+          payloadSummary: "Read corrupted CMP control",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
+    let updateResponse = await runtimeInterface.handle(
+      .updateCmpControl(
+        .init(
+          payloadSummary: "Update corrupted CMP control",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local",
+          automation: ["autoDispatch": true]
+        )
+      )
+    )
+
+    #expect(readbackResponse.status == .failure)
+    #expect(readbackResponse.snapshot == nil)
+    #expect(readbackResponse.events.isEmpty)
+    #expect(readbackResponse.error?.code == .invalidInput)
+    #expect(readbackResponse.error?.message.contains("fallbackPolicy") == true)
+    #expect(readbackResponse.error?.message.contains("broken_fallback") == true)
+
+    #expect(updateResponse.status == .failure)
+    #expect(updateResponse.snapshot == nil)
+    #expect(updateResponse.events.isEmpty)
+    #expect(updateResponse.error?.code == .invalidInput)
+    #expect(updateResponse.error?.message.contains("fallbackPolicy") == true)
+    #expect(updateResponse.error?.message.contains("broken_fallback") == true)
+  }
+
+  @Test
   func runtimeInterfaceMapsUnsupportedOperationAndInvariantViolationIntoStableErrorCodes() async throws {
     let unsupportedInterface = makeThrowingRuntimeInterface(
       inspectMpError: PraxisError.unsupportedOperation("MP inspection is not available in this host profile.")
@@ -2913,9 +2972,11 @@ struct HostRuntimeInterfaceTests {
         payloadSummary: "Update control",
         projectID: "cmp.local-runtime",
         agentID: "checker.local",
-        executionStyle: "manual",
-        mode: "peer_review",
-        readbackPriority: "package_first",
+        executionStyle: .manual,
+        mode: .peerReview,
+        readbackPriority: .packageFirst,
+        fallbackPolicy: .registryOnly,
+        recoveryPreference: .resumeLatest,
         automation: ["autoDispatch": false]
       )
     )
@@ -2926,10 +2987,53 @@ struct HostRuntimeInterfaceTests {
     let decodedRolesRequest = try codec.decodeRequest(rolesData)
     let decodedControlRequest = try codec.decodeRequest(controlData)
     let decodedUpdateRequest = try codec.decodeRequest(updateData)
+    let updateJSON = try #require(String(data: updateData, encoding: .utf8))
 
     #expect(decodedRolesRequest == rolesRequest)
     #expect(decodedControlRequest == controlRequest)
     #expect(decodedUpdateRequest == updateRequest)
+    #expect(updateJSON.contains(#""executionStyle":"manual""#))
+    #expect(updateJSON.contains(#""mode":"peer_review""#))
+    #expect(updateJSON.contains(#""readbackPriority":"package_first""#))
+    #expect(updateJSON.contains(#""fallbackPolicy":"registry_only""#))
+    #expect(updateJSON.contains(#""recoveryPreference":"resume_latest""#))
+  }
+
+  @Test
+  func runtimeInterfaceCodecRejectsInvalidCmpControlEnumValuesAsInvalidInput() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let invalidPayloads = [
+      (
+        fieldName: "readbackPriority",
+        json:
+          #"{"kind":"updateCmpControl","updateCmpControl":{"payloadSummary":"Invalid control update","projectID":"cmp.local-runtime","agentID":"checker.local","executionStyle":"manual","mode":"peer_review","readbackPriority":"not_a_real_priority","automation":{"autoDispatch":false}}}"#
+      ),
+      (
+        fieldName: "fallbackPolicy",
+        json:
+          #"{"kind":"updateCmpControl","updateCmpControl":{"payloadSummary":"Invalid control update","projectID":"cmp.local-runtime","agentID":"checker.local","executionStyle":"manual","mode":"peer_review","fallbackPolicy":"not_a_real_fallback","automation":{"autoDispatch":false}}}"#
+      ),
+      (
+        fieldName: "recoveryPreference",
+        json:
+          #"{"kind":"updateCmpControl","updateCmpControl":{"payloadSummary":"Invalid control update","projectID":"cmp.local-runtime","agentID":"checker.local","executionStyle":"manual","mode":"peer_review","recoveryPreference":"not_a_real_recovery","automation":{"autoDispatch":false}}}"#
+      ),
+    ]
+
+    for invalidPayload in invalidPayloads {
+      do {
+        _ = try codec.decodeRequest(Data(invalidPayload.json.utf8))
+        Issue.record("Expected invalid input decoding failure for illegal CMP control enum \(invalidPayload.fieldName).")
+      } catch let error as PraxisError {
+        guard case let .invalidInput(message) = error else {
+          Issue.record("Expected invalidInput, got \(error).")
+          return
+        }
+        #expect(message.contains(invalidPayload.fieldName))
+      } catch {
+        Issue.record("Expected PraxisError.invalidInput, got \(error).")
+      }
+    }
   }
 
   @Test
