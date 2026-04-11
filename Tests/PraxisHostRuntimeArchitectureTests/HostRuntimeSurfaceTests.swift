@@ -448,6 +448,7 @@ struct HostRuntimeSurfaceTests {
     #expect(rolesPanel.projectID == "cmp.local-runtime")
     #expect(rolesPanel.agentID == "checker.local")
     #expect(rolesPanel.roleCounts["dispatcher"] == 1)
+    #expect(rolesPanel.roleStages[.dispatcher] == .delivered)
     #expect(rolesPanel.latestPackageID == materialize.packageID)
     #expect(!rolesPanel.summary.contains("CLI"))
     #expect(!rolesPanel.summary.contains("GUI"))
@@ -503,6 +504,7 @@ struct HostRuntimeSurfaceTests {
     #expect(checkerStatusPanel.packageCount >= 1)
     #expect(checkerStatusPanel.latestPackageID == materialize.packageID)
     #expect(checkerStatusPanel.latestDispatchStatus == .delivered)
+    #expect(checkerStatusPanel.roleStages[.dispatcher] == .delivered)
     #expect(readback.projectSummary.projectID == "cmp.local-runtime")
     #expect(readback.projectSummary.hostProfile.structuredStore == "sqlite")
     #expect(readback.persistenceSummary.contains("Checkpoint and journal persistence"))
@@ -732,6 +734,56 @@ struct HostRuntimeSurfaceTests {
       #expect(throws: DecodingError.self) {
         try decodeTestJSON(PraxisCmpProjectRecoverySnapshot.self, from: json)
       }
+    }
+  }
+
+  @Test
+  func cmpRolesAndStatusSnapshotsRoundTripTypedRoleStages() throws {
+    let rolesSnapshot = PraxisCmpRolesPanelSnapshot(
+      summary: "CMP roles snapshot",
+      projectID: "cmp.local-runtime",
+      agentID: "checker.local",
+      roleCounts: ["dispatcher": 1],
+      roleStages: .init(stages: [.dispatcher: .retryScheduled]),
+      latestPackageID: "package.runtime",
+      latestDispatchStatus: .retryScheduled
+    )
+    let statusSnapshot = PraxisCmpStatusPanelSnapshot(
+      summary: "CMP status snapshot",
+      projectID: "cmp.local-runtime",
+      agentID: "checker.local",
+      executionStyle: .automatic,
+      readbackPriority: .gitFirst,
+      packageCount: 1,
+      latestPackageID: "package.runtime",
+      latestDispatchStatus: .retryScheduled,
+      roleCounts: ["dispatcher": 1],
+      roleStages: .init(stages: [.dispatcher: .retryScheduled])
+    )
+
+    let encodedRoles = try encodeTestJSON(rolesSnapshot)
+    let encodedStatus = try encodeTestJSON(statusSnapshot)
+    let decodedRoles = try decodeTestJSON(PraxisCmpRolesPanelSnapshot.self, from: encodedRoles)
+    let decodedStatus = try decodeTestJSON(PraxisCmpStatusPanelSnapshot.self, from: encodedStatus)
+
+    #expect(encodedRoles.contains(#""roleStages":{"dispatcher":"retryScheduled"}"#))
+    #expect(encodedStatus.contains(#""roleStages":{"dispatcher":"retryScheduled"}"#))
+    #expect(decodedRoles.roleStages[.dispatcher] == .retryScheduled)
+    #expect(decodedStatus.roleStages[.dispatcher] == .retryScheduled)
+  }
+
+  @Test
+  func cmpRolesAndStatusSnapshotsRejectUnknownTypedRoleStages() throws {
+    let invalidRolesJSON =
+      #"{"agentID":"checker.local","latestDispatchStatus":"retryScheduled","latestPackageID":"package.runtime","projectID":"cmp.local-runtime","roleCounts":{"dispatcher":1},"roleStages":{"dispatcher":"broken_stage"},"summary":"CMP roles snapshot"}"#
+    let invalidStatusJSON =
+      #"{"agentID":"checker.local","executionStyle":"automatic","latestDispatchStatus":"retryScheduled","latestPackageID":"package.runtime","packageCount":1,"projectID":"cmp.local-runtime","readbackPriority":"gitFirst","roleCounts":{"dispatcher":1},"roleStages":{"dispatcher":"broken_stage"},"summary":"CMP status snapshot"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeTestJSON(PraxisCmpRolesPanelSnapshot.self, from: invalidRolesJSON)
+    }
+    #expect(throws: DecodingError.self) {
+      try decodeTestJSON(PraxisCmpStatusPanelSnapshot.self, from: invalidStatusJSON)
     }
   }
 

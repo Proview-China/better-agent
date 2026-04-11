@@ -329,12 +329,14 @@ public final class PraxisCmpRolesFacade: Sendable {
       projectID: roles.projectID,
       agentID: roles.agentID,
       roleCounts: Dictionary(uniqueKeysWithValues: roles.roles.map { ($0.role.rawValue, $0.assignmentCount) }),
-      roleStages: Dictionary(uniqueKeysWithValues: roles.roles.compactMap { role in
-        guard let latestStage = role.latestStage else {
-          return nil
-        }
-        return (role.role.rawValue, latestStage)
-      }),
+      roleStages: .init(
+        stages: Dictionary(uniqueKeysWithValues: roles.roles.compactMap { role in
+          guard let latestStage = role.latestStage else {
+            return nil
+          }
+          return (role.role, latestStage)
+        })
+      ),
       latestPackageID: roles.latestPackageID,
       latestDispatchStatus: roles.latestDispatchStatus
     )
@@ -486,12 +488,14 @@ public final class PraxisCmpReadbackFacade: Sendable {
       latestPackageID: status.latestPackageID,
       latestDispatchStatus: status.latestDispatchStatus,
       roleCounts: Dictionary(uniqueKeysWithValues: status.roles.map { ($0.role.rawValue, $0.assignmentCount) }),
-      roleStages: Dictionary(uniqueKeysWithValues: status.roles.compactMap { role in
-        guard let latestStage = role.latestStage else {
-          return nil
-        }
-        return (role.role.rawValue, latestStage)
-      })
+      roleStages: .init(
+        stages: Dictionary(uniqueKeysWithValues: status.roles.compactMap { role in
+          guard let latestStage = role.latestStage else {
+            return nil
+          }
+          return (role.role, latestStage)
+        })
+      )
     )
   }
 }

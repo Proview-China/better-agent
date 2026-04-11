@@ -234,7 +234,9 @@ struct PraxisRuntimeFacadesTests {
     #expect(statusReadback.executionStyle == .guided)
     #expect(statusReadback.latestDispatchStatus == .delivered)
     #expect(statusReadback.roleCounts.isEmpty == false)
+    #expect(statusReadback.roleStages[.dispatcher] == .delivered)
     #expect(checkerRolesReadback.latestDispatchStatus == .delivered)
+    #expect(checkerRolesReadback.roleStages[.dispatcher] == .delivered)
     #expect(checkerControlReadback.latestDispatchStatus == .delivered)
     #expect(!checkerControlReadback.summary.contains("CLI"))
     #expect(!checkerControlReadback.summary.contains("GUI"))
@@ -299,6 +301,8 @@ struct PraxisRuntimeFacadesTests {
     #expect(rolesReadback.latestDispatchStatus == .retryScheduled)
     #expect(controlReadback.latestDispatchStatus == .retryScheduled)
     #expect(statusReadback.latestDispatchStatus == .retryScheduled)
+    #expect(rolesReadback.roleStages[.dispatcher] == .retryScheduled)
+    #expect(statusReadback.roleStages[.dispatcher] == .retryScheduled)
   }
 
   @Test

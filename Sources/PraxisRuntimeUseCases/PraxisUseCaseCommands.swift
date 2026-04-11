@@ -932,13 +932,13 @@ public struct PraxisCmpControlSurface: Sendable, Equatable, Codable {
 public struct PraxisCmpRoleReadback: Sendable, Equatable, Codable {
   public let role: PraxisFiveAgentRole
   public let assignmentCount: Int
-  public let latestStage: String?
+  public let latestStage: PraxisCmpRoleStage?
   public let summary: String
 
   public init(
     role: PraxisFiveAgentRole,
     assignmentCount: Int,
-    latestStage: String? = nil,
+    latestStage: PraxisCmpRoleStage? = nil,
     summary: String
   ) {
     self.role = role

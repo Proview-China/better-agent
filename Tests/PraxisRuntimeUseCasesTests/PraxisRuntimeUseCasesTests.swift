@@ -795,6 +795,11 @@ struct PraxisRuntimeUseCasesTests {
     #expect(roles.projectID == "cmp.local-runtime")
     #expect(roles.agentID == "checker.local")
     #expect(roles.roles.map(\.role) == [.icma, .iterator, .checker, .dbAgent, .dispatcher])
+    #expect(roles.roles.first(where: { $0.role == .icma })?.latestStage == .ingested)
+    #expect(roles.roles.first(where: { $0.role == .iterator })?.latestStage == nil)
+    #expect(roles.roles.first(where: { $0.role == .checker })?.latestStage == nil)
+    #expect(roles.roles.first(where: { $0.role == .dbAgent })?.latestStage == .materialized)
+    #expect(roles.roles.first(where: { $0.role == .dispatcher })?.latestStage == .delivered)
     #expect(roles.latestDispatchStatus == .delivered)
     #expect(!roles.summary.contains("CLI"))
     #expect(!roles.summary.contains("GUI"))
@@ -966,8 +971,8 @@ struct PraxisRuntimeUseCasesTests {
 
     #expect(roles.latestDispatchStatus == .delivered)
     #expect(status.latestDispatchStatus == .delivered)
-    #expect(dispatcher.latestStage == PraxisCmpDispatchStatus.delivered.rawValue)
-    #expect(dispatcher.latestStage != PraxisDeliveryTruthStatus.published.rawValue)
+    #expect(dispatcher.latestStage == .delivered)
+    #expect(dispatcher.latestStage?.rawValue != PraxisDeliveryTruthStatus.published.rawValue)
   }
 
   @Test
@@ -1026,19 +1031,22 @@ struct PraxisRuntimeUseCasesTests {
       .init(projectID: "cmp.local-runtime", agentID: "checker.local")
     )
 
+    let dispatcher = try #require(roles.roles.first(where: { $0.role == .dispatcher }))
     #expect(roles.latestDispatchStatus == .retryScheduled)
     #expect(control.latestDispatchStatus == .retryScheduled)
     #expect(status.latestDispatchStatus == .retryScheduled)
+    #expect(dispatcher.latestStage == .retryScheduled)
   }
 
   @Test
-  func cmpReadbackStatusRejectsCorruptedPersistedDispatchStatusMetadata() async throws {
+  func cmpReadbackUseCasesRejectCorruptedPersistedDispatchStatusMetadata() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("praxis-runtime-usecases-corrupted-readback-dispatch-status-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: rootDirectory) }
 
     let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
     let dependencies = try makeDependencies(hostAdapters: registry)
+    let readbackRolesUseCase = PraxisReadbackCmpRolesUseCase(dependencies: dependencies)
     let readbackStatusUseCase = PraxisReadbackCmpStatusUseCase(dependencies: dependencies)
 
     _ = try await registry.cmpContextPackageStore?.save(
@@ -1062,20 +1070,35 @@ struct PraxisRuntimeUseCasesTests {
       )
     )
 
-    do {
-      _ = try await readbackStatusUseCase.execute(
-        .init(projectID: "cmp.local-runtime", agentID: "checker.local")
-      )
-      Issue.record("Expected readbackCmpStatus to reject corrupted persisted dispatch status metadata.")
-    } catch let error as PraxisError {
-      guard case let .invalidInput(message) = error else {
-        Issue.record("Expected invalidInput from readbackCmpStatus, got \(error).")
-        return
+    let operations: [(String, () async throws -> Void)] = [
+      (
+        "readbackCmpRoles",
+        {
+          _ = try await readbackRolesUseCase.execute(.init(projectID: "cmp.local-runtime", agentID: "checker.local"))
+        }
+      ),
+      (
+        "readbackCmpStatus",
+        {
+          _ = try await readbackStatusUseCase.execute(.init(projectID: "cmp.local-runtime", agentID: "checker.local"))
+        }
+      ),
+    ]
+
+    for (label, operation) in operations {
+      do {
+        try await operation()
+        Issue.record("Expected \(label) to reject corrupted persisted dispatch status metadata.")
+      } catch let error as PraxisError {
+        guard case let .invalidInput(message) = error else {
+          Issue.record("Expected invalidInput from \(label), got \(error).")
+          continue
+        }
+        #expect(message.contains("last_dispatch_status"))
+        #expect(message.contains("broken_dispatch_status"))
+      } catch {
+        Issue.record("Expected PraxisError.invalidInput from \(label), got \(error).")
       }
-      #expect(message.contains("last_dispatch_status"))
-      #expect(message.contains("broken_dispatch_status"))
-    } catch {
-      Issue.record("Expected PraxisError.invalidInput from readbackCmpStatus, got \(error).")
     }
   }
 

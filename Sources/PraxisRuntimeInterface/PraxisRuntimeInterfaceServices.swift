@@ -415,7 +415,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         title: "CMP Roles \(roles.projectID)",
         summary: roles.summary,
         projectID: roles.projectID,
-        latestDispatchStatus: roles.latestDispatchStatus
+        latestDispatchStatus: roles.latestDispatchStatus,
+        roleStages: roles.roleStages
       ),
       events: [
         .init(
@@ -509,7 +510,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         title: "CMP Status \(status.projectID)",
         summary: status.summary,
         projectID: status.projectID,
-        latestDispatchStatus: status.latestDispatchStatus
+        latestDispatchStatus: status.latestDispatchStatus,
+        roleStages: status.roleStages
       ),
       events: [
         .init(

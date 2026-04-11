@@ -150,6 +150,53 @@ public enum PraxisCmpLatestDispatchStatus: String, Sendable, Codable {
   case expired
 }
 
+/// Stable readback-only role stage exposed by CMP roles/status surfaces.
+public enum PraxisCmpRoleStage: String, Sendable, Codable {
+  case ingested
+  case candidateReady
+  case checkedReady
+  case projectionReady
+  case materialized
+  case prepared
+  case delivered
+  case acknowledged
+  case rejected
+  case retryScheduled
+  case expired
+
+  public init(dispatchStatus: PraxisCmpDispatchStatus) {
+    switch dispatchStatus {
+    case .prepared:
+      self = .prepared
+    case .delivered:
+      self = .delivered
+    case .acknowledged:
+      self = .acknowledged
+    case .rejected:
+      self = .rejected
+    case .expired:
+      self = .expired
+    }
+  }
+
+  public init(latestDispatchStatus: PraxisCmpLatestDispatchStatus) {
+    switch latestDispatchStatus {
+    case .prepared:
+      self = .prepared
+    case .delivered:
+      self = .delivered
+    case .acknowledged:
+      self = .acknowledged
+    case .rejected:
+      self = .rejected
+    case .retryScheduled:
+      self = .retryScheduled
+    case .expired:
+      self = .expired
+    }
+  }
+}
+
 public enum PraxisCmpContextPackageFidelityLabel: String, Sendable, Codable {
   case exact
   case highSignal

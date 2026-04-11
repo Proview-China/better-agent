@@ -1130,6 +1130,7 @@ struct HostRuntimeInterfaceTests {
     #expect(rolesReadbackResponse.status == .success)
     #expect(rolesReadbackResponse.snapshot?.kind == .cmpRoles)
     #expect(rolesReadbackResponse.snapshot?.title == "CMP Roles cmp.local-runtime")
+    #expect(rolesReadbackResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
     #expect(rolesReadbackResponse.events.map(\.name) == ["cmp.roles.readback"])
     #expect(controlReadbackResponse.status == .success)
     #expect(controlReadbackResponse.snapshot?.kind == .cmpControl)
@@ -1154,6 +1155,7 @@ struct HostRuntimeInterfaceTests {
     #expect(statusReadbackResponse.status == .success)
     #expect(statusReadbackResponse.snapshot?.kind == .cmpStatus)
     #expect(statusReadbackResponse.snapshot?.title == "CMP Status cmp.local-runtime")
+    #expect(statusReadbackResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
     #expect(statusReadbackResponse.events.map(\.name) == ["cmp.status.readback"])
     #expect(bootstrapResponse.status == .success)
     #expect(bootstrapResponse.snapshot?.kind == .cmpBootstrap)
@@ -1190,10 +1192,12 @@ struct HostRuntimeInterfaceTests {
     #expect(dispatchResponse.events.first?.intentID != nil)
     #expect(checkerRolesAfterDispatchResponse.snapshot?.kind == .cmpRoles)
     #expect(checkerRolesAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
+    #expect(checkerRolesAfterDispatchResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
     #expect(checkerControlAfterDispatchResponse.snapshot?.kind == .cmpControl)
     #expect(checkerControlAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.kind == .cmpStatus)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
+    #expect(checkerStatusAfterDispatchResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
     #expect(historyResponse.status == .success)
     #expect(historyResponse.snapshot?.kind == .cmpFlow)
     #expect(historyResponse.snapshot?.title == "CMP History cmp.local-runtime")
@@ -1330,12 +1334,14 @@ struct HostRuntimeInterfaceTests {
     #expect(rolesResponse.status == .success)
     #expect(rolesResponse.snapshot?.kind == .cmpRoles)
     #expect(rolesResponse.snapshot?.latestDispatchStatus == .retryScheduled)
+    #expect(rolesResponse.snapshot?.roleStages?[.dispatcher] == .retryScheduled)
     #expect(controlResponse.status == .success)
     #expect(controlResponse.snapshot?.kind == .cmpControl)
     #expect(controlResponse.snapshot?.latestDispatchStatus == .retryScheduled)
     #expect(statusResponse.status == .success)
     #expect(statusResponse.snapshot?.kind == .cmpStatus)
     #expect(statusResponse.snapshot?.latestDispatchStatus == .retryScheduled)
+    #expect(statusResponse.snapshot?.roleStages?[.dispatcher] == .retryScheduled)
   }
 
   @Test
@@ -2795,7 +2801,16 @@ struct HostRuntimeInterfaceTests {
     )
     let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
 
-    let response = await runtimeInterface.handle(
+    let rolesResponse = await runtimeInterface.handle(
+      .readbackCmpRoles(
+        .init(
+          payloadSummary: "Read corrupted CMP roles",
+          projectID: "cmp.local-runtime",
+          agentID: "checker.local"
+        )
+      )
+    )
+    let statusResponse = await runtimeInterface.handle(
       .readbackCmpStatus(
         .init(
           payloadSummary: "Read corrupted CMP status",
@@ -2805,12 +2820,14 @@ struct HostRuntimeInterfaceTests {
       )
     )
 
-    #expect(response.status == .failure)
-    #expect(response.snapshot == nil)
-    #expect(response.events.isEmpty)
-    #expect(response.error?.code == .invalidInput)
-    #expect(response.error?.message.contains("last_dispatch_status") == true)
-    #expect(response.error?.message.contains("broken_dispatch_status") == true)
+    for response in [rolesResponse, statusResponse] {
+      #expect(response.status == .failure)
+      #expect(response.snapshot == nil)
+      #expect(response.events.isEmpty)
+      #expect(response.error?.code == .invalidInput)
+      #expect(response.error?.message.contains("last_dispatch_status") == true)
+      #expect(response.error?.message.contains("broken_dispatch_status") == true)
+    }
   }
 
   @Test
@@ -3032,7 +3049,8 @@ struct HostRuntimeInterfaceTests {
         packageKind: .runtimeFill,
         targetKind: .peer,
         dispatchStatus: .delivered,
-        latestDispatchStatus: .retryScheduled
+        latestDispatchStatus: .retryScheduled,
+        roleStages: .init(stages: [.dispatcher: .retryScheduled])
       )
     )
 
@@ -3046,7 +3064,19 @@ struct HostRuntimeInterfaceTests {
     #expect(responseJSON.contains(#""targetKind":"peer""#))
     #expect(responseJSON.contains(#""dispatchStatus":"delivered""#))
     #expect(responseJSON.contains(#""latestDispatchStatus":"retryScheduled""#))
+    #expect(responseJSON.contains(#""roleStages":{"dispatcher":"retryScheduled"}"#))
     #expect(decodedResponse == response)
+  }
+
+  @Test
+  func runtimeInterfaceCodecRejectsUnknownTypedCmpRoleStageFields() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let responseJSON =
+      #"{"error":null,"events":[],"snapshot":{"kind":"cmpRoles","projectID":"cmp.local-runtime","roleStages":{"dispatcher":"broken_stage"},"summary":"Typed CMP roles snapshot","title":"CMP Roles cmp.local-runtime"},"status":"success"}"#
+
+    #expect(throws: DecodingError.self) {
+      _ = try codec.decodeResponse(Data(responseJSON.utf8))
+    }
   }
 
   @Test

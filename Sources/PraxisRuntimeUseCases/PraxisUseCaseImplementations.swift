@@ -3019,21 +3019,6 @@ private struct PraxisCmpReadbackScope {
   let latestDispatchRecord: PraxisDeliveryTruthRecord?
 }
 
-private func cmpDispatchStatus(from deliveryTruthStatus: PraxisDeliveryTruthStatus) -> PraxisCmpDispatchStatus {
-  switch deliveryTruthStatus {
-  case .pending:
-    return .prepared
-  case .published:
-    return .delivered
-  case .acknowledged:
-    return .acknowledged
-  case .retryScheduled:
-    return .rejected
-  case .expired:
-    return .expired
-  }
-}
-
 private func cmpLatestDispatchStatus(from deliveryTruthStatus: PraxisDeliveryTruthStatus) -> PraxisCmpLatestDispatchStatus {
   switch deliveryTruthStatus {
   case .pending:
@@ -3099,15 +3084,25 @@ private func cmpPersistedDispatchUpdatedAt(
 }
 
 private func cmpLatestDispatchStatus(from scope: PraxisCmpReadbackScope) throws -> PraxisCmpLatestDispatchStatus? {
+  try cmpLatestDispatchStatus(
+    latestPackage: scope.latestPackage,
+    latestDispatchRecord: scope.latestDispatchRecord
+  )
+}
+
+private func cmpLatestDispatchStatus(
+  latestPackage: PraxisCmpContextPackageDescriptor?,
+  latestDispatchRecord: PraxisDeliveryTruthRecord?
+) throws -> PraxisCmpLatestDispatchStatus? {
   let packageStatus: (status: PraxisCmpLatestDispatchStatus, updatedAt: String)?
-  if let latestPackage = scope.latestPackage,
+  if let latestPackage,
      let status = try cmpPersistedLatestDispatchStatus(from: latestPackage, operation: "readback"),
      let updatedAt = try cmpPersistedDispatchUpdatedAt(from: latestPackage, operation: "readback") {
     packageStatus = (status, updatedAt)
   } else {
     packageStatus = nil
   }
-  let deliveryTruthStatus = scope.latestDispatchRecord.map { record in
+  let deliveryTruthStatus = latestDispatchRecord.map { record in
     (status: cmpLatestDispatchStatus(from: record.status), updatedAt: record.updatedAt)
   }
   switch (packageStatus, deliveryTruthStatus) {
@@ -3125,30 +3120,31 @@ private func cmpLatestDispatchStatus(from scope: PraxisCmpReadbackScope) throws 
 private func cmpDispatcherLatestStage(
   latestPackage: PraxisCmpContextPackageDescriptor?,
   latestDispatchRecord: PraxisDeliveryTruthRecord?
-) throws -> String? {
-  let packageStatus: (status: PraxisCmpDispatchStatus, updatedAt: String)?
-  if let latestPackage,
-     let status = try cmpPersistedDispatchStatus(from: latestPackage, operation: "readback"),
-     let updatedAt = try cmpPersistedDispatchUpdatedAt(from: latestPackage, operation: "readback") {
-    packageStatus = (status, updatedAt)
-  } else {
-    packageStatus = nil
+) throws -> PraxisCmpRoleStage? {
+  if let latestDispatchStatus = try cmpLatestDispatchStatus(
+    latestPackage: latestPackage,
+    latestDispatchRecord: latestDispatchRecord
+  ) {
+    return cmpRoleStage(from: latestDispatchStatus)
   }
-  let deliveryTruthStatus = latestDispatchRecord.map { record in
-    (status: cmpDispatchStatus(from: record.status), updatedAt: record.updatedAt)
+  return latestPackage == nil ? nil : .prepared
+}
+
+private func cmpRoleStage(from latestDispatchStatus: PraxisCmpLatestDispatchStatus) -> PraxisCmpRoleStage {
+  switch latestDispatchStatus {
+  case .prepared:
+    .prepared
+  case .delivered:
+    .delivered
+  case .acknowledged:
+    .acknowledged
+  case .rejected:
+    .rejected
+  case .expired:
+    .expired
+  case .retryScheduled:
+    .retryScheduled
   }
-  let latestStage: PraxisCmpDispatchStatus?
-  switch (packageStatus, deliveryTruthStatus) {
-  case let ((packageStatus, packageUpdatedAt)?, (deliveryStatus, deliveryUpdatedAt)?):
-    latestStage = packageUpdatedAt >= deliveryUpdatedAt ? packageStatus : deliveryStatus
-  case let ((packageStatus, _)? , nil):
-    latestStage = packageStatus
-  case let (nil, (deliveryStatus, _)?):
-    latestStage = deliveryStatus
-  case (nil, nil):
-    latestStage = nil
-  }
-  return latestStage?.rawValue ?? (latestPackage == nil ? nil : "prepared")
 }
 
 private func cmpReadbackScope(
@@ -3225,20 +3221,20 @@ private func cmpReadbackRoles(
 
   return try protocolDefinition.roles.map { roleDefinition in
     let assignmentCount: Int
-    let latestStage: String?
+    let latestStage: PraxisCmpRoleStage?
     switch roleDefinition.role {
     case .icma:
       assignmentCount = projectionDescriptors.isEmpty && packageDescriptors.isEmpty ? 0 : 1
-      latestStage = assignmentCount == 0 ? nil : "ingested"
+      latestStage = assignmentCount == 0 ? nil : .ingested
     case .iterator:
       assignmentCount = projectionDescriptors.isEmpty ? 0 : 1
-      latestStage = assignmentCount == 0 ? nil : "candidateReady"
+      latestStage = assignmentCount == 0 ? nil : .candidateReady
     case .checker:
       assignmentCount = projectionDescriptors.isEmpty ? 0 : 1
-      latestStage = assignmentCount == 0 ? nil : "checkedReady"
+      latestStage = assignmentCount == 0 ? nil : .checkedReady
     case .dbAgent:
       assignmentCount = projectionDescriptors.isEmpty && packageDescriptors.isEmpty ? 0 : 1
-      latestStage = packageDescriptors.isEmpty ? (projectionDescriptors.isEmpty ? nil : "projectionReady") : "materialized"
+      latestStage = packageDescriptors.isEmpty ? (projectionDescriptors.isEmpty ? nil : .projectionReady) : .materialized
     case .dispatcher:
       assignmentCount = packageDescriptors.isEmpty && deliveryTruthRecords.isEmpty ? 0 : 1
       latestStage = try cmpDispatcherLatestStage(

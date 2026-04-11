@@ -1,4 +1,5 @@
 import PraxisCmpDelivery
+import PraxisCmpFiveAgent
 import PraxisCmpTypes
 import PraxisRun
 import PraxisSession
@@ -481,12 +482,82 @@ public struct PraxisCmpFlowHistorySnapshot: Sendable, Equatable, Codable {
   }
 }
 
+public struct PraxisCmpRoleStageMap: Sendable, Equatable, Codable {
+  public let stages: [PraxisFiveAgentRole: PraxisCmpRoleStage]
+
+  public init(stages: [PraxisFiveAgentRole: PraxisCmpRoleStage]) {
+    self.stages = stages
+  }
+
+  public subscript(_ role: PraxisFiveAgentRole) -> PraxisCmpRoleStage? {
+    stages[role]
+  }
+
+  public var isEmpty: Bool {
+    stages.isEmpty
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+    var stages: [PraxisFiveAgentRole: PraxisCmpRoleStage] = [:]
+
+    for key in container.allKeys {
+      guard let role = PraxisFiveAgentRole(rawValue: key.stringValue) else {
+        throw DecodingError.dataCorruptedError(
+          forKey: key,
+          in: container,
+          debugDescription: "Invalid CMP role key \(key.stringValue)."
+        )
+      }
+
+      let rawStage = try container.decode(String.self, forKey: key)
+      guard let stage = PraxisCmpRoleStage(rawValue: rawStage) else {
+        throw DecodingError.dataCorruptedError(
+          forKey: key,
+          in: container,
+          debugDescription: "Invalid CMP role stage \(rawStage) for role \(role.rawValue)."
+        )
+      }
+
+      stages[role] = stage
+    }
+
+    self.init(stages: stages)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: DynamicCodingKey.self)
+    for role in stages.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+      let key = DynamicCodingKey(stringValue: role.rawValue)!
+      try container.encode(
+        stages[role]?.rawValue,
+        forKey: key
+      )
+    }
+  }
+
+  private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+      self.stringValue = stringValue
+      self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+      self.stringValue = String(intValue)
+      self.intValue = intValue
+    }
+  }
+}
+
 public struct PraxisCmpRolesPanelSnapshot: Sendable, Equatable, Codable {
   public let summary: String
   public let projectID: String
   public let agentID: String?
   public let roleCounts: [String: Int]
-  public let roleStages: [String: String]
+  public let roleStages: PraxisCmpRoleStageMap
   public let latestPackageID: String?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
 
@@ -495,7 +566,7 @@ public struct PraxisCmpRolesPanelSnapshot: Sendable, Equatable, Codable {
     projectID: String,
     agentID: String? = nil,
     roleCounts: [String: Int],
-    roleStages: [String: String],
+    roleStages: PraxisCmpRoleStageMap,
     latestPackageID: String? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil
   ) {
@@ -694,7 +765,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
   public let latestPackageID: String?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let roleCounts: [String: Int]
-  public let roleStages: [String: String]
+  public let roleStages: PraxisCmpRoleStageMap
 
   public init(
     summary: String,
@@ -706,7 +777,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
     latestPackageID: String? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     roleCounts: [String: Int],
-    roleStages: [String: String]
+    roleStages: PraxisCmpRoleStageMap
   ) {
     self.summary = summary
     self.projectID = projectID
