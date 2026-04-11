@@ -1,7 +1,28 @@
-public enum PraxisAppleRoute: String, Sendable, Codable {
+public enum PraxisAppleRoute: String, Sendable, Codable, CaseIterable, Identifiable {
   case architecture
-  case runs
-  case sessions
+  case tap
+  case cmp
+  case mp
+  case capabilityCatalog
+
+  public var id: String {
+    rawValue
+  }
+
+  public var title: String {
+    switch self {
+    case .architecture:
+      return "Architecture"
+    case .tap:
+      return "TAP"
+    case .cmp:
+      return "CMP"
+    case .mp:
+      return "MP"
+    case .capabilityCatalog:
+      return "Capability Catalog"
+    }
+  }
 }
 
 public struct PraxisRunDashboardViewState: Sendable, Equatable {

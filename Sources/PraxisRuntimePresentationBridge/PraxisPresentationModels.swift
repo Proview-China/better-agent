@@ -7,6 +7,7 @@ public enum PraxisPresentationIntent: String, Sendable, Codable {
   case inspectTap
   case inspectCmp
   case inspectMp
+  case buildCapabilityCatalog
 }
 
 public struct PraxisPresentationCommand: Sendable, Equatable, Codable {

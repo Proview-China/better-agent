@@ -87,6 +87,7 @@ sqliteSystemLibraryTarget = .systemLibrary(
 
 let appleProducts: [Product]
 let appleTargets: [Target]
+let hostRuntimeArchitectureTestsTarget: Target
 
 #if os(macOS)
 appleProducts = [
@@ -102,9 +103,32 @@ appleTargets = [
     path: "Sources/PraxisAppleUI",
   ),
 ]
+hostRuntimeArchitectureTestsTarget = .testTarget(
+  name: "PraxisHostRuntimeArchitectureTests",
+  dependencies: [
+    "PraxisRuntimeComposition",
+    "PraxisRuntimeUseCases",
+    "PraxisRuntimeFacades",
+    "PraxisRuntimeInterface",
+    "PraxisRuntimePresentationBridge",
+    "PraxisAppleUI",
+  ],
+  path: "Tests/PraxisHostRuntimeArchitectureTests",
+)
 #else
 appleProducts = []
 appleTargets = []
+hostRuntimeArchitectureTestsTarget = .testTarget(
+  name: "PraxisHostRuntimeArchitectureTests",
+  dependencies: [
+    "PraxisRuntimeComposition",
+    "PraxisRuntimeUseCases",
+    "PraxisRuntimeFacades",
+    "PraxisRuntimeInterface",
+    "PraxisRuntimePresentationBridge",
+  ],
+  path: "Tests/PraxisHostRuntimeArchitectureTests",
+)
 #endif
 
 let package = Package(
@@ -709,6 +733,54 @@ let package = Package(
       path: "Tests/PraxisTapArchitectureTests",
     ),
     .testTarget(
+      name: "PraxisTapGovernanceTests",
+      dependencies: [
+        "PraxisTapGovernance",
+        "PraxisTapTypes",
+      ],
+      path: "Tests/PraxisTapGovernanceTests",
+    ),
+    .testTarget(
+      name: "PraxisTapReviewTests",
+      dependencies: [
+        "PraxisTapReview",
+        "PraxisTapGovernance",
+        "PraxisTapTypes",
+        "PraxisCapabilityContracts",
+      ],
+      path: "Tests/PraxisTapReviewTests",
+    ),
+    .testTarget(
+      name: "PraxisTapProvisionTests",
+      dependencies: [
+        "PraxisTapProvision",
+        "PraxisTapTypes",
+        "PraxisCapabilityContracts",
+      ],
+      path: "Tests/PraxisTapProvisionTests",
+    ),
+    .testTarget(
+      name: "PraxisTapRuntimeTests",
+      dependencies: [
+        "PraxisTapRuntime",
+        "PraxisTapGovernance",
+        "PraxisTapProvision",
+        "PraxisTapTypes",
+        "PraxisSession",
+      ],
+      path: "Tests/PraxisTapRuntimeTests",
+    ),
+    .testTarget(
+      name: "PraxisTapAvailabilityTests",
+      dependencies: [
+        "PraxisTapAvailability",
+        "PraxisTapGovernance",
+        "PraxisTapTypes",
+        "PraxisCapabilityContracts",
+      ],
+      path: "Tests/PraxisTapAvailabilityTests",
+    ),
+    .testTarget(
       name: "PraxisCmpTypesTests",
       dependencies: [
         "PraxisCmpTypes",
@@ -845,17 +917,7 @@ let package = Package(
       ],
       path: "Tests/PraxisHostContractsArchitectureTests",
     ),
-    .testTarget(
-      name: "PraxisHostRuntimeArchitectureTests",
-      dependencies: [
-        "PraxisRuntimeComposition",
-        "PraxisRuntimeUseCases",
-        "PraxisRuntimeFacades",
-        "PraxisRuntimeInterface",
-        "PraxisRuntimePresentationBridge",
-      ],
-      path: "Tests/PraxisHostRuntimeArchitectureTests",
-    ),
+    hostRuntimeArchitectureTestsTarget,
     .testTarget(
       name: "PraxisCLITests",
       dependencies: [
