@@ -29,8 +29,9 @@
 - 已补的验证覆盖：
   - control update/readback/status 正向通路改为 typed assertions
   - runtime interface request encode/decode roundtrip 覆盖 `fallbackPolicy` / `recoveryPreference`
-  - 非法 enum case 经 runtime interface codec 返回 `invalid_input`
-  - persisted corrupted descriptor 不会被归一化成 baseline，而是显式失败
+  - runtime interface codec 对五个 control enum 字段的非法 raw value 都会返回 `invalid_input`
+  - FFI encoded request 入口会把非法 control enum 稳定包成结构化 `invalid_input` failure response
+  - persisted corrupted descriptor 不会被归一化成 baseline，而是显式失败，当前覆盖 `executionStyle` / `mode` / `fallbackPolicy`
 - 本地最终验收：
   - `swift test`
   - 结果：`228 tests / 52 suites` 通过
@@ -40,7 +41,7 @@
 ## 残余限制
 
 - `PraxisCmpStatusPanelSnapshot` 仍然只暴露 status 需要的 control 子集，没有把 `fallbackPolicy` / `recoveryPreference` 再展开成新的状态面板字段；这次没有扩 DTO 形状。
-- 非法 enum case 的 codec 测试目前重点覆盖了 `readbackPriority`、`fallbackPolicy`、`recoveryPreference`。`executionStyle` 和 `mode` 走的是同一条 `Codable` 失败路径，但若后续想把守卫做成完全对称，可以补参数化 case。
+- FFI bridge 的结构化失败断言目前只用 `executionStyle` 非法值举例；`mode` 在 codec 层已补到，但在 encoded request 全链路上没有再重复一遍。
 - persisted control 损坏现在统一视为结构化失败；如果未来要支持“带损坏标记的只读展示”而不是失败，需要单独设计新的 neutral snapshot，而不是回退成 baseline。
 
 ## 下一包入口

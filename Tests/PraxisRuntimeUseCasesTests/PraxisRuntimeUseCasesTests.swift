@@ -864,54 +864,68 @@ struct PraxisRuntimeUseCasesTests {
     let readbackControlUseCase = PraxisReadbackCmpControlUseCase(dependencies: dependencies)
     let updateControlUseCase = PraxisUpdateCmpControlUseCase(dependencies: dependencies)
 
-    _ = try await registry.cmpControlStore?.save(
-      PraxisCmpControlDescriptor(
-        projectID: "cmp.local-runtime",
-        agentID: "checker.local",
-        executionStyle: PraxisCmpExecutionStyle.manual.rawValue,
-        mode: PraxisCmpControlMode.peerReview.rawValue,
-        readbackPriority: PraxisCmpReadbackPriority.packageFirst.rawValue,
-        fallbackPolicy: "registry_only_but_corrupted",
-        recoveryPreference: PraxisCmpRecoveryPreference.resumeLatest.rawValue,
-        automation: ["autoDispatch": false],
-        updatedAt: "2026-04-12T00:00:00Z"
-      )
-    )
+    let corruptedFields = [
+      ("executionStyle", "not_a_real_execution_style"),
+      ("mode", "not_a_real_mode"),
+      ("fallbackPolicy", "registry_only_but_corrupted"),
+    ]
 
-    do {
-      _ = try await readbackControlUseCase.execute(
-        PraxisReadbackCmpControlCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
-      )
-      Issue.record("Expected readbackCmpControl to reject corrupted persisted control descriptors.")
-    } catch let error as PraxisError {
-      guard case let .invalidInput(message) = error else {
-        Issue.record("Expected invalidInput from readbackCmpControl, got \(error).")
-        return
-      }
-      #expect(message.contains("fallbackPolicy"))
-      #expect(message.contains("registry_only_but_corrupted"))
-    } catch {
-      Issue.record("Expected PraxisError.invalidInput from readbackCmpControl, got \(error).")
-    }
-
-    do {
-      _ = try await updateControlUseCase.execute(
-        PraxisUpdateCmpControlCommand(
+    for corruptedField in corruptedFields {
+      _ = try await registry.cmpControlStore?.save(
+        PraxisCmpControlDescriptor(
           projectID: "cmp.local-runtime",
           agentID: "checker.local",
-          automation: ["autoDispatch": true]
+          executionStyle: corruptedField.0 == "executionStyle"
+            ? corruptedField.1
+            : PraxisCmpExecutionStyle.manual.rawValue,
+          mode: corruptedField.0 == "mode"
+            ? corruptedField.1
+            : PraxisCmpControlMode.peerReview.rawValue,
+          readbackPriority: PraxisCmpReadbackPriority.packageFirst.rawValue,
+          fallbackPolicy: corruptedField.0 == "fallbackPolicy"
+            ? corruptedField.1
+            : PraxisCmpFallbackPolicy.registryOnly.rawValue,
+          recoveryPreference: PraxisCmpRecoveryPreference.resumeLatest.rawValue,
+          automation: ["autoDispatch": false],
+          updatedAt: "2026-04-12T00:00:00Z"
         )
       )
-      Issue.record("Expected updateCmpControl to reject corrupted persisted control descriptors.")
-    } catch let error as PraxisError {
-      guard case let .invalidInput(message) = error else {
-        Issue.record("Expected invalidInput from updateCmpControl, got \(error).")
-        return
+
+      do {
+        _ = try await readbackControlUseCase.execute(
+          PraxisReadbackCmpControlCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+        )
+        Issue.record("Expected readbackCmpControl to reject corrupted persisted control descriptors.")
+      } catch let error as PraxisError {
+        guard case let .invalidInput(message) = error else {
+          Issue.record("Expected invalidInput from readbackCmpControl, got \(error).")
+          return
+        }
+        #expect(message.contains(corruptedField.0))
+        #expect(message.contains(corruptedField.1))
+      } catch {
+        Issue.record("Expected PraxisError.invalidInput from readbackCmpControl, got \(error).")
       }
-      #expect(message.contains("fallbackPolicy"))
-      #expect(message.contains("registry_only_but_corrupted"))
-    } catch {
-      Issue.record("Expected PraxisError.invalidInput from updateCmpControl, got \(error).")
+
+      do {
+        _ = try await updateControlUseCase.execute(
+          PraxisUpdateCmpControlCommand(
+            projectID: "cmp.local-runtime",
+            agentID: "checker.local",
+            automation: ["autoDispatch": true]
+          )
+        )
+        Issue.record("Expected updateCmpControl to reject corrupted persisted control descriptors.")
+      } catch let error as PraxisError {
+        guard case let .invalidInput(message) = error else {
+          Issue.record("Expected invalidInput from updateCmpControl, got \(error).")
+          return
+        }
+        #expect(message.contains(corruptedField.0))
+        #expect(message.contains(corruptedField.1))
+      } catch {
+        Issue.record("Expected PraxisError.invalidInput from updateCmpControl, got \(error).")
+      }
     }
   }
 

@@ -732,6 +732,19 @@ struct HostRuntimeSurfaceTests {
     #expect(invalidResponse.error?.code == .invalidInput)
     #expect(invalidResponse.error?.message.contains("Failed to decode runtime interface request payload") == true)
 
+    let invalidEnumResponseData = try await ffiBridge.handleEncodedRequest(
+      Data(
+        #"{"kind":"updateCmpControl","updateCmpControl":{"payloadSummary":"Invalid control update","projectID":"cmp.local-runtime","agentID":"checker.local","executionStyle":"not_a_real_execution_style","mode":"peer_review","automation":{"autoDispatch":false}}}"#
+          .utf8
+      ),
+      on: handle
+    )
+    let invalidEnumResponse = try codec.decodeResponse(invalidEnumResponseData)
+
+    #expect(invalidEnumResponse.status == .failure)
+    #expect(invalidEnumResponse.error?.code == .invalidInput)
+    #expect(invalidEnumResponse.error?.message.contains("executionStyle") == true)
+
     #expect(await ffiBridge.closeRuntimeSession(handle))
 
     let closedResponseData = try await ffiBridge.handleEncodedRequest(

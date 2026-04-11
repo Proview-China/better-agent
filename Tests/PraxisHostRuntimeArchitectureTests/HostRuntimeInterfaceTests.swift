@@ -3004,6 +3004,16 @@ struct HostRuntimeInterfaceTests {
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let invalidPayloads = [
       (
+        fieldName: "executionStyle",
+        json:
+          #"{"kind":"updateCmpControl","updateCmpControl":{"payloadSummary":"Invalid control update","projectID":"cmp.local-runtime","agentID":"checker.local","executionStyle":"not_a_real_execution_style","mode":"peer_review","automation":{"autoDispatch":false}}}"#
+      ),
+      (
+        fieldName: "mode",
+        json:
+          #"{"kind":"updateCmpControl","updateCmpControl":{"payloadSummary":"Invalid control update","projectID":"cmp.local-runtime","agentID":"checker.local","executionStyle":"manual","mode":"not_a_real_mode","automation":{"autoDispatch":false}}}"#
+      ),
+      (
         fieldName: "readbackPriority",
         json:
           #"{"kind":"updateCmpControl","updateCmpControl":{"payloadSummary":"Invalid control update","projectID":"cmp.local-runtime","agentID":"checker.local","executionStyle":"manual","mode":"peer_review","readbackPriority":"not_a_real_priority","automation":{"autoDispatch":false}}}"#
