@@ -854,9 +854,9 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
 
 public struct PraxisCmpProjectSmokeSnapshot: Sendable, Equatable, Codable {
   public let projectID: String
-  public let smokeResult: PraxisRuntimeSmokeResult
+  public let smokeResult: PraxisCmpProjectSmokeResult
 
-  public init(projectID: String, smokeResult: PraxisRuntimeSmokeResult) {
+  public init(projectID: String, smokeResult: PraxisCmpProjectSmokeResult) {
     self.projectID = projectID
     self.smokeResult = smokeResult
   }

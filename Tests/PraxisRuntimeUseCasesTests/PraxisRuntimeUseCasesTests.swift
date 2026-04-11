@@ -694,14 +694,53 @@ struct PraxisRuntimeUseCasesTests {
     #expect(bootstrap.lineages.count == 2)
     #expect(readback.projectID == "cmp.local-runtime")
     let gitExecutorStatus = try #require(readback.componentStatuses[.gitExecutor])
-    let gitSmokeCheck = try #require(smoke.checks.first { $0.gate == "git" })
+    let gitSmokeCheck = try #require(smoke.checks.first { $0.gate == .git })
     #expect(readback.hostProfile.messageTransport == .inProcessActorBus)
     #expect(readback.componentStatuses[.structuredStore] == .ready)
     #expect(gitExecutorStatus != .missing)
     #expect(readback.persistenceSummary.contains("Checkpoint and journal persistence"))
     #expect(smoke.projectID == "cmp.local-runtime")
     #expect(smoke.checks.count == 5)
-    #expect(gitSmokeCheck.status == gitExecutorStatus.rawValue)
+    #expect(gitSmokeCheck.status == gitExecutorStatus)
+    #expect(smoke.checks.map(\.gate).contains(.workspace))
+    #expect(smoke.checks.map(\.gate).contains(.lineage))
+  }
+
+  @Test
+  func cmpProjectSmokeRoundTripsTypedGateAndStatusAndRejectsUnknownValues() throws {
+    let smoke = PraxisCmpProjectSmoke(
+      projectID: "cmp.local-runtime",
+      summary: "CMP smoke summary",
+      checks: [
+        .init(
+          id: "cmp.project.git",
+          gate: .git,
+          status: .ready,
+          summary: "Git readiness is ready."
+        ),
+        .init(
+          id: "cmp.project.lineage",
+          gate: .lineage,
+          status: .degraded,
+          summary: "Lineage readiness is degraded."
+        ),
+      ]
+    )
+
+    let encoded = try encodeUseCaseTestJSON(smoke)
+    let decoded = try decodeUseCaseTestJSON(PraxisCmpProjectSmoke.self, from: encoded)
+
+    #expect(encoded.contains(#""gate":"git""#))
+    #expect(encoded.contains(#""status":"ready""#))
+    #expect(decoded.checks.first?.gate == .git)
+    #expect(decoded.checks.last?.status == .degraded)
+
+    let invalidGateJSON =
+      #"{"checks":[{"gate":"broken_gate","id":"cmp.project.git","status":"ready","summary":"Git readiness is ready."}],"projectID":"cmp.local-runtime","summary":"CMP smoke summary"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeUseCaseTestJSON(PraxisCmpProjectSmoke.self, from: invalidGateJSON)
+    }
   }
 
   @Test

@@ -515,6 +515,18 @@ struct HostRuntimeSurfaceTests {
     #expect(readback.persistenceSummary.contains("Checkpoint and journal persistence"))
     #expect(smoke.projectID == "cmp.local-runtime")
     #expect(smoke.smokeResult.checks.count == 5)
+    let gitSmokeStatus = try #require(smoke.smokeResult.checks.first { $0.gate == .git }?.status)
+    let expectedGitSmokeStatus: PraxisTruthLayerStatus
+    switch readback.projectSummary.componentStatuses[.gitExecutor] {
+    case .ready:
+      expectedGitSmokeStatus = .ready
+    case .degraded:
+      expectedGitSmokeStatus = .degraded
+    case .missing, nil:
+      expectedGitSmokeStatus = .failed
+    }
+    #expect(gitSmokeStatus == expectedGitSmokeStatus)
+    #expect(smoke.smokeResult.checks.map(\.gate).contains(.workspace))
 
     let runtimeLineage = try await hostAdapters.lineageStore?.describe(
       .init(lineageID: .init(rawValue: "lineage.cmp.local-runtime.runtime.local"))

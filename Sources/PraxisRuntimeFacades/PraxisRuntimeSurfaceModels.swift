@@ -73,3 +73,32 @@ public struct PraxisRuntimeSmokeResult: Sendable, Equatable, Codable {
     self.checks = checks
   }
 }
+
+public struct PraxisCmpProjectSmokeCheck: Sendable, Equatable, Codable, Identifiable {
+  public let id: String
+  public let gate: PraxisCmpSmokeGate
+  public let status: PraxisTruthLayerStatus
+  public let summary: String
+
+  public init(
+    id: String,
+    gate: PraxisCmpSmokeGate,
+    status: PraxisTruthLayerStatus,
+    summary: String
+  ) {
+    self.id = id
+    self.gate = gate
+    self.status = status
+    self.summary = summary
+  }
+}
+
+public struct PraxisCmpProjectSmokeResult: Sendable, Equatable, Codable {
+  public let summary: String
+  public let checks: [PraxisCmpProjectSmokeCheck]
+
+  public init(summary: String, checks: [PraxisCmpProjectSmokeCheck]) {
+    self.summary = summary
+    self.checks = checks
+  }
+}

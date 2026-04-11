@@ -712,6 +712,50 @@ struct PraxisRuntimeFacadesTests {
   }
 
   @Test
+  func cmpProjectSmokeSnapshotRoundTripsTypedGateAndStatusAndRejectsUnknownValues() throws {
+    let snapshot = PraxisCmpProjectSmokeSnapshot(
+      projectID: "cmp.local-runtime",
+      smokeResult: .init(
+        summary: "CMP smoke summary",
+        checks: [
+          .init(
+            id: "cmp.project.workspace",
+            gate: .workspace,
+            status: .ready,
+            summary: "Workspace readiness is ready."
+          ),
+          .init(
+            id: "cmp.project.lineage",
+            gate: .lineage,
+            status: .degraded,
+            summary: "Lineage readiness is degraded."
+          ),
+        ]
+      )
+    )
+
+    let encoded = try encodeFacadeTestJSON(snapshot)
+    let decoded = try decodeFacadeTestJSON(PraxisCmpProjectSmokeSnapshot.self, from: encoded)
+
+    #expect(encoded.contains(#""gate":"workspace""#))
+    #expect(encoded.contains(#""status":"ready""#))
+    #expect(decoded.smokeResult.checks.first?.gate == .workspace)
+    #expect(decoded.smokeResult.checks.last?.status == .degraded)
+
+    let invalidGateJSON =
+      #"{"projectID":"cmp.local-runtime","smokeResult":{"checks":[{"gate":"broken_gate","id":"cmp.project.workspace","status":"ready","summary":"Workspace readiness is ready."}],"summary":"CMP smoke summary"}}"#
+    let invalidStatusJSON =
+      #"{"projectID":"cmp.local-runtime","smokeResult":{"checks":[{"gate":"workspace","id":"cmp.project.workspace","status":"broken_status","summary":"Workspace readiness is ready."}],"summary":"CMP smoke summary"}}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisCmpProjectSmokeSnapshot.self, from: invalidGateJSON)
+    }
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisCmpProjectSmokeSnapshot.self, from: invalidStatusJSON)
+    }
+  }
+
+  @Test
   func mpFacadeOwnsTheNeutralMpSurfaceWhileInspectionFacadeRemainsCompatible() async throws {
     let memoryStore = StubSemanticMemoryStore(
       bundleResult: .init(

@@ -189,6 +189,14 @@ public enum PraxisCmpProjectComponentStatus: String, Sendable, Codable {
   case missing
 }
 
+public enum PraxisCmpSmokeGate: String, Sendable, Codable {
+  case workspace
+  case persistence
+  case delivery
+  case git
+  case lineage
+}
+
 public struct PraxisCmpProjectComponentStatusMap: Sendable, Equatable, Codable {
   public let statuses: [PraxisCmpProjectComponent: PraxisCmpProjectComponentStatus]
 

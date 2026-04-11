@@ -25,10 +25,6 @@ private func mapCmpTruthLayerStatus(_ status: PraxisCmpProjectComponentStatus) -
   }
 }
 
-private func mapCmpTruthLayerStatus(rawValue: String) -> PraxisTruthLayerStatus {
-  PraxisTruthLayerStatus(rawValue: rawValue) ?? .failed
-}
-
 /// Hosts the neutral CMP session surface exposed to runtime callers.
 public final class PraxisCmpSessionFacade: Sendable {
   public let openCmpSessionUseCase: any PraxisOpenCmpSessionUseCaseProtocol
@@ -163,7 +159,7 @@ public final class PraxisCmpProjectFacade: Sendable {
           .init(
             id: check.id,
             gate: check.gate,
-            status: mapCmpTruthLayerStatus(rawValue: check.status),
+            status: mapCmpTruthLayerStatus(check.status),
             summary: check.summary
           )
         }

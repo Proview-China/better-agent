@@ -1347,6 +1347,25 @@ public struct PraxisRuntimeSmokeCheckRecord: Sendable, Equatable, Codable, Ident
   }
 }
 
+public struct PraxisCmpSmokeCheckRecord: Sendable, Equatable, Codable, Identifiable {
+  public let id: String
+  public let gate: PraxisCmpSmokeGate
+  public let status: PraxisCmpProjectComponentStatus
+  public let summary: String
+
+  public init(
+    id: String,
+    gate: PraxisCmpSmokeGate,
+    status: PraxisCmpProjectComponentStatus,
+    summary: String
+  ) {
+    self.id = id
+    self.gate = gate
+    self.status = status
+    self.summary = summary
+  }
+}
+
 public struct PraxisSmokeCmpProjectCommand: Sendable, Equatable, Codable {
   public let projectID: String
 
@@ -1358,12 +1377,12 @@ public struct PraxisSmokeCmpProjectCommand: Sendable, Equatable, Codable {
 public struct PraxisCmpProjectSmoke: Sendable, Equatable, Codable {
   public let projectID: String
   public let summary: String
-  public let checks: [PraxisRuntimeSmokeCheckRecord]
+  public let checks: [PraxisCmpSmokeCheckRecord]
 
   public init(
     projectID: String,
     summary: String,
-    checks: [PraxisRuntimeSmokeCheckRecord]
+    checks: [PraxisCmpSmokeCheckRecord]
   ) {
     self.projectID = projectID
     self.summary = summary

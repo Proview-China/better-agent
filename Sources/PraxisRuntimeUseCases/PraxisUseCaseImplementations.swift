@@ -4642,32 +4642,32 @@ public final class PraxisSmokeCmpProjectUseCase: PraxisSmokeCmpProjectUseCasePro
       checks: [
         .init(
           id: "cmp.project.workspace",
-          gate: "workspace",
-          status: (readback.componentStatuses[.workspace] ?? .missing).rawValue,
+          gate: .workspace,
+          status: readback.componentStatuses[.workspace] ?? .missing,
           summary: "Workspace readiness is \((readback.componentStatuses[.workspace] ?? .missing).rawValue)."
         ),
         .init(
           id: "cmp.project.persistence",
-          gate: "persistence",
-          status: (readback.componentStatuses[.structuredStore] ?? .missing).rawValue,
+          gate: .persistence,
+          status: readback.componentStatuses[.structuredStore] ?? .missing,
           summary: readback.persistenceSummary
         ),
         .init(
           id: "cmp.project.delivery",
-          gate: "delivery",
-          status: (readback.componentStatuses[.deliveryTruth] ?? .missing).rawValue,
+          gate: .delivery,
+          status: readback.componentStatuses[.deliveryTruth] ?? .missing,
           summary: "Delivery coordination summary: \(readback.coordinationSummary)"
         ),
         .init(
           id: "cmp.project.git",
-          gate: "git",
-          status: (readback.componentStatuses[.gitExecutor] ?? .missing).rawValue,
+          gate: .git,
+          status: readback.componentStatuses[.gitExecutor] ?? .missing,
           summary: readback.hostSummary
         ),
         .init(
           id: "cmp.project.lineage",
-          gate: "lineage",
-          status: (readback.componentStatuses[.lineageStore] ?? .missing).rawValue,
+          gate: .lineage,
+          status: readback.componentStatuses[.lineageStore] ?? .missing,
           summary: readback.issues.first(where: { $0.contains("Lineage") }) ?? "Lineage readiness is \((readback.componentStatuses[.lineageStore] ?? .missing).rawValue)."
         ),
       ]
