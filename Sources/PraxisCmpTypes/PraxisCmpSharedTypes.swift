@@ -140,6 +140,122 @@ public enum PraxisCmpRecoveryStatus: String, Sendable, Codable {
   case degraded
 }
 
+public enum PraxisCmpProjectExecutionStyle: String, Sendable, Codable {
+  case localFirst = "local-first"
+}
+
+public enum PraxisCmpProjectStructuredStoreProfile: String, Sendable, Codable {
+  case sqlite
+  case incomplete
+}
+
+public enum PraxisCmpProjectDeliveryStoreProfile: String, Sendable, Codable {
+  case sqlite
+  case missing
+}
+
+public enum PraxisCmpProjectMessageTransportProfile: String, Sendable, Codable {
+  case inProcessActorBus = "in_process_actor_bus"
+  case missing
+}
+
+public enum PraxisCmpProjectGitAccessProfile: String, Sendable, Codable {
+  case systemGit = "system_git"
+  case degraded
+}
+
+public enum PraxisCmpProjectSemanticIndexProfile: String, Sendable, Codable {
+  case localSemanticIndex = "local_semantic_index"
+  case partial
+}
+
+public enum PraxisCmpProjectComponent: String, Sendable, Codable {
+  case workspace
+  case structuredStore
+  case packageRegistry
+  case deliveryTruth
+  case messageBus
+  case gitProbe
+  case gitExecutor
+  case lineageStore
+  case semanticIndex
+  case semanticMemory
+  case embeddingStore
+}
+
+public enum PraxisCmpProjectComponentStatus: String, Sendable, Codable {
+  case ready
+  case degraded
+  case missing
+}
+
+public struct PraxisCmpProjectComponentStatusMap: Sendable, Equatable, Codable {
+  public let statuses: [PraxisCmpProjectComponent: PraxisCmpProjectComponentStatus]
+
+  public init(statuses: [PraxisCmpProjectComponent: PraxisCmpProjectComponentStatus]) {
+    self.statuses = statuses
+  }
+
+  public subscript(_ component: PraxisCmpProjectComponent) -> PraxisCmpProjectComponentStatus? {
+    statuses[component]
+  }
+
+  public var isEmpty: Bool {
+    statuses.isEmpty
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+    var statuses: [PraxisCmpProjectComponent: PraxisCmpProjectComponentStatus] = [:]
+
+    for key in container.allKeys {
+      guard let component = PraxisCmpProjectComponent(rawValue: key.stringValue) else {
+        throw DecodingError.dataCorruptedError(
+          forKey: key,
+          in: container,
+          debugDescription: "Invalid CMP project component key \(key.stringValue)."
+        )
+      }
+
+      let rawStatus = try container.decode(String.self, forKey: key)
+      guard let status = PraxisCmpProjectComponentStatus(rawValue: rawStatus) else {
+        throw DecodingError.dataCorruptedError(
+          forKey: key,
+          in: container,
+          debugDescription: "Invalid CMP project component status \(rawStatus) for component \(component.rawValue)."
+        )
+      }
+
+      statuses[component] = status
+    }
+
+    self.init(statuses: statuses)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: DynamicCodingKey.self)
+    for component in statuses.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+      let key = DynamicCodingKey(stringValue: component.rawValue)!
+      try container.encode(statuses[component]?.rawValue, forKey: key)
+    }
+  }
+
+  private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+      self.stringValue = stringValue
+      self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+      self.stringValue = String(intValue)
+      self.intValue = intValue
+    }
+  }
+}
+
 /// Stable readback-only dispatch status exposed by CMP roles/control/status surfaces.
 public enum PraxisCmpLatestDispatchStatus: String, Sendable, Codable {
   case prepared

@@ -1,3 +1,5 @@
+import PraxisCmpTypes
+
 public enum PraxisTruthLayerStatus: String, Sendable, Codable {
   case ready
   case degraded
@@ -5,20 +7,20 @@ public enum PraxisTruthLayerStatus: String, Sendable, Codable {
 }
 
 public struct PraxisLocalRuntimeHostProfile: Sendable, Equatable, Codable {
-  public let executionStyle: String
-  public let structuredStore: String
-  public let deliveryStore: String
-  public let messageTransport: String
-  public let gitAccess: String
-  public let semanticIndex: String
+  public let executionStyle: PraxisCmpProjectExecutionStyle
+  public let structuredStore: PraxisCmpProjectStructuredStoreProfile
+  public let deliveryStore: PraxisCmpProjectDeliveryStoreProfile
+  public let messageTransport: PraxisCmpProjectMessageTransportProfile
+  public let gitAccess: PraxisCmpProjectGitAccessProfile
+  public let semanticIndex: PraxisCmpProjectSemanticIndexProfile
 
   public init(
-    executionStyle: String,
-    structuredStore: String,
-    deliveryStore: String,
-    messageTransport: String,
-    gitAccess: String,
-    semanticIndex: String
+    executionStyle: PraxisCmpProjectExecutionStyle,
+    structuredStore: PraxisCmpProjectStructuredStoreProfile,
+    deliveryStore: PraxisCmpProjectDeliveryStoreProfile,
+    messageTransport: PraxisCmpProjectMessageTransportProfile,
+    gitAccess: PraxisCmpProjectGitAccessProfile,
+    semanticIndex: PraxisCmpProjectSemanticIndexProfile
   ) {
     self.executionStyle = executionStyle
     self.structuredStore = structuredStore
@@ -32,13 +34,13 @@ public struct PraxisLocalRuntimeHostProfile: Sendable, Equatable, Codable {
 public struct PraxisCmpProjectLocalRuntimeSummary: Sendable, Equatable, Codable {
   public let projectID: String
   public let hostProfile: PraxisLocalRuntimeHostProfile
-  public let componentStatuses: [String: PraxisTruthLayerStatus]
+  public let componentStatuses: PraxisCmpProjectComponentStatusMap
   public let issues: [String]
 
   public init(
     projectID: String,
     hostProfile: PraxisLocalRuntimeHostProfile,
-    componentStatuses: [String: PraxisTruthLayerStatus],
+    componentStatuses: PraxisCmpProjectComponentStatusMap,
     issues: [String]
   ) {
     self.projectID = projectID

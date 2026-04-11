@@ -702,11 +702,26 @@ private func cmpLineageSummary(
 private func cmpComponentStatus(
   ready: Bool,
   missing: Bool = false
-) -> String {
+) -> PraxisCmpProjectComponentStatus {
   if ready {
-    return "ready"
+    return .ready
   }
-  return missing ? "missing" : "degraded"
+  return missing ? .missing : .degraded
+}
+
+private func cmpProjectComponentStatus(from rawValue: String) throws -> PraxisCmpProjectComponentStatus {
+  switch rawValue {
+  case PraxisCmpProjectComponentStatus.ready.rawValue:
+    return .ready
+  case PraxisCmpProjectComponentStatus.degraded.rawValue:
+    return .degraded
+  case PraxisCmpProjectComponentStatus.missing.rawValue:
+    return .missing
+  default:
+    throw PraxisError.invalidInput(
+      "CMP project readback received unsupported component status \(rawValue)."
+    )
+  }
 }
 
 private func cmpProjectHostProfile(
@@ -719,14 +734,14 @@ private func cmpProjectHostProfile(
   embeddingStoreAvailable: Bool
 ) -> PraxisCmpProjectHostProfile {
   PraxisCmpProjectHostProfile(
-    executionStyle: "local-first",
-    structuredStore: structuredStoreAvailable ? "sqlite" : "incomplete",
-    deliveryStore: deliveryStoreAvailable ? "sqlite" : "missing",
-    messageTransport: messageBusAvailable ? "in_process_actor_bus" : "missing",
-    gitAccess: gitAvailable ? "system_git" : "degraded",
+    executionStyle: .localFirst,
+    structuredStore: structuredStoreAvailable ? .sqlite : .incomplete,
+    deliveryStore: deliveryStoreAvailable ? .sqlite : .missing,
+    messageTransport: messageBusAvailable ? .inProcessActorBus : .missing,
+    gitAccess: gitAvailable ? .systemGit : .degraded,
     semanticIndex: semanticSearchAvailable && semanticMemoryAvailable && embeddingStoreAvailable
-      ? "local_semantic_index"
-      : "partial"
+      ? .localSemanticIndex
+      : .partial
     )
 }
 
@@ -940,28 +955,28 @@ private func buildCmpProjectReadback(
     issues.append("Semantic memory/search still needs the full local-first adapter set.")
   }
 
-  let componentStatuses: [String: String] = [
-    "workspace": workspaceStatus.statusWord,
-    "structuredStore": cmpComponentStatus(
+  let componentStatuses = PraxisCmpProjectComponentStatusMap(statuses: [
+    .workspace: try cmpProjectComponentStatus(from: workspaceStatus.statusWord),
+    .structuredStore: cmpComponentStatus(
       ready: checkpointStoreAvailable && journalStoreAvailable && projectionStoreAvailable,
       missing: !(checkpointStoreAvailable || journalStoreAvailable || projectionStoreAvailable)
     ),
-    "packageRegistry": packageDescriptors.isEmpty
-      ? (packageStoreAvailable ? "degraded" : "missing")
-      : "ready",
-    "deliveryTruth": deliveryTruthRecords.isEmpty
-      ? (deliveryTruthStoreAvailable ? "degraded" : "missing")
+    .packageRegistry: packageDescriptors.isEmpty
+      ? (packageStoreAvailable ? .degraded : .missing)
+      : .ready,
+    .deliveryTruth: deliveryTruthRecords.isEmpty
+      ? (deliveryTruthStoreAvailable ? .degraded : .missing)
       : deliveryTruthRecords.contains(where: { $0.status == .retryScheduled || $0.status == .expired })
-        ? "degraded"
-        : "ready",
-    "messageBus": cmpComponentStatus(ready: messageBusAvailable, missing: !messageBusAvailable),
-    "gitProbe": gitStatus.statusWord == "ready" ? "ready" : "degraded",
-    "gitExecutor": gitExecutorStatus.statusWord,
-    "lineageStore": lineageStatus.statusWord,
-    "semanticIndex": semanticSearchAvailable ? "ready" : "missing",
-    "semanticMemory": semanticMemoryAvailable ? "ready" : "missing",
-    "embeddingStore": embeddingStoreAvailable ? "ready" : "missing",
-  ]
+        ? .degraded
+        : .ready,
+    .messageBus: cmpComponentStatus(ready: messageBusAvailable, missing: !messageBusAvailable),
+    .gitProbe: gitStatus.statusWord == "ready" ? .ready : .degraded,
+    .gitExecutor: try cmpProjectComponentStatus(from: gitExecutorStatus.statusWord),
+    .lineageStore: try cmpProjectComponentStatus(from: lineageStatus.statusWord),
+    .semanticIndex: semanticSearchAvailable ? .ready : .missing,
+    .semanticMemory: semanticMemoryAvailable ? .ready : .missing,
+    .embeddingStore: embeddingStoreAvailable ? .ready : .missing,
+  ])
 
   let hostSummary = "macOS local runtime / workspace (\(workspaceStatus.statusWord)) / sqlite persistence (\(projectionDescriptors.count) projections, \(packageDescriptors.count) packages) / lineage store (\(lineageStatus.statusWord)) / sqlite delivery truth (\(deliveryTruthRecords.count) records) / actor message bus (\(messageBusAvailable ? "ready" : "missing")) / system git probe (\(gitStatus.statusWord)) / system git executor (\(gitExecutorStatus.statusWord)) / accelerate-like semantic index (\(semanticSearchAvailable ? "ready" : "missing"))"
   return PraxisCmpProjectReadback(
@@ -4365,32 +4380,32 @@ public final class PraxisSmokeCmpProjectUseCase: PraxisSmokeCmpProjectUseCasePro
         .init(
           id: "cmp.project.workspace",
           gate: "workspace",
-          status: readback.componentStatuses["workspace"] ?? "missing",
-          summary: "Workspace readiness is \(readback.componentStatuses["workspace"] ?? "missing")."
+          status: (readback.componentStatuses[.workspace] ?? .missing).rawValue,
+          summary: "Workspace readiness is \((readback.componentStatuses[.workspace] ?? .missing).rawValue)."
         ),
         .init(
           id: "cmp.project.persistence",
           gate: "persistence",
-          status: readback.componentStatuses["structuredStore"] ?? "missing",
+          status: (readback.componentStatuses[.structuredStore] ?? .missing).rawValue,
           summary: readback.persistenceSummary
         ),
         .init(
           id: "cmp.project.delivery",
           gate: "delivery",
-          status: readback.componentStatuses["deliveryTruth"] ?? "missing",
+          status: (readback.componentStatuses[.deliveryTruth] ?? .missing).rawValue,
           summary: "Delivery coordination summary: \(readback.coordinationSummary)"
         ),
         .init(
           id: "cmp.project.git",
           gate: "git",
-          status: readback.componentStatuses["gitExecutor"] ?? "missing",
+          status: (readback.componentStatuses[.gitExecutor] ?? .missing).rawValue,
           summary: readback.hostSummary
         ),
         .init(
           id: "cmp.project.lineage",
           gate: "lineage",
-          status: readback.componentStatuses["lineageStore"] ?? "missing",
-          summary: readback.issues.first(where: { $0.contains("Lineage") }) ?? "Lineage readiness is \(readback.componentStatuses["lineageStore"] ?? "missing")."
+          status: (readback.componentStatuses[.lineageStore] ?? .missing).rawValue,
+          summary: readback.issues.first(where: { $0.contains("Lineage") }) ?? "Lineage readiness is \((readback.componentStatuses[.lineageStore] ?? .missing).rawValue)."
         ),
       ]
     )

@@ -283,20 +283,20 @@ public struct PraxisCmpLocalRuntimeProfile: Sendable, Equatable, Codable {
 }
 
 public struct PraxisCmpProjectHostProfile: Sendable, Equatable, Codable {
-  public let executionStyle: String
-  public let structuredStore: String
-  public let deliveryStore: String
-  public let messageTransport: String
-  public let gitAccess: String
-  public let semanticIndex: String
+  public let executionStyle: PraxisCmpProjectExecutionStyle
+  public let structuredStore: PraxisCmpProjectStructuredStoreProfile
+  public let deliveryStore: PraxisCmpProjectDeliveryStoreProfile
+  public let messageTransport: PraxisCmpProjectMessageTransportProfile
+  public let gitAccess: PraxisCmpProjectGitAccessProfile
+  public let semanticIndex: PraxisCmpProjectSemanticIndexProfile
 
   public init(
-    executionStyle: String,
-    structuredStore: String,
-    deliveryStore: String,
-    messageTransport: String,
-    gitAccess: String,
-    semanticIndex: String
+    executionStyle: PraxisCmpProjectExecutionStyle,
+    structuredStore: PraxisCmpProjectStructuredStoreProfile,
+    deliveryStore: PraxisCmpProjectDeliveryStoreProfile,
+    messageTransport: PraxisCmpProjectMessageTransportProfile,
+    gitAccess: PraxisCmpProjectGitAccessProfile,
+    semanticIndex: PraxisCmpProjectSemanticIndexProfile
   ) {
     self.executionStyle = executionStyle
     self.structuredStore = structuredStore
@@ -357,7 +357,7 @@ public struct PraxisCmpProjectReadback: Sendable, Equatable, Codable {
   public let persistenceSummary: String
   public let coordinationSummary: String
   public let hostProfile: PraxisCmpProjectHostProfile
-  public let componentStatuses: [String: String]
+  public let componentStatuses: PraxisCmpProjectComponentStatusMap
   public let issues: [String]
 
   public init(
@@ -367,7 +367,7 @@ public struct PraxisCmpProjectReadback: Sendable, Equatable, Codable {
     persistenceSummary: String,
     coordinationSummary: String,
     hostProfile: PraxisCmpProjectHostProfile,
-    componentStatuses: [String: String],
+    componentStatuses: PraxisCmpProjectComponentStatusMap,
     issues: [String]
   ) {
     self.projectID = projectID

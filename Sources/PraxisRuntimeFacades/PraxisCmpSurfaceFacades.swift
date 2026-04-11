@@ -1,3 +1,4 @@
+import PraxisCmpTypes
 import PraxisCoreTypes
 import PraxisRuntimeComposition
 import PraxisRuntimeUseCases
@@ -13,15 +14,19 @@ private func mapCmpHostProfile(_ profile: PraxisCmpProjectHostProfile) -> Praxis
   )
 }
 
-private func mapCmpTruthLayerStatus(_ rawValue: String) -> PraxisTruthLayerStatus {
-  switch rawValue {
-  case "ready":
+private func mapCmpTruthLayerStatus(_ status: PraxisCmpProjectComponentStatus) -> PraxisTruthLayerStatus {
+  switch status {
+  case .ready:
     return .ready
-  case "failed", "missing":
+  case .missing:
     return .failed
-  default:
+  case .degraded:
     return .degraded
   }
+}
+
+private func mapCmpTruthLayerStatus(rawValue: String) -> PraxisTruthLayerStatus {
+  PraxisTruthLayerStatus(rawValue: rawValue) ?? .failed
 }
 
 /// Hosts the neutral CMP session surface exposed to runtime callers.
@@ -84,7 +89,7 @@ public final class PraxisCmpProjectFacade: Sendable {
       projectSummary: .init(
         projectID: readback.projectID,
         hostProfile: mapCmpHostProfile(readback.hostProfile),
-        componentStatuses: readback.componentStatuses.mapValues(mapCmpTruthLayerStatus),
+        componentStatuses: readback.componentStatuses,
         issues: readback.issues
       ),
       persistenceSummary: readback.persistenceSummary,
@@ -107,12 +112,12 @@ public final class PraxisCmpProjectFacade: Sendable {
       projectSummary: .init(
         projectID: bootstrap.projectID,
         hostProfile: mapCmpHostProfile(bootstrap.hostProfile),
-        componentStatuses: [
-          "git": gitStatus,
-          "db": bootstrap.dbReceipt.missingTargetCount == 0 ? .ready : .degraded,
-          "mq": bootstrap.mqReceipts.isEmpty ? .failed : .ready,
-          "lineage": bootstrap.lineages.isEmpty ? .failed : .ready,
-        ],
+        componentStatuses: .init(statuses: [
+          .gitExecutor: gitStatus == .ready ? .ready : .degraded,
+          .structuredStore: bootstrap.dbReceipt.missingTargetCount == 0 ? .ready : .degraded,
+          .messageBus: bootstrap.mqReceipts.isEmpty ? .missing : .ready,
+          .lineageStore: bootstrap.lineages.isEmpty ? .missing : .ready,
+        ]),
         issues: bootstrap.issues
       ),
       gitSummary: "Git bootstrap \(bootstrap.gitReceipt.status.rawValue) with \(bootstrap.gitBranchRuntimes.count) branch runtimes and \(bootstrap.gitReceipt.createdBranches.count) created branch refs.",
@@ -156,7 +161,7 @@ public final class PraxisCmpProjectFacade: Sendable {
           .init(
             id: check.id,
             gate: check.gate,
-            status: mapCmpTruthLayerStatus(check.status),
+            status: mapCmpTruthLayerStatus(rawValue: check.status),
             summary: check.summary
           )
         }

@@ -226,7 +226,12 @@ struct PraxisRuntimeFacadesTests {
     #expect(session.projectID == "cmp.local-runtime")
     #expect(session.sessionID == "cmp.session.split")
     #expect(bootstrap.projectSummary.projectID == "cmp.local-runtime")
+    #expect(bootstrap.projectSummary.hostProfile.executionStyle == .localFirst)
+    #expect(bootstrap.projectSummary.componentStatuses[.gitExecutor] == .ready)
     #expect(projectReadback.projectSummary.projectID == "cmp.local-runtime")
+    #expect(projectReadback.projectSummary.hostProfile.semanticIndex == .localSemanticIndex)
+    #expect(projectReadback.projectSummary.componentStatuses[.structuredStore] == .ready)
+    #expect(projectReadback.projectSummary.componentStatuses[.gitExecutor] != .missing)
     #expect(projectReadback.persistenceSummary.isEmpty == false)
     #expect(ingest.projectID == "cmp.local-runtime")
     #expect(ingest.acceptedEventCount == 1)
@@ -384,6 +389,67 @@ struct PraxisRuntimeFacadesTests {
     }
     #expect(throws: DecodingError.self) {
       try decodeFacadeTestJSON(PraxisCmpStatusPanelSnapshot.self, from: invalidStatusJSON)
+    }
+  }
+
+  @Test
+  func cmpProjectHostProfileMapsRoundTripTypedProfiles() throws {
+    let summary = PraxisCmpProjectLocalRuntimeSummary(
+      projectID: "cmp.local-runtime",
+      hostProfile: .init(
+        executionStyle: .localFirst,
+        structuredStore: .sqlite,
+        deliveryStore: .sqlite,
+        messageTransport: .inProcessActorBus,
+        gitAccess: .systemGit,
+        semanticIndex: .localSemanticIndex
+      ),
+      componentStatuses: .init(statuses: [
+        .structuredStore: .ready,
+        .gitExecutor: .degraded,
+        .messageBus: .missing,
+      ]),
+      issues: []
+    )
+    let encoded = try encodeFacadeTestJSON(summary)
+    let decoded = try decodeFacadeTestJSON(PraxisCmpProjectLocalRuntimeSummary.self, from: encoded)
+
+    #expect(encoded.contains(#""executionStyle":"local-first""#))
+    #expect(encoded.contains(#""messageTransport":"in_process_actor_bus""#))
+    #expect(encoded.contains(#""componentStatuses":{"gitExecutor":"degraded","messageBus":"missing","structuredStore":"ready"}"#))
+    #expect(decoded.hostProfile.executionStyle == .localFirst)
+    #expect(decoded.hostProfile.structuredStore == .sqlite)
+    #expect(decoded.hostProfile.deliveryStore == .sqlite)
+    #expect(decoded.hostProfile.messageTransport == .inProcessActorBus)
+    #expect(decoded.hostProfile.gitAccess == .systemGit)
+    #expect(decoded.hostProfile.semanticIndex == .localSemanticIndex)
+    #expect(decoded.componentStatuses[.structuredStore] == .ready)
+    #expect(decoded.componentStatuses[.gitExecutor] == .degraded)
+    #expect(decoded.componentStatuses[.messageBus] == .missing)
+  }
+
+  @Test
+  func cmpProjectHostProfileRejectsUnknownTypedProfileValues() throws {
+    let invalidJSON =
+      #"{"componentStatuses":{"structuredStore":"ready"},"hostProfile":{"deliveryStore":"sqlite","executionStyle":"broken_style","gitAccess":"system_git","messageTransport":"in_process_actor_bus","semanticIndex":"local_semantic_index","structuredStore":"sqlite"},"issues":[],"projectID":"cmp.local-runtime"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisCmpProjectLocalRuntimeSummary.self, from: invalidJSON)
+    }
+  }
+
+  @Test
+  func cmpProjectComponentStatusesRejectUnknownKeysAndValues() throws {
+    let invalidKeyJSON =
+      #"{"componentStatuses":{"ghost":"ready"},"hostProfile":{"deliveryStore":"sqlite","executionStyle":"local-first","gitAccess":"system_git","messageTransport":"in_process_actor_bus","semanticIndex":"local_semantic_index","structuredStore":"sqlite"},"issues":[],"projectID":"cmp.local-runtime"}"#
+    let invalidValueJSON =
+      #"{"componentStatuses":{"structuredStore":"broken"},"hostProfile":{"deliveryStore":"sqlite","executionStyle":"local-first","gitAccess":"system_git","messageTransport":"in_process_actor_bus","semanticIndex":"local_semantic_index","structuredStore":"sqlite"},"issues":[],"projectID":"cmp.local-runtime"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisCmpProjectLocalRuntimeSummary.self, from: invalidKeyJSON)
+    }
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisCmpProjectLocalRuntimeSummary.self, from: invalidValueJSON)
     }
   }
 

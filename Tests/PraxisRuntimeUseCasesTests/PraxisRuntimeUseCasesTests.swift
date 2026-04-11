@@ -47,6 +47,22 @@ private struct StubSemanticMemoryStore: PraxisSemanticMemoryStoreContract {
   }
 }
 
+private func encodeUseCaseTestJSON<T: Encodable>(_ value: T) throws -> String {
+  let encoder = JSONEncoder()
+  encoder.outputFormatting = [.sortedKeys]
+  guard let string = String(data: try encoder.encode(value), encoding: .utf8) else {
+    throw PraxisError.invariantViolation("Failed to encode use case test payload as UTF-8 JSON.")
+  }
+  return string
+}
+
+private func decodeUseCaseTestJSON<T: Decodable>(_ type: T.Type, from string: String) throws -> T {
+  guard let data = string.data(using: .utf8) else {
+    throw PraxisError.invalidInput("Failed to decode use case test payload from UTF-8 JSON.")
+  }
+  return try JSONDecoder().decode(type, from: data)
+}
+
 struct PraxisRuntimeUseCasesTests {
   @Test
   func mpHostDiagnosticsServiceBuildsStableFallbackIssuesAndSummaries() {
@@ -669,20 +685,70 @@ struct PraxisRuntimeUseCasesTests {
 
     #expect(session.projectID == "cmp.local-runtime")
     #expect(session.sessionID == "cmp.session.usecases")
-    #expect(session.hostProfile.executionStyle == "local-first")
+    #expect(session.hostProfile.executionStyle == .localFirst)
     #expect(session.summary.contains("host-neutral CMP session"))
     #expect(bootstrap.projectID == "cmp.local-runtime")
-    #expect(bootstrap.hostProfile.structuredStore == "sqlite")
+    #expect(bootstrap.hostProfile.structuredStore == .sqlite)
     #expect(bootstrap.gitBranchRuntimes.count == 2)
     #expect(bootstrap.lineages.count == 2)
     #expect(readback.projectID == "cmp.local-runtime")
-    let gitExecutorStatus = try #require(readback.componentStatuses["gitExecutor"])
+    let gitExecutorStatus = try #require(readback.componentStatuses[.gitExecutor])
     let gitSmokeCheck = try #require(smoke.checks.first { $0.gate == "git" })
-    #expect(gitExecutorStatus != "missing")
+    #expect(readback.hostProfile.messageTransport == .inProcessActorBus)
+    #expect(readback.componentStatuses[.structuredStore] == .ready)
+    #expect(gitExecutorStatus != .missing)
     #expect(readback.persistenceSummary.contains("Checkpoint and journal persistence"))
     #expect(smoke.projectID == "cmp.local-runtime")
     #expect(smoke.checks.count == 5)
-    #expect(gitSmokeCheck.status == gitExecutorStatus)
+    #expect(gitSmokeCheck.status == gitExecutorStatus.rawValue)
+  }
+
+  @Test
+  func cmpProjectReadbackRoundTripsTypedHostProfileAndComponentStatuses() throws {
+    let readback = PraxisCmpProjectReadback(
+      projectID: "cmp.local-runtime",
+      summary: "CMP project readback",
+      hostSummary: "local runtime summary",
+      persistenceSummary: "sqlite persistence",
+      coordinationSummary: "actor bus ready",
+      hostProfile: .init(
+        executionStyle: .localFirst,
+        structuredStore: .sqlite,
+        deliveryStore: .sqlite,
+        messageTransport: .inProcessActorBus,
+        gitAccess: .systemGit,
+        semanticIndex: .localSemanticIndex
+      ),
+      componentStatuses: .init(statuses: [
+        .structuredStore: .ready,
+        .gitExecutor: .degraded,
+      ]),
+      issues: []
+    )
+
+    let encoded = try encodeUseCaseTestJSON(readback)
+    let decoded = try decodeUseCaseTestJSON(PraxisCmpProjectReadback.self, from: encoded)
+
+    #expect(encoded.contains(#""executionStyle":"local-first""#))
+    #expect(encoded.contains(#""componentStatuses":{"gitExecutor":"degraded","structuredStore":"ready"}"#))
+    #expect(decoded.hostProfile.executionStyle == .localFirst)
+    #expect(decoded.hostProfile.semanticIndex == .localSemanticIndex)
+    #expect(decoded.componentStatuses[.gitExecutor] == .degraded)
+  }
+
+  @Test
+  func cmpProjectReadbackDecodeRejectsUnknownTypedHostProfileAndComponentStatuses() throws {
+    let cases = [
+      #"{"componentStatuses":{"structuredStore":"ready"},"coordinationSummary":"actor bus ready","hostProfile":{"deliveryStore":"sqlite","executionStyle":"broken_style","gitAccess":"system_git","messageTransport":"in_process_actor_bus","semanticIndex":"local_semantic_index","structuredStore":"sqlite"},"hostSummary":"local runtime summary","issues":[],"persistenceSummary":"sqlite persistence","projectID":"cmp.local-runtime","summary":"CMP project readback"}"#,
+      #"{"componentStatuses":{"structuredStore":"broken_status"},"coordinationSummary":"actor bus ready","hostProfile":{"deliveryStore":"sqlite","executionStyle":"local-first","gitAccess":"system_git","messageTransport":"in_process_actor_bus","semanticIndex":"local_semantic_index","structuredStore":"sqlite"},"hostSummary":"local runtime summary","issues":[],"persistenceSummary":"sqlite persistence","projectID":"cmp.local-runtime","summary":"CMP project readback"}"#,
+      #"{"componentStatuses":{"broken_component":"ready"},"coordinationSummary":"actor bus ready","hostProfile":{"deliveryStore":"sqlite","executionStyle":"local-first","gitAccess":"system_git","messageTransport":"in_process_actor_bus","semanticIndex":"local_semantic_index","structuredStore":"sqlite"},"hostSummary":"local runtime summary","issues":[],"persistenceSummary":"sqlite persistence","projectID":"cmp.local-runtime","summary":"CMP project readback"}"#
+    ]
+
+    for json in cases {
+      #expect(throws: DecodingError.self) {
+        try decodeUseCaseTestJSON(PraxisCmpProjectReadback.self, from: json)
+      }
+    }
   }
 
   @Test

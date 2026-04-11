@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import PraxisCheckpoint
+import PraxisCmpFiveAgent
 import PraxisCmpDelivery
 import PraxisCmpTypes
 import PraxisCoreTypes
@@ -160,21 +161,21 @@ struct HostRuntimeSurfaceTests {
   @Test
   func runtimeSurfaceModelsCaptureLocalHostProfileAndSmokeViews() {
     let hostProfile = PraxisLocalRuntimeHostProfile(
-      executionStyle: "local-first",
-      structuredStore: "sqlite",
-      deliveryStore: "sqlite",
-      messageTransport: "in_process_actor_bus",
-      gitAccess: "system_git",
-      semanticIndex: "accelerate"
+      executionStyle: .localFirst,
+      structuredStore: .sqlite,
+      deliveryStore: .sqlite,
+      messageTransport: .inProcessActorBus,
+      gitAccess: .systemGit,
+      semanticIndex: .partial
     )
     let runtimeSummary = PraxisCmpProjectLocalRuntimeSummary(
       projectID: "project-1",
       hostProfile: hostProfile,
-      componentStatuses: [
-        "structuredStore": .ready,
-        "messageTransport": .ready,
-        "gitAccess": .degraded,
-      ],
+      componentStatuses: .init(statuses: [
+        .structuredStore: .ready,
+        .messageBus: .ready,
+        .gitExecutor: .degraded,
+      ]),
       issues: ["system git may require Command Line Tools installation"]
     )
     let smoke = PraxisRuntimeSmokeResult(
@@ -185,8 +186,8 @@ struct HostRuntimeSurfaceTests {
       ]
     )
 
-    #expect(runtimeSummary.hostProfile.executionStyle == "local-first")
-    #expect(runtimeSummary.componentStatuses["gitAccess"] == PraxisTruthLayerStatus.degraded)
+    #expect(runtimeSummary.hostProfile.executionStyle == .localFirst)
+    #expect(runtimeSummary.componentStatuses[.gitExecutor] == .degraded)
     #expect(smoke.checks.count == 2)
   }
 
@@ -409,10 +410,10 @@ struct HostRuntimeSurfaceTests {
     let smoke = try await runtimeFacade.cmpFacade.smokeProject(.init(projectID: "cmp.local-runtime"))
 
     #expect(session.projectID == "cmp.local-runtime")
-    #expect(session.hostProfile.executionStyle == "local-first")
+    #expect(session.hostProfile.executionStyle == .localFirst)
     #expect(session.summary.contains("host-neutral CMP session"))
     #expect(bootstrap.projectSummary.projectID == "cmp.local-runtime")
-    #expect(bootstrap.projectSummary.componentStatuses["git"] == .ready)
+    #expect(bootstrap.projectSummary.componentStatuses[.gitExecutor] == .ready)
     #expect(bootstrap.gitSummary.contains("2 branch runtimes"))
     #expect(bootstrap.persistenceSummary.contains("bootstrap statements"))
     #expect(ingest.projectID == "cmp.local-runtime")
@@ -506,7 +507,7 @@ struct HostRuntimeSurfaceTests {
     #expect(checkerStatusPanel.latestDispatchStatus == .delivered)
     #expect(checkerStatusPanel.roleStages[.dispatcher] == .delivered)
     #expect(readback.projectSummary.projectID == "cmp.local-runtime")
-    #expect(readback.projectSummary.hostProfile.structuredStore == "sqlite")
+    #expect(readback.projectSummary.hostProfile.structuredStore == .sqlite)
     #expect(readback.persistenceSummary.contains("Checkpoint and journal persistence"))
     #expect(smoke.projectID == "cmp.local-runtime")
     #expect(smoke.smokeResult.checks.count == 5)
@@ -786,7 +787,6 @@ struct HostRuntimeSurfaceTests {
       #"{"agentID":"checker.local","latestDispatchStatus":"retryScheduled","latestPackageID":"package.runtime","projectID":"cmp.local-runtime","roleCounts":{"ghost":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"CMP roles snapshot"}"#
     let invalidStatusRoleCountKeyJSON =
       #"{"agentID":"checker.local","executionStyle":"automatic","latestDispatchStatus":"retryScheduled","latestPackageID":"package.runtime","packageCount":1,"projectID":"cmp.local-runtime","readbackPriority":"gitFirst","roleCounts":{"ghost":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"CMP status snapshot"}"#
-
     #expect(throws: DecodingError.self) {
       try decodeTestJSON(PraxisCmpRolesPanelSnapshot.self, from: invalidRolesJSON)
     }
