@@ -50,7 +50,7 @@ public final class PraxisCLICommandBridge {
       let inspection = try await runtimeFacade.inspectionFacade.inspectCmp()
       return stateMapper.map(cmpInspection: inspection)
     case .inspectMp:
-      let inspection = try await runtimeFacade.inspectionFacade.inspectMp()
+      let inspection = try await runtimeFacade.mpFacade.inspect()
       return stateMapper.map(mpInspection: inspection)
     case .buildCapabilityCatalog:
       let catalog = try await runtimeFacade.inspectionFacade.buildCapabilityCatalogSnapshot()
@@ -96,7 +96,7 @@ public final class PraxisApplePresentationBridge {
   }
 
   public func inspectMpState() async throws -> PraxisPresentationState {
-    stateMapper.map(mpInspection: try await runtimeFacade.inspectionFacade.inspectMp())
+    stateMapper.map(mpInspection: try await runtimeFacade.mpFacade.inspect())
   }
 
   public func buildCapabilityCatalogState() async throws -> PraxisPresentationState {

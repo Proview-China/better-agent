@@ -6,6 +6,47 @@ import PraxisRun
 import PraxisSession
 import PraxisTransition
 
+private func requireRuntimeInterfaceField(
+  _ value: String,
+  named field: String
+) throws -> String {
+  guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    throw PraxisRuntimeInterfaceError.missingRequiredField(field)
+  }
+  return value
+}
+
+private func requireRuntimeInterfaceText(
+  _ value: String,
+  named field: String
+) throws -> String {
+  guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    throw PraxisError.invalidInput("Field \(field) must not be empty.")
+  }
+  return value
+}
+
+private func requireRuntimeInterfaceElements<Element>(
+  _ value: [Element],
+  named field: String
+) throws -> [Element] {
+  guard !value.isEmpty else {
+    throw PraxisError.invalidInput("Field \(field) must not be empty.")
+  }
+  return value
+}
+
+private func requireRuntimeInterfaceIdentifierElements(
+  _ value: [String],
+  named field: String
+) throws -> [String] {
+  let elements = try requireRuntimeInterfaceElements(value, named: field)
+  guard elements.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+    throw PraxisError.invalidInput("Field \(field) must not contain blank identifiers.")
+  }
+  return elements
+}
+
 public protocol PraxisRuntimeInterfaceServing: Sendable {
   /// Returns the baseline architecture snapshot without mutating runtime state.
   ///
@@ -698,44 +739,34 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       )
       return response(from: history)
     case .openCmpSession(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let session = try await runtimeFacade.cmpSessionFacade.openSession(
-        .init(projectID: payload.projectID, sessionID: payload.sessionID)
+        .init(projectID: projectID, sessionID: payload.sessionID)
       )
       return response(from: session)
     case .readbackCmpProject(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let readback = try await runtimeFacade.cmpProjectFacade.readbackProject(
-        .init(projectID: payload.projectID)
+        .init(projectID: projectID)
       )
       return response(from: readback)
     case .readbackCmpRoles(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let roles = try await runtimeFacade.cmpRolesFacade.readbackRoles(
-        .init(projectID: payload.projectID, agentID: payload.agentID)
+        .init(projectID: projectID, agentID: payload.agentID)
       )
       return response(from: roles)
     case .readbackCmpControl(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let control = try await runtimeFacade.cmpControlFacade.readbackControl(
-        .init(projectID: payload.projectID, agentID: payload.agentID)
+        .init(projectID: projectID, agentID: payload.agentID)
       )
       return response(from: control)
     case .updateCmpControl(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let update = try await runtimeFacade.cmpControlFacade.updateControl(
         .init(
-          projectID: payload.projectID,
+          projectID: projectID,
           agentID: payload.agentID,
           executionStyle: payload.executionStyle,
           mode: payload.mode,
@@ -747,43 +778,45 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       )
       return response(from: update)
     case .requestCmpPeerApproval(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let targetAgentID = try requireRuntimeInterfaceField(payload.targetAgentID, named: "targetAgentID")
+      let capabilityKey = try requireRuntimeInterfaceField(payload.capabilityKey, named: "capabilityKey")
+      let summary = try requireRuntimeInterfaceText(payload.summary, named: "summary")
       let approval = try await runtimeFacade.cmpRolesFacade.requestPeerApproval(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
-          targetAgentID: payload.targetAgentID,
-          capabilityKey: payload.capabilityKey,
+          projectID: projectID,
+          agentID: agentID,
+          targetAgentID: targetAgentID,
+          capabilityKey: capabilityKey,
           requestedTier: payload.requestedTier,
-          summary: payload.summary
+          summary: summary
         )
       )
       return response(from: approval)
     case .decideCmpPeerApproval(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let targetAgentID = try requireRuntimeInterfaceField(payload.targetAgentID, named: "targetAgentID")
+      let capabilityKey = try requireRuntimeInterfaceField(payload.capabilityKey, named: "capabilityKey")
+      let decisionSummary = try requireRuntimeInterfaceText(payload.decisionSummary, named: "decisionSummary")
       let approval = try await runtimeFacade.cmpRolesFacade.decidePeerApproval(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
-          targetAgentID: payload.targetAgentID,
-          capabilityKey: payload.capabilityKey,
+          projectID: projectID,
+          agentID: agentID,
+          targetAgentID: targetAgentID,
+          capabilityKey: capabilityKey,
           decision: payload.decision,
           reviewerAgentID: payload.reviewerAgentID,
-          decisionSummary: payload.decisionSummary
+          decisionSummary: decisionSummary
         )
       )
       return response(from: approval, eventName: "cmp.peer_approval.decided")
     case .readbackCmpPeerApproval(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let readback = try await runtimeFacade.cmpReadbackFacade.readbackPeerApproval(
         .init(
-          projectID: payload.projectID,
+          projectID: projectID,
           agentID: payload.agentID,
           targetAgentID: payload.targetAgentID,
           capabilityKey: payload.capabilityKey
@@ -791,20 +824,16 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       )
       return response(from: readback)
     case .readbackCmpStatus(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let status = try await runtimeFacade.cmpReadbackFacade.readbackStatus(
-        .init(projectID: payload.projectID, agentID: payload.agentID)
+        .init(projectID: projectID, agentID: payload.agentID)
       )
       return response(from: status)
     case .bootstrapCmpProject(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let bootstrap = try await runtimeFacade.cmpProjectFacade.bootstrapProject(
         .init(
-          projectID: payload.projectID,
+          projectID: projectID,
           agentIDs: payload.agentIDs,
           defaultAgentID: payload.defaultAgentID,
           repoName: payload.repoName,
@@ -816,21 +845,16 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       )
       return response(from: bootstrap)
     case .recoverCmpProject(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
-      guard !payload.agentID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("agentID")
-      }
-      guard !payload.targetAgentID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("targetAgentID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let targetAgentID = try requireRuntimeInterfaceField(payload.targetAgentID, named: "targetAgentID")
+      let reason = try requireRuntimeInterfaceText(payload.reason, named: "reason")
       let recovery = try await runtimeFacade.cmpProjectFacade.recoverProject(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
-          targetAgentID: payload.targetAgentID,
-          reason: payload.reason,
+          projectID: projectID,
+          agentID: agentID,
+          targetAgentID: targetAgentID,
+          reason: reason,
           lineageID: payload.lineageID,
           branchRef: payload.branchRef,
           snapshotID: payload.snapshotID,
@@ -840,64 +864,67 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       )
       return response(from: recovery)
     case .ingestCmpFlow(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let sessionID = try requireRuntimeInterfaceField(payload.sessionID, named: "sessionID")
+      let taskSummary = try requireRuntimeInterfaceText(payload.taskSummary, named: "taskSummary")
+      let materials = try requireRuntimeInterfaceElements(payload.materials, named: "materials")
       let ingest = try await runtimeFacade.cmpFlowFacade.ingestFlow(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
-          sessionID: payload.sessionID,
+          projectID: projectID,
+          agentID: agentID,
+          sessionID: sessionID,
           runID: payload.runID,
           lineageID: payload.lineageID,
           parentAgentID: payload.parentAgentID,
-          taskSummary: payload.taskSummary,
-          materials: payload.materials,
+          taskSummary: taskSummary,
+          materials: materials,
           requiresActiveSync: payload.requiresActiveSync
         )
       )
       return response(from: ingest)
     case .commitCmpFlow(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let sessionID = try requireRuntimeInterfaceField(payload.sessionID, named: "sessionID")
+      let eventIDs = try requireRuntimeInterfaceIdentifierElements(payload.eventIDs, named: "eventIDs")
+      let changeSummary = try requireRuntimeInterfaceText(payload.changeSummary, named: "changeSummary")
       let commit = try await runtimeFacade.cmpFlowFacade.commitFlow(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
-          sessionID: payload.sessionID,
+          projectID: projectID,
+          agentID: agentID,
+          sessionID: sessionID,
           runID: payload.runID,
           lineageID: payload.lineageID,
           parentAgentID: payload.parentAgentID,
-          eventIDs: payload.eventIDs,
+          eventIDs: eventIDs,
           baseRef: payload.baseRef,
-          changeSummary: payload.changeSummary,
+          changeSummary: changeSummary,
           syncIntent: payload.syncIntent
         )
       )
       return response(from: commit)
     case .resolveCmpFlow(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
       let resolve = try await runtimeFacade.cmpFlowFacade.resolveFlow(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
+          projectID: projectID,
+          agentID: agentID,
           lineageID: payload.lineageID,
           branchRef: payload.branchRef
         )
       )
       return response(from: resolve)
     case .materializeCmpFlow(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let targetAgentID = try requireRuntimeInterfaceField(payload.targetAgentID, named: "targetAgentID")
       let materialize = try await runtimeFacade.cmpFlowFacade.materializeFlow(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
-          targetAgentID: payload.targetAgentID,
+          projectID: projectID,
+          agentID: agentID,
+          targetAgentID: targetAgentID,
           snapshotID: payload.snapshotID,
           projectionID: payload.projectionID,
           packageKind: payload.packageKind,
@@ -906,31 +933,28 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       )
       return response(from: materialize)
     case .dispatchCmpFlow(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let reason = try requireRuntimeInterfaceText(payload.reason, named: "reason")
       let dispatch = try await runtimeFacade.cmpFlowFacade.dispatchFlow(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
+          projectID: projectID,
+          agentID: agentID,
           contextPackage: payload.contextPackage,
           targetKind: payload.targetKind,
-          reason: payload.reason
+          reason: reason
         )
       )
       return response(from: dispatch)
     case .retryCmpDispatch(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
-      guard !payload.packageID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("packageID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let packageID = try requireRuntimeInterfaceField(payload.packageID, named: "packageID")
       let dispatch = try await runtimeFacade.cmpFlowFacade.retryDispatch(
         .init(
-          projectID: payload.projectID,
-          agentID: payload.agentID,
-          packageID: payload.packageID,
+          projectID: projectID,
+          agentID: agentID,
+          packageID: packageID,
           reason: payload.reason
         )
       )
@@ -940,24 +964,22 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         eventName: "cmp.flow.dispatch_retried"
       )
     case .requestCmpHistory(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let requesterAgentID = try requireRuntimeInterfaceField(payload.requesterAgentID, named: "requesterAgentID")
+      let reason = try requireRuntimeInterfaceText(payload.reason, named: "reason")
       let history = try await runtimeFacade.cmpFlowFacade.requestHistory(
         .init(
-          projectID: payload.projectID,
-          requesterAgentID: payload.requesterAgentID,
-          reason: payload.reason,
+          projectID: projectID,
+          requesterAgentID: requesterAgentID,
+          reason: reason,
           query: payload.query
         )
       )
       return response(from: history)
     case .smokeCmpProject(let payload):
-      guard !payload.projectID.isEmpty else {
-        throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")
-      }
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let smoke = try await runtimeFacade.cmpProjectFacade.smokeProject(
-        .init(projectID: payload.projectID)
+        .init(projectID: projectID)
       )
       return response(from: smoke)
     case .inspectCmp:
@@ -971,7 +993,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         )
       )
     case .inspectMp:
-      let inspection = try await runtimeFacade.inspectionFacade.inspectMp()
+      let inspection = try await runtimeFacade.mpFacade.inspect()
       return .success(
         snapshot: .init(
           kind: .inspection,
@@ -995,9 +1017,21 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
     for error: Error,
     request: PraxisRuntimeInterfaceRequest
   ) -> PraxisRuntimeInterfaceResponse {
-    let runID = request.runID.map(PraxisRunID.init(rawValue:))
-    let sessionID = request.sessionID.map(PraxisSessionID.init(rawValue:))
-      ?? runID.map { PraxisSessionID(rawValue: PraxisRunIdentityCodec().sessionRawValue(from: $0)) }
+    let runID: PraxisRunID?
+    if let rawRunID = request.runID, !rawRunID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      runID = PraxisRunID(rawValue: rawRunID)
+    } else {
+      runID = nil
+    }
+
+    let sessionID: PraxisSessionID?
+    if let rawSessionID = request.sessionID, !rawSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      sessionID = PraxisSessionID(rawValue: rawSessionID)
+    } else if let runID {
+      sessionID = PraxisSessionID(rawValue: PraxisRunIdentityCodec().sessionRawValue(from: runID))
+    } else {
+      sessionID = nil
+    }
 
     let envelope: PraxisRuntimeInterfaceErrorEnvelope
     switch error {

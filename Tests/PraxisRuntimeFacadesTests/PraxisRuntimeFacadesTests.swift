@@ -1,11 +1,34 @@
 import Foundation
 import Testing
 import PraxisCmpTypes
+import PraxisCapabilityResults
+import PraxisInfraContracts
+import PraxisProviderContracts
 import PraxisRuntimeComposition
 import PraxisRuntimeFacades
 import PraxisRuntimeGateway
 import PraxisRuntimeUseCases
 import PraxisTapTypes
+
+private struct StubSemanticMemoryStore: PraxisSemanticMemoryStoreContract {
+  let bundleResult: PraxisSemanticMemoryBundle
+
+  func save(_ record: PraxisSemanticMemoryRecord) async throws -> PraxisSemanticMemoryWriteReceipt {
+    PraxisSemanticMemoryWriteReceipt(memoryID: record.id, storageKey: record.storageKey)
+  }
+
+  func load(memoryID: String) async throws -> PraxisSemanticMemoryRecord? {
+    nil
+  }
+
+  func search(_ request: PraxisSemanticMemorySearchRequest) async throws -> [PraxisSemanticMemoryRecord] {
+    []
+  }
+
+  func bundle(_ request: PraxisSemanticMemoryBundleRequest) async throws -> PraxisSemanticMemoryBundle {
+    bundleResult
+  }
+}
 
 struct PraxisRuntimeFacadesTests {
   @Test
@@ -127,5 +150,51 @@ struct PraxisRuntimeFacadesTests {
     #expect(statusReadback.projectID == "cmp.local-runtime")
     #expect(statusReadback.executionStyle == "guided")
     #expect(statusReadback.roleCounts.isEmpty == false)
+  }
+
+  @Test
+  func mpFacadeOwnsTheNeutralMpSurfaceWhileInspectionFacadeRemainsCompatible() async throws {
+    let memoryStore = StubSemanticMemoryStore(
+      bundleResult: .init(
+        primaryMemoryIDs: ["memory.primary"],
+        supportingMemoryIDs: [],
+        omittedSupersededMemoryIDs: []
+      )
+    )
+
+    let facade = try PraxisRuntimeGatewayFactory.makeRuntimeFacade(
+      hostAdapters: PraxisHostAdapterRegistry(
+        providerInferenceExecutor: PraxisStubProviderInferenceExecutor { _ in
+          PraxisProviderInferenceResponse(
+            output: .init(summary: "stubbed inference"),
+            receipt: .init(
+              capabilityKey: "provider.infer",
+              backend: "stub-provider",
+              status: .succeeded,
+              summary: "Inference is stubbed for MP facade tests."
+            )
+          )
+        },
+        semanticSearchIndex: PraxisStubSemanticSearchIndex(
+          cannedResults: [
+            "host runtime": [
+              .init(id: "match-1", score: 0.9, contentSummary: "Host runtime memory hit", storageKey: "memory/primary")
+            ]
+          ]
+        ),
+        semanticMemoryStore: memoryStore
+      ),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
+
+    let inspection = try await facade.mpFacade.inspect()
+    let compatibilityInspection = try await facade.inspectionFacade.inspectMp()
+
+    #expect(inspection.summary == "MP workflow surface is now reading HostRuntime memory and multimodal adapter state.")
+    #expect(inspection.workflowSummary.contains("provider inference surface available"))
+    #expect(inspection.memoryStoreSummary.contains("1 primary records and omits 0 superseded records"))
+    #expect(inspection.memoryStoreSummary.contains("Semantic search matches for inspection query: 1."))
+    #expect(inspection.multimodalSummary == "No multimodal host chips are currently registered.")
+    #expect(compatibilityInspection == inspection)
   }
 }

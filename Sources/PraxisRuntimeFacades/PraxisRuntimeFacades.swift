@@ -6,6 +6,7 @@ import PraxisRun
 // - Continue tightening stable facades, host-facing DTOs, and aggregated session/run view models.
 // - Make facades the external runtime surface so CLI, UI, and FFI do not need to understand internal use-case details directly.
 // - Keep CMP facades split by neutral host surface instead of regrowing one large aggregate facade.
+// - Keep MP on its own host-neutral facade instead of leaving it inside the generic inspection bucket.
 // - Add presentation state and host-facing read-only snapshot types beyond the blueprint metadata.
 // - This file can later be split into RuntimeBlueprint.swift, FacadeDTOs.swift, RunFacade.swift, and InspectionFacade.swift.
 

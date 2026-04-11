@@ -921,7 +921,10 @@ let package = Package(
     .testTarget(
       name: "PraxisRuntimeFacadesTests",
       dependencies: [
+        "PraxisCapabilityResults",
         "PraxisCmpTypes",
+        "PraxisInfraContracts",
+        "PraxisProviderContracts",
         "PraxisRuntimeComposition",
         "PraxisRuntimeFacades",
         "PraxisRuntimeGateway",
@@ -929,6 +932,20 @@ let package = Package(
         "PraxisTapTypes",
       ],
       path: "Tests/PraxisRuntimeFacadesTests",
+    ),
+    .testTarget(
+      name: "PraxisRuntimeUseCasesTests",
+      dependencies: [
+        "PraxisCapabilityResults",
+        "PraxisCmpTypes",
+        "PraxisInfraContracts",
+        "PraxisProviderContracts",
+        "PraxisRuntimeComposition",
+        "PraxisRuntimeGateway",
+        "PraxisRuntimeUseCases",
+        "PraxisTapTypes",
+      ],
+      path: "Tests/PraxisRuntimeUseCasesTests",
     ),
     .testTarget(
       name: "PraxisCLITests",

@@ -506,6 +506,158 @@ private func makeThrowingRuntimeInterface(
   )
 }
 
+private func makeUnexpectedRunFacade() -> PraxisRunFacade {
+  PraxisRunFacade(
+    runGoalUseCase: StubRunGoalUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "runGoal")
+    },
+    resumeRunUseCase: StubResumeRunUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "resumeRun")
+    }
+  )
+}
+
+private func makeUnexpectedInspectionFacade() -> PraxisInspectionFacade {
+  PraxisInspectionFacade(
+    inspectTapUseCase: StubInspectTapUseCase {
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "inspectTap")
+    },
+    readbackTapStatusUseCase: StubReadbackTapStatusUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackTapStatus")
+    },
+    readbackTapHistoryUseCase: StubReadbackTapHistoryUseCase { _ in
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackTapHistory")
+    },
+    inspectCmpUseCase: StubInspectCmpUseCase {
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "inspectCmp")
+    },
+    inspectMpUseCase: StubInspectMpUseCase {
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "inspectMp")
+    },
+    buildCapabilityCatalogUseCase: StubBuildCapabilityCatalogUseCase {
+      throw RuntimeInterfaceUnexpectedInvocationError(operation: "buildCapabilityCatalog")
+    }
+  )
+}
+
+private func makeStubCmpFacade(
+  openCmpSession: @escaping @Sendable (PraxisOpenCmpSessionCommand) async throws -> PraxisCmpSession = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "openCmpSession")
+  },
+  readbackCmpProject: @escaping @Sendable (PraxisReadbackCmpProjectCommand) async throws -> PraxisCmpProjectReadback = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackCmpProject")
+  },
+  bootstrapCmpProject: @escaping @Sendable (PraxisBootstrapCmpProjectCommand) async throws -> PraxisCmpProjectBootstrap = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "bootstrapCmpProject")
+  },
+  ingestCmpFlow: @escaping @Sendable (PraxisIngestCmpFlowCommand) async throws -> PraxisCmpFlowIngest = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "ingestCmpFlow")
+  },
+  commitCmpFlow: @escaping @Sendable (PraxisCommitCmpFlowCommand) async throws -> PraxisCmpFlowCommit = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "commitCmpFlow")
+  },
+  resolveCmpFlow: @escaping @Sendable (PraxisResolveCmpFlowCommand) async throws -> PraxisCmpFlowResolve = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "resolveCmpFlow")
+  },
+  materializeCmpFlow: @escaping @Sendable (PraxisMaterializeCmpFlowCommand) async throws -> PraxisCmpFlowMaterialize = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "materializeCmpFlow")
+  },
+  dispatchCmpFlow: @escaping @Sendable (PraxisDispatchCmpFlowCommand) async throws -> PraxisCmpFlowDispatch = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "dispatchCmpFlow")
+  },
+  retryCmpDispatch: @escaping @Sendable (PraxisRetryCmpDispatchCommand) async throws -> PraxisCmpFlowDispatch = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "retryCmpDispatch")
+  },
+  requestCmpHistory: @escaping @Sendable (PraxisRequestCmpHistoryCommand) async throws -> PraxisCmpFlowHistory = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "requestCmpHistory")
+  },
+  readbackCmpRoles: @escaping @Sendable (PraxisReadbackCmpRolesCommand) async throws -> PraxisCmpRolesReadback = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackCmpRoles")
+  },
+  readbackCmpControl: @escaping @Sendable (PraxisReadbackCmpControlCommand) async throws -> PraxisCmpControlReadback = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackCmpControl")
+  },
+  updateCmpControl: @escaping @Sendable (PraxisUpdateCmpControlCommand) async throws -> PraxisCmpControlUpdate = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "updateCmpControl")
+  },
+  requestCmpPeerApproval: @escaping @Sendable (PraxisRequestCmpPeerApprovalCommand) async throws -> PraxisCmpPeerApproval = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "requestCmpPeerApproval")
+  },
+  decideCmpPeerApproval: @escaping @Sendable (PraxisDecideCmpPeerApprovalCommand) async throws -> PraxisCmpPeerApproval = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "decideCmpPeerApproval")
+  },
+  readbackCmpPeerApproval: @escaping @Sendable (PraxisReadbackCmpPeerApprovalCommand) async throws -> PraxisCmpPeerApprovalReadback = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackCmpPeerApproval")
+  },
+  readbackCmpStatus: @escaping @Sendable (PraxisReadbackCmpStatusCommand) async throws -> PraxisCmpStatusReadback = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "readbackCmpStatus")
+  },
+  smokeCmpProject: @escaping @Sendable (PraxisSmokeCmpProjectCommand) async throws -> PraxisCmpProjectSmoke = { _ in
+    throw RuntimeInterfaceUnexpectedInvocationError(operation: "smokeCmpProject")
+  }
+) -> PraxisCmpFacade {
+  PraxisCmpFacade(
+    openCmpSessionUseCase: StubOpenCmpSessionUseCase(executeBody: openCmpSession),
+    readbackCmpProjectUseCase: StubReadbackCmpProjectUseCase(executeBody: readbackCmpProject),
+    bootstrapCmpProjectUseCase: StubBootstrapCmpProjectUseCase(executeBody: bootstrapCmpProject),
+    ingestCmpFlowUseCase: StubIngestCmpFlowUseCase(executeBody: ingestCmpFlow),
+    commitCmpFlowUseCase: StubCommitCmpFlowUseCase(executeBody: commitCmpFlow),
+    resolveCmpFlowUseCase: StubResolveCmpFlowUseCase(executeBody: resolveCmpFlow),
+    materializeCmpFlowUseCase: StubMaterializeCmpFlowUseCase(executeBody: materializeCmpFlow),
+    dispatchCmpFlowUseCase: StubDispatchCmpFlowUseCase(executeBody: dispatchCmpFlow),
+    retryCmpDispatchUseCase: StubRetryCmpDispatchUseCase(executeBody: retryCmpDispatch),
+    requestCmpHistoryUseCase: StubRequestCmpHistoryUseCase(executeBody: requestCmpHistory),
+    readbackCmpRolesUseCase: StubReadbackCmpRolesUseCase(executeBody: readbackCmpRoles),
+    readbackCmpControlUseCase: StubReadbackCmpControlUseCase(executeBody: readbackCmpControl),
+    updateCmpControlUseCase: StubUpdateCmpControlUseCase(executeBody: updateCmpControl),
+    requestCmpPeerApprovalUseCase: StubRequestCmpPeerApprovalUseCase(executeBody: requestCmpPeerApproval),
+    decideCmpPeerApprovalUseCase: StubDecideCmpPeerApprovalUseCase(executeBody: decideCmpPeerApproval),
+    readbackCmpPeerApprovalUseCase: StubReadbackCmpPeerApprovalUseCase(executeBody: readbackCmpPeerApproval),
+    readbackCmpStatusUseCase: StubReadbackCmpStatusUseCase(executeBody: readbackCmpStatus),
+    smokeCmpProjectUseCase: StubSmokeCmpProjectUseCase(executeBody: smokeCmpProject)
+  )
+}
+
+private func makeStubbedRuntimeInterface(cmpFacade: PraxisCmpFacade) -> PraxisRuntimeInterfaceSession {
+  PraxisRuntimeInterfaceSession(
+    runtimeFacade: .init(
+      runFacade: makeUnexpectedRunFacade(),
+      inspectionFacade: makeUnexpectedInspectionFacade(),
+      cmpFacade: cmpFacade
+    ),
+    blueprint: PraxisRuntimePresentationBridgeModule.bootstrap
+  )
+}
+
+private func makeStubbedRuntimeInterface(inspectionFacade: PraxisInspectionFacade) -> PraxisRuntimeInterfaceSession {
+  PraxisRuntimeInterfaceSession(
+    runtimeFacade: .init(
+      runFacade: makeUnexpectedRunFacade(),
+      inspectionFacade: inspectionFacade,
+      cmpFacade: makeStubCmpFacade()
+    ),
+    blueprint: PraxisRuntimePresentationBridgeModule.bootstrap
+  )
+}
+
+private func makeStubbedRuntimeInterface(mpFacade: PraxisMpFacade) -> PraxisRuntimeInterfaceSession {
+  let cmpFacade = makeStubCmpFacade()
+  return PraxisRuntimeInterfaceSession(
+    runtimeFacade: .init(
+      runFacade: makeUnexpectedRunFacade(),
+      inspectionFacade: makeUnexpectedInspectionFacade(),
+      mpFacade: mpFacade,
+      cmpSessionFacade: cmpFacade.sessionFacade,
+      cmpProjectFacade: cmpFacade.projectFacade,
+      cmpFlowFacade: cmpFacade.flowFacade,
+      cmpRolesFacade: cmpFacade.rolesFacade,
+      cmpControlFacade: cmpFacade.controlFacade,
+      cmpReadbackFacade: cmpFacade.readbackFacade
+    ),
+    blueprint: PraxisRuntimePresentationBridgeModule.bootstrap
+  )
+}
+
 struct HostRuntimeInterfaceTests {
   @Test
   func runtimeInterfaceBuildsNeutralRunResponseAndBuffersEvents() async throws {
@@ -1033,6 +1185,193 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceResolveCmpFlowNotFoundKeepsSuccessEnvelopeAndNilIntentID() async throws {
+    let runtimeInterface = makeStubbedRuntimeInterface(
+      cmpFacade: makeStubCmpFacade(
+        resolveCmpFlow: { command in
+          PraxisCmpFlowResolve(
+            projectID: command.projectID,
+            agentID: command.agentID,
+            summary: "CMP resolve did not find a checked snapshot for agent \(command.agentID) in project \(command.projectID).",
+            result: .init(
+              status: .notFound,
+              found: false,
+              snapshot: nil
+            ),
+            snapshot: nil
+          )
+        }
+      )
+    )
+
+    let response = await runtimeInterface.handle(
+      .resolveCmpFlow(
+        .init(
+          payloadSummary: "Resolve missing CMP flow snapshot",
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local"
+        )
+      )
+    )
+
+    #expect(response.status == .success)
+    #expect(response.error == nil)
+    #expect(response.snapshot?.kind == .cmpFlow)
+    #expect(response.snapshot?.title == "CMP Resolve cmp.local-runtime")
+    #expect(response.snapshot?.summary == "CMP resolve did not find a checked snapshot for agent runtime.local in project cmp.local-runtime.")
+    #expect(response.events.map(\.name) == ["cmp.flow.resolved"])
+    #expect(response.events.first?.detail == response.snapshot?.summary)
+    #expect(response.events.first?.intentID == nil)
+  }
+
+  @Test
+  func runtimeInterfaceCmpApprovalEventDetailsFollowDecisionSummaryContract() async throws {
+    let runtimeInterface = makeStubbedRuntimeInterface(
+      cmpFacade: makeStubCmpFacade(
+        requestCmpPeerApproval: { command in
+          PraxisCmpPeerApproval(
+            projectID: command.projectID,
+            agentID: command.agentID,
+            targetAgentID: command.targetAgentID,
+            capabilityKey: command.capabilityKey,
+            requestedTier: command.requestedTier,
+            summary: "Approval snapshot summary for \(command.capabilityKey).",
+            route: "humanReview",
+            outcome: "escalated_to_human",
+            tapMode: "restricted",
+            riskLevel: "normal",
+            humanGateState: "waitingApproval",
+            requestedAt: "2026-04-11T12:00:00Z",
+            decisionSummary: "Escalated \(command.capabilityKey) to human review."
+          )
+        },
+        decideCmpPeerApproval: { command in
+          PraxisCmpPeerApproval(
+            projectID: command.projectID,
+            agentID: command.agentID,
+            targetAgentID: command.targetAgentID,
+            capabilityKey: command.capabilityKey,
+            requestedTier: .b1,
+            summary: "Approval decision snapshot for \(command.capabilityKey).",
+            route: "humanReview",
+            outcome: "approved_by_human",
+            tapMode: "restricted",
+            riskLevel: "normal",
+            humanGateState: "approved",
+            requestedAt: "2026-04-11T12:05:00Z",
+            decisionSummary: command.decisionSummary
+          )
+        },
+        readbackCmpPeerApproval: { command in
+          PraxisCmpPeerApprovalReadback(
+            projectID: command.projectID,
+            agentID: command.agentID,
+            targetAgentID: command.targetAgentID,
+            capabilityKey: command.capabilityKey,
+            requestedTier: .b1,
+            summary: "Approval readback summary for \(command.capabilityKey ?? "unknown").",
+            route: "humanReview",
+            outcome: "approved_by_human",
+            tapMode: "restricted",
+            riskLevel: "normal",
+            humanGateState: "approved",
+            requestedAt: "2026-04-11T12:05:00Z",
+            decisionSummary: "Approved by reviewer.local.",
+            found: true,
+            issues: []
+          )
+        }
+      )
+    )
+
+    let requestResponse = await runtimeInterface.handle(
+      .requestCmpPeerApproval(
+        .init(
+          payloadSummary: "Request peer approval",
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: "tool.git",
+          requestedTier: .b1,
+          summary: "Escalate git access"
+        )
+      )
+    )
+    let decideResponse = await runtimeInterface.handle(
+      .decideCmpPeerApproval(
+        .init(
+          payloadSummary: "Approve peer approval",
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: "tool.git",
+          decision: .approve,
+          reviewerAgentID: "reviewer.local",
+          decisionSummary: "Approved by reviewer.local."
+        )
+      )
+    )
+    let readbackResponse = await runtimeInterface.handle(
+      .readbackCmpPeerApproval(
+        .init(
+          payloadSummary: "Read back peer approval",
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: "tool.git"
+        )
+      )
+    )
+
+    #expect(requestResponse.status == .success)
+    #expect(requestResponse.snapshot?.kind == .cmpApproval)
+    #expect(requestResponse.snapshot?.summary == "Approval snapshot summary for tool.git.")
+    #expect(requestResponse.events.map(\.name) == ["cmp.peer_approval.requested"])
+    #expect(requestResponse.events.first?.detail == "Escalated tool.git to human review.")
+    #expect(requestResponse.events.first?.detail != requestResponse.snapshot?.summary)
+
+    #expect(decideResponse.status == .success)
+    #expect(decideResponse.snapshot?.kind == .cmpApproval)
+    #expect(decideResponse.snapshot?.summary == "Approval decision snapshot for tool.git.")
+    #expect(decideResponse.events.map(\.name) == ["cmp.peer_approval.decided"])
+    #expect(decideResponse.events.first?.detail == "Approved by reviewer.local.")
+    #expect(decideResponse.events.first?.detail != decideResponse.snapshot?.summary)
+
+    #expect(readbackResponse.status == .success)
+    #expect(readbackResponse.snapshot?.kind == .cmpApproval)
+    #expect(readbackResponse.snapshot?.summary == "Approval readback summary for tool.git.")
+    #expect(readbackResponse.events.map(\.name) == ["cmp.peer_approval.readback"])
+    #expect(readbackResponse.events.first?.detail == readbackResponse.snapshot?.summary)
+  }
+
+  @Test
+  func runtimeInterfaceInspectMpReturnsInspectionSnapshotContract() async throws {
+    let runtimeInterface = makeStubbedRuntimeInterface(
+      mpFacade: PraxisMpFacade(
+        inspectMpUseCase: StubInspectMpUseCase {
+          PraxisMpInspection(
+            summary: "MP workflow surface is now reading HostRuntime memory and multimodal adapter state.",
+            workflowSummary: "Five-agent lanes have a provider inference surface available.",
+            memoryStoreSummary: "Semantic memory bundle exposes 1 primary records and omits 0 superseded records. Semantic search matches for inspection query: 1.",
+            multimodalSummary: "No multimodal host chips are currently registered.",
+            issues: []
+          )
+        }
+      )
+    )
+
+    let response = await runtimeInterface.handle(.inspectMp)
+
+    #expect(response.status == .success)
+    #expect(response.error == nil)
+    #expect(response.events.isEmpty)
+    #expect(response.snapshot?.kind == .inspection)
+    #expect(response.snapshot?.title == "MP Inspection")
+    #expect(response.snapshot?.summary == "MP workflow surface is now reading HostRuntime memory and multimodal adapter state. Store: Semantic memory bundle exposes 1 primary records and omits 0 superseded records. Semantic search matches for inspection query: 1.")
+    #expect(response.snapshot?.projectID == nil)
+  }
+
+  @Test
   func runtimeInterfaceRoundTripsColonContainingSessionIDsAcrossRunAndResume() async throws {
     let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(
       hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults()
@@ -1142,6 +1481,475 @@ struct HostRuntimeInterfaceTests {
       #expect(response.error?.code == .missingRequiredField)
       #expect(response.error?.missingField == missingField)
       #expect(response.error?.retryable == false)
+    }
+  }
+
+  @Test
+  func runtimeInterfaceReturnsStructuredCmpApprovalMissingFieldErrors() async throws {
+    let runtimeInterface = makeThrowingRuntimeInterface()
+    let cases: [(String, PraxisRuntimeInterfaceRequest)] = [
+      (
+        "agentID",
+        .requestCmpPeerApproval(
+          .init(
+            payloadSummary: "Missing approval requester",
+            projectID: "cmp.local-runtime",
+            agentID: "",
+            targetAgentID: "checker.local",
+            capabilityKey: "tool.git",
+            requestedTier: .b1,
+            summary: "Escalate git access"
+          )
+        )
+      ),
+      (
+        "targetAgentID",
+        .requestCmpPeerApproval(
+          .init(
+            payloadSummary: "Missing approval target",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "   ",
+            capabilityKey: "tool.git",
+            requestedTier: .b1,
+            summary: "Escalate git access"
+          )
+        )
+      ),
+      (
+        "capabilityKey",
+        .requestCmpPeerApproval(
+          .init(
+            payloadSummary: "Missing capability key",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: "",
+            requestedTier: .b1,
+            summary: "Escalate git access"
+          )
+        )
+      ),
+      (
+        "agentID",
+        .decideCmpPeerApproval(
+          .init(
+            payloadSummary: "Missing approval decision requester",
+            projectID: "cmp.local-runtime",
+            agentID: "   ",
+            targetAgentID: "checker.local",
+            capabilityKey: "tool.git",
+            decision: .approve,
+            reviewerAgentID: "reviewer.local",
+            decisionSummary: "Approved git access"
+          )
+        )
+      ),
+      (
+        "targetAgentID",
+        .decideCmpPeerApproval(
+          .init(
+            payloadSummary: "Missing approval decision target",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "",
+            capabilityKey: "tool.git",
+            decision: .approve,
+            reviewerAgentID: "reviewer.local",
+            decisionSummary: "Approved git access"
+          )
+        )
+      ),
+      (
+        "capabilityKey",
+        .decideCmpPeerApproval(
+          .init(
+            payloadSummary: "Missing approval decision capability key",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: "",
+            decision: .approve,
+            reviewerAgentID: "reviewer.local",
+            decisionSummary: "Approved git access"
+          )
+        )
+      ),
+    ]
+
+    for (missingField, request) in cases {
+      let response = await runtimeInterface.handle(request)
+
+      #expect(response.status == .failure)
+      #expect(response.snapshot == nil)
+      #expect(response.events.isEmpty)
+      #expect(response.error?.code == .missingRequiredField)
+      #expect(response.error?.missingField == missingField)
+      #expect(response.error?.retryable == false)
+      #expect(response.error?.runID == nil)
+      #expect(response.error?.sessionID == nil)
+    }
+  }
+
+  @Test
+  func runtimeInterfaceReturnsStructuredCmpFlowMissingFieldErrors() async throws {
+    let runtimeInterface = makeThrowingRuntimeInterface()
+    let contextPackage = PraxisCmpContextPackage(
+      id: .init(rawValue: "package.interface.missing-fields"),
+      sourceProjectionID: .init(rawValue: "projection.interface.missing-fields"),
+      sourceSnapshotID: .init(rawValue: "snapshot.interface.missing-fields"),
+      sourceAgentID: "runtime.local",
+      targetAgentID: "checker.local",
+      kind: .runtimeFill,
+      packageRef: "context://cmp.local-runtime/projection.interface.missing-fields/checker.local/runtimeFill",
+      fidelityLabel: .highSignal,
+      createdAt: "2026-04-11T00:00:00Z",
+      sourceSectionIDs: [.init(rawValue: "projection.interface.missing-fields:section")]
+    )
+    let historyQuery = PraxisCmpHistoricalContextQuery(
+      snapshotID: .init(rawValue: "snapshot.interface.missing-fields"),
+      packageKindHint: .historicalReply
+    )
+    let cases: [(String, String?, PraxisRuntimeInterfaceRequest)] = [
+      (
+        "agentID",
+        "cmp.flow.session",
+        .ingestCmpFlow(
+          .init(
+            payloadSummary: "Missing ingest agent",
+            projectID: "cmp.local-runtime",
+            agentID: "",
+            sessionID: "cmp.flow.session",
+            taskSummary: "Capture one runtime material",
+            materials: [.init(kind: .userInput, ref: "payload:user:cmp")]
+          )
+        )
+      ),
+      (
+        "sessionID",
+        nil,
+        .ingestCmpFlow(
+          .init(
+            payloadSummary: "Missing ingest session",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            sessionID: "   ",
+            taskSummary: "Capture one runtime material",
+            materials: [.init(kind: .userInput, ref: "payload:user:cmp")]
+          )
+        )
+      ),
+      (
+        "agentID",
+        "cmp.flow.session",
+        .commitCmpFlow(
+          .init(
+            payloadSummary: "Missing commit agent",
+            projectID: "cmp.local-runtime",
+            agentID: "",
+            sessionID: "cmp.flow.session",
+            eventIDs: ["evt.cmp.1"],
+            changeSummary: "Commit accepted flow event",
+            syncIntent: .toParent
+          )
+        )
+      ),
+      (
+        "sessionID",
+        nil,
+        .commitCmpFlow(
+          .init(
+            payloadSummary: "Missing commit session",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            sessionID: "",
+            eventIDs: ["evt.cmp.1"],
+            changeSummary: "Commit accepted flow event",
+            syncIntent: .toParent
+          )
+        )
+      ),
+      (
+        "agentID",
+        nil,
+        .resolveCmpFlow(
+          .init(
+            payloadSummary: "Missing resolve agent",
+            projectID: "cmp.local-runtime",
+            agentID: ""
+          )
+        )
+      ),
+      (
+        "agentID",
+        nil,
+        .materializeCmpFlow(
+          .init(
+            payloadSummary: "Missing materialize agent",
+            projectID: "cmp.local-runtime",
+            agentID: "",
+            targetAgentID: "checker.local",
+            packageKind: .runtimeFill
+          )
+        )
+      ),
+      (
+        "targetAgentID",
+        nil,
+        .materializeCmpFlow(
+          .init(
+            payloadSummary: "Missing materialize target",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "",
+            packageKind: .runtimeFill
+          )
+        )
+      ),
+      (
+        "agentID",
+        nil,
+        .dispatchCmpFlow(
+          .init(
+            payloadSummary: "Missing dispatch agent",
+            projectID: "cmp.local-runtime",
+            agentID: "",
+            contextPackage: contextPackage,
+            targetKind: .peer,
+            reason: "Dispatch runtime fill"
+          )
+        )
+      ),
+      (
+        "agentID",
+        nil,
+        .retryCmpDispatch(
+          .init(
+            payloadSummary: "Missing retry agent",
+            projectID: "cmp.local-runtime",
+            agentID: "",
+            packageID: "package.retry"
+          )
+        )
+      ),
+      (
+        "packageID",
+        nil,
+        .retryCmpDispatch(
+          .init(
+            payloadSummary: "Missing retry package",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            packageID: "   "
+          )
+        )
+      ),
+      (
+        "requesterAgentID",
+        nil,
+        .requestCmpHistory(
+          .init(
+            payloadSummary: "Missing history requester",
+            projectID: "cmp.local-runtime",
+            requesterAgentID: "",
+            reason: "Recover high-signal context",
+            query: historyQuery
+          )
+        )
+      ),
+    ]
+
+    for (missingField, expectedSessionID, request) in cases {
+      let response = await runtimeInterface.handle(request)
+
+      #expect(response.status == .failure)
+      #expect(response.snapshot == nil)
+      #expect(response.events.isEmpty)
+      #expect(response.error?.code == .missingRequiredField)
+      #expect(response.error?.missingField == missingField)
+      #expect(response.error?.retryable == false)
+      #expect(response.error?.runID == nil)
+      #expect(response.error?.sessionID?.rawValue == expectedSessionID)
+    }
+  }
+
+  @Test
+  func runtimeInterfaceReturnsStructuredCmpInvalidInputForEmptyTextAndCollections() async throws {
+    let runtimeInterface = makeThrowingRuntimeInterface()
+    let contextPackage = PraxisCmpContextPackage(
+      id: .init(rawValue: "package.interface.invalid-input"),
+      sourceProjectionID: .init(rawValue: "projection.interface.invalid-input"),
+      sourceSnapshotID: .init(rawValue: "snapshot.interface.invalid-input"),
+      sourceAgentID: "runtime.local",
+      targetAgentID: "checker.local",
+      kind: .runtimeFill,
+      packageRef: "context://cmp.local-runtime/projection.interface.invalid-input/checker.local/runtimeFill",
+      fidelityLabel: .highSignal,
+      createdAt: "2026-04-11T00:00:00Z",
+      sourceSectionIDs: [.init(rawValue: "projection.interface.invalid-input:section")]
+    )
+    let historyQuery = PraxisCmpHistoricalContextQuery(
+      snapshotID: .init(rawValue: "snapshot.interface.invalid-input"),
+      packageKindHint: .historicalReply
+    )
+    let cases: [(String, String?, PraxisRuntimeInterfaceRequest)] = [
+      (
+        "Field summary must not be empty.",
+        nil,
+        .requestCmpPeerApproval(
+          .init(
+            payloadSummary: "Empty approval summary",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: "tool.git",
+            requestedTier: .b1,
+            summary: "   "
+          )
+        )
+      ),
+      (
+        "Field decisionSummary must not be empty.",
+        nil,
+        .decideCmpPeerApproval(
+          .init(
+            payloadSummary: "Empty decision summary",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: "tool.git",
+            decision: .approve,
+            reviewerAgentID: "reviewer.local",
+            decisionSummary: "   "
+          )
+        )
+      ),
+      (
+        "Field reason must not be empty.",
+        nil,
+        .recoverCmpProject(
+          .init(
+            payloadSummary: "Empty recover reason",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            reason: "   "
+          )
+        )
+      ),
+      (
+        "Field taskSummary must not be empty.",
+        "cmp.flow.session",
+        .ingestCmpFlow(
+          .init(
+            payloadSummary: "Empty ingest task summary",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            sessionID: "cmp.flow.session",
+            taskSummary: "   ",
+            materials: [.init(kind: .userInput, ref: "payload:user:cmp")]
+          )
+        )
+      ),
+      (
+        "Field materials must not be empty.",
+        "cmp.flow.session",
+        .ingestCmpFlow(
+          .init(
+            payloadSummary: "Empty ingest materials",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            sessionID: "cmp.flow.session",
+            taskSummary: "Capture one runtime material",
+            materials: []
+          )
+        )
+      ),
+      (
+        "Field eventIDs must not be empty.",
+        "cmp.flow.session",
+        .commitCmpFlow(
+          .init(
+            payloadSummary: "Empty commit event ids",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            sessionID: "cmp.flow.session",
+            eventIDs: [],
+            changeSummary: "Commit accepted flow event",
+            syncIntent: .toParent
+          )
+        )
+      ),
+      (
+        "Field eventIDs must not contain blank identifiers.",
+        "cmp.flow.session",
+        .commitCmpFlow(
+          .init(
+            payloadSummary: "Blank commit event id",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            sessionID: "cmp.flow.session",
+            eventIDs: ["   "],
+            changeSummary: "Commit accepted flow event",
+            syncIntent: .toParent
+          )
+        )
+      ),
+      (
+        "Field changeSummary must not be empty.",
+        "cmp.flow.session",
+        .commitCmpFlow(
+          .init(
+            payloadSummary: "Empty commit change summary",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            sessionID: "cmp.flow.session",
+            eventIDs: ["evt.cmp.1"],
+            changeSummary: "   ",
+            syncIntent: .toParent
+          )
+        )
+      ),
+      (
+        "Field reason must not be empty.",
+        nil,
+        .dispatchCmpFlow(
+          .init(
+            payloadSummary: "Empty dispatch reason",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            contextPackage: contextPackage,
+            targetKind: .peer,
+            reason: "   "
+          )
+        )
+      ),
+      (
+        "Field reason must not be empty.",
+        nil,
+        .requestCmpHistory(
+          .init(
+            payloadSummary: "Empty history reason",
+            projectID: "cmp.local-runtime",
+            requesterAgentID: "checker.local",
+            reason: "   ",
+            query: historyQuery
+          )
+        )
+      ),
+    ]
+
+    for (message, expectedSessionID, request) in cases {
+      let response = await runtimeInterface.handle(request)
+
+      #expect(response.status == .failure)
+      #expect(response.snapshot == nil)
+      #expect(response.events.isEmpty)
+      #expect(response.error?.code == .invalidInput)
+      #expect(response.error?.message == message)
+      #expect(response.error?.retryable == false)
+      #expect(response.error?.runID == nil)
+      #expect(response.error?.sessionID?.rawValue == expectedSessionID)
     }
   }
 
@@ -1264,18 +2072,26 @@ struct HostRuntimeInterfaceTests {
 
     #expect(approvalNotFoundResponse.status == .failure)
     #expect(approvalNotFoundResponse.error?.code == .cmpPeerApprovalNotFound)
+    #expect(approvalNotFoundResponse.error?.runID == nil)
+    #expect(approvalNotFoundResponse.error?.sessionID == nil)
     #expect(approvalNotFoundResponse.error?.retryable == false)
 
     #expect(approvalResolvedResponse.status == .failure)
     #expect(approvalResolvedResponse.error?.code == .cmpPeerApprovalAlreadyResolved)
+    #expect(approvalResolvedResponse.error?.runID == nil)
+    #expect(approvalResolvedResponse.error?.sessionID == nil)
     #expect(approvalResolvedResponse.error?.retryable == false)
 
     #expect(packageNotFoundResponse.status == .failure)
     #expect(packageNotFoundResponse.error?.code == .cmpPackageNotFound)
+    #expect(packageNotFoundResponse.error?.runID == nil)
+    #expect(packageNotFoundResponse.error?.sessionID == nil)
     #expect(packageNotFoundResponse.error?.retryable == false)
 
     #expect(dispatchNotRetryableResponse.status == .failure)
     #expect(dispatchNotRetryableResponse.error?.code == .cmpDispatchNotRetryable)
+    #expect(dispatchNotRetryableResponse.error?.runID == nil)
+    #expect(dispatchNotRetryableResponse.error?.sessionID == nil)
     #expect(dispatchNotRetryableResponse.error?.retryable == false)
   }
 

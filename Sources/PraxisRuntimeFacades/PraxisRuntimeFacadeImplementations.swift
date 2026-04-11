@@ -7,6 +7,7 @@ import PraxisRun
 public final class PraxisRuntimeFacade: Sendable {
   public let runFacade: PraxisRunFacade
   public let inspectionFacade: PraxisInspectionFacade
+  public let mpFacade: PraxisMpFacade
   public let cmpSessionFacade: PraxisCmpSessionFacade
   public let cmpProjectFacade: PraxisCmpProjectFacade
   public let cmpFlowFacade: PraxisCmpFlowFacade
@@ -18,6 +19,7 @@ public final class PraxisRuntimeFacade: Sendable {
   public init(
     runFacade: PraxisRunFacade,
     inspectionFacade: PraxisInspectionFacade,
+    mpFacade: PraxisMpFacade,
     cmpSessionFacade: PraxisCmpSessionFacade,
     cmpProjectFacade: PraxisCmpProjectFacade,
     cmpFlowFacade: PraxisCmpFlowFacade,
@@ -27,6 +29,7 @@ public final class PraxisRuntimeFacade: Sendable {
   ) {
     self.runFacade = runFacade
     self.inspectionFacade = inspectionFacade
+    self.mpFacade = mpFacade
     self.cmpSessionFacade = cmpSessionFacade
     self.cmpProjectFacade = cmpProjectFacade
     self.cmpFlowFacade = cmpFlowFacade
@@ -51,6 +54,7 @@ public final class PraxisRuntimeFacade: Sendable {
     self.init(
       runFacade: runFacade,
       inspectionFacade: inspectionFacade,
+      mpFacade: .init(inspectMpUseCase: inspectionFacade.inspectMpUseCase),
       cmpSessionFacade: cmpFacade.sessionFacade,
       cmpProjectFacade: cmpFacade.projectFacade,
       cmpFlowFacade: cmpFacade.flowFacade,
@@ -67,15 +71,55 @@ public final class PraxisRuntimeFacade: Sendable {
     let cmpRolesFacade = PraxisCmpRolesFacade(dependencies: dependencies)
     let cmpControlFacade = PraxisCmpControlFacade(dependencies: dependencies)
     let cmpReadbackFacade = PraxisCmpReadbackFacade(dependencies: dependencies)
+    let inspectMpUseCase = PraxisInspectMpUseCase(dependencies: dependencies)
     self.init(
       runFacade: .init(dependencies: dependencies),
-      inspectionFacade: .init(dependencies: dependencies),
+      inspectionFacade: .init(
+        inspectTapUseCase: PraxisInspectTapUseCase(dependencies: dependencies),
+        readbackTapStatusUseCase: PraxisReadbackTapStatusUseCase(dependencies: dependencies),
+        readbackTapHistoryUseCase: PraxisReadbackTapHistoryUseCase(dependencies: dependencies),
+        inspectCmpUseCase: PraxisInspectCmpUseCase(dependencies: dependencies),
+        inspectMpUseCase: inspectMpUseCase,
+        buildCapabilityCatalogUseCase: PraxisBuildCapabilityCatalogUseCase(dependencies: dependencies)
+      ),
+      mpFacade: .init(inspectMpUseCase: inspectMpUseCase),
       cmpSessionFacade: cmpSessionFacade,
       cmpProjectFacade: cmpProjectFacade,
       cmpFlowFacade: cmpFlowFacade,
       cmpRolesFacade: cmpRolesFacade,
       cmpControlFacade: cmpControlFacade,
       cmpReadbackFacade: cmpReadbackFacade
+    )
+  }
+}
+
+/// Stable host-neutral facade for the current MP runtime surface.
+///
+/// This facade owns MP-facing snapshots so CLI, GUI, and FFI hosts do not need to
+/// tunnel through the generic inspection bucket while the wider MP command surface
+/// is still being migrated.
+public final class PraxisMpFacade: Sendable {
+  public let inspectMpUseCase: any PraxisInspectMpUseCaseProtocol
+
+  public init(inspectMpUseCase: any PraxisInspectMpUseCaseProtocol) {
+    self.inspectMpUseCase = inspectMpUseCase
+  }
+
+  public convenience init(dependencies: PraxisDependencyGraph) {
+    self.init(inspectMpUseCase: PraxisInspectMpUseCase(dependencies: dependencies))
+  }
+
+  /// Reads the current reserved MP host-runtime surface.
+  ///
+  /// - Returns: A host-neutral MP inspection snapshot backed by the runtime adapters.
+  /// - Throws: Propagates runtime inspection failures from the underlying use case.
+  public func inspect() async throws -> PraxisMpInspectionSnapshot {
+    let inspection = try await inspectMpUseCase.execute()
+    return PraxisMpInspectionSnapshot(
+      summary: inspection.summary,
+      workflowSummary: inspection.workflowSummary,
+      memoryStoreSummary: inspection.memoryStoreSummary,
+      multimodalSummary: inspection.multimodalSummary
     )
   }
 }
