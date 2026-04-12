@@ -514,6 +514,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         summary: status.summary,
         projectID: status.projectID,
         latestDispatchStatus: status.latestDispatchStatus,
+        packageStatusCounts: status.packageStatusCounts,
         roleCounts: status.roleCounts,
         roleStages: status.roleStages
       ),

@@ -1162,6 +1162,8 @@ struct HostRuntimeInterfaceTests {
     #expect(statusReadbackResponse.status == .success)
     #expect(statusReadbackResponse.snapshot?.kind == .cmpStatus)
     #expect(statusReadbackResponse.snapshot?.title == "CMP Status cmp.local-runtime")
+    let statusDispatchedCount = try #require(statusReadbackResponse.snapshot?.packageStatusCounts?[.dispatched])
+    #expect(statusDispatchedCount > 0)
     #expect(statusReadbackResponse.snapshot?.roleCounts?[.dispatcher] == 1)
     #expect(statusReadbackResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
     #expect(statusReadbackResponse.events.map(\.name) == ["cmp.status.readback"])
@@ -1211,6 +1213,10 @@ struct HostRuntimeInterfaceTests {
     #expect(checkerControlAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.kind == .cmpStatus)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
+    let checkerStatusDispatchedCount = try #require(
+      checkerStatusAfterDispatchResponse.snapshot?.packageStatusCounts?[.dispatched]
+    )
+    #expect(checkerStatusDispatchedCount > 0)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.roleCounts?[.dispatcher] == 1)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
     #expect(historyResponse.status == .success)
@@ -3194,6 +3200,7 @@ struct HostRuntimeInterfaceTests {
         summary: "Typed CMP status snapshot",
         projectID: "cmp.local-runtime",
         latestDispatchStatus: .retryScheduled,
+        packageStatusCounts: .init(counts: [.dispatched: 1]),
         roleCounts: .init(counts: [.dispatcher: 1]),
         roleStages: .init(stages: [.dispatcher: .retryScheduled])
       )
@@ -3203,9 +3210,11 @@ struct HostRuntimeInterfaceTests {
     let responseJSON = String(decoding: responseData, as: UTF8.self)
     let decodedResponse = try codec.decodeResponse(responseData)
 
+    #expect(responseJSON.contains(#""packageStatusCounts":{"dispatched":1}"#))
     #expect(responseJSON.contains(#""roleCounts":{"dispatcher":1}"#))
     #expect(responseJSON.contains(#""roleStages":{"dispatcher":"retryScheduled"}"#))
     #expect(decodedResponse.snapshot?.kind == .cmpStatus)
+    #expect(decodedResponse.snapshot?.packageStatusCounts?[.dispatched] == 1)
     #expect(decodedResponse.snapshot?.roleCounts?[.dispatcher] == 1)
     #expect(decodedResponse.snapshot?.roleStages?[.dispatcher] == .retryScheduled)
     #expect(decodedResponse == response)
@@ -3215,7 +3224,18 @@ struct HostRuntimeInterfaceTests {
   func runtimeInterfaceCodecRejectsUnknownTypedCmpRoleCountFields() throws {
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let responseJSON =
-      #"{"error":null,"events":[],"snapshot":{"kind":"cmpStatus","projectID":"cmp.local-runtime","roleCounts":{"ghost":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"Typed CMP status snapshot","title":"CMP Status cmp.local-runtime"},"status":"success"}"#
+      #"{"error":null,"events":[],"snapshot":{"kind":"cmpStatus","packageStatusCounts":{"dispatched":1},"projectID":"cmp.local-runtime","roleCounts":{"ghost":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"Typed CMP status snapshot","title":"CMP Status cmp.local-runtime"},"status":"success"}"#
+
+    #expect(throws: DecodingError.self) {
+      _ = try codec.decodeResponse(Data(responseJSON.utf8))
+    }
+  }
+
+  @Test
+  func runtimeInterfaceCodecRejectsUnknownTypedCmpPackageStatusCountFields() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let responseJSON =
+      #"{"error":null,"events":[],"snapshot":{"kind":"cmpStatus","packageStatusCounts":{"broken_status":1},"projectID":"cmp.local-runtime","roleCounts":{"dispatcher":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"Typed CMP status snapshot","title":"CMP Status cmp.local-runtime"},"status":"success"}"#
 
     #expect(throws: DecodingError.self) {
       _ = try codec.decodeResponse(Data(responseJSON.utf8))

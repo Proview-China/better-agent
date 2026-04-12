@@ -479,6 +479,7 @@ public final class PraxisCmpReadbackFacade: Sendable {
       executionStyle: status.control.executionStyle,
       readbackPriority: status.control.readbackPriority,
       packageCount: status.objectModel.packageCount,
+      packageStatusCounts: status.objectModel.packageStatusCounts,
       latestPackageID: status.latestPackageID,
       latestDispatchStatus: status.latestDispatchStatus,
       roleCounts: .init(

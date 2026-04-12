@@ -197,6 +197,64 @@ public enum PraxisCmpSmokeGate: String, Sendable, Codable {
   case lineage
 }
 
+public struct PraxisCmpPackageStatusCountMap: Sendable, Equatable, Codable {
+  public let counts: [PraxisCmpPackageStatus: Int]
+
+  public init(counts: [PraxisCmpPackageStatus: Int]) {
+    self.counts = counts
+  }
+
+  public subscript(_ status: PraxisCmpPackageStatus) -> Int? {
+    counts[status]
+  }
+
+  public var isEmpty: Bool {
+    counts.isEmpty
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+    var counts: [PraxisCmpPackageStatus: Int] = [:]
+
+    for key in container.allKeys {
+      guard let status = PraxisCmpPackageStatus(rawValue: key.stringValue) else {
+        throw DecodingError.dataCorruptedError(
+          forKey: key,
+          in: container,
+          debugDescription: "Invalid CMP package status key \(key.stringValue)."
+        )
+      }
+
+      counts[status] = try container.decode(Int.self, forKey: key)
+    }
+
+    self.init(counts: counts)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: DynamicCodingKey.self)
+    for status in counts.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+      let key = DynamicCodingKey(stringValue: status.rawValue)!
+      try container.encode(counts[status], forKey: key)
+    }
+  }
+
+  private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+      self.stringValue = stringValue
+      self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+      self.stringValue = String(intValue)
+      self.intValue = intValue
+    }
+  }
+}
+
 public struct PraxisCmpProjectComponentStatusMap: Sendable, Equatable, Codable {
   public let statuses: [PraxisCmpProjectComponent: PraxisCmpProjectComponentStatus]
 

@@ -3681,9 +3681,11 @@ private func readbackCmpStatus(
     snapshotCount: scope.projectionDescriptors.count,
     packageCount: scope.packageDescriptors.count,
     deliveryCount: scope.deliveryTruthRecords.count,
-    packageStatusCounts: Dictionary(
-      scope.packageDescriptors.map(\.status.rawValue).map { ($0, 1) },
-      uniquingKeysWith: +
+    packageStatusCounts: .init(
+      counts: Dictionary(
+        scope.packageDescriptors.map(\.status).map { ($0, 1) },
+        uniquingKeysWith: +
+      )
     )
   )
   let issues = cmpReadbackIssues(

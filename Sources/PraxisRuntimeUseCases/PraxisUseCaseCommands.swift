@@ -964,14 +964,14 @@ public struct PraxisCmpObjectModelReadback: Sendable, Equatable, Codable {
   public let snapshotCount: Int
   public let packageCount: Int
   public let deliveryCount: Int
-  public let packageStatusCounts: [String: Int]
+  public let packageStatusCounts: PraxisCmpPackageStatusCountMap
 
   public init(
     projectionCount: Int,
     snapshotCount: Int,
     packageCount: Int,
     deliveryCount: Int,
-    packageStatusCounts: [String: Int]
+    packageStatusCounts: PraxisCmpPackageStatusCountMap
   ) {
     self.projectionCount = projectionCount
     self.snapshotCount = snapshotCount

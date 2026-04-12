@@ -913,6 +913,7 @@ struct PraxisRuntimeUseCasesTests {
     #expect(status.agentID == "checker.local")
     #expect(status.latestDispatchStatus == .delivered)
     #expect(status.roles.isEmpty == false)
+    #expect(status.objectModel.packageStatusCounts[.dispatched] == 1)
   }
 
   @Test
@@ -940,6 +941,37 @@ struct PraxisRuntimeUseCasesTests {
     #expect(ingest.projectID == "cmp.local-runtime")
     #expect(ingest.result.nextAction == PraxisCmpFlowIngestNextAction.noop)
     #expect(ingest.result.acceptedEventIDs.count == 1)
+  }
+
+  @Test
+  func cmpObjectModelReadbackRoundTripsTypedPackageStatusCounts() throws {
+    let objectModel = PraxisCmpObjectModelReadback(
+      projectionCount: 2,
+      snapshotCount: 2,
+      packageCount: 3,
+      deliveryCount: 1,
+      packageStatusCounts: .init(counts: [
+        .materialized: 1,
+        .dispatched: 2,
+      ])
+    )
+
+    let encoded = try encodeUseCaseTestJSON(objectModel)
+    let decoded = try decodeUseCaseTestJSON(PraxisCmpObjectModelReadback.self, from: encoded)
+
+    #expect(encoded.contains(#""packageStatusCounts":{"dispatched":2,"materialized":1}"#))
+    #expect(decoded.packageStatusCounts[.materialized] == 1)
+    #expect(decoded.packageStatusCounts[.dispatched] == 2)
+  }
+
+  @Test
+  func cmpObjectModelReadbackRejectsUnknownPackageStatusCountKeys() throws {
+    let json =
+      #"{"deliveryCount":1,"packageCount":3,"packageStatusCounts":{"broken_status":2},"projectionCount":2,"snapshotCount":2}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeUseCaseTestJSON(PraxisCmpObjectModelReadback.self, from: json)
+    }
   }
 
   @Test

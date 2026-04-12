@@ -822,6 +822,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
   public let executionStyle: PraxisCmpExecutionStyle
   public let readbackPriority: PraxisCmpReadbackPriority
   public let packageCount: Int
+  public let packageStatusCounts: PraxisCmpPackageStatusCountMap
   public let latestPackageID: String?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let roleCounts: PraxisCmpRoleCountMap
@@ -834,6 +835,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
     executionStyle: PraxisCmpExecutionStyle,
     readbackPriority: PraxisCmpReadbackPriority,
     packageCount: Int,
+    packageStatusCounts: PraxisCmpPackageStatusCountMap,
     latestPackageID: String? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     roleCounts: PraxisCmpRoleCountMap,
@@ -845,6 +847,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
     self.executionStyle = executionStyle
     self.readbackPriority = readbackPriority
     self.packageCount = packageCount
+    self.packageStatusCounts = packageStatusCounts
     self.latestPackageID = latestPackageID
     self.latestDispatchStatus = latestDispatchStatus
     self.roleCounts = roleCounts

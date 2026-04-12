@@ -271,6 +271,7 @@ struct PraxisRuntimeFacadesTests {
     #expect(statusReadback.executionStyle == .guided)
     #expect(statusReadback.latestDispatchStatus == .delivered)
     #expect(statusReadback.roleCounts.isEmpty == false)
+    #expect(statusReadback.packageStatusCounts[.dispatched] == 1)
     #expect(statusReadback.roleCounts[.dispatcher] == 1)
     #expect(statusReadback.roleStages[.dispatcher] == .delivered)
     #expect(checkerRolesReadback.latestDispatchStatus == .delivered)
@@ -369,6 +370,7 @@ struct PraxisRuntimeFacadesTests {
       executionStyle: .automatic,
       readbackPriority: .gitFirst,
       packageCount: 1,
+      packageStatusCounts: .init(counts: [.dispatched: 1]),
       latestPackageID: "package.runtime",
       latestDispatchStatus: .retryScheduled,
       roleCounts: roleCounts,
@@ -382,8 +384,10 @@ struct PraxisRuntimeFacadesTests {
 
     #expect(encodedRoles.contains(#""roleCounts":{"checker":2,"dispatcher":1}"#))
     #expect(encodedStatus.contains(#""roleCounts":{"checker":2,"dispatcher":1}"#))
+    #expect(encodedStatus.contains(#""packageStatusCounts":{"dispatched":1}"#))
     #expect(decodedRoles.roleCounts[.dispatcher] == 1)
     #expect(decodedRoles.roleCounts[.checker] == 2)
+    #expect(decodedStatus.packageStatusCounts[.dispatched] == 1)
     #expect(decodedStatus.roleCounts[.dispatcher] == 1)
     #expect(decodedStatus.roleCounts[.checker] == 2)
   }
@@ -393,11 +397,21 @@ struct PraxisRuntimeFacadesTests {
     let invalidRolesJSON =
       #"{"agentID":"checker.local","latestDispatchStatus":"retryScheduled","latestPackageID":"package.runtime","projectID":"cmp.local-runtime","roleCounts":{"ghost":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"CMP roles snapshot"}"#
     let invalidStatusJSON =
-      #"{"agentID":"checker.local","executionStyle":"automatic","latestDispatchStatus":"retryScheduled","latestPackageID":"package.runtime","packageCount":1,"projectID":"cmp.local-runtime","readbackPriority":"gitFirst","roleCounts":{"ghost":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"CMP status snapshot"}"#
+      #"{"agentID":"checker.local","executionStyle":"automatic","latestDispatchStatus":"retryScheduled","latestPackageID":"package.runtime","packageCount":1,"packageStatusCounts":{"dispatched":1},"projectID":"cmp.local-runtime","readbackPriority":"gitFirst","roleCounts":{"ghost":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"CMP status snapshot"}"#
 
     #expect(throws: DecodingError.self) {
       try decodeFacadeTestJSON(PraxisCmpRolesPanelSnapshot.self, from: invalidRolesJSON)
     }
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisCmpStatusPanelSnapshot.self, from: invalidStatusJSON)
+    }
+  }
+
+  @Test
+  func cmpStatusSnapshotRejectsUnknownPackageStatusCountKeys() throws {
+    let invalidStatusJSON =
+      #"{"agentID":"checker.local","executionStyle":"automatic","latestDispatchStatus":"retryScheduled","latestPackageID":"package.runtime","packageCount":1,"packageStatusCounts":{"broken_status":1},"projectID":"cmp.local-runtime","readbackPriority":"gitFirst","roleCounts":{"dispatcher":1},"roleStages":{"dispatcher":"retryScheduled"},"summary":"CMP status snapshot"}"#
+
     #expect(throws: DecodingError.self) {
       try decodeFacadeTestJSON(PraxisCmpStatusPanelSnapshot.self, from: invalidStatusJSON)
     }
