@@ -1,5 +1,7 @@
+import PraxisCoreTypes
 import PraxisMpMemory
 import PraxisMpSearch
+import PraxisMpTypes
 
 /// Maps MP domain projections into host-neutral use-case result DTOs.
 ///
@@ -62,7 +64,7 @@ public struct PraxisMpHostResultMappingService: Sendable {
     projectID: String,
     projection: PraxisMpReadbackProjection,
     issues: [String]
-  ) -> PraxisMpReadback {
+  ) throws -> PraxisMpReadback {
     PraxisMpReadback(
       projectID: projectID,
       summary: projection.summary,
@@ -70,10 +72,40 @@ public struct PraxisMpHostResultMappingService: Sendable {
       primaryCount: projection.primaryCount,
       supportingCount: projection.supportingCount,
       omittedSupersededCount: projection.omittedSupersededCount,
-      freshnessBreakdown: projection.freshnessBreakdown,
-      alignmentBreakdown: projection.alignmentBreakdown,
-      scopeBreakdown: projection.scopeBreakdown,
+      freshnessBreakdown: try typedBreakdownMap(
+        from: projection.freshnessBreakdown,
+        label: "freshnessBreakdown",
+        keyType: PraxisMpMemoryFreshnessStatus.self
+      ),
+      alignmentBreakdown: try typedBreakdownMap(
+        from: projection.alignmentBreakdown,
+        label: "alignmentBreakdown",
+        keyType: PraxisMpMemoryAlignmentStatus.self
+      ),
+      scopeBreakdown: try typedBreakdownMap(
+        from: projection.scopeBreakdown,
+        label: "scopeBreakdown",
+        keyType: PraxisMpScopeLevel.self
+      ),
       issues: issues
     )
+  }
+
+  private func typedBreakdownMap<Key>(
+    from rawCounts: [String: Int],
+    label: String,
+    keyType: Key.Type
+  ) throws -> PraxisMpTypedCountMap<Key>
+  where Key: Hashable & RawRepresentable & Sendable, Key.RawValue == String {
+    var typedCounts: [Key: Int] = [:]
+    for (rawKey, count) in rawCounts {
+      guard let key = Key(rawValue: rawKey) else {
+        throw PraxisError.invariantViolation(
+          "MP readback projection produced invalid \(label) key \(rawKey)."
+        )
+      }
+      typedCounts[key] = count
+    }
+    return PraxisMpTypedCountMap(counts: typedCounts)
   }
 }

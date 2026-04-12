@@ -1751,9 +1751,9 @@ struct HostRuntimeInterfaceTests {
             primaryCount: 1,
             supportingCount: 1,
             omittedSupersededCount: 1,
-            freshnessBreakdown: ["fresh": 1, "aging": 1],
-            alignmentBreakdown: ["aligned": 1, "unreviewed": 1],
-            scopeBreakdown: ["agent_isolated": 1, "project": 1],
+            freshnessBreakdown: .init(counts: [.fresh: 1, .aging: 1]),
+            alignmentBreakdown: .init(counts: [.aligned: 1, .unreviewed: 1]),
+            scopeBreakdown: .init(counts: [.agentIsolated: 1, .project: 1]),
             issues: []
           )
         },

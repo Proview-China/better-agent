@@ -960,9 +960,9 @@ public struct PraxisMpReadbackSnapshot: Sendable, Equatable, Codable {
   public let primaryCount: Int
   public let supportingCount: Int
   public let omittedSupersededCount: Int
-  public let freshnessBreakdown: [String: Int]
-  public let alignmentBreakdown: [String: Int]
-  public let scopeBreakdown: [String: Int]
+  public let freshnessBreakdown: PraxisMpFreshnessBreakdownMap
+  public let alignmentBreakdown: PraxisMpAlignmentBreakdownMap
+  public let scopeBreakdown: PraxisMpScopeBreakdownMap
   public let issues: [String]
 
   public init(
@@ -972,9 +972,9 @@ public struct PraxisMpReadbackSnapshot: Sendable, Equatable, Codable {
     primaryCount: Int,
     supportingCount: Int,
     omittedSupersededCount: Int,
-    freshnessBreakdown: [String: Int],
-    alignmentBreakdown: [String: Int],
-    scopeBreakdown: [String: Int],
+    freshnessBreakdown: PraxisMpFreshnessBreakdownMap,
+    alignmentBreakdown: PraxisMpAlignmentBreakdownMap,
+    scopeBreakdown: PraxisMpScopeBreakdownMap,
     issues: [String]
   ) {
     self.projectID = projectID

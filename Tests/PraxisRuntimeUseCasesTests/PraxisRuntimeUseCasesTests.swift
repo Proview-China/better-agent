@@ -423,7 +423,7 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
-  func mpHostResultMappingServiceBuildsReadbackResultFromProjection() {
+  func mpHostResultMappingServiceBuildsReadbackResultFromProjection() throws {
     let resultMappingService = PraxisMpHostResultMappingService()
     let projection = PraxisMpReadbackProjection(
       summary: "MP readback summarized 3 memory record(s) across 2 scopes.",
@@ -433,10 +433,10 @@ struct PraxisRuntimeUseCasesTests {
       omittedSupersededCount: 1,
       freshnessBreakdown: ["fresh": 2, "aging": 1],
       alignmentBreakdown: ["aligned": 2, "unreviewed": 1],
-      scopeBreakdown: ["project": 2, "session_bridged": 1]
+      scopeBreakdown: ["project": 2, "agent_isolated": 1]
     )
 
-    let result = resultMappingService.readbackResult(
+    let result = try resultMappingService.readbackResult(
       projectID: "mp.local-runtime",
       projection: projection,
       issues: ["Semantic search index is not wired; readback currently reflects memory-store truth only."]
@@ -448,9 +448,9 @@ struct PraxisRuntimeUseCasesTests {
     #expect(result.primaryCount == 1)
     #expect(result.supportingCount == 2)
     #expect(result.omittedSupersededCount == 1)
-    #expect(result.freshnessBreakdown == ["fresh": 2, "aging": 1])
-    #expect(result.alignmentBreakdown == ["aligned": 2, "unreviewed": 1])
-    #expect(result.scopeBreakdown == ["project": 2, "session_bridged": 1])
+    #expect(result.freshnessBreakdown == PraxisMpFreshnessBreakdownMap(counts: [.fresh: 2, .aging: 1]))
+    #expect(result.alignmentBreakdown == PraxisMpAlignmentBreakdownMap(counts: [.aligned: 2, .unreviewed: 1]))
+    #expect(result.scopeBreakdown == PraxisMpScopeBreakdownMap(counts: [.project: 2, .agentIsolated: 1]))
     #expect(result.issues == ["Semantic search index is not wired; readback currently reflects memory-store truth only."])
   }
 
@@ -2046,11 +2046,84 @@ struct PraxisRuntimeUseCasesTests {
     #expect(readback.primaryCount == 1)
     #expect(readback.supportingCount == 1)
     #expect(readback.omittedSupersededCount == 1)
-    #expect(readback.freshnessBreakdown[PraxisMpMemoryFreshnessStatus.fresh.rawValue] == 1)
-    #expect(readback.scopeBreakdown[PraxisMpScopeLevel.project.rawValue] == 1)
+    #expect(readback.freshnessBreakdown[.fresh] == 1)
+    #expect(readback.scopeBreakdown[.project] == 1)
     #expect(smoke.projectID == "mp.local-runtime")
     #expect(smoke.checks.count == 4)
     #expect(smoke.checks.map(\.gate).contains(.browserGrounding))
+  }
+
+  @Test
+  func mpReadbackUseCaseRoundTripsTypedBreakdownMapsAndRejectsUnknownKeys() throws {
+    let readback = PraxisMpReadback(
+      projectID: "mp.local-runtime",
+      summary: "MP readback reconstructed 3 memory record(s).",
+      totalMemoryCount: 3,
+      primaryCount: 1,
+      supportingCount: 2,
+      omittedSupersededCount: 1,
+      freshnessBreakdown: .init(counts: [.fresh: 2, .aging: 1]),
+      alignmentBreakdown: .init(counts: [.aligned: 2, .unreviewed: 1]),
+      scopeBreakdown: .init(counts: [.project: 2, .agentIsolated: 1]),
+      issues: []
+    )
+    let encoded = try encodeUseCaseTestJSON(readback)
+    let decoded = try decodeUseCaseTestJSON(PraxisMpReadback.self, from: encoded)
+
+    #expect(encoded.contains(#""freshnessBreakdown":{"aging":1,"fresh":2}"#))
+    #expect(encoded.contains(#""alignmentBreakdown":{"aligned":2,"unreviewed":1}"#))
+    #expect(encoded.contains(#""scopeBreakdown":{"agent_isolated":1,"project":2}"#))
+    #expect(decoded.freshnessBreakdown == PraxisMpFreshnessBreakdownMap(counts: [.fresh: 2, .aging: 1]))
+    #expect(decoded.alignmentBreakdown == PraxisMpAlignmentBreakdownMap(counts: [.aligned: 2, .unreviewed: 1]))
+    #expect(decoded.scopeBreakdown == PraxisMpScopeBreakdownMap(counts: [.project: 2, .agentIsolated: 1]))
+
+    let invalidReadbackJSON =
+      #"{"alignmentBreakdown":{"aligned":2},"freshnessBreakdown":{"not_a_real_freshness":1},"issues":[],"omittedSupersededCount":0,"primaryCount":1,"projectID":"mp.local-runtime","scopeBreakdown":{"project":1},"summary":"MP readback reconstructed 1 memory record(s).","supportingCount":0,"totalMemoryCount":1}"#
+
+    do {
+      _ = try decodeUseCaseTestJSON(PraxisMpReadback.self, from: invalidReadbackJSON)
+      Issue.record("Expected MP readback to reject unknown typed breakdown keys.")
+    } catch {}
+  }
+
+  @Test
+  func mpTypedCountMapsDoNotExposePublicStringConstructionBackdoors() throws {
+    let testFileURL = URL(fileURLWithPath: #filePath)
+    let repositoryRoot = testFileURL
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let sourceURL = repositoryRoot
+      .appendingPathComponent("Sources/PraxisMpTypes/PraxisMpTypedCountMaps.swift")
+    let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+    #expect(source.contains("public init(counts: [Key: Int])"))
+    #expect(!source.contains("public init(rawCounts:"))
+    #expect(!source.contains("public init(validatingRawCounts"))
+    #expect(!source.contains("ExpressibleByDictionaryLiteral"))
+  }
+
+  @Test
+  func mpHostResultMappingServiceRejectsInvalidReadbackProjectionKeysWithoutCrashing() {
+    let resultMappingService = PraxisMpHostResultMappingService()
+    let projection = PraxisMpReadbackProjection(
+      summary: "MP readback summarized 1 memory record.",
+      totalMemoryCount: 1,
+      primaryCount: 1,
+      supportingCount: 0,
+      omittedSupersededCount: 0,
+      freshnessBreakdown: ["not_a_real_freshness": 1],
+      alignmentBreakdown: ["aligned": 1],
+      scopeBreakdown: ["project": 1]
+    )
+
+    #expect(throws: PraxisError.self) {
+      try resultMappingService.readbackResult(
+        projectID: "mp.local-runtime",
+        projection: projection,
+        issues: []
+      )
+    }
   }
 
   @Test

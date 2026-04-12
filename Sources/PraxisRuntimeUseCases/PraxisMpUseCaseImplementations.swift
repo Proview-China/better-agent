@@ -145,9 +145,9 @@ public final class PraxisReadbackMpUseCase: PraxisReadbackMpUseCaseProtocol {
         primaryCount: 0,
         supportingCount: 0,
         omittedSupersededCount: 0,
-        freshnessBreakdown: [:],
-        alignmentBreakdown: [:],
-        scopeBreakdown: [:],
+        freshnessBreakdown: .empty,
+        alignmentBreakdown: .empty,
+        scopeBreakdown: .empty,
         issues: [diagnosticsService.missingSemanticMemoryStoreIssue(for: "readback")]
       )
     }
@@ -169,7 +169,7 @@ public final class PraxisReadbackMpUseCase: PraxisReadbackMpUseCaseProtocol {
       supportingCount: bundle.supportingMemoryIDs.count,
       omittedSupersededCount: bundle.omittedSupersededMemoryIDs.count
     )
-    return resultMappingService.readbackResult(
+    return try resultMappingService.readbackResult(
       projectID: plan.projectID,
       projection: projection,
       issues: candidateSnapshot.issues

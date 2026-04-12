@@ -946,8 +946,9 @@ struct PraxisRuntimeFacadesTests {
     #expect(readback.primaryCount == 1)
     #expect(readback.supportingCount == 1)
     #expect(readback.omittedSupersededCount == 1)
-    #expect(readback.scopeBreakdown[PraxisMpScopeLevel.agentIsolated.rawValue] == 1)
-    #expect(readback.scopeBreakdown[PraxisMpScopeLevel.project.rawValue] == 1)
+    #expect(readback.freshnessBreakdown[.fresh] == 1)
+    #expect(readback.scopeBreakdown[.agentIsolated] == 1)
+    #expect(readback.scopeBreakdown[.project] == 1)
     #expect(smoke.projectID == "mp.local-runtime")
     #expect(smoke.smokeResult.checks.count == 4)
     #expect(smoke.smokeResult.checks.map(\.gate).contains(.browserGrounding))
@@ -1180,6 +1181,39 @@ struct PraxisRuntimeFacadesTests {
     #expect(throws: DecodingError.self) {
       try decodeFacadeTestJSON(PraxisMpSearchHitSnapshot.self, from: invalidSearchHitJSON)
     }
+  }
+
+  @Test
+  func mpReadbackSnapshotRoundTripsTypedBreakdownMapsAndRejectsUnknownKeys() throws {
+    let snapshot = PraxisMpReadbackSnapshot(
+      projectID: "mp.local-runtime",
+      summary: "MP readback reconstructed 3 memory record(s).",
+      totalMemoryCount: 3,
+      primaryCount: 1,
+      supportingCount: 2,
+      omittedSupersededCount: 1,
+      freshnessBreakdown: .init(counts: [.fresh: 2, .aging: 1]),
+      alignmentBreakdown: .init(counts: [.aligned: 2, .unreviewed: 1]),
+      scopeBreakdown: .init(counts: [.project: 2, .agentIsolated: 1]),
+      issues: []
+    )
+    let encoded = try encodeFacadeTestJSON(snapshot)
+    let decoded = try decodeFacadeTestJSON(PraxisMpReadbackSnapshot.self, from: encoded)
+
+    #expect(encoded.contains(#""freshnessBreakdown":{"aging":1,"fresh":2}"#))
+    #expect(encoded.contains(#""alignmentBreakdown":{"aligned":2,"unreviewed":1}"#))
+    #expect(encoded.contains(#""scopeBreakdown":{"agent_isolated":1,"project":2}"#))
+    #expect(decoded.freshnessBreakdown == PraxisMpFreshnessBreakdownMap(counts: [.fresh: 2, .aging: 1]))
+    #expect(decoded.alignmentBreakdown == PraxisMpAlignmentBreakdownMap(counts: [.aligned: 2, .unreviewed: 1]))
+    #expect(decoded.scopeBreakdown == PraxisMpScopeBreakdownMap(counts: [.project: 2, .agentIsolated: 1]))
+
+    let invalidSnapshotJSON =
+      #"{"alignmentBreakdown":{"aligned":2},"freshnessBreakdown":{"fresh":2},"issues":[],"omittedSupersededCount":0,"primaryCount":1,"projectID":"mp.local-runtime","scopeBreakdown":{"not_a_real_scope":1},"summary":"MP readback reconstructed 1 memory record(s).","supportingCount":0,"totalMemoryCount":1}"#
+
+    do {
+      _ = try decodeFacadeTestJSON(PraxisMpReadbackSnapshot.self, from: invalidSnapshotJSON)
+      Issue.record("Expected MP readback snapshot to reject unknown typed breakdown keys.")
+    } catch {}
   }
 
   @Test
