@@ -6,6 +6,7 @@ import PraxisCmpTypes
 import PraxisCoreTypes
 import PraxisInfraContracts
 import PraxisJournal
+import PraxisMpFiveAgent
 import PraxisMpMemory
 import PraxisMpTypes
 import PraxisRun
@@ -1816,8 +1817,8 @@ struct HostRuntimeInterfaceTests {
             supportingMemoryIDs: ["memory.supporting"],
             omittedSupersededMemoryIDs: ["memory.superseded"],
             rerankComposition: .init(fresh: 1, aging: 1, stale: 0, superseded: 1, aligned: 1, unreviewed: 1, drifted: 0),
-            roleCounts: ["dispatcher": 1],
-            roleStages: ["dispatcher": "assemble_bundle"],
+            roleCounts: .init(counts: [.dispatcher: 1]),
+            roleStages: .init(stages: [.dispatcher: .assembleBundle]),
             issues: []
           )
         },
@@ -1834,8 +1835,8 @@ struct HostRuntimeInterfaceTests {
             supportingMemoryIDs: [],
             omittedSupersededMemoryIDs: [],
             rerankComposition: .init(fresh: 1, aging: 0, stale: 0, superseded: 0, aligned: 1, unreviewed: 0, drifted: 0),
-            roleCounts: ["dispatcher": 1],
-            roleStages: ["dispatcher": "assemble_bundle"],
+            roleCounts: .init(counts: [.dispatcher: 1]),
+            roleStages: .init(stages: [.dispatcher: .assembleBundle]),
             issues: []
           )
         },

@@ -6,6 +6,7 @@ import PraxisCmpTypes
 import PraxisCapabilityResults
 import PraxisGoal
 import PraxisInfraContracts
+import PraxisMpFiveAgent
 import PraxisMpMemory
 import PraxisMpSearch
 import PraxisMpTypes
@@ -622,8 +623,8 @@ struct PraxisRuntimeUseCasesTests {
     #expect(bundle.primary.map(\.id) == ["memory.primary"])
     #expect(bundle.supporting.map(\.id) == ["memory.supporting"])
     #expect(bundle.diagnostics.omittedSupersededMemoryIDs == ["memory.superseded"])
-    #expect(dispatcherTelemetry.roleCounts == ["dispatcher": 1])
-    #expect(dispatcherTelemetry.roleStages == ["dispatcher": "assemble_bundle"])
+    #expect(dispatcherTelemetry.roleCounts[.dispatcher] == 1)
+    #expect(dispatcherTelemetry.roleStages[.dispatcher] == .assembleBundle)
   }
 
   @Test
@@ -2160,11 +2161,13 @@ struct PraxisRuntimeUseCasesTests {
     #expect(aligned.primaryMemoryID == ingest.primaryMemoryID)
     #expect(resolve.primaryMemoryIDs == [ingest.primaryMemoryID])
     #expect(resolve.supportingMemoryIDs.isEmpty)
-    #expect(resolve.roleCounts["dispatcher"] == 1)
+    #expect(resolve.roleCounts[.dispatcher] == 1)
+    #expect(resolve.roleStages[.dispatcher] == .assembleBundle)
     #expect(resolve.issues.contains { $0.contains("governance-only ranking") })
     #expect(history.primaryMemoryIDs == [ingest.primaryMemoryID])
     #expect(history.reason == "Need historical context")
-    #expect(history.roleCounts["dispatcher"] == 1)
+    #expect(history.roleCounts[.dispatcher] == 1)
+    #expect(history.roleStages[.dispatcher] == .assembleBundle)
     #expect(history.issues.contains { $0.contains("governance-only ranking") })
     #expect(archived.promotionState == .archived)
     #expect(archived.visibilityState == .archived)
@@ -2202,6 +2205,69 @@ struct PraxisRuntimeUseCasesTests {
           alignedAt: "2026-04-12T00:00:00Z"
         )
       )
+    }
+  }
+
+  @Test
+  func mpResolveAndHistoryResultsRoundTripTypedRoleTelemetry() throws {
+    let resolve = PraxisMpResolveResult(
+      projectID: "mp.local-runtime",
+      query: "onboarding",
+      summary: "MP resolve assembled 1 primary and 0 supporting memory record(s) for query onboarding.",
+      primaryMemoryIDs: ["memory.primary"],
+      supportingMemoryIDs: [],
+      omittedSupersededMemoryIDs: [],
+      rerankComposition: .init(fresh: 1, aging: 0, stale: 0, superseded: 0, aligned: 1, unreviewed: 0, drifted: 0),
+      roleCounts: .init(counts: [.dispatcher: 1]),
+      roleStages: .init(stages: [.dispatcher: .assembleBundle]),
+      issues: []
+    )
+    let history = PraxisMpHistoryResult(
+      projectID: "mp.local-runtime",
+      requesterAgentID: "runtime.local",
+      query: "onboarding",
+      reason: "Need historical context",
+      summary: "MP history returned 1 primary and 0 supporting memory record(s) for runtime.local.",
+      primaryMemoryIDs: ["memory.primary"],
+      supportingMemoryIDs: [],
+      omittedSupersededMemoryIDs: [],
+      rerankComposition: .init(fresh: 1, aging: 0, stale: 0, superseded: 0, aligned: 1, unreviewed: 0, drifted: 0),
+      roleCounts: .init(counts: [.dispatcher: 1]),
+      roleStages: .init(stages: [.dispatcher: .assembleBundle]),
+      issues: []
+    )
+
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let decoder = JSONDecoder()
+
+    let resolveJSON = try #require(String(data: try encoder.encode(resolve), encoding: .utf8))
+    let historyJSON = try #require(String(data: try encoder.encode(history), encoding: .utf8))
+    let decodedResolve = try decoder.decode(PraxisMpResolveResult.self, from: Data(resolveJSON.utf8))
+    let decodedHistory = try decoder.decode(PraxisMpHistoryResult.self, from: Data(historyJSON.utf8))
+
+    #expect(resolveJSON.contains(#""roleCounts":{"dispatcher":1}"#))
+    #expect(resolveJSON.contains(#""roleStages":{"dispatcher":"assemble_bundle"}"#))
+    #expect(historyJSON.contains(#""roleCounts":{"dispatcher":1}"#))
+    #expect(historyJSON.contains(#""roleStages":{"dispatcher":"assemble_bundle"}"#))
+    #expect(decodedResolve.roleCounts[.dispatcher] == 1)
+    #expect(decodedResolve.roleStages[.dispatcher] == .assembleBundle)
+    #expect(decodedHistory.roleCounts[.dispatcher] == 1)
+    #expect(decodedHistory.roleStages[.dispatcher] == .assembleBundle)
+  }
+
+  @Test
+  func mpResolveAndHistoryResultsRejectUnknownTypedRoleTelemetryRawValues() throws {
+    let invalidRoleJSON =
+      #"{"issues":[],"omittedSupersededMemoryIDs":[],"primaryMemoryIDs":["memory.primary"],"projectID":"mp.local-runtime","query":"onboarding","rerankComposition":{"aging":0,"aligned":1,"drifted":0,"fresh":1,"stale":0,"superseded":0,"unreviewed":0},"roleCounts":{"ghost":1},"roleStages":{"dispatcher":"assemble_bundle"},"summary":"MP resolve assembled 1 primary and 0 supporting memory record(s) for query onboarding.","supportingMemoryIDs":[]}"#
+    let invalidStageJSON =
+      #"{"issues":[],"omittedSupersededMemoryIDs":[],"primaryMemoryIDs":["memory.primary"],"projectID":"mp.local-runtime","query":"onboarding","reason":"Need historical context","requesterAgentID":"runtime.local","rerankComposition":{"aging":0,"aligned":1,"drifted":0,"fresh":1,"stale":0,"superseded":0,"unreviewed":0},"roleCounts":{"dispatcher":1},"roleStages":{"dispatcher":"not_a_real_dispatcher_stage"},"summary":"MP history returned 1 primary and 0 supporting memory record(s) for runtime.local.","supportingMemoryIDs":[]}"#
+
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(PraxisMpResolveResult.self, from: Data(invalidRoleJSON.utf8))
+    }
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(PraxisMpHistoryResult.self, from: Data(invalidStageJSON.utf8))
     }
   }
 

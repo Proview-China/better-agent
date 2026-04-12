@@ -1,6 +1,7 @@
 import PraxisCmpDelivery
 import PraxisCmpFiveAgent
 import PraxisCmpTypes
+import PraxisMpFiveAgent
 import PraxisRun
 import PraxisSession
 import PraxisTapReview
@@ -1199,8 +1200,8 @@ public struct PraxisMpResolveSnapshot: Sendable, Equatable, Codable {
   public let supportingMemoryIDs: [String]
   public let omittedSupersededMemoryIDs: [String]
   public let rerankComposition: PraxisMpRerankCompositionSnapshot
-  public let roleCounts: [String: Int]
-  public let roleStages: [String: String]
+  public let roleCounts: PraxisMpRoleCountMap
+  public let roleStages: PraxisMpRoleStageMap
   public let issues: [String]
 
   public init(
@@ -1211,8 +1212,8 @@ public struct PraxisMpResolveSnapshot: Sendable, Equatable, Codable {
     supportingMemoryIDs: [String],
     omittedSupersededMemoryIDs: [String],
     rerankComposition: PraxisMpRerankCompositionSnapshot,
-    roleCounts: [String: Int],
-    roleStages: [String: String],
+    roleCounts: PraxisMpRoleCountMap,
+    roleStages: PraxisMpRoleStageMap,
     issues: [String]
   ) {
     self.projectID = projectID
@@ -1238,8 +1239,8 @@ public struct PraxisMpHistorySnapshot: Sendable, Equatable, Codable {
   public let supportingMemoryIDs: [String]
   public let omittedSupersededMemoryIDs: [String]
   public let rerankComposition: PraxisMpRerankCompositionSnapshot
-  public let roleCounts: [String: Int]
-  public let roleStages: [String: String]
+  public let roleCounts: PraxisMpRoleCountMap
+  public let roleStages: PraxisMpRoleStageMap
   public let issues: [String]
 
   public init(
@@ -1252,8 +1253,8 @@ public struct PraxisMpHistorySnapshot: Sendable, Equatable, Codable {
     supportingMemoryIDs: [String],
     omittedSupersededMemoryIDs: [String],
     rerankComposition: PraxisMpRerankCompositionSnapshot,
-    roleCounts: [String: Int],
-    roleStages: [String: String],
+    roleCounts: PraxisMpRoleCountMap,
+    roleStages: PraxisMpRoleStageMap,
     issues: [String]
   ) {
     self.projectID = projectID

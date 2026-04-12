@@ -151,10 +151,10 @@ public struct PraxisMpHostRetrievalService: Sendable {
   /// Emits the current fixed dispatcher telemetry for host-side retrieval workflows.
   ///
   /// - Returns: One pair of role count and stage maps.
-  public func dispatcherTelemetry() -> (roleCounts: [String: Int], roleStages: [String: String]) {
+  public func dispatcherTelemetry() -> (roleCounts: PraxisMpRoleCountMap, roleStages: PraxisMpRoleStageMap) {
     (
-      roleCounts: [PraxisMpFiveAgentRole.dispatcher.rawValue: 1],
-      roleStages: [PraxisMpFiveAgentRole.dispatcher.rawValue: "assemble_bundle"]
+      roleCounts: .init(counts: [.dispatcher: 1]),
+      roleStages: .init(stages: [.dispatcher: .assembleBundle])
     )
   }
 
