@@ -3710,7 +3710,7 @@ private func readbackCmpRoles(
     agentID: command.agentID,
     summary: "CMP roles readback reconstructed five-agent assignment state from host-backed projections, packages, and delivery truth without binding callers to any specific host surface.",
     roles: roles,
-    latestPackageID: scope.latestPackage?.packageID.rawValue,
+    latestPackageID: scope.latestPackage?.packageID,
     latestDispatchStatus: latestDispatchStatus,
     issues: issues
   )
@@ -3741,7 +3741,7 @@ private func readbackCmpControl(
       agentID: command.agentID,
       dependencies: dependencies
     ),
-    latestPackageID: scope.latestPackage?.packageID.rawValue,
+    latestPackageID: scope.latestPackage?.packageID,
     latestDispatchStatus: latestDispatchStatus,
     latestTargetAgentID: scope.latestPackage?.targetAgentID,
     issues: issues
@@ -3851,7 +3851,7 @@ private func readbackCmpStatus(
     ),
     roles: roles,
     objectModel: objectModel,
-    latestPackageID: scope.latestPackage?.packageID.rawValue,
+    latestPackageID: scope.latestPackage?.packageID,
     latestDispatchStatus: latestDispatchStatus,
     latestTargetAgentID: scope.latestPackage?.targetAgentID,
     issues: issues

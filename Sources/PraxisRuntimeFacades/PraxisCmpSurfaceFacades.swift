@@ -204,7 +204,7 @@ public final class PraxisCmpFlowFacade: Sendable {
       projectID: ingest.projectID,
       agentID: ingest.agentID,
       sessionID: ingest.sessionID,
-      requestID: ingest.requestID.rawValue,
+      requestID: ingest.requestID,
       acceptedEventCount: ingest.result.acceptedEventIDs.count,
       sectionCount: ingest.ingress.sections.count,
       storedSectionCount: ingest.loweredSections.compactMap(\.storedSection).count,

@@ -263,7 +263,9 @@ struct PraxisRuntimeFacadesTests {
     #expect(controlReadback.fallbackPolicy == .registryOnly)
     #expect(controlReadback.recoveryPreference == .resumeLatest)
     #expect(controlReadback.automation[.autoDispatch] == false)
+    #expect(controlReadback.latestPackageID == materialize.packageID)
     #expect(rolesReadback.projectID == "cmp.local-runtime")
+    #expect(rolesReadback.latestPackageID == materialize.packageID)
     #expect(!rolesReadback.summary.contains("CLI"))
     #expect(!rolesReadback.summary.contains("GUI"))
     #expect(requestedApproval.capabilityKey == PraxisCapabilityID(rawValue: "tool.shell.exec"))
@@ -280,6 +282,7 @@ struct PraxisRuntimeFacadesTests {
     #expect(statusReadback.projectID == "cmp.local-runtime")
     #expect(statusReadback.executionStyle == .guided)
     #expect(statusReadback.latestDispatchStatus == .delivered)
+    #expect(statusReadback.latestPackageID == materialize.packageID)
     #expect(statusReadback.roleCounts.isEmpty == false)
     #expect(statusReadback.packageStatusCounts[.dispatched] == 1)
     #expect(statusReadback.roleCounts[.dispatcher] == 1)
@@ -304,7 +307,7 @@ struct PraxisRuntimeFacadesTests {
       fallbackPolicy: .registryOnly,
       recoveryPreference: .resumeLatest,
       automation: automation,
-      latestPackageID: "package.runtime",
+      latestPackageID: .init(rawValue: "package.runtime"),
       latestDispatchStatus: .delivered,
       latestTargetAgentID: "checker.local"
     )
@@ -327,9 +330,11 @@ struct PraxisRuntimeFacadesTests {
     let decodedUpdate = try decodeFacadeTestJSON(PraxisCmpControlUpdateSnapshot.self, from: encodedUpdate)
 
     #expect(encodedPanel.contains(#""automation":{"autoDispatch":false,"autoResolve":true}"#))
+    #expect(encodedPanel.contains(#""latestPackageID":"package.runtime""#))
     #expect(encodedUpdate.contains(#""automation":{"autoDispatch":false,"autoResolve":true}"#))
     #expect(decodedPanel == panelSnapshot)
     #expect(decodedUpdate == updateSnapshot)
+    #expect(decodedPanel.latestPackageID == .init(rawValue: "package.runtime"))
     #expect(decodedPanel.automation[.autoDispatch] == false)
     #expect(decodedUpdate.automation[.autoResolve] == true)
 
@@ -425,7 +430,7 @@ struct PraxisRuntimeFacadesTests {
       agentID: "checker.local",
       roleCounts: roleCounts,
       roleStages: .init(stages: [.dispatcher: .retryScheduled]),
-      latestPackageID: "package.runtime",
+      latestPackageID: .init(rawValue: "package.runtime"),
       latestDispatchStatus: .retryScheduled
     )
     let statusSnapshot = PraxisCmpStatusPanelSnapshot(
@@ -436,7 +441,7 @@ struct PraxisRuntimeFacadesTests {
       readbackPriority: .gitFirst,
       packageCount: 1,
       packageStatusCounts: .init(counts: [.dispatched: 1]),
-      latestPackageID: "package.runtime",
+      latestPackageID: .init(rawValue: "package.runtime"),
       latestDispatchStatus: .retryScheduled,
       roleCounts: roleCounts,
       roleStages: .init(stages: [.dispatcher: .retryScheduled])
@@ -450,6 +455,10 @@ struct PraxisRuntimeFacadesTests {
     #expect(encodedRoles.contains(#""roleCounts":{"checker":2,"dispatcher":1}"#))
     #expect(encodedStatus.contains(#""roleCounts":{"checker":2,"dispatcher":1}"#))
     #expect(encodedStatus.contains(#""packageStatusCounts":{"dispatched":1}"#))
+    #expect(encodedRoles.contains(#""latestPackageID":"package.runtime""#))
+    #expect(encodedStatus.contains(#""latestPackageID":"package.runtime""#))
+    #expect(decodedRoles.latestPackageID == .init(rawValue: "package.runtime"))
+    #expect(decodedStatus.latestPackageID == .init(rawValue: "package.runtime"))
     #expect(decodedRoles.roleCounts[.dispatcher] == 1)
     #expect(decodedRoles.roleCounts[.checker] == 2)
     #expect(decodedStatus.packageStatusCounts[.dispatched] == 1)
@@ -856,7 +865,7 @@ struct PraxisRuntimeFacadesTests {
       projectID: "cmp.local-runtime",
       agentID: "runtime.local",
       sessionID: "cmp.flow.snapshot",
-      requestID: "req.flow.snapshot",
+      requestID: .init(rawValue: "req.flow.snapshot"),
       acceptedEventCount: 1,
       sectionCount: 1,
       storedSectionCount: 1,
@@ -867,7 +876,9 @@ struct PraxisRuntimeFacadesTests {
     let decoded = try decodeFacadeTestJSON(PraxisCmpFlowIngestSnapshot.self, from: encoded)
 
     #expect(encoded.contains(#""nextAction":"commit_context_delta""#))
+    #expect(encoded.contains(#""requestID":"req.flow.snapshot""#))
     #expect(decoded.nextAction == .commitContextDelta)
+    #expect(decoded.requestID == .init(rawValue: "req.flow.snapshot"))
 
     let invalidJSON =
       #"{"acceptedEventCount":1,"agentID":"runtime.local","nextAction":"broken_action","projectID":"cmp.local-runtime","requestID":"req.flow.snapshot","sectionCount":1,"sessionID":"cmp.flow.snapshot","storedSectionCount":1,"summary":"CMP ingest summary"}"#

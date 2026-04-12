@@ -998,7 +998,7 @@ public struct PraxisCmpRolesReadback: Sendable, Equatable, Codable {
   public let agentID: String?
   public let summary: String
   public let roles: [PraxisCmpRoleReadback]
-  public let latestPackageID: String?
+  public let latestPackageID: PraxisCmpPackageID?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let issues: [String]
 
@@ -1007,7 +1007,7 @@ public struct PraxisCmpRolesReadback: Sendable, Equatable, Codable {
     agentID: String? = nil,
     summary: String,
     roles: [PraxisCmpRoleReadback],
-    latestPackageID: String? = nil,
+    latestPackageID: PraxisCmpPackageID? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     issues: [String]
   ) {
@@ -1036,7 +1036,7 @@ public struct PraxisCmpControlReadback: Sendable, Equatable, Codable {
   public let agentID: String?
   public let summary: String
   public let control: PraxisCmpControlSurface
-  public let latestPackageID: String?
+  public let latestPackageID: PraxisCmpPackageID?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let latestTargetAgentID: String?
   public let issues: [String]
@@ -1046,7 +1046,7 @@ public struct PraxisCmpControlReadback: Sendable, Equatable, Codable {
     agentID: String? = nil,
     summary: String,
     control: PraxisCmpControlSurface,
-    latestPackageID: String? = nil,
+    latestPackageID: PraxisCmpPackageID? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     latestTargetAgentID: String? = nil,
     issues: [String]
@@ -1305,7 +1305,7 @@ public struct PraxisCmpStatusReadback: Sendable, Equatable, Codable {
   public let control: PraxisCmpControlSurface
   public let roles: [PraxisCmpRoleReadback]
   public let objectModel: PraxisCmpObjectModelReadback
-  public let latestPackageID: String?
+  public let latestPackageID: PraxisCmpPackageID?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let latestTargetAgentID: String?
   public let issues: [String]
@@ -1317,7 +1317,7 @@ public struct PraxisCmpStatusReadback: Sendable, Equatable, Codable {
     control: PraxisCmpControlSurface,
     roles: [PraxisCmpRoleReadback],
     objectModel: PraxisCmpObjectModelReadback,
-    latestPackageID: String? = nil,
+    latestPackageID: PraxisCmpPackageID? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     latestTargetAgentID: String? = nil,
     issues: [String]

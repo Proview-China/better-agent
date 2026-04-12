@@ -514,7 +514,7 @@ struct HostRuntimeSurfaceTests {
     #expect(rolesPanel.agentID == "checker.local")
     #expect(rolesPanel.roleCounts[.dispatcher] == 1)
     #expect(rolesPanel.roleStages[.dispatcher] == .delivered)
-    #expect(rolesPanel.latestPackageID == materialize.packageID.rawValue)
+    #expect(rolesPanel.latestPackageID == materialize.packageID)
     #expect(!rolesPanel.summary.contains("CLI"))
     #expect(!rolesPanel.summary.contains("GUI"))
     #expect(controlPanel.projectID == "cmp.local-runtime")
@@ -525,6 +525,7 @@ struct HostRuntimeSurfaceTests {
     #expect(controlPanel.fallbackPolicy == .registryOnly)
     #expect(controlPanel.recoveryPreference == .resumeLatest)
     #expect(controlPanel.automation[.autoDispatch] == false)
+    #expect(controlPanel.latestPackageID == materialize.packageID)
     #expect(controlPanel.latestDispatchStatus == .delivered)
     #expect(controlPanel.latestTargetAgentID == "checker.local")
     #expect(!controlPanel.summary.contains("CLI"))
@@ -569,7 +570,7 @@ struct HostRuntimeSurfaceTests {
     #expect(checkerStatusPanel.projectID == "cmp.local-runtime")
     #expect(checkerStatusPanel.agentID == "checker.local")
     #expect(checkerStatusPanel.packageCount >= 1)
-    #expect(checkerStatusPanel.latestPackageID == materialize.packageID.rawValue)
+    #expect(checkerStatusPanel.latestPackageID == materialize.packageID)
     #expect(checkerStatusPanel.latestDispatchStatus == .delivered)
     #expect(checkerStatusPanel.roleStages[.dispatcher] == .delivered)
     #expect(readback.projectSummary.projectID == "cmp.local-runtime")
@@ -827,7 +828,7 @@ struct HostRuntimeSurfaceTests {
       agentID: "checker.local",
       roleCounts: .init(counts: [.dispatcher: 1]),
       roleStages: .init(stages: [.dispatcher: .retryScheduled]),
-      latestPackageID: "package.runtime",
+      latestPackageID: .init(rawValue: "package.runtime"),
       latestDispatchStatus: .retryScheduled
     )
     let statusSnapshot = PraxisCmpStatusPanelSnapshot(
@@ -838,7 +839,7 @@ struct HostRuntimeSurfaceTests {
       readbackPriority: .gitFirst,
       packageCount: 1,
       packageStatusCounts: .init(counts: [.dispatched: 1]),
-      latestPackageID: "package.runtime",
+      latestPackageID: .init(rawValue: "package.runtime"),
       latestDispatchStatus: .retryScheduled,
       roleCounts: .init(counts: [.dispatcher: 1]),
       roleStages: .init(stages: [.dispatcher: .retryScheduled])
@@ -852,8 +853,12 @@ struct HostRuntimeSurfaceTests {
     #expect(encodedRoles.contains(#""roleCounts":{"dispatcher":1}"#))
     #expect(encodedStatus.contains(#""roleCounts":{"dispatcher":1}"#))
     #expect(encodedStatus.contains(#""packageStatusCounts":{"dispatched":1}"#))
+    #expect(encodedRoles.contains(#""latestPackageID":"package.runtime""#))
+    #expect(encodedStatus.contains(#""latestPackageID":"package.runtime""#))
     #expect(encodedRoles.contains(#""roleStages":{"dispatcher":"retryScheduled"}"#))
     #expect(encodedStatus.contains(#""roleStages":{"dispatcher":"retryScheduled"}"#))
+    #expect(decodedRoles.latestPackageID == .init(rawValue: "package.runtime"))
+    #expect(decodedStatus.latestPackageID == .init(rawValue: "package.runtime"))
     #expect(decodedRoles.roleCounts[.dispatcher] == 1)
     #expect(decodedStatus.packageStatusCounts[.dispatched] == 1)
     #expect(decodedStatus.roleCounts[.dispatcher] == 1)

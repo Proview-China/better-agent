@@ -322,7 +322,7 @@ public struct PraxisCmpFlowIngestSnapshot: Sendable, Equatable, Codable {
   public let projectID: String
   public let agentID: String
   public let sessionID: String
-  public let requestID: String
+  public let requestID: PraxisCmpRequestID
   public let acceptedEventCount: Int
   public let sectionCount: Int
   public let storedSectionCount: Int
@@ -333,7 +333,7 @@ public struct PraxisCmpFlowIngestSnapshot: Sendable, Equatable, Codable {
     projectID: String,
     agentID: String,
     sessionID: String,
-    requestID: String,
+    requestID: PraxisCmpRequestID,
     acceptedEventCount: Int,
     sectionCount: Int,
     storedSectionCount: Int,
@@ -622,7 +622,7 @@ public struct PraxisCmpRolesPanelSnapshot: Sendable, Equatable, Codable {
   public let agentID: String?
   public let roleCounts: PraxisCmpRoleCountMap
   public let roleStages: PraxisCmpRoleStageMap
-  public let latestPackageID: String?
+  public let latestPackageID: PraxisCmpPackageID?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
 
   public init(
@@ -631,7 +631,7 @@ public struct PraxisCmpRolesPanelSnapshot: Sendable, Equatable, Codable {
     agentID: String? = nil,
     roleCounts: PraxisCmpRoleCountMap,
     roleStages: PraxisCmpRoleStageMap,
-    latestPackageID: String? = nil,
+    latestPackageID: PraxisCmpPackageID? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil
   ) {
     self.summary = summary
@@ -654,7 +654,7 @@ public struct PraxisCmpControlPanelSnapshot: Sendable, Equatable, Codable {
   public let fallbackPolicy: PraxisCmpFallbackPolicy
   public let recoveryPreference: PraxisCmpRecoveryPreference
   public let automation: PraxisCmpAutomationMap
-  public let latestPackageID: String?
+  public let latestPackageID: PraxisCmpPackageID?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let latestTargetAgentID: String?
 
@@ -668,7 +668,7 @@ public struct PraxisCmpControlPanelSnapshot: Sendable, Equatable, Codable {
     fallbackPolicy: PraxisCmpFallbackPolicy,
     recoveryPreference: PraxisCmpRecoveryPreference,
     automation: PraxisCmpAutomationMap,
-    latestPackageID: String? = nil,
+    latestPackageID: PraxisCmpPackageID? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     latestTargetAgentID: String? = nil
   ) {
@@ -827,7 +827,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
   public let readbackPriority: PraxisCmpReadbackPriority
   public let packageCount: Int
   public let packageStatusCounts: PraxisCmpPackageStatusCountMap
-  public let latestPackageID: String?
+  public let latestPackageID: PraxisCmpPackageID?
   public let latestDispatchStatus: PraxisCmpLatestDispatchStatus?
   public let roleCounts: PraxisCmpRoleCountMap
   public let roleStages: PraxisCmpRoleStageMap
@@ -840,7 +840,7 @@ public struct PraxisCmpStatusPanelSnapshot: Sendable, Equatable, Codable {
     readbackPriority: PraxisCmpReadbackPriority,
     packageCount: Int,
     packageStatusCounts: PraxisCmpPackageStatusCountMap,
-    latestPackageID: String? = nil,
+    latestPackageID: PraxisCmpPackageID? = nil,
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     roleCounts: PraxisCmpRoleCountMap,
     roleStages: PraxisCmpRoleStageMap

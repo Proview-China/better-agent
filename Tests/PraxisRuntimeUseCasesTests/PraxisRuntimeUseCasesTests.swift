@@ -1079,6 +1079,71 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func cmpAggregateReadbacksRoundTripTypedLatestPackageIDWhileKeepingJSONStringShape() throws {
+    let packageID = PraxisCmpPackageID(rawValue: "package.aggregate.latest")
+    let roles = PraxisCmpRolesReadback(
+      projectID: "cmp.local-runtime",
+      agentID: "checker.local",
+      summary: "CMP roles readback summary",
+      roles: [
+        .init(role: .dispatcher, assignmentCount: 1, latestStage: .delivered, summary: "Dispatches packages.")
+      ],
+      latestPackageID: packageID,
+      latestDispatchStatus: .delivered,
+      issues: []
+    )
+    let control = PraxisCmpControlReadback(
+      projectID: "cmp.local-runtime",
+      agentID: "checker.local",
+      summary: "CMP control readback summary",
+      control: .init(
+        executionStyle: .guided,
+        mode: .peerReview,
+        readbackPriority: .packageFirst,
+        fallbackPolicy: .registryOnly,
+        recoveryPreference: .resumeLatest,
+        automation: .init(values: [.autoDispatch: true])
+      ),
+      latestPackageID: packageID,
+      latestDispatchStatus: .retryScheduled,
+      latestTargetAgentID: "checker.local",
+      issues: []
+    )
+    let status = PraxisCmpStatusReadback(
+      projectID: "cmp.local-runtime",
+      agentID: "checker.local",
+      summary: "CMP status readback summary",
+      control: control.control,
+      roles: roles.roles,
+      objectModel: .init(
+        projectionCount: 1,
+        snapshotCount: 1,
+        packageCount: 1,
+        deliveryCount: 1,
+        packageStatusCounts: .init(counts: [.dispatched: 1])
+      ),
+      latestPackageID: packageID,
+      latestDispatchStatus: .retryScheduled,
+      latestTargetAgentID: "checker.local",
+      issues: []
+    )
+
+    let encodedRoles = try encodeUseCaseTestJSON(roles)
+    let encodedControl = try encodeUseCaseTestJSON(control)
+    let encodedStatus = try encodeUseCaseTestJSON(status)
+    let decodedRoles = try decodeUseCaseTestJSON(PraxisCmpRolesReadback.self, from: encodedRoles)
+    let decodedControl = try decodeUseCaseTestJSON(PraxisCmpControlReadback.self, from: encodedControl)
+    let decodedStatus = try decodeUseCaseTestJSON(PraxisCmpStatusReadback.self, from: encodedStatus)
+
+    #expect(encodedRoles.contains(#""latestPackageID":"package.aggregate.latest""#))
+    #expect(encodedControl.contains(#""latestPackageID":"package.aggregate.latest""#))
+    #expect(encodedStatus.contains(#""latestPackageID":"package.aggregate.latest""#))
+    #expect(decodedRoles.latestPackageID == packageID)
+    #expect(decodedControl.latestPackageID == packageID)
+    #expect(decodedStatus.latestPackageID == packageID)
+  }
+
+  @Test
   func retryDispatchUseCaseRejectsCorruptedPersistedDispatchTargetMetadata() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("praxis-runtime-usecases-corrupted-dispatch-target-\(UUID().uuidString)", isDirectory: true)
