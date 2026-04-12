@@ -3565,6 +3565,83 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceCodecRejectsInvalidCmpPeerApprovalRequestedTierAsInvalidInput() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let invalidJSON =
+      #"{"kind":"requestCmpPeerApproval","requestCmpPeerApproval":{"payloadSummary":"Invalid peer approval request","projectID":"cmp.local-runtime","agentID":"runtime.local","targetAgentID":"checker.local","capabilityKey":"tool.git","requestedTier":"not_a_real_requested_tier","summary":"Escalate git access to checker"}}"#
+
+    do {
+      _ = try codec.decodeRequest(Data(invalidJSON.utf8))
+      Issue.record("Expected invalid input decoding failure for illegal CMP peer approval requestedTier.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput, got \(error).")
+        return
+      }
+      #expect(message.contains("requestedTier"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput, got \(error).")
+    }
+  }
+
+  @Test
+  func runtimeInterfaceReturnsInvalidInputForCorruptedTapAndCmpApprovalReadbacks() async throws {
+    let runtimeInterface = makeThrowingRuntimeInterface(
+      readbackTapStatusError: PraxisError.invalidInput("TAP status readback found invalid humanGateState raw value."),
+      readbackTapHistoryError: PraxisError.invalidInput("TAP history readback found invalid route raw value."),
+      readbackCmpPeerApprovalError: PraxisError.invalidInput(
+        "CMP peer approval readback found invalid requestedTier raw value."
+      )
+    )
+    let cases: [(String, PraxisRuntimeInterfaceRequest)] = [
+      (
+        "humanGateState",
+        .readbackTapStatus(
+          .init(
+            payloadSummary: "Read back TAP status",
+            projectID: "cmp.local-runtime",
+            agentID: "checker.local"
+          )
+        )
+      ),
+      (
+        "route",
+        .readbackTapHistory(
+          .init(
+            payloadSummary: "Read back TAP history",
+            projectID: "cmp.local-runtime",
+            agentID: "checker.local",
+            limit: 5
+          )
+        )
+      ),
+      (
+        "requestedTier",
+        .readbackCmpPeerApproval(
+          .init(
+            payloadSummary: "Read back peer approval",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: "tool.git"
+          )
+        )
+      ),
+    ]
+
+    for (fieldName, request) in cases {
+      let response = await runtimeInterface.handle(request)
+
+      #expect(response.status == .failure)
+      #expect(response.snapshot == nil)
+      #expect(response.events.isEmpty)
+      #expect(response.error?.code == .invalidInput)
+      #expect(response.error?.retryable == false)
+      #expect(response.error?.message.contains(fieldName) == true)
+    }
+  }
+
+  @Test
   func runtimeInterfaceCodecDecodesLegacyFlatRunGoalAndResumeRequests() throws {
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let legacyRunGoalJSON = """

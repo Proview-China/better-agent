@@ -1431,14 +1431,134 @@ struct PraxisRuntimeUseCasesTests {
 
   @Test
   func cmpPeerApprovalReadbackRejectsCorruptedPersistedTypedRawValues() async throws {
+    func makeDescriptor(
+      requestedTier: String = PraxisTapCapabilityTier.b1.rawValue,
+      tapMode: String = PraxisTapMode.restricted.rawValue,
+      riskLevel: String = PraxisTapRiskLevel.normal.rawValue,
+      route: String = PraxisReviewerRoute.humanReview.rawValue,
+      outcome: String = PraxisCmpPeerApprovalOutcome.escalatedToHuman.rawValue,
+      humanGateState: String = PraxisHumanGateState.waitingApproval.rawValue,
+      decisionSummary: String
+    ) -> PraxisCmpPeerApprovalDescriptor {
+      PraxisCmpPeerApprovalDescriptor(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityKey: "tool.git",
+        requestedTier: requestedTier,
+        tapMode: tapMode,
+        riskLevel: riskLevel,
+        route: route,
+        outcome: outcome,
+        humanGateState: humanGateState,
+        summary: "Persisted corrupted approval",
+        decisionSummary: decisionSummary,
+        requestedAt: "2026-04-12T00:00:00Z",
+        updatedAt: "2026-04-12T00:00:00Z"
+      )
+    }
+
+    let invalidCases: [(fieldName: String, descriptor: PraxisCmpPeerApprovalDescriptor)] = [
+      (
+        "requestedTier",
+        makeDescriptor(
+          requestedTier: "not_a_real_requested_tier",
+          decisionSummary: "Corrupted requestedTier should fail decoding"
+        )
+      ),
+      (
+        "tapMode",
+        makeDescriptor(
+          tapMode: "not_a_real_tap_mode",
+          decisionSummary: "Corrupted tapMode should fail decoding"
+        )
+      ),
+      (
+        "riskLevel",
+        makeDescriptor(
+          riskLevel: "not_a_real_risk_level",
+          decisionSummary: "Corrupted riskLevel should fail decoding"
+        )
+      ),
+      (
+        "route",
+        makeDescriptor(
+          route: "not_a_real_route",
+          decisionSummary: "Corrupted route should fail decoding"
+        )
+      ),
+      (
+        "outcome",
+        makeDescriptor(
+          outcome: "not_a_real_outcome",
+          decisionSummary: "Corrupted outcome should fail decoding"
+        )
+      ),
+      (
+        "humanGateState",
+        makeDescriptor(
+          humanGateState: "not_a_real_human_gate_state",
+          decisionSummary: "Corrupted humanGateState should fail decoding"
+        )
+      ),
+    ]
+
+    for invalidCase in invalidCases {
+      let rootDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          "praxis-runtime-usecases-corrupted-peer-approval-\(invalidCase.fieldName)-\(UUID().uuidString)",
+          isDirectory: true
+        )
+      defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+      let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+      let dependencies = try makeDependencies(hostAdapters: registry)
+      let readbackApprovalUseCase = PraxisReadbackCmpPeerApprovalUseCase(dependencies: dependencies)
+
+      _ = try await registry.cmpPeerApprovalStore?.save(invalidCase.descriptor)
+
+      do {
+        _ = try await readbackApprovalUseCase.execute(
+          PraxisReadbackCmpPeerApprovalCommand(
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: "tool.git"
+          )
+        )
+        Issue.record("Expected invalidInput for corrupted CMP peer approval \(invalidCase.fieldName).")
+      } catch let error as PraxisError {
+        guard case let .invalidInput(message) = error else {
+          Issue.record("Expected invalidInput, got \(error).")
+          continue
+        }
+        #expect(message.contains(invalidCase.fieldName))
+      } catch {
+        Issue.record("Expected PraxisError.invalidInput, got \(error).")
+      }
+    }
+  }
+
+  @Test
+  func tapStatusReadbackRejectsCorruptedPersistedHumanGateStateRawValue() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
-      .appendingPathComponent("praxis-runtime-usecases-corrupted-peer-approval-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent("praxis-runtime-usecases-corrupted-tap-status-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: rootDirectory) }
 
     let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
     let dependencies = try makeDependencies(hostAdapters: registry)
-    let readbackApprovalUseCase = PraxisReadbackCmpPeerApprovalUseCase(dependencies: dependencies)
+    let updateControlUseCase = PraxisUpdateCmpControlUseCase(dependencies: dependencies)
+    let readbackTapStatusUseCase = PraxisReadbackTapStatusUseCase(dependencies: dependencies)
 
+    _ = try await updateControlUseCase.execute(
+      PraxisUpdateCmpControlCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: .manual,
+        mode: .peerReview,
+        automation: ["autoDispatch": false]
+      )
+    )
     _ = try await registry.cmpPeerApprovalStore?.save(
       PraxisCmpPeerApprovalDescriptor(
         projectID: "cmp.local-runtime",
@@ -1448,61 +1568,114 @@ struct PraxisRuntimeUseCasesTests {
         requestedTier: PraxisTapCapabilityTier.b1.rawValue,
         tapMode: PraxisTapMode.restricted.rawValue,
         riskLevel: PraxisTapRiskLevel.normal.rawValue,
-        route: "not_a_real_route",
-        outcome: PraxisReviewRoutingOutcome.escalatedToHuman.rawValue,
-        humanGateState: PraxisHumanGateState.waitingApproval.rawValue,
-        summary: "Persisted corrupted approval",
-        decisionSummary: "Corrupted route should fail decoding",
+        route: PraxisReviewerRoute.humanReview.rawValue,
+        outcome: PraxisCmpPeerApprovalOutcome.escalatedToHuman.rawValue,
+        humanGateState: "not_a_real_human_gate_state",
+        summary: "Persisted corrupted TAP status approval",
+        decisionSummary: "Corrupted humanGateState should fail TAP status readback",
         requestedAt: "2026-04-12T00:00:00Z",
         updatedAt: "2026-04-12T00:00:00Z"
       )
     )
 
-    await #expect(throws: PraxisError.self) {
-      try await readbackApprovalUseCase.execute(
-        PraxisReadbackCmpPeerApprovalCommand(
-          projectID: "cmp.local-runtime",
-          agentID: "runtime.local",
-          targetAgentID: "checker.local",
-          capabilityKey: "tool.git"
-        )
+    do {
+      _ = try await readbackTapStatusUseCase.execute(
+        PraxisReadbackTapStatusCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
       )
+      Issue.record("Expected invalidInput for corrupted TAP status humanGateState.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput, got \(error).")
+        return
+      }
+      #expect(message.contains("humanGateState"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput, got \(error).")
     }
   }
 
   @Test
-  func tapHistoryReadbackRejectsInvalidPersistedRouteRawValue() async throws {
-    let rootDirectory = FileManager.default.temporaryDirectory
-      .appendingPathComponent("praxis-runtime-usecases-corrupted-tap-history-\(UUID().uuidString)", isDirectory: true)
-    defer { try? FileManager.default.removeItem(at: rootDirectory) }
-
-    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
-    let dependencies = try makeDependencies(hostAdapters: registry)
-    let readbackTapHistoryUseCase = PraxisReadbackTapHistoryUseCase(dependencies: dependencies)
-
-    _ = try await registry.tapRuntimeEventStore?.append(
-      PraxisTapRuntimeEventRecord(
-        eventID: "tap.invalid.route",
-        projectID: "cmp.local-runtime",
-        agentID: "runtime.local",
-        targetAgentID: "checker.local",
-        eventKind: "peer_approval_requested",
-        capabilityKey: "tool.git",
-        summary: "Corrupted TAP route",
-        createdAt: "2026-04-12T00:00:00Z",
-        metadata: [
-          "requestedTier": .string(PraxisTapCapabilityTier.b1.rawValue),
-          "route": .string("not_a_real_route"),
-          "outcome": .string(PraxisReviewRoutingOutcome.escalatedToHuman.rawValue),
+  func tapHistoryReadbackRejectsCorruptedPersistedTypedRawValues() async throws {
+    let invalidCases: [(fieldName: String, metadata: [String: PraxisValue])] = [
+      (
+        "requestedTier",
+        [
+          "requestedTier": .string("not_a_real_requested_tier"),
+          "route": .string(PraxisReviewerRoute.humanReview.rawValue),
+          "outcome": .string(PraxisCmpPeerApprovalOutcome.escalatedToHuman.rawValue),
           "humanGateState": .string(PraxisHumanGateState.waitingApproval.rawValue),
         ]
-      )
-    )
+      ),
+      (
+        "route",
+        [
+          "requestedTier": .string(PraxisTapCapabilityTier.b1.rawValue),
+          "route": .string("not_a_real_route"),
+          "outcome": .string(PraxisCmpPeerApprovalOutcome.escalatedToHuman.rawValue),
+          "humanGateState": .string(PraxisHumanGateState.waitingApproval.rawValue),
+        ]
+      ),
+      (
+        "outcome",
+        [
+          "requestedTier": .string(PraxisTapCapabilityTier.b1.rawValue),
+          "route": .string(PraxisReviewerRoute.humanReview.rawValue),
+          "outcome": .string("not_a_real_outcome"),
+          "humanGateState": .string(PraxisHumanGateState.waitingApproval.rawValue),
+        ]
+      ),
+      (
+        "humanGateState",
+        [
+          "requestedTier": .string(PraxisTapCapabilityTier.b1.rawValue),
+          "route": .string(PraxisReviewerRoute.humanReview.rawValue),
+          "outcome": .string(PraxisCmpPeerApprovalOutcome.escalatedToHuman.rawValue),
+          "humanGateState": .string("not_a_real_human_gate_state"),
+        ]
+      ),
+    ]
 
-    await #expect(throws: PraxisError.self) {
-      try await readbackTapHistoryUseCase.execute(
-        PraxisReadbackTapHistoryCommand(projectID: "cmp.local-runtime", agentID: "checker.local", limit: 10)
+    for invalidCase in invalidCases {
+      let fieldName = invalidCase.fieldName
+      let rootDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          "praxis-runtime-usecases-corrupted-tap-history-\(fieldName)-\(UUID().uuidString)",
+          isDirectory: true
+        )
+      defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+      let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+      let dependencies = try makeDependencies(hostAdapters: registry)
+      let readbackTapHistoryUseCase = PraxisReadbackTapHistoryUseCase(dependencies: dependencies)
+
+      _ = try await registry.tapRuntimeEventStore?.append(
+        PraxisTapRuntimeEventRecord(
+          eventID: "tap.invalid.\(fieldName)",
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          eventKind: "peer_approval_requested",
+          capabilityKey: "tool.git",
+          summary: "Corrupted TAP \(fieldName)",
+          createdAt: "2026-04-12T00:00:00Z",
+          metadata: invalidCase.metadata
+        )
       )
+
+      do {
+        _ = try await readbackTapHistoryUseCase.execute(
+          PraxisReadbackTapHistoryCommand(projectID: "cmp.local-runtime", agentID: "checker.local", limit: 10)
+        )
+        Issue.record("Expected invalidInput for corrupted TAP history \(fieldName).")
+      } catch let error as PraxisError {
+        guard case let .invalidInput(message) = error else {
+          Issue.record("Expected invalidInput, got \(error).")
+          continue
+        }
+        #expect(message.contains(fieldName))
+      } catch {
+        Issue.record("Expected PraxisError.invalidInput, got \(error).")
+      }
     }
   }
 
