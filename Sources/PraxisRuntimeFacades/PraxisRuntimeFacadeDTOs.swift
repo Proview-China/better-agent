@@ -84,7 +84,7 @@ public struct PraxisTapStatusSnapshot: Sendable, Equatable, Codable {
   public let riskLevel: PraxisTapRiskLevel
   public let humanGateState: PraxisHumanGateState
   public let availableCapabilityCount: Int
-  public let availableCapabilityIDs: [String]
+  public let availableCapabilityIDs: [PraxisCapabilityID]
   public let pendingApprovalCount: Int
   public let approvedApprovalCount: Int
   public let latestCapabilityKey: PraxisCapabilityID?
@@ -99,7 +99,7 @@ public struct PraxisTapStatusSnapshot: Sendable, Equatable, Codable {
     riskLevel: PraxisTapRiskLevel,
     humanGateState: PraxisHumanGateState,
     availableCapabilityCount: Int,
-    availableCapabilityIDs: [String],
+    availableCapabilityIDs: [PraxisCapabilityID],
     pendingApprovalCount: Int,
     approvedApprovalCount: Int,
     latestCapabilityKey: PraxisCapabilityID? = nil,

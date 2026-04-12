@@ -2764,7 +2764,6 @@ private func readbackTapStatus(
   dependencies: PraxisDependencyGraph
 ) async throws -> PraxisTapStatusReadback {
   let capabilityIDs = hostCapabilityIDs(from: dependencies)
-  let capabilityKeys = capabilityIDs.map(\.rawValue)
   let control = try await cmpResolvedControlSurface(
     projectID: command.projectID,
     agentID: command.agentID,
@@ -2799,7 +2798,7 @@ private func readbackTapStatus(
   }
 
   var issues: [String] = []
-  if capabilityKeys.isEmpty {
+  if capabilityIDs.isEmpty {
     issues.append("No TAP-capable host surfaces are currently registered in HostRuntime composition.")
   }
   if dependencies.hostAdapters.cmpPeerApprovalStore == nil {
@@ -2807,7 +2806,7 @@ private func readbackTapStatus(
   }
 
   let scopeLabel = command.agentID ?? "project scope"
-  let readinessSummary = "TAP readiness for \(scopeLabel) currently sees \(capabilityKeys.count) registered capability surface(s), \(pendingApprovalCount) pending approval request(s), and \(approvedApprovalCount) approved request(s)."
+  let readinessSummary = "TAP readiness for \(scopeLabel) currently sees \(capabilityIDs.count) registered capability surface(s), \(pendingApprovalCount) pending approval request(s), and \(approvedApprovalCount) approved request(s)."
   let latestCapabilityID = try latestApproval.map { try cmpPeerApprovalCapabilityID(from: $0) }
   return PraxisTapStatusReadback(
     projectID: command.projectID,
@@ -2817,8 +2816,8 @@ private func readbackTapStatus(
     tapMode: tapMode,
     riskLevel: riskLevel,
     humanGateState: humanGateState,
-    availableCapabilityCount: capabilityKeys.count,
-    availableCapabilityIDs: capabilityKeys,
+    availableCapabilityCount: capabilityIDs.count,
+    availableCapabilityIDs: capabilityIDs,
     pendingApprovalCount: pendingApprovalCount,
     approvedApprovalCount: approvedApprovalCount,
     latestCapabilityKey: latestCapabilityID,

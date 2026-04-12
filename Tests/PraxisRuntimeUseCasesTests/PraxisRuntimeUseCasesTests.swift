@@ -249,6 +249,39 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func tapStatusReadbackRoundTripsTypedCapabilityListAndRejectsNonStringPayloads() throws {
+    let readback = PraxisTapStatusReadback(
+      projectID: "cmp.local-runtime",
+      agentID: "checker.local",
+      summary: "TAP status readback summarizes host-backed governance readiness.",
+      readinessSummary: "2 capabilities are currently registered.",
+      tapMode: .restricted,
+      riskLevel: .risky,
+      humanGateState: .waitingApproval,
+      availableCapabilityCount: 2,
+      availableCapabilityIDs: [capabilityID("tool.git"), capabilityID("tool.shell.exec")],
+      pendingApprovalCount: 1,
+      approvedApprovalCount: 0,
+      latestCapabilityKey: capabilityID("tool.shell.exec"),
+      latestDecisionSummary: "Waiting for approval",
+      issues: []
+    )
+
+    let encoded = try encodeUseCaseTestJSON(readback)
+    let decoded = try decodeUseCaseTestJSON(PraxisTapStatusReadback.self, from: encoded)
+
+    #expect(encoded.contains(#""availableCapabilityIDs":["tool.git","tool.shell.exec"]"#))
+    #expect(decoded.availableCapabilityIDs == [capabilityID("tool.git"), capabilityID("tool.shell.exec")])
+
+    let invalidJSON =
+      #"{"agentID":"checker.local","approvedApprovalCount":0,"availableCapabilityCount":1,"availableCapabilityIDs":[42],"humanGateState":"waitingApproval","issues":[],"latestCapabilityKey":"tool.shell.exec","latestDecisionSummary":"Waiting for approval","pendingApprovalCount":1,"projectID":"cmp.local-runtime","readinessSummary":"1 capability is registered.","riskLevel":"risky","summary":"TAP status readback summarizes host-backed governance readiness.","tapMode":"restricted"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeUseCaseTestJSON(PraxisTapStatusReadback.self, from: invalidJSON)
+    }
+  }
+
+  @Test
   func mpHostInspectionServiceBuildsInspectionProjectionFromHostTruth() async throws {
     let inspectionService = PraxisMpHostInspectionService()
     let hostAdapters = PraxisHostAdapterRegistry(
@@ -1610,6 +1643,7 @@ struct PraxisRuntimeUseCasesTests {
 
     #expect(tapStatus.tapMode == .restricted)
     #expect(tapStatus.humanGateState == .waitingApproval)
+    #expect(tapStatus.availableCapabilityIDs.contains(capabilityID("tool.shell")))
     let containsEscalatedApproval = tapHistory.entries.contains { entry in
       entry.capabilityKey == PraxisCapabilityID(rawValue: "tool.shell.exec")
         && entry.requestedTier == .b2

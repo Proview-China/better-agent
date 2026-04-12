@@ -288,6 +288,7 @@ struct HostRuntimeSurfaceTests {
     #expect(tapStatus.projectID == "cmp.local-runtime")
     #expect(tapStatus.agentID == "runtime.local")
     #expect(tapStatus.availableCapabilityCount > 0)
+    #expect(tapStatus.availableCapabilityIDs.contains(capabilityID("tool.shell")))
     #expect(tapHistory.projectID == "cmp.local-runtime")
     #expect(tapHistory.agentID == "runtime.local")
     #expect(tapHistory.totalCount == 0)
@@ -1856,6 +1857,7 @@ struct HostRuntimeSurfaceTests {
     #expect(tapStatus.pendingApprovalCount == 0)
     #expect(tapStatus.approvedApprovalCount == 1)
     #expect(tapStatus.humanGateState == .approved)
+    #expect(tapStatus.availableCapabilityIDs.contains(capabilityID("tool.git")))
     #expect(tapHistory.entries.contains {
       $0.capabilityKey == PraxisCapabilityID(rawValue: "tool.git") && $0.outcome == .approvedByHuman
     })

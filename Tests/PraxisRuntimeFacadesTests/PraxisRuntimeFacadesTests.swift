@@ -489,7 +489,7 @@ struct PraxisRuntimeFacadesTests {
       riskLevel: .dangerous,
       humanGateState: .waitingApproval,
       availableCapabilityCount: 2,
-      availableCapabilityIDs: ["tool.git", "tool.shell.exec"],
+      availableCapabilityIDs: [capabilityID("tool.git"), capabilityID("tool.shell.exec")],
       pendingApprovalCount: 1,
       approvedApprovalCount: 0,
       latestCapabilityKey: .init(rawValue: "tool.shell.exec"),
@@ -534,12 +534,14 @@ struct PraxisRuntimeFacadesTests {
     #expect(encodedStatus.contains(#""tapMode":"restricted""#))
     #expect(encodedStatus.contains(#""riskLevel":"dangerous""#))
     #expect(encodedStatus.contains(#""humanGateState":"waitingApproval""#))
+    #expect(encodedStatus.contains(#""availableCapabilityIDs":["tool.git","tool.shell.exec"]"#))
     #expect(encodedHistory.contains(#""requestedTier":"B2""#))
     #expect(encodedHistory.contains(#""route":"humanReview""#))
     #expect(encodedHistory.contains(#""outcome":"escalated_to_human""#))
     #expect(decodedStatus.tapMode == .restricted)
     #expect(decodedStatus.riskLevel == .dangerous)
     #expect(decodedStatus.humanGateState == .waitingApproval)
+    #expect(decodedStatus.availableCapabilityIDs == [capabilityID("tool.git"), capabilityID("tool.shell.exec")])
     #expect(decodedHistory.entries.first?.requestedTier == .b2)
     #expect(decodedHistory.entries.first?.route == .humanReview)
     #expect(decodedHistory.entries.first?.outcome == .escalatedToHuman)
@@ -658,7 +660,7 @@ struct PraxisRuntimeFacadesTests {
       riskLevel: .risky,
       humanGateState: .waitingApproval,
       availableCapabilityCount: 1,
-      availableCapabilityIDs: ["tool.shell.exec"],
+      availableCapabilityIDs: [capabilityID("tool.shell.exec")],
       pendingApprovalCount: 1,
       approvedApprovalCount: 0,
       latestCapabilityKey: .init(rawValue: "tool.shell.exec"),
@@ -694,6 +696,7 @@ struct PraxisRuntimeFacadesTests {
     #expect(decodedStatus.tapMode == .restricted)
     #expect(decodedStatus.riskLevel == .risky)
     #expect(decodedStatus.humanGateState == .waitingApproval)
+    #expect(decodedStatus.availableCapabilityIDs == [capabilityID("tool.shell.exec")])
   }
 
   @Test
@@ -723,6 +726,16 @@ struct PraxisRuntimeFacadesTests {
     }
     #expect(throws: DecodingError.self) {
       try decodeFacadeTestJSON(PraxisTapStatusSnapshot.self, from: invalidStatusHumanGateStateJSON)
+    }
+  }
+
+  @Test
+  func tapStatusSnapshotRejectsNonStringCapabilityListPayloads() throws {
+    let invalidStatusJSON =
+      #"{"agentID":"checker.local","approvedApprovalCount":0,"availableCapabilityCount":1,"availableCapabilityIDs":[42],"humanGateState":"waitingApproval","latestCapabilityKey":"tool.shell.exec","latestDecisionSummary":"Waiting for approval","pendingApprovalCount":1,"projectID":"cmp.local-runtime","readinessSummary":"1 capability, 1 pending approval.","riskLevel":"risky","summary":"TAP status snapshot","tapMode":"restricted"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisTapStatusSnapshot.self, from: invalidStatusJSON)
     }
   }
 
