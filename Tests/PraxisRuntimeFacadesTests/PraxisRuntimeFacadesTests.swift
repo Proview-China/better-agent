@@ -938,7 +938,10 @@ struct PraxisRuntimeFacadesTests {
 
     #expect(search.projectID == "mp.local-runtime")
     #expect(search.hits.map(\.memoryID) == ["memory.primary", "memory.supporting"])
-    #expect(search.hits.first?.scopeLevel == PraxisMpScopeLevel.agentIsolated.rawValue)
+    #expect(search.hits.first?.scopeLevel == .agentIsolated)
+    #expect(search.hits.first?.memoryKind == .semantic)
+    #expect(search.hits.first?.freshnessStatus == .fresh)
+    #expect(search.hits.first?.alignmentStatus == .aligned)
     #expect(readback.totalMemoryCount == 2)
     #expect(readback.primaryCount == 1)
     #expect(readback.supportingCount == 1)
@@ -1138,6 +1141,44 @@ struct PraxisRuntimeFacadesTests {
     }
     #expect(throws: DecodingError.self) {
       try decodeFacadeTestJSON(PraxisMpArchiveSnapshot.self, from: invalidArchiveJSON)
+    }
+  }
+
+  @Test
+  func mpSearchHitSnapshotsRoundTripTypedEnums() throws {
+    let hit = PraxisMpSearchHitSnapshot(
+      memoryID: "memory.primary",
+      agentID: "runtime.local",
+      scopeLevel: .project,
+      memoryKind: .summary,
+      freshnessStatus: .aging,
+      alignmentStatus: .unreviewed,
+      summary: "Shared onboarding summary",
+      storageKey: "memory/supporting",
+      semanticScore: 0.62,
+      finalScore: 0.78,
+      rankExplanation: "Project summary ranked after semantic score adjustment."
+    )
+    let encoded = try encodeFacadeTestJSON(hit)
+    let decoded = try decodeFacadeTestJSON(PraxisMpSearchHitSnapshot.self, from: encoded)
+
+    #expect(encoded.contains(#""scopeLevel":"project""#))
+    #expect(encoded.contains(#""memoryKind":"summary""#))
+    #expect(encoded.contains(#""freshnessStatus":"aging""#))
+    #expect(encoded.contains(#""alignmentStatus":"unreviewed""#))
+    #expect(decoded.scopeLevel == .project)
+    #expect(decoded.memoryKind == .summary)
+    #expect(decoded.freshnessStatus == .aging)
+    #expect(decoded.alignmentStatus == .unreviewed)
+  }
+
+  @Test
+  func mpSearchHitSnapshotsRejectUnknownEnumRawValues() throws {
+    let invalidSearchHitJSON =
+      #"{"agentID":"runtime.local","alignmentStatus":"aligned","finalScore":0.92,"freshnessStatus":"fresh","memoryID":"memory.primary","memoryKind":"not_a_real_memory_kind","rankExplanation":"Primary search hit.","scopeLevel":"project","semanticScore":0.88,"storageKey":"memory/primary","summary":"Host runtime onboarding note"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisMpSearchHitSnapshot.self, from: invalidSearchHitJSON)
     }
   }
 

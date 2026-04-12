@@ -890,10 +890,10 @@ public struct PraxisMpInspectionSnapshot: Sendable, Equatable, Codable {
 public struct PraxisMpSearchHitSnapshot: Sendable, Equatable, Codable, Identifiable {
   public let memoryID: String
   public let agentID: String
-  public let scopeLevel: String
-  public let memoryKind: String
-  public let freshnessStatus: String
-  public let alignmentStatus: String
+  public let scopeLevel: PraxisMpScopeLevel
+  public let memoryKind: PraxisMpMemoryKind
+  public let freshnessStatus: PraxisMpMemoryFreshnessStatus
+  public let alignmentStatus: PraxisMpMemoryAlignmentStatus
   public let summary: String
   public let storageKey: String
   public let semanticScore: Double?
@@ -907,10 +907,10 @@ public struct PraxisMpSearchHitSnapshot: Sendable, Equatable, Codable, Identifia
   public init(
     memoryID: String,
     agentID: String,
-    scopeLevel: String,
-    memoryKind: String,
-    freshnessStatus: String,
-    alignmentStatus: String,
+    scopeLevel: PraxisMpScopeLevel,
+    memoryKind: PraxisMpMemoryKind,
+    freshnessStatus: PraxisMpMemoryFreshnessStatus,
+    alignmentStatus: PraxisMpMemoryAlignmentStatus,
     summary: String,
     storageKey: String,
     semanticScore: Double?,
