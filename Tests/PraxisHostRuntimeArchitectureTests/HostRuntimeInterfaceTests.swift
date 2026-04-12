@@ -2573,7 +2573,7 @@ struct HostRuntimeInterfaceTests {
       createdAt: "2026-04-11T00:00:00Z",
       sourceSectionIDs: [.init(rawValue: "projection.interface.missing-fields:section")]
     )
-    let historyQuery = PraxisCmpHistoricalContextQuery(
+    let historyQuery = PraxisRuntimeInterfaceCmpHistoryQuery(
       snapshotID: .init(rawValue: "snapshot.interface.missing-fields"),
       packageKindHint: .historicalReply
     )
@@ -2755,7 +2755,7 @@ struct HostRuntimeInterfaceTests {
       createdAt: "2026-04-11T00:00:00Z",
       sourceSectionIDs: [.init(rawValue: "projection.interface.invalid-input:section")]
     )
-    let historyQuery = PraxisCmpHistoricalContextQuery(
+    let historyQuery = PraxisRuntimeInterfaceCmpHistoryQuery(
       snapshotID: .init(rawValue: "snapshot.interface.invalid-input"),
       packageKindHint: .historicalReply
     )
@@ -3777,6 +3777,63 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceMapsCmpHistoryBoundaryQueryIntoDomainQuery() async throws {
+    let expectedQuery = PraxisCmpHistoricalContextQuery(
+      snapshotID: .init(rawValue: "snapshot.history.runtime"),
+      lineageID: .init(rawValue: "lineage.history.runtime"),
+      branchRef: "cmp/runtime",
+      packageKindHint: .historicalReply,
+      projectionVisibilityHint: .acceptedByParent,
+      metadata: [
+        "reason": .string("recover"),
+        "attempt": .number(2),
+      ]
+    )
+    let cmpFacade = makeStubCmpFacade(
+      requestCmpHistory: { command in
+        #expect(command.projectID == "cmp.local-runtime")
+        #expect(command.requesterAgentID == "checker.local")
+        #expect(command.reason == "Recover focused context")
+        #expect(command.query == expectedQuery)
+        return PraxisCmpFlowHistory(
+          projectID: command.projectID,
+          requesterAgentID: command.requesterAgentID,
+          summary: "Requested CMP history.",
+          result: .init(status: .accepted, found: false, metadata: command.query.metadata)
+        )
+      }
+    )
+    let runtimeInterface = makeStubbedRuntimeInterface(cmpFacade: cmpFacade)
+
+    let response = await runtimeInterface.handle(
+      .requestCmpHistory(
+        .init(
+          payloadSummary: "Request history",
+          projectID: "cmp.local-runtime",
+          requesterAgentID: "checker.local",
+          reason: "Recover focused context",
+          query: .init(
+            snapshotID: runtimeInterfaceReferenceID("snapshot.history.runtime"),
+            lineageID: runtimeInterfaceReferenceID("lineage.history.runtime"),
+            branchRef: "cmp/runtime",
+            packageKindHint: .historicalReply,
+            projectionVisibilityHint: .acceptedByParent,
+            metadata: [
+              "reason": .string("recover"),
+              "attempt": .number(2),
+            ]
+          )
+        )
+      )
+    )
+
+    #expect(response.status == .success)
+    #expect(response.error == nil)
+    #expect(response.snapshot?.kind == .cmpFlow)
+    #expect(response.snapshot?.projectID == "cmp.local-runtime")
+  }
+
+  @Test
   func runtimeInterfaceCodecRoundTripsTypedEventNamesAsStableRawValues() throws {
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let response = PraxisRuntimeInterfaceResponse(
@@ -4245,6 +4302,58 @@ struct HostRuntimeInterfaceTests {
     #expect(decodedIngestRequest == ingestRequest)
     #expect(decodedHistoryRequest == historyRequest)
     #expect(decodedRetryRequest == retryRequest)
+  }
+
+  @Test
+  func runtimeInterfaceCodecRoundTripsCmpHistoryBoundaryQueryAsStableStrings() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let request = PraxisRuntimeInterfaceRequest.requestCmpHistory(
+      .init(
+        payloadSummary: "Request history boundary",
+        projectID: "cmp.local-runtime",
+        requesterAgentID: "checker.local",
+        reason: "Recover boundary context",
+        query: .init(
+          snapshotID: runtimeInterfaceReferenceID("snapshot.history.runtime"),
+          lineageID: runtimeInterfaceReferenceID("lineage.history.runtime"),
+          branchRef: "cmp/runtime",
+          packageKindHint: .historicalReply,
+          projectionVisibilityHint: .acceptedByParent,
+          metadata: [
+            "reason": .string("recover"),
+            "attempt": .number(2),
+          ]
+        )
+      )
+    )
+
+    let requestData = try codec.encode(request)
+    let requestJSON = String(decoding: requestData, as: UTF8.self)
+    let decodedRequest = try codec.decodeRequest(requestData)
+
+    #expect(
+      requestJSON ==
+        #"{"kind":"requestCmpHistory","requestCmpHistory":{"payloadSummary":"Request history boundary","projectID":"cmp.local-runtime","query":{"branchRef":"cmp\/runtime","lineageID":"lineage.history.runtime","metadata":{"attempt":2,"reason":"recover"},"packageKindHint":"historicalReply","projectionVisibilityHint":"acceptedByParent","snapshotID":"snapshot.history.runtime"},"reason":"Recover boundary context","requesterAgentID":"checker.local"}}"#
+    )
+    #expect(decodedRequest == request)
+    if case .requestCmpHistory(let payload) = decodedRequest {
+      #expect(
+        payload.query ==
+          .init(
+            snapshotID: runtimeInterfaceReferenceID("snapshot.history.runtime"),
+            lineageID: runtimeInterfaceReferenceID("lineage.history.runtime"),
+            branchRef: "cmp/runtime",
+            packageKindHint: .historicalReply,
+            projectionVisibilityHint: .acceptedByParent,
+            metadata: [
+              "reason": .string("recover"),
+              "attempt": .number(2),
+            ]
+          )
+      )
+    } else {
+      Issue.record("Expected requestCmpHistory payload.")
+    }
   }
 
   @Test

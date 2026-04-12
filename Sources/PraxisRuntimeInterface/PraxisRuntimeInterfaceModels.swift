@@ -1,6 +1,7 @@
 import PraxisCapabilityContracts
 import PraxisCmpDelivery
 import PraxisCmpTypes
+import PraxisCoreTypes
 import PraxisMpTypes
 import PraxisRun
 import PraxisRuntimeFacades
@@ -623,19 +624,57 @@ public struct PraxisRuntimeInterfaceRetryCmpDispatchRequestPayload: Sendable, Eq
   }
 }
 
+/// Represents the runtime-interface boundary shape for CMP history requests.
+///
+/// This type stays host-neutral and interface-specific. It carries only stable
+/// boundary fields and does not reuse use-case query models directly.
+public struct PraxisRuntimeInterfaceCmpHistoryQuery: Sendable, Equatable, Codable {
+  public let snapshotID: PraxisRuntimeInterfaceReferenceID?
+  public let lineageID: PraxisRuntimeInterfaceReferenceID?
+  public let branchRef: String?
+  public let packageKindHint: PraxisCmpContextPackageKind?
+  public let projectionVisibilityHint: PraxisCmpProjectionVisibilityLevel?
+  public let metadata: [String: PraxisValue]
+
+  /// Creates a runtime-interface CMP history query.
+  ///
+  /// - Parameters:
+  ///   - snapshotID: Optional opaque snapshot reference.
+  ///   - lineageID: Optional opaque lineage reference.
+  ///   - branchRef: Optional branch hint.
+  ///   - packageKindHint: Optional package kind hint.
+  ///   - projectionVisibilityHint: Optional projection visibility hint.
+  ///   - metadata: Plain query metadata.
+  public init(
+    snapshotID: PraxisRuntimeInterfaceReferenceID? = nil,
+    lineageID: PraxisRuntimeInterfaceReferenceID? = nil,
+    branchRef: String? = nil,
+    packageKindHint: PraxisCmpContextPackageKind? = nil,
+    projectionVisibilityHint: PraxisCmpProjectionVisibilityLevel? = nil,
+    metadata: [String: PraxisValue] = [:]
+  ) {
+    self.snapshotID = snapshotID
+    self.lineageID = lineageID
+    self.branchRef = branchRef
+    self.packageKindHint = packageKindHint
+    self.projectionVisibilityHint = projectionVisibilityHint
+    self.metadata = metadata
+  }
+}
+
 public struct PraxisRuntimeInterfaceRequestCmpHistoryPayload: Sendable, Equatable, Codable {
   public let payloadSummary: String
   public let projectID: String
   public let requesterAgentID: String
   public let reason: String
-  public let query: PraxisCmpHistoricalContextQuery
+  public let query: PraxisRuntimeInterfaceCmpHistoryQuery
 
   public init(
     payloadSummary: String,
     projectID: String,
     requesterAgentID: String,
     reason: String,
-    query: PraxisCmpHistoricalContextQuery
+    query: PraxisRuntimeInterfaceCmpHistoryQuery
   ) {
     self.payloadSummary = payloadSummary
     self.projectID = projectID

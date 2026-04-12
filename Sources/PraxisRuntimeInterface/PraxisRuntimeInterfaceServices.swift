@@ -110,6 +110,19 @@ private func requireRuntimeInterfaceReferenceIDElements(
   return elements
 }
 
+private func cmpHistoricalContextQuery(
+  from query: PraxisRuntimeInterfaceCmpHistoryQuery
+) -> PraxisCmpHistoricalContextQuery {
+  PraxisCmpHistoricalContextQuery(
+    snapshotID: query.snapshotID.map { .init(rawValue: $0.rawValue) },
+    lineageID: query.lineageID.map { .init(rawValue: $0.rawValue) },
+    branchRef: query.branchRef,
+    packageKindHint: query.packageKindHint,
+    projectionVisibilityHint: query.projectionVisibilityHint,
+    metadata: query.metadata
+  )
+}
+
 private func runtimeInterfaceDecodingPath(from codingPath: [CodingKey]) -> String {
   let path = codingPath.map(\.stringValue).filter { !$0.isEmpty }
   return path.isEmpty ? "request" : path.joined(separator: ".")
@@ -1115,7 +1128,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
           projectID: projectID,
           requesterAgentID: requesterAgentID,
           reason: reason,
-          query: payload.query
+          query: cmpHistoricalContextQuery(from: payload.query)
         )
       )
       return response(from: history)
