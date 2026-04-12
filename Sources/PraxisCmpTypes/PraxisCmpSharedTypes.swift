@@ -140,6 +140,13 @@ public enum PraxisCmpRecoveryStatus: String, Sendable, Codable {
   case degraded
 }
 
+/// Identifies which host-neutral recovery path produced a CMP project recovery result.
+public enum PraxisCmpRecoverySource: String, Sendable, Codable {
+  case historicalContext = "historical_context"
+  case historicalSnapshot = "historical_snapshot"
+  case projectionMaterialization = "projection_materialization"
+}
+
 public enum PraxisCmpProjectExecutionStyle: String, Sendable, Codable {
   case localFirst = "local-first"
 }

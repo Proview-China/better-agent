@@ -2158,13 +2158,13 @@ private func recoverCmpProject(
   var recoveredSnapshot = historicalSnapshot
   var recoveredPackage = historicalPackage
   var sourceAgentID = historicalPackage?.sourceAgentID ?? historicalSnapshot?.agentID ?? command.agentID
-  let recoverySource: String =
+  let recoverySource: PraxisCmpRecoverySource =
     if historicalPackage != nil {
-      "historical_context"
+      .historicalContext
     } else if historicalSnapshot != nil {
-      "historical_snapshot"
+      .historicalSnapshot
     } else {
-      "projection_materialization"
+      .projectionMaterialization
     }
 
   if recoveredPackage == nil {
@@ -2294,11 +2294,11 @@ private func recoverCmpProject(
     : "Hydrated recovery resumed \(hydratedRecovery.resumableProjectionIDs.count) projection(s) and is missing \(hydratedRecovery.missingProjectionIDs.count) projection(s)."
   let summary: String
   switch recoverySource {
-  case "historical_context":
+  case .historicalContext:
     summary = "CMP project recover reused historical context package \(recoveredPackage.id.rawValue) for \(command.targetAgentID) through the host-neutral project surface."
-  case "historical_snapshot":
+  case .historicalSnapshot:
     summary = "CMP project recover rebuilt context package \(recoveredPackage.id.rawValue) for \(command.targetAgentID) from a reusable historical snapshot through the host-neutral project surface."
-  default:
+  case .projectionMaterialization:
     summary = "CMP project recover materialized context package \(recoveredPackage.id.rawValue) for \(command.targetAgentID) after resolving available checked state through the host-neutral project surface."
   }
 

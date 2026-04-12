@@ -661,7 +661,7 @@ struct HostRuntimeSurfaceTests {
       )
     )
 
-    #expect(recovery.recoverySource == "historical_context")
+    #expect(recovery.recoverySource == .historicalContext)
     #expect(recovery.foundHistoricalContext)
     #expect(recovery.sourceAgentID == "archivist.local")
     #expect(recovery.targetAgentID == "checker.local")
@@ -721,7 +721,7 @@ struct HostRuntimeSurfaceTests {
       )
     )
 
-    #expect(recovery.recoverySource == "historical_snapshot")
+    #expect(recovery.recoverySource == .historicalSnapshot)
     #expect(recovery.foundHistoricalContext)
     #expect(recovery.sourceAgentID == "runtime.local")
     #expect(recovery.snapshotID == "\(descriptor.projectionID.rawValue):checked")
@@ -768,14 +768,14 @@ struct HostRuntimeSurfaceTests {
   }
 
   @Test
-  func cmpProjectRecoverySnapshotCodecRoundTripsTypedStatusAndPackageKind() throws {
+  func cmpProjectRecoverySnapshotCodecRoundTripsTypedStatusRecoverySourceAndPackageKind() throws {
     let snapshot = PraxisCmpProjectRecoverySnapshot(
       summary: "Recovered CMP project context.",
       projectID: "cmp.local-runtime",
       sourceAgentID: "runtime.local",
       targetAgentID: "checker.local",
       status: .aligned,
-      recoverySource: "historical_context",
+      recoverySource: .historicalContext,
       foundHistoricalContext: true,
       snapshotID: "snapshot.recovery.codec",
       packageID: "package.recovery.codec",
@@ -791,8 +791,10 @@ struct HostRuntimeSurfaceTests {
     let decoded = try decodeTestJSON(PraxisCmpProjectRecoverySnapshot.self, from: encoded)
 
     #expect(encoded.contains(#""status":"aligned""#))
+    #expect(encoded.contains(#""recoverySource":"historical_context""#))
     #expect(encoded.contains(#""packageKind":"historicalReply""#))
     #expect(decoded.status == .aligned)
+    #expect(decoded.recoverySource == .historicalContext)
     #expect(decoded.packageKind == .historicalReply)
   }
 
@@ -800,7 +802,8 @@ struct HostRuntimeSurfaceTests {
   func cmpProjectRecoverySnapshotDecodeRejectsUnknownTypedFields() throws {
     let cases = [
       #"{"foundHistoricalContext":true,"hydratedRecoverySummary":"Hydrated recovery can resume 1 projection(s).","issues":[],"missingProjectionCount":0,"packageID":"package.recovery.codec","packageKind":"historicalReply","projectID":"cmp.local-runtime","projectionRecoverySummary":"Projection is resumable.","recoverySource":"historical_context","resumableProjectionCount":1,"snapshotID":"snapshot.recovery.codec","sourceAgentID":"runtime.local","status":"broken_status","summary":"Recovered CMP project context.","targetAgentID":"checker.local"}"#,
-      #"{"foundHistoricalContext":true,"hydratedRecoverySummary":"Hydrated recovery can resume 1 projection(s).","issues":[],"missingProjectionCount":0,"packageID":"package.recovery.codec","packageKind":"broken_kind","projectID":"cmp.local-runtime","projectionRecoverySummary":"Projection is resumable.","recoverySource":"historical_context","resumableProjectionCount":1,"snapshotID":"snapshot.recovery.codec","sourceAgentID":"runtime.local","status":"aligned","summary":"Recovered CMP project context.","targetAgentID":"checker.local"}"#
+      #"{"foundHistoricalContext":true,"hydratedRecoverySummary":"Hydrated recovery can resume 1 projection(s).","issues":[],"missingProjectionCount":0,"packageID":"package.recovery.codec","packageKind":"broken_kind","projectID":"cmp.local-runtime","projectionRecoverySummary":"Projection is resumable.","recoverySource":"historical_context","resumableProjectionCount":1,"snapshotID":"snapshot.recovery.codec","sourceAgentID":"runtime.local","status":"aligned","summary":"Recovered CMP project context.","targetAgentID":"checker.local"}"#,
+      #"{"foundHistoricalContext":true,"hydratedRecoverySummary":"Hydrated recovery can resume 1 projection(s).","issues":[],"missingProjectionCount":0,"packageID":"package.recovery.codec","packageKind":"historicalReply","projectID":"cmp.local-runtime","projectionRecoverySummary":"Projection is resumable.","recoverySource":"broken_source","resumableProjectionCount":1,"snapshotID":"snapshot.recovery.codec","sourceAgentID":"runtime.local","status":"aligned","summary":"Recovered CMP project context.","targetAgentID":"checker.local"}"#
     ]
 
     for json in cases {

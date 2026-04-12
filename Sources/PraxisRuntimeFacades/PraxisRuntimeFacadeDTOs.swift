@@ -270,7 +270,7 @@ public struct PraxisCmpProjectRecoverySnapshot: Sendable, Equatable, Codable {
   public let sourceAgentID: String
   public let targetAgentID: String
   public let status: PraxisCmpRecoveryStatus
-  public let recoverySource: String
+  public let recoverySource: PraxisCmpRecoverySource
   public let foundHistoricalContext: Bool
   public let snapshotID: String?
   public let packageID: String
@@ -287,7 +287,7 @@ public struct PraxisCmpProjectRecoverySnapshot: Sendable, Equatable, Codable {
     sourceAgentID: String,
     targetAgentID: String,
     status: PraxisCmpRecoveryStatus,
-    recoverySource: String,
+    recoverySource: PraxisCmpRecoverySource,
     foundHistoricalContext: Bool,
     snapshotID: String?,
     packageID: String,

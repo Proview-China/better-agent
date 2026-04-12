@@ -210,6 +210,40 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func cmpProjectRecoveryRoundTripsTypedRecoverySourceAndRejectsUnknownRawValue() throws {
+    let recovery = PraxisCmpProjectRecovery(
+      projectID: "cmp.local-runtime",
+      sourceAgentID: "runtime.local",
+      targetAgentID: "checker.local",
+      summary: "Recovered CMP project context.",
+      status: .aligned,
+      recoverySource: .historicalContext,
+      foundHistoricalContext: true,
+      snapshotID: "snapshot.recovery.codec",
+      packageID: "package.recovery.codec",
+      packageKind: .historicalReply,
+      projectionRecoverySummary: "Projection is resumable.",
+      hydratedRecoverySummary: "Hydrated recovery can resume 1 projection(s).",
+      resumableProjectionCount: 1,
+      missingProjectionCount: 0,
+      issues: []
+    )
+
+    let encoded = try encodeUseCaseTestJSON(recovery)
+    let decoded = try decodeUseCaseTestJSON(PraxisCmpProjectRecovery.self, from: encoded)
+
+    #expect(encoded.contains(#""recoverySource":"historical_context""#))
+    #expect(decoded.recoverySource == .historicalContext)
+
+    let invalidRecoverySourceJSON =
+      #"{"foundHistoricalContext":true,"hydratedRecoverySummary":"Hydrated recovery can resume 1 projection(s).","issues":[],"missingProjectionCount":0,"packageID":"package.recovery.codec","packageKind":"historicalReply","projectID":"cmp.local-runtime","projectionRecoverySummary":"Projection is resumable.","recoverySource":"broken_source","resumableProjectionCount":1,"snapshotID":"snapshot.recovery.codec","sourceAgentID":"runtime.local","status":"aligned","summary":"Recovered CMP project context.","targetAgentID":"checker.local"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeUseCaseTestJSON(PraxisCmpProjectRecovery.self, from: invalidRecoverySourceJSON)
+    }
+  }
+
+  @Test
   func mpHostInspectionServiceBuildsInspectionProjectionFromHostTruth() async throws {
     let inspectionService = PraxisMpHostInspectionService()
     let hostAdapters = PraxisHostAdapterRegistry(
