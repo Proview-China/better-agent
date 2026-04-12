@@ -71,6 +71,11 @@ struct TapGovernanceSupportTests {
         )
       ]
     )
+    let signal = PraxisToolReviewGovernanceSignal(
+      kind: .governanceSnapshot,
+      active: true,
+      summary: "inspection keeps governance evidence host-neutral"
+    )
     let runtimeSnapshot = PraxisTapRuntimeSnapshot(
       controlPlaneState: .init(
         sessionID: .init(rawValue: "session-1"),
@@ -84,6 +89,7 @@ struct TapGovernanceSupportTests {
 
     #expect(safetyDecision.outcome == .escalateToHuman)
     #expect(session.actions.first?.governanceKind == .activation)
+    #expect(signal.kind == .governanceSnapshot)
     #expect(storedSnapshot?.controlPlaneState.humanGateState == .waitingApproval)
   }
 }

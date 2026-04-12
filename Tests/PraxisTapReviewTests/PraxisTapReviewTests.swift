@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import PraxisCapabilityContracts
 @testable import PraxisTapGovernance
@@ -61,5 +62,36 @@ struct PraxisTapReviewTests {
     #expect(latestDecision == second)
     #expect(trail.decisions.count == 2)
     #expect(trail.latestDecision == second)
+  }
+
+  @Test
+  func governanceSignalCodecPreservesStableRawValueShape() throws {
+    let signal = PraxisToolReviewGovernanceSignal(
+      kind: .governanceSnapshot,
+      active: true,
+      summary: "governance evidence is available"
+    )
+
+    let encoded = try JSONEncoder().encode(signal)
+    let json = try #require(String(data: encoded, encoding: .utf8))
+    let decoded = try JSONDecoder().decode(PraxisToolReviewGovernanceSignal.self, from: encoded)
+
+    #expect(json.contains("\"kind\":\"governance_snapshot\""))
+    #expect(decoded.kind == PraxisToolReviewGovernanceSignalKind.governanceSnapshot)
+  }
+
+  @Test
+  func governanceSignalCodecRejectsUnknownRawValue() {
+    let payload = """
+      {
+        "kind": "unknown_signal",
+        "active": true,
+        "summary": "unsupported"
+      }
+      """.data(using: .utf8)!
+
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(PraxisToolReviewGovernanceSignal.self, from: payload)
+    }
   }
 }

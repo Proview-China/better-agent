@@ -4287,7 +4287,7 @@ public final class PraxisInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
       latestDecision: .init(route: .toolReview, summary: "High-side-effect capabilities still route through the tool-review surface."),
       latestResult: nil,
       signals: [
-        .init(kind: "governance_snapshot", active: true, summary: "Inspection currently reports governance evidence without executing runtime handoff.")
+        .init(kind: .governanceSnapshot, active: true, summary: "Inspection currently reports governance evidence without executing runtime handoff.")
       ],
       advisories: [
         .init(code: "runtime_integration_pending", severity: .risky, summary: "\(persistenceSummary) \(replaySummary)")

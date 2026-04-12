@@ -1655,6 +1655,21 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func inspectTapUseCaseBuildsTypedGovernanceSnapshotSignal() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-tap-inspect-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let useCase = PraxisInspectTapUseCase(dependencies: dependencies)
+
+    let inspection = try await useCase.execute()
+
+    #expect(inspection.toolReviewReport.signals.first?.kind == .governanceSnapshot)
+  }
+
+  @Test
   func cmpPeerApprovalReadbackTreatsBlankOptionalCapabilityKeyAsOmittedFilter() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("praxis-runtime-usecases-peer-approval-blank-readback-\(UUID().uuidString)", isDirectory: true)

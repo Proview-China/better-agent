@@ -26,6 +26,10 @@ public enum PraxisToolReviewSessionStatus: String, Sendable, Codable {
   case completed
 }
 
+public enum PraxisToolReviewGovernanceSignalKind: String, Sendable, Codable {
+  case governanceSnapshot = "governance_snapshot"
+}
+
 public struct PraxisToolReviewTrace: Sendable, Equatable, Codable {
   public let actionID: String
   public let actorID: String
@@ -85,11 +89,11 @@ public struct PraxisToolReviewSessionSnapshot: Sendable, Equatable, Codable {
 }
 
 public struct PraxisToolReviewGovernanceSignal: Sendable, Equatable, Codable {
-  public let kind: String
+  public let kind: PraxisToolReviewGovernanceSignalKind
   public let active: Bool
   public let summary: String
 
-  public init(kind: String, active: Bool, summary: String) {
+  public init(kind: PraxisToolReviewGovernanceSignalKind, active: Bool, summary: String) {
     self.kind = kind
     self.active = active
     self.summary = summary
