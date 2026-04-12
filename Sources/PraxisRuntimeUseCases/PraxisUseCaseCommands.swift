@@ -473,22 +473,23 @@ public struct PraxisRecoverCmpProjectCommand: Sendable, Equatable, Codable {
   public let agentID: String
   public let targetAgentID: String
   public let reason: String
-  public let lineageID: String?
+  public let lineageID: PraxisCmpLineageID?
   public let branchRef: String?
   public let snapshotID: PraxisCmpSnapshotID?
   public let packageKind: PraxisCmpContextPackageKind
   public let fidelityLabel: PraxisCmpContextPackageFidelityLabel?
 
-  public init(
+  init(
     projectID: String,
     agentID: String,
     targetAgentID: String,
     reason: String,
-    lineageID: String? = nil,
+    lineageID: PraxisCmpLineageID?,
     branchRef: String? = nil,
     snapshotID: PraxisCmpSnapshotID? = nil,
     packageKind: PraxisCmpContextPackageKind = .historicalReply,
-    fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil
+    fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil,
+    canonical _: Void
   ) {
     self.projectID = projectID
     self.agentID = agentID
@@ -499,6 +500,80 @@ public struct PraxisRecoverCmpProjectCommand: Sendable, Equatable, Codable {
     self.snapshotID = snapshotID
     self.packageKind = packageKind
     self.fidelityLabel = fidelityLabel
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    targetAgentID: String,
+    reason: String,
+    branchRef: String? = nil,
+    snapshotID: PraxisCmpSnapshotID? = nil,
+    packageKind: PraxisCmpContextPackageKind = .historicalReply,
+    fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      targetAgentID: targetAgentID,
+      reason: reason,
+      lineageID: Optional<PraxisCmpLineageID>.none,
+      branchRef: branchRef,
+      snapshotID: snapshotID,
+      packageKind: packageKind,
+      fidelityLabel: fidelityLabel,
+      canonical: ()
+    )
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    targetAgentID: String,
+    reason: String,
+    lineageID: PraxisCmpLineageID,
+    branchRef: String? = nil,
+    snapshotID: PraxisCmpSnapshotID? = nil,
+    packageKind: PraxisCmpContextPackageKind = .historicalReply,
+    fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      targetAgentID: targetAgentID,
+      reason: reason,
+      lineageID: lineageID,
+      branchRef: branchRef,
+      snapshotID: snapshotID,
+      packageKind: packageKind,
+      fidelityLabel: fidelityLabel,
+      canonical: ()
+    )
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    targetAgentID: String,
+    reason: String,
+    lineageID: String?,
+    branchRef: String? = nil,
+    snapshotID: PraxisCmpSnapshotID? = nil,
+    packageKind: PraxisCmpContextPackageKind = .historicalReply,
+    fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      targetAgentID: targetAgentID,
+      reason: reason,
+      lineageID: lineageID.map(PraxisCmpLineageID.init(rawValue:)),
+      branchRef: branchRef,
+      snapshotID: snapshotID,
+      packageKind: packageKind,
+      fidelityLabel: fidelityLabel,
+      canonical: ()
+    )
   }
 }
 
@@ -559,22 +634,23 @@ public struct PraxisIngestCmpFlowCommand: Sendable, Equatable, Codable {
   public let agentID: String
   public let sessionID: String
   public let runID: String?
-  public let lineageID: String?
+  public let lineageID: PraxisCmpLineageID?
   public let parentAgentID: String?
   public let taskSummary: String
   public let materials: [PraxisCmpRuntimeContextMaterial]
   public let requiresActiveSync: Bool
 
-  public init(
+  init(
     projectID: String,
     agentID: String,
     sessionID: String,
     runID: String? = nil,
-    lineageID: String? = nil,
+    lineageID: PraxisCmpLineageID?,
     parentAgentID: String? = nil,
     taskSummary: String,
     materials: [PraxisCmpRuntimeContextMaterial],
-    requiresActiveSync: Bool = false
+    requiresActiveSync: Bool = false,
+    canonical _: Void
   ) {
     self.projectID = projectID
     self.agentID = agentID
@@ -585,6 +661,80 @@ public struct PraxisIngestCmpFlowCommand: Sendable, Equatable, Codable {
     self.taskSummary = taskSummary
     self.materials = materials
     self.requiresActiveSync = requiresActiveSync
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    sessionID: String,
+    runID: String? = nil,
+    parentAgentID: String? = nil,
+    taskSummary: String,
+    materials: [PraxisCmpRuntimeContextMaterial],
+    requiresActiveSync: Bool = false
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      sessionID: sessionID,
+      runID: runID,
+      lineageID: Optional<PraxisCmpLineageID>.none,
+      parentAgentID: parentAgentID,
+      taskSummary: taskSummary,
+      materials: materials,
+      requiresActiveSync: requiresActiveSync,
+      canonical: ()
+    )
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    sessionID: String,
+    runID: String? = nil,
+    lineageID: PraxisCmpLineageID,
+    parentAgentID: String? = nil,
+    taskSummary: String,
+    materials: [PraxisCmpRuntimeContextMaterial],
+    requiresActiveSync: Bool = false
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      sessionID: sessionID,
+      runID: runID,
+      lineageID: lineageID,
+      parentAgentID: parentAgentID,
+      taskSummary: taskSummary,
+      materials: materials,
+      requiresActiveSync: requiresActiveSync,
+      canonical: ()
+    )
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    sessionID: String,
+    runID: String? = nil,
+    lineageID: String?,
+    parentAgentID: String? = nil,
+    taskSummary: String,
+    materials: [PraxisCmpRuntimeContextMaterial],
+    requiresActiveSync: Bool = false
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      sessionID: sessionID,
+      runID: runID,
+      lineageID: lineageID.map(PraxisCmpLineageID.init(rawValue:)),
+      parentAgentID: parentAgentID,
+      taskSummary: taskSummary,
+      materials: materials,
+      requiresActiveSync: requiresActiveSync,
+      canonical: ()
+    )
   }
 }
 
@@ -627,24 +777,25 @@ public struct PraxisCommitCmpFlowCommand: Sendable, Equatable, Codable {
   public let agentID: String
   public let sessionID: String
   public let runID: String?
-  public let lineageID: String?
+  public let lineageID: PraxisCmpLineageID?
   public let parentAgentID: String?
   public let eventIDs: [PraxisCmpEventID]
   public let baseRef: String?
   public let changeSummary: String
   public let syncIntent: PraxisCmpContextSyncIntent
 
-  public init(
+  init(
     projectID: String,
     agentID: String,
     sessionID: String,
     runID: String? = nil,
-    lineageID: String? = nil,
+    lineageID: PraxisCmpLineageID?,
     parentAgentID: String? = nil,
     eventIDs: [PraxisCmpEventID],
     baseRef: String? = nil,
     changeSummary: String,
-    syncIntent: PraxisCmpContextSyncIntent
+    syncIntent: PraxisCmpContextSyncIntent,
+    canonical _: Void
   ) {
     self.projectID = projectID
     self.agentID = agentID
@@ -656,6 +807,86 @@ public struct PraxisCommitCmpFlowCommand: Sendable, Equatable, Codable {
     self.baseRef = baseRef
     self.changeSummary = changeSummary
     self.syncIntent = syncIntent
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    sessionID: String,
+    runID: String? = nil,
+    parentAgentID: String? = nil,
+    eventIDs: [PraxisCmpEventID],
+    baseRef: String? = nil,
+    changeSummary: String,
+    syncIntent: PraxisCmpContextSyncIntent
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      sessionID: sessionID,
+      runID: runID,
+      lineageID: Optional<PraxisCmpLineageID>.none,
+      parentAgentID: parentAgentID,
+      eventIDs: eventIDs,
+      baseRef: baseRef,
+      changeSummary: changeSummary,
+      syncIntent: syncIntent,
+      canonical: ()
+    )
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    sessionID: String,
+    runID: String? = nil,
+    lineageID: PraxisCmpLineageID,
+    parentAgentID: String? = nil,
+    eventIDs: [PraxisCmpEventID],
+    baseRef: String? = nil,
+    changeSummary: String,
+    syncIntent: PraxisCmpContextSyncIntent
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      sessionID: sessionID,
+      runID: runID,
+      lineageID: lineageID,
+      parentAgentID: parentAgentID,
+      eventIDs: eventIDs,
+      baseRef: baseRef,
+      changeSummary: changeSummary,
+      syncIntent: syncIntent,
+      canonical: ()
+    )
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    sessionID: String,
+    runID: String? = nil,
+    lineageID: String?,
+    parentAgentID: String? = nil,
+    eventIDs: [PraxisCmpEventID],
+    baseRef: String? = nil,
+    changeSummary: String,
+    syncIntent: PraxisCmpContextSyncIntent
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      sessionID: sessionID,
+      runID: runID,
+      lineageID: lineageID.map(PraxisCmpLineageID.init(rawValue:)),
+      parentAgentID: parentAgentID,
+      eventIDs: eventIDs,
+      baseRef: baseRef,
+      changeSummary: changeSummary,
+      syncIntent: syncIntent,
+      canonical: ()
+    )
   }
 }
 
@@ -687,19 +918,64 @@ public struct PraxisCmpFlowCommit: Sendable, Equatable, Codable {
 public struct PraxisResolveCmpFlowCommand: Sendable, Equatable, Codable {
   public let projectID: String
   public let agentID: String
-  public let lineageID: String?
+  public let lineageID: PraxisCmpLineageID?
   public let branchRef: String?
 
-  public init(
+  init(
     projectID: String,
     agentID: String,
-    lineageID: String? = nil,
-    branchRef: String? = nil
+    lineageID: PraxisCmpLineageID?,
+    branchRef: String? = nil,
+    canonical _: Void
   ) {
     self.projectID = projectID
     self.agentID = agentID
     self.lineageID = lineageID
     self.branchRef = branchRef
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    branchRef: String? = nil
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      lineageID: Optional<PraxisCmpLineageID>.none,
+      branchRef: branchRef,
+      canonical: ()
+    )
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    lineageID: PraxisCmpLineageID,
+    branchRef: String? = nil
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      lineageID: lineageID,
+      branchRef: branchRef,
+      canonical: ()
+    )
+  }
+
+  public init(
+    projectID: String,
+    agentID: String,
+    lineageID: String?,
+    branchRef: String? = nil
+  ) {
+    self.init(
+      projectID: projectID,
+      agentID: agentID,
+      lineageID: lineageID.map(PraxisCmpLineageID.init(rawValue:)),
+      branchRef: branchRef,
+      canonical: ()
+    )
   }
 }
 

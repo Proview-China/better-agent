@@ -1144,6 +1144,125 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func cmpFlowCommandsRoundTripTypedLineageIDsWhileKeepingJSONStringShape() throws {
+    let lineageID = PraxisCmpLineageID(rawValue: "lineage.cmp.local-runtime.runtime.local")
+    let recover = PraxisRecoverCmpProjectCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      targetAgentID: "checker.local",
+      reason: "Recover checker context",
+      lineageID: lineageID
+    )
+    let ingest = PraxisIngestCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.typed-lineage",
+      lineageID: lineageID,
+      taskSummary: "Ingest one typed lineage command",
+      materials: [.init(kind: .userInput, ref: "payload:user:typed-lineage")]
+    )
+    let commit = PraxisCommitCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.typed-lineage",
+      lineageID: lineageID,
+      eventIDs: [.init(rawValue: "evt.typed-lineage.1")],
+      changeSummary: "Commit one typed lineage event",
+      syncIntent: .toParent
+    )
+    let resolve = PraxisResolveCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      lineageID: lineageID
+    )
+
+    let encodedRecover = try encodeUseCaseTestJSON(recover)
+    let encodedIngest = try encodeUseCaseTestJSON(ingest)
+    let encodedCommit = try encodeUseCaseTestJSON(commit)
+    let encodedResolve = try encodeUseCaseTestJSON(resolve)
+    let decodedRecover = try decodeUseCaseTestJSON(PraxisRecoverCmpProjectCommand.self, from: encodedRecover)
+    let decodedIngest = try decodeUseCaseTestJSON(PraxisIngestCmpFlowCommand.self, from: encodedIngest)
+    let decodedCommit = try decodeUseCaseTestJSON(PraxisCommitCmpFlowCommand.self, from: encodedCommit)
+    let decodedResolve = try decodeUseCaseTestJSON(PraxisResolveCmpFlowCommand.self, from: encodedResolve)
+
+    #expect(encodedRecover.contains(#""lineageID":"lineage.cmp.local-runtime.runtime.local""#))
+    #expect(encodedIngest.contains(#""lineageID":"lineage.cmp.local-runtime.runtime.local""#))
+    #expect(encodedCommit.contains(#""lineageID":"lineage.cmp.local-runtime.runtime.local""#))
+    #expect(encodedResolve.contains(#""lineageID":"lineage.cmp.local-runtime.runtime.local""#))
+    #expect(decodedRecover.lineageID == lineageID)
+    #expect(decodedIngest.lineageID == lineageID)
+    #expect(decodedCommit.lineageID == lineageID)
+    #expect(decodedResolve.lineageID == lineageID)
+  }
+
+  @Test
+  func cmpFlowCommandSourceCompatibilityInitializersHandleNilAndStringLineageWithoutTypeAnnotations() {
+    let legacyStringLineageID: String? = "lineage.cmp.local-runtime.runtime.local"
+    let legacyNilLineageID: String? = nil
+
+    let recoverNil = PraxisRecoverCmpProjectCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      targetAgentID: "checker.local",
+      reason: "Recover checker context",
+      lineageID: nil
+    )
+    let ingestString = PraxisIngestCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.source-compat",
+      lineageID: legacyStringLineageID,
+      taskSummary: "Ingest through legacy string lineage path",
+      materials: [.init(kind: .userInput, ref: "payload:user:source-compat")]
+    )
+    let commitNil = PraxisCommitCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.source-compat",
+      lineageID: legacyNilLineageID,
+      eventIDs: [.init(rawValue: "evt.source-compat.1")],
+      changeSummary: "Commit through nil lineage path",
+      syncIntent: .toParent
+    )
+    let resolveString = PraxisResolveCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      lineageID: legacyStringLineageID
+    )
+
+    #expect(recoverNil.lineageID == nil)
+    #expect(ingestString.lineageID == .init(rawValue: "lineage.cmp.local-runtime.runtime.local"))
+    #expect(commitNil.lineageID == nil)
+    #expect(resolveString.lineageID == .init(rawValue: "lineage.cmp.local-runtime.runtime.local"))
+  }
+
+  @Test
+  func cmpCommitFlowUseCasePreservesTypedCommandLineageIDInOutputs() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-typed-lineage-commit-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let dependencies = try makeDependencies(rootDirectory: rootDirectory)
+    let commitFlowUseCase = PraxisCommitCmpFlowUseCase(dependencies: dependencies)
+    let lineageID = PraxisCmpLineageID(rawValue: "lineage.cmp.local-runtime.runtime.local")
+    let commit = try await commitFlowUseCase.execute(
+      PraxisCommitCmpFlowCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "cmp.flow.typed-lineage",
+        lineageID: lineageID,
+        eventIDs: [.init(rawValue: "evt.typed-lineage.1")],
+        changeSummary: "Commit one typed lineage event",
+        syncIntent: .toParent
+      )
+    )
+
+    #expect(commit.snapshotCandidate.lineageID == lineageID)
+    #expect(commit.activeLine.lineageID == lineageID)
+    #expect(commit.result.metadata["lineageID"]?.stringValue == lineageID.rawValue)
+  }
+
+  @Test
   func retryDispatchUseCaseRejectsCorruptedPersistedDispatchTargetMetadata() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("praxis-runtime-usecases-corrupted-dispatch-target-\(UUID().uuidString)", isDirectory: true)

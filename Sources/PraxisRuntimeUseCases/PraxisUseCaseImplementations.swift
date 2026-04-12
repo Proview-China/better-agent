@@ -1290,12 +1290,12 @@ private func cmpFlowParentAgentID(
 private func cmpFlowLineage(
   projectID: String,
   agentID: String,
-  lineageIDRaw: String?,
+  lineageID: PraxisCmpLineageID?,
   parentAgentID: String?,
   dependencies: PraxisDependencyGraph
 ) async throws -> PraxisCmpAgentLineage {
-  let lineageID = lineageIDRaw.map(PraxisCmpLineageID.init(rawValue:)) ?? cmpFlowDefaultLineageID(projectID: projectID, agentID: agentID)
-  let storedDescriptor = try await dependencies.hostAdapters.lineageStore?.describe(.init(lineageID: lineageID))
+  let resolvedLineageID = lineageID ?? cmpFlowDefaultLineageID(projectID: projectID, agentID: agentID)
+  let storedDescriptor = try await dependencies.hostAdapters.lineageStore?.describe(.init(lineageID: resolvedLineageID))
   let resolvedParentAgentID = parentAgentID
     ?? cmpFlowParentAgentID(from: storedDescriptor?.parentLineageID, projectID: projectID)
   let cmpBranch = storedDescriptor?.branchRef ?? "cmp/\(agentID)"
@@ -1306,7 +1306,7 @@ private func cmpFlowLineage(
     tapBranch: cmpFlowDefaultBranchFamily(agentID: agentID).tapBranch
   )
   return PraxisCmpAgentLineage(
-    id: lineageID,
+    id: resolvedLineageID,
     projectID: projectID,
     agentID: agentID,
     parentAgentID: resolvedParentAgentID,
@@ -1323,7 +1323,7 @@ private func ingestCmpFlow(
   let lineage = try await cmpFlowLineage(
     projectID: command.projectID,
     agentID: command.agentID,
-    lineageIDRaw: command.lineageID,
+    lineageID: command.lineageID,
     parentAgentID: command.parentAgentID,
     dependencies: dependencies
   )
@@ -1385,7 +1385,7 @@ private func commitCmpFlow(
   let lineage = try await cmpFlowLineage(
     projectID: command.projectID,
     agentID: command.agentID,
-    lineageIDRaw: command.lineageID,
+    lineageID: command.lineageID,
     parentAgentID: command.parentAgentID,
     dependencies: dependencies
   )
@@ -1463,14 +1463,14 @@ private func resolveCmpFlow(
   let lineage = try await cmpFlowLineage(
     projectID: command.projectID,
     agentID: command.agentID,
-    lineageIDRaw: command.lineageID,
+    lineageID: command.lineageID,
     parentAgentID: nil,
     dependencies: dependencies
   )
   let input = PraxisResolveCheckedSnapshotInput(
     agentID: command.agentID,
     projectID: command.projectID,
-    lineageID: command.lineageID.map(PraxisCmpLineageID.init(rawValue:)),
+    lineageID: command.lineageID,
     branchRef: command.branchRef ?? lineage.branchFamily.cmpBranch
   )
   let descriptors = try await dependencies.hostAdapters.projectionStore?.describe(
@@ -1660,7 +1660,7 @@ private func materializeCmpFlow(
   let lineage = try await cmpFlowLineage(
     projectID: command.projectID,
     agentID: command.agentID,
-    lineageIDRaw: nil,
+    lineageID: nil,
     parentAgentID: nil,
     dependencies: dependencies
   )
@@ -2140,7 +2140,7 @@ private func recoverCmpProject(
   let projectionMaterializer = PraxisProjectionMaterializer()
   let historyQuery = PraxisCmpHistoricalContextQuery(
     snapshotID: command.snapshotID,
-    lineageID: command.lineageID.map(PraxisCmpLineageID.init(rawValue:)),
+    lineageID: command.lineageID,
     branchRef: command.branchRef,
     packageKindHint: command.packageKind
   )
@@ -2180,7 +2180,8 @@ private func recoverCmpProject(
           projectID: command.projectID,
           agentID: command.agentID,
           lineageID: command.lineageID,
-          branchRef: command.branchRef
+          branchRef: command.branchRef,
+          canonical: ()
         ),
         dependencies: dependencies
       )
@@ -2230,7 +2231,7 @@ private func recoverCmpProject(
       return false
     }
     if let lineageID = command.lineageID,
-       descriptor.lineageID?.rawValue != lineageID {
+       descriptor.lineageID != lineageID {
       return false
     }
     if let branchRef = command.branchRef,
