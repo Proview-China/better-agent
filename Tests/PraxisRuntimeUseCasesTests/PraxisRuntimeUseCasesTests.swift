@@ -2016,6 +2016,48 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func tapHistoryReadbackExtractsOptionalDisplayFieldsThroughTypedMetadataLayer() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-typed-tap-history-display-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let readbackTapHistoryUseCase = PraxisReadbackTapHistoryUseCase(dependencies: dependencies)
+
+    _ = try await registry.tapRuntimeEventStore?.append(
+      PraxisTapRuntimeEventRecord(
+        eventID: "tap.typed.display-fields",
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        eventKind: .peerApprovalRequested,
+        summary: "Summary should not win when detail is present.",
+        detail: "Detail fallback should remain stable when decisionSummary metadata is absent.",
+        createdAt: "2026-04-12T00:00:00Z",
+        metadata: [
+          "capabilityKey": .string("tool.git"),
+          "requestedTier": .string(PraxisTapCapabilityTier.b1.rawValue),
+          "route": .string(PraxisReviewerRoute.humanReview.rawValue),
+          "outcome": .string(PraxisCmpPeerApprovalOutcome.escalatedToHuman.rawValue),
+          "humanGateState": .string(PraxisHumanGateState.waitingApproval.rawValue),
+          "targetAgentID": .string("checker.local"),
+        ]
+      )
+    )
+
+    let history = try await readbackTapHistoryUseCase.execute(
+      PraxisReadbackTapHistoryCommand(projectID: "cmp.local-runtime", agentID: nil, limit: 10)
+    )
+
+    #expect(history.entries.count == 1)
+    #expect(history.entries.first?.targetAgentID == "checker.local")
+    #expect(
+      history.entries.first?.decisionSummary
+        == "Detail fallback should remain stable when decisionSummary metadata is absent."
+    )
+  }
+
+  @Test
   func tapHistoryReadbackRejectsMismatchedLegacyOutcomeEventKindRawValue() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent(

@@ -2920,70 +2920,144 @@ private func tapHistoryMissingRuntimeEventValue(
   )
 }
 
-private func tapHistoryRequestedTier(from record: PraxisTapRuntimeEventRecord) throws -> PraxisTapCapabilityTier {
-  if let rawValue = record.metadata["requestedTier"]?.stringValue {
-    guard let requestedTier = PraxisTapCapabilityTier(rawValue: rawValue) else {
-      throw tapHistoryInvalidRuntimeEventValue("requestedTier", rawValue: rawValue, record: record)
-    }
-    return requestedTier
+private struct PraxisTapHistoryExtractedMetadata {
+  private enum MetadataKey: String {
+    case capabilityKey
+    case requestedTier
+    case route
+    case outcome
+    case humanGateState
+    case targetAgentID
+    case decisionSummary
   }
-  if let legacyRequestedTier = tapHistoryLegacyRequestedTier(for: record) {
-    return legacyRequestedTier
-  }
-  throw tapHistoryMissingRuntimeEventValue("requestedTier", record: record)
-}
 
-private func tapHistoryHumanGateState(from record: PraxisTapRuntimeEventRecord) throws -> PraxisHumanGateState {
-  if let rawValue = record.metadata["humanGateState"]?.stringValue {
-    guard let humanGateState = PraxisHumanGateState(rawValue: rawValue) else {
-      throw tapHistoryInvalidRuntimeEventValue("humanGateState", rawValue: rawValue, record: record)
-    }
-    return humanGateState
-  }
-  if let legacyHumanGateState = tapHistoryLegacyHumanGateState(for: record) {
-    return legacyHumanGateState
-  }
-  throw tapHistoryMissingRuntimeEventValue("humanGateState", record: record)
-}
+  let capabilityKey: PraxisCapabilityID
+  let targetAgentID: String
+  let requestedTier: PraxisTapCapabilityTier
+  let route: PraxisReviewerRoute
+  let outcome: PraxisCmpPeerApprovalOutcome
+  let humanGateState: PraxisHumanGateState
+  let decisionSummary: String
 
-private func tapHistoryRoute(
-  from record: PraxisTapRuntimeEventRecord,
-  humanGateState: PraxisHumanGateState
-) throws -> PraxisReviewerRoute {
-  if let rawValue = record.metadata["route"]?.stringValue {
-    if let route = PraxisReviewerRoute(rawValue: rawValue) {
-      return route
-    }
-    if rawValue == "tapBridge", let legacyRoute = tapHistoryLegacyRoute(for: record, humanGateState: humanGateState) {
-      return legacyRoute
-    }
-    throw tapHistoryInvalidRuntimeEventValue("route", rawValue: rawValue, record: record)
+  init(record: PraxisTapRuntimeEventRecord) throws {
+    let extractor = MetadataExtractor(record: record)
+    let humanGateState = try extractor.decodeHumanGateState()
+    self.capabilityKey = try extractor.decodeCapabilityKey()
+    self.targetAgentID = extractor.targetAgentID
+    self.requestedTier = try extractor.decodeRequestedTier()
+    self.route = try extractor.decodeRoute(humanGateState: humanGateState)
+    self.outcome = try extractor.decodeOutcome(humanGateState: humanGateState)
+    self.humanGateState = humanGateState
+    self.decisionSummary = extractor.decisionSummary
   }
-  if let legacyRoute = tapHistoryLegacyRoute(for: record, humanGateState: humanGateState) {
-    return legacyRoute
-  }
-  throw tapHistoryMissingRuntimeEventValue("route", record: record)
-}
 
-private func tapHistoryOutcome(
-  from record: PraxisTapRuntimeEventRecord,
-  humanGateState: PraxisHumanGateState
-) throws -> PraxisCmpPeerApprovalOutcome {
-  if let rawValue = record.metadata["outcome"]?.stringValue {
-    if let outcome = PraxisCmpPeerApprovalOutcome(rawValue: rawValue) {
-      return outcome
+  private struct MetadataExtractor {
+    let record: PraxisTapRuntimeEventRecord
+
+    var targetAgentID: String {
+      record.targetAgentID ?? stringValue(for: .targetAgentID) ?? record.agentID
     }
-    if rawValue == record.eventKind.rawValue,
-      let legacyOutcome = tapHistoryLegacyOutcome(for: record, humanGateState: humanGateState)
-    {
-      return legacyOutcome
+
+    var decisionSummary: String {
+      stringValue(for: .decisionSummary) ?? record.detail ?? record.summary
     }
-    throw tapHistoryInvalidRuntimeEventValue("outcome", rawValue: rawValue, record: record)
+
+    func decodeCapabilityKey() throws -> PraxisCapabilityID {
+      if let capabilityKey = record.capabilityKey {
+        return try normalizedCapabilityID(
+          from: capabilityKey,
+          fieldName: MetadataKey.capabilityKey.rawValue,
+          error: PraxisError.invalidInput("TAP runtime event \(record.eventID) contains blank capabilityKey.")
+        )
+      }
+      if let metadataCapabilityKey = stringValue(for: .capabilityKey) {
+        return try normalizedCapabilityID(
+          from: metadataCapabilityKey,
+          fieldName: MetadataKey.capabilityKey.rawValue,
+          error: PraxisError.invalidInput("TAP runtime event \(record.eventID) metadata contains blank capabilityKey.")
+        )
+      }
+      return PraxisCapabilityID(rawValue: record.eventKind.rawValue)
+    }
+
+    func decodeRequestedTier() throws -> PraxisTapCapabilityTier {
+      try decodeEnumValue(
+        for: .requestedTier,
+        fallback: tapHistoryLegacyRequestedTier(for: record)
+      )
+    }
+
+    func decodeHumanGateState() throws -> PraxisHumanGateState {
+      try decodeEnumValue(
+        for: .humanGateState,
+        fallback: tapHistoryLegacyHumanGateState(for: record)
+      )
+    }
+
+    func decodeRoute(humanGateState: PraxisHumanGateState) throws -> PraxisReviewerRoute {
+      if let rawValue = stringValue(for: .route) {
+        if let route = PraxisReviewerRoute(rawValue: rawValue) {
+          return route
+        }
+        if rawValue == "tapBridge",
+          let legacyRoute = tapHistoryLegacyRoute(for: record, humanGateState: humanGateState)
+        {
+          return legacyRoute
+        }
+        throw invalidValue(for: .route, rawValue: rawValue)
+      }
+      if let legacyRoute = tapHistoryLegacyRoute(for: record, humanGateState: humanGateState) {
+        return legacyRoute
+      }
+      throw missingValue(for: .route)
+    }
+
+    func decodeOutcome(humanGateState: PraxisHumanGateState) throws -> PraxisCmpPeerApprovalOutcome {
+      if let rawValue = stringValue(for: .outcome) {
+        if let outcome = PraxisCmpPeerApprovalOutcome(rawValue: rawValue) {
+          return outcome
+        }
+        if rawValue == record.eventKind.rawValue,
+          let legacyOutcome = tapHistoryLegacyOutcome(for: record, humanGateState: humanGateState)
+        {
+          return legacyOutcome
+        }
+        throw invalidValue(for: .outcome, rawValue: rawValue)
+      }
+      if let legacyOutcome = tapHistoryLegacyOutcome(for: record, humanGateState: humanGateState) {
+        return legacyOutcome
+      }
+      throw missingValue(for: .outcome)
+    }
+
+    private func decodeEnumValue<EnumType: RawRepresentable>(
+      for key: MetadataKey,
+      fallback: @autoclosure () -> EnumType?
+    ) throws -> EnumType where EnumType.RawValue == String {
+      if let rawValue = stringValue(for: key) {
+        guard let decodedValue = EnumType(rawValue: rawValue) else {
+          throw invalidValue(for: key, rawValue: rawValue)
+        }
+        return decodedValue
+      }
+      if let fallbackValue = fallback() {
+        return fallbackValue
+      }
+      throw missingValue(for: key)
+    }
+
+    private func stringValue(for key: MetadataKey) -> String? {
+      record.metadata[key.rawValue]?.stringValue
+    }
+
+    private func invalidValue(for key: MetadataKey, rawValue: String) -> PraxisError {
+      tapHistoryInvalidRuntimeEventValue(key.rawValue, rawValue: rawValue, record: record)
+    }
+
+    private func missingValue(for key: MetadataKey) -> PraxisError {
+      tapHistoryMissingRuntimeEventValue(key.rawValue, record: record)
+    }
   }
-  if let legacyOutcome = tapHistoryLegacyOutcome(for: record, humanGateState: humanGateState) {
-    return legacyOutcome
-  }
-  throw tapHistoryMissingRuntimeEventValue("outcome", record: record)
 }
 
 private func tapHistoryEntries(
@@ -2991,33 +3065,17 @@ private func tapHistoryEntries(
   limit: Int
 ) throws -> [PraxisTapHistoryEntry] {
   try records.prefix(limit).map { record in
-    let humanGateState = try tapHistoryHumanGateState(from: record)
-    let capabilityID =
-      if let capabilityKey = record.capabilityKey {
-        try normalizedCapabilityID(
-          from: capabilityKey,
-          fieldName: "capabilityKey",
-          error: PraxisError.invalidInput("TAP runtime event \(record.eventID) contains blank capabilityKey.")
-        )
-      } else if let metadataCapabilityKey = record.metadata["capabilityKey"]?.stringValue {
-        try normalizedCapabilityID(
-          from: metadataCapabilityKey,
-          fieldName: "capabilityKey",
-          error: PraxisError.invalidInput("TAP runtime event \(record.eventID) metadata contains blank capabilityKey.")
-        )
-      } else {
-        PraxisCapabilityID(rawValue: record.eventKind.rawValue)
-      }
+    let metadata = try PraxisTapHistoryExtractedMetadata(record: record)
     return PraxisTapHistoryEntry(
       agentID: record.agentID,
-      targetAgentID: record.targetAgentID ?? record.metadata["targetAgentID"]?.stringValue ?? record.agentID,
-      capabilityKey: capabilityID,
-      requestedTier: try tapHistoryRequestedTier(from: record),
-      route: try tapHistoryRoute(from: record, humanGateState: humanGateState),
-      outcome: try tapHistoryOutcome(from: record, humanGateState: humanGateState),
-      humanGateState: humanGateState,
+      targetAgentID: metadata.targetAgentID,
+      capabilityKey: metadata.capabilityKey,
+      requestedTier: metadata.requestedTier,
+      route: metadata.route,
+      outcome: metadata.outcome,
+      humanGateState: metadata.humanGateState,
       updatedAt: record.createdAt,
-      decisionSummary: record.metadata["decisionSummary"]?.stringValue ?? record.detail ?? record.summary
+      decisionSummary: metadata.decisionSummary
     )
   }
 }
