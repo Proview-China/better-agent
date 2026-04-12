@@ -2,6 +2,8 @@ import PraxisCmpDelivery
 import PraxisCmpFiveAgent
 import PraxisCmpTypes
 import PraxisMpFiveAgent
+import PraxisMpMemory
+import PraxisMpTypes
 import PraxisRun
 import PraxisSession
 import PraxisTapReview
@@ -1042,9 +1044,9 @@ public struct PraxisMpIngestSnapshot: Sendable, Equatable, Codable {
   public let updatedMemoryIDs: [String]
   public let supersededMemoryIDs: [String]
   public let staleMemoryIDs: [String]
-  public let decision: String
-  public let freshnessStatus: String
-  public let alignmentStatus: String
+  public let decision: PraxisMpAlignmentDecision
+  public let freshnessStatus: PraxisMpMemoryFreshnessStatus
+  public let alignmentStatus: PraxisMpMemoryAlignmentStatus
   public let issues: [String]
 
   public init(
@@ -1057,9 +1059,9 @@ public struct PraxisMpIngestSnapshot: Sendable, Equatable, Codable {
     updatedMemoryIDs: [String],
     supersededMemoryIDs: [String],
     staleMemoryIDs: [String],
-    decision: String,
-    freshnessStatus: String,
-    alignmentStatus: String,
+    decision: PraxisMpAlignmentDecision,
+    freshnessStatus: PraxisMpMemoryFreshnessStatus,
+    alignmentStatus: PraxisMpMemoryAlignmentStatus,
     issues: [String]
   ) {
     self.projectID = projectID
@@ -1086,9 +1088,9 @@ public struct PraxisMpAlignSnapshot: Sendable, Equatable, Codable {
   public let updatedMemoryIDs: [String]
   public let supersededMemoryIDs: [String]
   public let staleMemoryIDs: [String]
-  public let decision: String
-  public let freshnessStatus: String
-  public let alignmentStatus: String
+  public let decision: PraxisMpAlignmentDecision
+  public let freshnessStatus: PraxisMpMemoryFreshnessStatus
+  public let alignmentStatus: PraxisMpMemoryAlignmentStatus
   public let issues: [String]
 
   public init(
@@ -1099,9 +1101,9 @@ public struct PraxisMpAlignSnapshot: Sendable, Equatable, Codable {
     updatedMemoryIDs: [String],
     supersededMemoryIDs: [String],
     staleMemoryIDs: [String],
-    decision: String,
-    freshnessStatus: String,
-    alignmentStatus: String,
+    decision: PraxisMpAlignmentDecision,
+    freshnessStatus: PraxisMpMemoryFreshnessStatus,
+    alignmentStatus: PraxisMpMemoryAlignmentStatus,
     issues: [String]
   ) {
     self.projectID = projectID
@@ -1122,11 +1124,11 @@ public struct PraxisMpPromoteSnapshot: Sendable, Equatable, Codable {
   public let projectID: String
   public let memoryID: String
   public let summary: String
-  public let scopeLevel: String
+  public let scopeLevel: PraxisMpScopeLevel
   public let sessionID: String?
-  public let sessionMode: String
-  public let visibilityState: String
-  public let promotionState: String
+  public let sessionMode: PraxisMpSessionMode
+  public let visibilityState: PraxisMpVisibilityState
+  public let promotionState: PraxisMpPromotionState
   public let updatedAt: String?
   public let issues: [String]
 
@@ -1134,11 +1136,11 @@ public struct PraxisMpPromoteSnapshot: Sendable, Equatable, Codable {
     projectID: String,
     memoryID: String,
     summary: String,
-    scopeLevel: String,
+    scopeLevel: PraxisMpScopeLevel,
     sessionID: String? = nil,
-    sessionMode: String,
-    visibilityState: String,
-    promotionState: String,
+    sessionMode: PraxisMpSessionMode,
+    visibilityState: PraxisMpVisibilityState,
+    promotionState: PraxisMpPromotionState,
     updatedAt: String? = nil,
     issues: [String]
   ) {
@@ -1159,11 +1161,11 @@ public struct PraxisMpArchiveSnapshot: Sendable, Equatable, Codable {
   public let projectID: String
   public let memoryID: String
   public let summary: String
-  public let scopeLevel: String
+  public let scopeLevel: PraxisMpScopeLevel
   public let sessionID: String?
-  public let sessionMode: String
-  public let visibilityState: String
-  public let promotionState: String
+  public let sessionMode: PraxisMpSessionMode
+  public let visibilityState: PraxisMpVisibilityState
+  public let promotionState: PraxisMpPromotionState
   public let updatedAt: String?
   public let issues: [String]
 
@@ -1171,11 +1173,11 @@ public struct PraxisMpArchiveSnapshot: Sendable, Equatable, Codable {
     projectID: String,
     memoryID: String,
     summary: String,
-    scopeLevel: String,
+    scopeLevel: PraxisMpScopeLevel,
     sessionID: String? = nil,
-    sessionMode: String,
-    visibilityState: String,
-    promotionState: String,
+    sessionMode: PraxisMpSessionMode,
+    visibilityState: PraxisMpVisibilityState,
+    promotionState: PraxisMpPromotionState,
     updatedAt: String? = nil,
     issues: [String]
   ) {

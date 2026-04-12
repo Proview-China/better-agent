@@ -1039,19 +1039,24 @@ struct PraxisRuntimeFacadesTests {
     #expect(ingest.projectID == "mp.local-runtime")
     #expect(ingest.agentID == "runtime.local")
     #expect(ingest.sessionID == "mp.session")
-    #expect(ingest.decision == PraxisMpAlignmentDecision.keep.rawValue)
+    #expect(ingest.decision == .keep)
+    #expect(ingest.freshnessStatus == .fresh)
+    #expect(ingest.alignmentStatus == .aligned)
     #expect(ingest.updatedMemoryIDs == [ingest.primaryMemoryID])
     #expect(align.projectID == "mp.local-runtime")
     #expect(align.memoryID == ingest.primaryMemoryID)
-    #expect(align.decision == PraxisMpAlignmentDecision.keep.rawValue)
-    #expect(submitted.promotionState == PraxisMpPromotionState.submittedToParent.rawValue)
+    #expect(align.decision == .keep)
+    #expect(align.freshnessStatus == .fresh)
+    #expect(align.alignmentStatus == .aligned)
+    #expect(submitted.promotionState == .submittedToParent)
     #expect(submitted.sessionID == "mp.session")
-    #expect(accepted.promotionState == PraxisMpPromotionState.acceptedByParent.rawValue)
+    #expect(accepted.promotionState == .acceptedByParent)
     #expect(promote.projectID == "mp.local-runtime")
     #expect(promote.memoryID == ingest.primaryMemoryID)
-    #expect(promote.scopeLevel == PraxisMpScopeLevel.project.rawValue)
-    #expect(promote.visibilityState == PraxisMpVisibilityState.projectShared.rawValue)
-    #expect(promote.promotionState == PraxisMpPromotionState.promotedToProject.rawValue)
+    #expect(promote.scopeLevel == .project)
+    #expect(promote.sessionMode == .shared)
+    #expect(promote.visibilityState == .projectShared)
+    #expect(promote.promotionState == .promotedToProject)
     #expect(resolve.projectID == "mp.local-runtime")
     #expect(resolve.primaryMemoryIDs == [ingest.primaryMemoryID])
     #expect(resolve.rerankComposition.superseded == 0)
@@ -1065,8 +1070,75 @@ struct PraxisRuntimeFacadesTests {
     #expect(history.roleStages[.dispatcher] == .assembleBundle)
     #expect(archive.projectID == "mp.local-runtime")
     #expect(archive.memoryID == ingest.primaryMemoryID)
-    #expect(archive.visibilityState == PraxisMpVisibilityState.archived.rawValue)
-    #expect(archive.promotionState == PraxisMpPromotionState.archived.rawValue)
+    #expect(archive.scopeLevel == .project)
+    #expect(archive.sessionMode == .shared)
+    #expect(archive.visibilityState == .archived)
+    #expect(archive.promotionState == .archived)
+  }
+
+  @Test
+  func mpIngestAlignPromoteArchiveSnapshotsRoundTripTypedEnums() throws {
+    let ingest = PraxisMpIngestSnapshot(
+      projectID: "mp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "mp.session",
+      summary: "MP ingest kept 1 aligned memory record.",
+      primaryMemoryID: "memory.primary",
+      storageKey: "memory://primary",
+      updatedMemoryIDs: ["memory.primary"],
+      supersededMemoryIDs: [],
+      staleMemoryIDs: [],
+      decision: .keep,
+      freshnessStatus: .fresh,
+      alignmentStatus: .aligned,
+      issues: []
+    )
+    let promote = PraxisMpPromoteSnapshot(
+      projectID: "mp.local-runtime",
+      memoryID: "memory.primary",
+      summary: "MP promote moved memory.primary into project scope.",
+      scopeLevel: .project,
+      sessionID: "mp.session",
+      sessionMode: .shared,
+      visibilityState: .projectShared,
+      promotionState: .promotedToProject,
+      updatedAt: "2026-04-11T10:08:00Z",
+      issues: []
+    )
+    let encodedIngest = try encodeFacadeTestJSON(ingest)
+    let encodedPromote = try encodeFacadeTestJSON(promote)
+    let decodedIngest = try decodeFacadeTestJSON(PraxisMpIngestSnapshot.self, from: encodedIngest)
+    let decodedPromote = try decodeFacadeTestJSON(PraxisMpPromoteSnapshot.self, from: encodedPromote)
+
+    #expect(encodedIngest.contains(#""decision":"keep""#))
+    #expect(encodedIngest.contains(#""freshnessStatus":"fresh""#))
+    #expect(encodedIngest.contains(#""alignmentStatus":"aligned""#))
+    #expect(encodedPromote.contains(#""scopeLevel":"project""#))
+    #expect(encodedPromote.contains(#""sessionMode":"shared""#))
+    #expect(encodedPromote.contains(#""visibilityState":"project_shared""#))
+    #expect(encodedPromote.contains(#""promotionState":"promoted_to_project""#))
+    #expect(decodedIngest.decision == .keep)
+    #expect(decodedIngest.freshnessStatus == .fresh)
+    #expect(decodedIngest.alignmentStatus == .aligned)
+    #expect(decodedPromote.scopeLevel == PraxisMpScopeLevel.project)
+    #expect(decodedPromote.sessionMode == PraxisMpSessionMode.shared)
+    #expect(decodedPromote.visibilityState == PraxisMpVisibilityState.projectShared)
+    #expect(decodedPromote.promotionState == PraxisMpPromotionState.promotedToProject)
+  }
+
+  @Test
+  func mpTypedFacadeSnapshotsRejectUnknownEnumRawValues() throws {
+    let invalidAlignJSON =
+      #"{"alignmentStatus":"aligned","decision":"keep","freshnessStatus":"not_a_real_freshness","issues":[],"memoryID":"memory.primary","primaryMemoryID":"memory.primary","projectID":"mp.local-runtime","staleMemoryIDs":[],"summary":"MP align kept 1 aligned memory record.","supersededMemoryIDs":[],"updatedMemoryIDs":["memory.primary"]}"#
+    let invalidArchiveJSON =
+      #"{"issues":[],"memoryID":"memory.primary","projectID":"mp.local-runtime","promotionState":"archived","scopeLevel":"project","sessionID":"mp.session","sessionMode":"not_a_real_session_mode","summary":"MP archive marked memory.primary archived.","updatedAt":"2026-04-11T10:09:00Z","visibilityState":"archived"}"#
+
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisMpAlignSnapshot.self, from: invalidAlignJSON)
+    }
+    #expect(throws: DecodingError.self) {
+      try decodeFacadeTestJSON(PraxisMpArchiveSnapshot.self, from: invalidArchiveJSON)
+    }
   }
 
   @Test

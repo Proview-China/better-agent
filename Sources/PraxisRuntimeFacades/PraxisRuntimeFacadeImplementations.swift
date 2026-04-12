@@ -357,9 +357,9 @@ public final class PraxisMpFacade: Sendable {
       updatedMemoryIDs: ingest.updatedMemoryIDs,
       supersededMemoryIDs: ingest.supersededMemoryIDs,
       staleMemoryIDs: ingest.staleMemoryIDs,
-      decision: ingest.decision.rawValue,
-      freshnessStatus: ingest.freshnessStatus.rawValue,
-      alignmentStatus: ingest.alignmentStatus.rawValue,
+      decision: ingest.decision,
+      freshnessStatus: ingest.freshnessStatus,
+      alignmentStatus: ingest.alignmentStatus,
       issues: ingest.issues
     )
   }
@@ -379,9 +379,9 @@ public final class PraxisMpFacade: Sendable {
       updatedMemoryIDs: align.updatedMemoryIDs,
       supersededMemoryIDs: align.supersededMemoryIDs,
       staleMemoryIDs: align.staleMemoryIDs,
-      decision: align.decision.rawValue,
-      freshnessStatus: align.freshnessStatus.rawValue,
-      alignmentStatus: align.alignmentStatus.rawValue,
+      decision: align.decision,
+      freshnessStatus: align.freshnessStatus,
+      alignmentStatus: align.alignmentStatus,
       issues: align.issues
     )
   }
@@ -441,11 +441,11 @@ public final class PraxisMpFacade: Sendable {
       projectID: promote.projectID,
       memoryID: promote.memoryID,
       summary: promote.summary,
-      scopeLevel: promote.scopeLevel.rawValue,
+      scopeLevel: promote.scopeLevel,
       sessionID: promote.sessionID,
-      sessionMode: promote.sessionMode.rawValue,
-      visibilityState: promote.visibilityState.rawValue,
-      promotionState: promote.promotionState.rawValue,
+      sessionMode: promote.sessionMode,
+      visibilityState: promote.visibilityState,
+      promotionState: promote.promotionState,
       updatedAt: promote.updatedAt,
       issues: promote.issues
     )
@@ -462,11 +462,11 @@ public final class PraxisMpFacade: Sendable {
       projectID: archive.projectID,
       memoryID: archive.memoryID,
       summary: archive.summary,
-      scopeLevel: archive.scopeLevel.rawValue,
+      scopeLevel: archive.scopeLevel,
       sessionID: archive.sessionID,
-      sessionMode: archive.sessionMode.rawValue,
-      visibilityState: archive.visibilityState.rawValue,
-      promotionState: archive.promotionState.rawValue,
+      sessionMode: archive.sessionMode,
+      visibilityState: archive.visibilityState,
+      promotionState: archive.promotionState,
       updatedAt: archive.updatedAt,
       issues: archive.issues
     )
