@@ -209,7 +209,7 @@ public struct PraxisMpFiveAgentFlowSummary: Sendable, Equatable, Codable {
 public struct PraxisMpFiveAgentSummary: Sendable, Equatable, Codable {
   public let configurationVersion: String
   public let roleCounts: [PraxisMpFiveAgentRole: Int]
-  public let latestStages: [PraxisMpFiveAgentRole: String]
+  public let latestStages: PraxisMpRoleStageMap
   public let latestRoleMetadata: [PraxisMpFiveAgentRole: [String: PraxisValue]]
   public let configuredRoles: [PraxisMpFiveAgentRole: PraxisMpFiveAgentRoleCatalogEntry]
   public let capabilityMatrix: PraxisMpFiveAgentCapabilityMatrixSummary
@@ -219,7 +219,7 @@ public struct PraxisMpFiveAgentSummary: Sendable, Equatable, Codable {
   public init(
     configurationVersion: String,
     roleCounts: [PraxisMpFiveAgentRole: Int],
-    latestStages: [PraxisMpFiveAgentRole: String],
+    latestStages: PraxisMpRoleStageMap,
     latestRoleMetadata: [PraxisMpFiveAgentRole: [String: PraxisValue]],
     configuredRoles: [PraxisMpFiveAgentRole: PraxisMpFiveAgentRoleCatalogEntry],
     capabilityMatrix: PraxisMpFiveAgentCapabilityMatrixSummary,
@@ -239,7 +239,7 @@ public struct PraxisMpFiveAgentSummary: Sendable, Equatable, Codable {
 
 public struct PraxisMpFiveAgentRuntimeState: Sendable, Equatable, Codable {
   public let roleCounts: [PraxisMpFiveAgentRole: Int]
-  public let latestStages: [PraxisMpFiveAgentRole: String]
+  public let latestStages: PraxisMpRoleStageMap
   public let latestRoleMetadata: [PraxisMpFiveAgentRole: [String: PraxisValue]]
   public let pendingAlignmentCount: Int
   public let pendingSupersedeCount: Int
@@ -251,7 +251,7 @@ public struct PraxisMpFiveAgentRuntimeState: Sendable, Equatable, Codable {
 
   public init(
     roleCounts: [PraxisMpFiveAgentRole: Int],
-    latestStages: [PraxisMpFiveAgentRole: String],
+    latestStages: PraxisMpRoleStageMap,
     latestRoleMetadata: [PraxisMpFiveAgentRole: [String: PraxisValue]],
     pendingAlignmentCount: Int,
     pendingSupersedeCount: Int,

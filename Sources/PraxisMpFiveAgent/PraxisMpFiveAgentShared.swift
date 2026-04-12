@@ -159,6 +159,8 @@ public struct PraxisMpRoleStageMap: Sendable, Equatable, Codable {
     case incompatibleStage(role: PraxisMpFiveAgentRole, stage: PraxisMpRoleTelemetryStage)
   }
 
+  public static let empty = Self(stages: [:])
+
   public let stages: [PraxisMpFiveAgentRole: PraxisMpRoleTelemetryStage]
 
   public init(stages: [PraxisMpFiveAgentRole: PraxisMpRoleTelemetryStage]) {
@@ -180,6 +182,16 @@ public struct PraxisMpRoleStageMap: Sendable, Equatable, Codable {
 
   public var isEmpty: Bool {
     stages.isEmpty
+  }
+
+  /// Returns a copy of the map with the latest stage for the stage's role updated.
+  ///
+  /// - Parameter stage: The typed role stage to record.
+  /// - Returns: A new map with the updated role stage.
+  public func setting(_ stage: PraxisMpRoleTelemetryStage) -> Self {
+    var updated = stages
+    updated[stage.role] = stage
+    return Self(stages: updated)
   }
 
   public init(from decoder: Decoder) throws {

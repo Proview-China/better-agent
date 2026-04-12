@@ -356,7 +356,7 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
 
   private var recordsByID: [String: PraxisMpMemoryRecord]
   private var roleCounts: [PraxisMpFiveAgentRole: Int]
-  private var latestStages: [PraxisMpFiveAgentRole: String]
+  private var latestStages: PraxisMpRoleStageMap
   private var latestRoleMetadata: [PraxisMpFiveAgentRole: [String: PraxisValue]]
   private var pendingAlignmentCount: Int
   private var pendingSupersedeCount: Int
@@ -372,7 +372,7 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
     self.configuration = configuration
     self.recordsByID = Dictionary(uniqueKeysWithValues: seedRecords.map { ($0.id, $0) })
     self.roleCounts = Dictionary(uniqueKeysWithValues: PraxisMpFiveAgentRole.allCases.map { ($0, 0) })
-    self.latestStages = [:]
+    self.latestStages = .empty
     self.latestRoleMetadata = [:]
     self.pendingAlignmentCount = 0
     self.pendingSupersedeCount = 0
@@ -384,7 +384,7 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
 
   public func ingest(_ input: PraxisMpFiveAgentIngestInput) async -> PraxisMpFiveAgentIngestResult {
     ingestCount += 1
-    bump(.icma, stage: PraxisMpIcmaStage.capture.rawValue)
+    bump(.init(icmaStage: .capture))
     latestRoleMetadata[.icma] = [
       "artifactID": .string(input.artifact.id),
       "candidateCount": 1,
@@ -393,7 +393,7 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
 
     let candidate = PraxisMpMemoryRecord.from(input)
 
-    bump(.iterator, stage: PraxisMpIteratorStage.rewriteDraft.rawValue)
+    bump(.init(iteratorStage: .rewriteDraft))
     latestRoleMetadata[.iterator] = [
       "memoryID": .string(candidate.id),
       "tagCount": .number(Double(candidate.tags.count)),
@@ -413,7 +413,7 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
   }
 
   public func align(_ input: PraxisMpFiveAgentAlignInput) async -> PraxisMpAlignmentResult {
-    bump(.checker, stage: PraxisMpCheckerStage.judgeAlignment.rawValue)
+    bump(.init(checkerStage: .judgeAlignment))
     let relatedRecords = recordsByID.values.filter { $0.scope.projectID == input.record.scope.projectID }
     let alignment = alignmentService.align(
       candidate: input.record,
@@ -426,7 +426,7 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
       "staleCount": .number(Double(alignment.staleMemoryIDs.count)),
     ]
 
-    bump(.dbagent, stage: PraxisMpDbAgentStage.persistTruth.rawValue)
+    bump(.init(dbAgentStage: .persistTruth))
     for record in alignment.updatedRecords {
       recordsByID[record.id] = record
     }
@@ -493,7 +493,7 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
   }
 
   private func dispatchBundle(for input: PraxisMpFiveAgentResolveInput) -> PraxisMpWorkflowBundle {
-    bump(.dispatcher, stage: PraxisMpDispatcherStage.search.rawValue)
+    bump(.init(dispatcherStage: .search))
     let plan = searchPlanner.makePlan(
       projectID: input.projectID,
       query: input.queryText,
@@ -511,7 +511,7 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
       plan: plan
     ).map(\.memory)
 
-    bump(.dispatcher, stage: PraxisMpDispatcherStage.assembleBundle.rawValue, count: false)
+    bump(.init(dispatcherStage: .assembleBundle), count: false)
     let requesterScope = PraxisMpScopeDescriptor(
       projectID: input.requesterLineage.projectID,
       agentID: input.requesterLineage.agentID,
@@ -532,10 +532,11 @@ public actor PraxisMpFiveAgentRuntime: PraxisMpFiveAgentRuntimeProtocol {
     return bundle
   }
 
-  private func bump(_ role: PraxisMpFiveAgentRole, stage: String, count: Bool = true) {
+  private func bump(_ stage: PraxisMpRoleTelemetryStage, count: Bool = true) {
+    let role = stage.role
     if count {
       roleCounts[role, default: 0] += 1
     }
-    latestStages[role] = stage
+    latestStages = latestStages.setting(stage)
   }
 }

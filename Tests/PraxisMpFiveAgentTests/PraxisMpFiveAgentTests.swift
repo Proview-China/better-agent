@@ -27,6 +27,37 @@ struct PraxisMpFiveAgentTests {
   }
 
   @Test
+  func fiveAgentRuntimeStateRoundTripsTypedLatestStagesAndRejectsInvalidPayload() throws {
+    let state = PraxisMpFiveAgentRuntimeState(
+      roleCounts: [.dispatcher: 1],
+      latestStages: try PraxisMpRoleStageMap(validating: [.dispatcher: .search]),
+      latestRoleMetadata: [:],
+      pendingAlignmentCount: 0,
+      pendingSupersedeCount: 0,
+      passiveReturnCount: 0,
+      records: [],
+      dedupeDecisionCount: 0,
+      ingestCount: 0,
+      rerankComposition: PraxisMpRerankComposition()
+    )
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+
+    let encodedData = try encoder.encode(state)
+    let decoded = try JSONDecoder().decode(PraxisMpFiveAgentRuntimeState.self, from: encodedData)
+    let encoded = try #require(String(data: encodedData, encoding: .utf8))
+    let invalid = encoded.replacingOccurrences(of: "\"search\"", with: "\"capture\"")
+
+    #expect(decoded.latestStages[.dispatcher] == .search)
+    #expect(throws: DecodingError.self) {
+      _ = try JSONDecoder().decode(
+        PraxisMpFiveAgentRuntimeState.self,
+        from: Data(invalid.utf8)
+      )
+    }
+  }
+
+  @Test
   func fiveAgentRuntimeIngestsAndResolvesFresherMemoryFirst() async {
     let runtime = PraxisMpFiveAgentRuntime()
     let projectID = "project.mp.five-agent"
@@ -88,12 +119,18 @@ struct PraxisMpFiveAgentTests {
       )
     )
     let summary = await runtime.summary()
+    let state = await runtime.state()
+
+    let typedSummaryStages: PraxisMpRoleStageMap = summary.latestStages
+    let typedStateStages: PraxisMpRoleStageMap = state.latestStages
 
     #expect(oldResult.records.first?.freshness.status == .fresh)
     #expect(newResult.alignment.supersededMemoryIDs == ["memory.old"])
     #expect(resolved.bundle.primary.first?.id == "memory.new")
     #expect(summary.quality.supersededMemoryCount == 1)
     #expect(summary.roleCounts[.dispatcher] == 1)
+    #expect(typedSummaryStages[.dispatcher] == .assembleBundle)
+    #expect(typedStateStages[.checker] == .judgeAlignment)
   }
 
   @Test
