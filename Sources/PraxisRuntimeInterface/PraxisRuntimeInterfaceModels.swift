@@ -86,6 +86,42 @@ public struct PraxisRuntimeInterfaceSessionHandle: RawRepresentable, Hashable, S
   }
 }
 
+/// Stable host-neutral opaque reference identifier exposed by the runtime interface surface.
+///
+/// This type carries outward-facing reference handles such as follow-up intent references and
+/// flow event references without implying any provider, UI, transport, or persistence semantics.
+public struct PraxisRuntimeInterfaceReferenceID:
+  RawRepresentable,
+  Hashable,
+  Sendable,
+  Equatable,
+  Codable,
+  CustomStringConvertible
+{
+  public let rawValue: String
+
+  /// Creates a runtime interface opaque reference from its stable raw value.
+  ///
+  /// - Parameter rawValue: Opaque host-neutral reference value.
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+
+  public var description: String {
+    rawValue
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    self.init(rawValue: try container.decode(String.self))
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
+}
+
 public struct PraxisRuntimeInterfaceRunGoalRequestPayload: Sendable, Equatable, Codable {
   public let payloadSummary: String
   public let goalID: String
@@ -455,7 +491,7 @@ public struct PraxisRuntimeInterfaceCommitCmpFlowRequestPayload: Sendable, Equat
   public let runID: String?
   public let lineageID: String?
   public let parentAgentID: String?
-  public let eventIDs: [String]
+  public let eventIDs: [PraxisRuntimeInterfaceReferenceID]
   public let baseRef: String?
   public let changeSummary: String
   public let syncIntent: PraxisCmpContextSyncIntent
@@ -468,7 +504,7 @@ public struct PraxisRuntimeInterfaceCommitCmpFlowRequestPayload: Sendable, Equat
     runID: String? = nil,
     lineageID: String? = nil,
     parentAgentID: String? = nil,
-    eventIDs: [String],
+    eventIDs: [PraxisRuntimeInterfaceReferenceID],
     baseRef: String? = nil,
     changeSummary: String,
     syncIntent: PraxisCmpContextSyncIntent
@@ -1576,7 +1612,7 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
   public let tickCount: Int?
   public let lifecycleDisposition: PraxisRunLifecycleDisposition?
   public let checkpointReference: String?
-  public let pendingIntentID: String?
+  public let pendingIntentID: PraxisRuntimeInterfaceReferenceID?
   public let recoveredEventCount: Int?
   public let nextAction: PraxisCmpFlowIngestNextAction?
   public let activeLineStage: PraxisCmpActiveLineStage?
@@ -1616,7 +1652,7 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     tickCount: Int? = nil,
     lifecycleDisposition: PraxisRunLifecycleDisposition? = nil,
     checkpointReference: String? = nil,
-    pendingIntentID: String? = nil,
+    pendingIntentID: PraxisRuntimeInterfaceReferenceID? = nil,
     recoveredEventCount: Int? = nil,
     nextAction: PraxisCmpFlowIngestNextAction? = nil,
     activeLineStage: PraxisCmpActiveLineStage? = nil,
@@ -1722,14 +1758,14 @@ public struct PraxisRuntimeInterfaceEvent: Sendable, Equatable, Codable {
   public let detail: String
   public let runID: PraxisRunID?
   public let sessionID: PraxisSessionID?
-  public let intentID: String?
+  public let intentID: PraxisRuntimeInterfaceReferenceID?
 
   public init(
     name: PraxisRuntimeInterfaceEventName,
     detail: String,
     runID: PraxisRunID? = nil,
     sessionID: PraxisSessionID? = nil,
-    intentID: String? = nil
+    intentID: PraxisRuntimeInterfaceReferenceID? = nil
   ) {
     self.name = name
     self.detail = detail

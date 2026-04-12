@@ -194,7 +194,7 @@ struct PraxisCLITests {
             kind: .run,
             title: "Run run:session.cli.test:cli.goal.test",
             summary: "Started running",
-            pendingIntentID: "intent-1"
+            pendingIntentID: .init(rawValue: "intent-1")
           ),
           events: [
             .init(name: .runStarted, detail: "Started running"),

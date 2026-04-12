@@ -26,6 +26,10 @@ private func capabilityID(_ rawValue: String) -> PraxisCapabilityID {
   PraxisCapabilityID(rawValue: rawValue)
 }
 
+private func runtimeInterfaceReferenceID(_ rawValue: String) -> PraxisRuntimeInterfaceReferenceID {
+  PraxisRuntimeInterfaceReferenceID(rawValue: rawValue)
+}
+
 private func encodeRuntimeInterfaceTestJSON<T: Encodable>(_ value: T) throws -> String {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys]
@@ -801,9 +805,64 @@ struct HostRuntimeInterfaceTests {
     #expect(response.snapshot?.sessionID?.rawValue == "session.runtime-interface")
     #expect(response.snapshot?.phase == .running)
     #expect(response.snapshot?.lifecycleDisposition == .started)
-    #expect(response.snapshot?.pendingIntentID == "evt.created.run:session.runtime-interface:goal.runtime-interface:model")
+    #expect(
+      response.snapshot?.pendingIntentID ==
+        runtimeInterfaceReferenceID("evt.created.run:session.runtime-interface:goal.runtime-interface:model")
+    )
     #expect(response.events.map(\.name) == [.runStarted, .runFollowUpReady])
+    #expect(
+      response.events.last?.intentID ==
+        runtimeInterfaceReferenceID("evt.created.run:session.runtime-interface:goal.runtime-interface:model")
+    )
     #expect(bufferedEvents.map(\.name) == [.runStarted, .runFollowUpReady])
+  }
+
+  @Test
+  func runtimeInterfaceNormalizesBlankOutgoingReferenceIDsToNil() async throws {
+    let runFacade = PraxisRunFacade(
+      runGoalUseCase: StubRunGoalUseCase { command in
+        PraxisRunExecution(
+          runID: .init(rawValue: "run:\(command.sessionID?.rawValue ?? "session.blank-reference"):\(command.goal.normalizedGoal.id.rawValue)"),
+          sessionID: command.sessionID ?? .init(rawValue: "session.blank-reference"),
+          phase: .running,
+          tickCount: 1,
+          journalSequence: 1,
+          checkpointReference: "checkpoint.blank-reference",
+          followUpAction: .init(
+            kind: .modelInference,
+            reason: "Continue with normalized blank reference.",
+            intentID: "   "
+          )
+        )
+      },
+      resumeRunUseCase: StubResumeRunUseCase { _ in
+        throw RuntimeInterfaceUnexpectedInvocationError(operation: "resumeRun")
+      }
+    )
+    let runtimeInterface = PraxisRuntimeInterfaceSession(
+      runtimeFacade: .init(
+        runFacade: runFacade,
+        inspectionFacade: makeUnexpectedInspectionFacade(),
+        cmpFacade: makeStubCmpFacade()
+      ),
+      blueprint: PraxisRuntimePresentationBridgeModule.bootstrap
+    )
+
+    let response = await runtimeInterface.handle(
+      .runGoal(
+        .init(
+          payloadSummary: "Normalize blank interface reference",
+          goalID: "goal.blank-reference",
+          goalTitle: "Blank Reference Goal",
+          sessionID: "session.blank-reference"
+        )
+      )
+    )
+
+    #expect(response.status == .success)
+    #expect(response.snapshot?.pendingIntentID == nil)
+    #expect(response.events.map(\.name) == [.runStarted, .runFollowUpReady])
+    #expect(response.events.last?.intentID == nil)
   }
 
   @Test
@@ -1007,7 +1066,7 @@ struct HostRuntimeInterfaceTests {
           projectID: "cmp.local-runtime",
           agentID: "runtime.local",
           sessionID: "cmp.flow.session",
-          eventIDs: ["evt.cmp.1"],
+          eventIDs: [runtimeInterfaceReferenceID("evt.cmp.1")],
           changeSummary: "Commit accepted flow event",
           syncIntent: .toParent
         )
@@ -1045,7 +1104,7 @@ struct HostRuntimeInterfaceTests {
       )
     )
     let materializeSnapshot = try #require(materializeResponse.snapshot)
-    let materializePackageID = try #require(materializeResponse.events.first?.intentID)
+    let materializePackageID = try #require(materializeResponse.events.first?.intentID?.rawValue)
     let contextPackage = PraxisCmpContextPackage(
       id: .init(rawValue: materializePackageID),
       sourceProjectionID: .init(rawValue: "projection.seed.runtime.local"),
@@ -1312,7 +1371,7 @@ struct HostRuntimeInterfaceTests {
     #expect(response.snapshot?.packageKind == .historicalReply)
     #expect(response.events.map(\.name) == [.cmpProjectRecovered])
     #expect(response.events.first?.detail == response.snapshot?.summary)
-    #expect(response.events.first?.intentID == "package.interface.package-only")
+    #expect(response.events.first?.intentID == runtimeInterfaceReferenceID("package.interface.package-only"))
   }
 
   @Test
@@ -2335,7 +2394,7 @@ struct HostRuntimeInterfaceTests {
             projectID: "cmp.local-runtime",
             agentID: "",
             sessionID: "cmp.flow.session",
-            eventIDs: ["evt.cmp.1"],
+            eventIDs: [runtimeInterfaceReferenceID("evt.cmp.1")],
             changeSummary: "Commit accepted flow event",
             syncIntent: .toParent
           )
@@ -2350,7 +2409,7 @@ struct HostRuntimeInterfaceTests {
             projectID: "cmp.local-runtime",
             agentID: "runtime.local",
             sessionID: "",
-            eventIDs: ["evt.cmp.1"],
+            eventIDs: [runtimeInterfaceReferenceID("evt.cmp.1")],
             changeSummary: "Commit accepted flow event",
             syncIntent: .toParent
           )
@@ -2576,7 +2635,7 @@ struct HostRuntimeInterfaceTests {
             projectID: "cmp.local-runtime",
             agentID: "runtime.local",
             sessionID: "cmp.flow.session",
-            eventIDs: ["   "],
+            eventIDs: [runtimeInterfaceReferenceID("   ")],
             changeSummary: "Commit accepted flow event",
             syncIntent: .toParent
           )
@@ -2591,7 +2650,7 @@ struct HostRuntimeInterfaceTests {
             projectID: "cmp.local-runtime",
             agentID: "runtime.local",
             sessionID: "cmp.flow.session",
-            eventIDs: ["evt.cmp.1"],
+            eventIDs: [runtimeInterfaceReferenceID("evt.cmp.1")],
             changeSummary: "   ",
             syncIntent: .toParent
           )
@@ -3101,10 +3160,18 @@ struct HostRuntimeInterfaceTests {
   @Test
   func runtimeInterfaceCodecRoundTripsRequestAndResponse() async throws {
     let codec = PraxisJSONRuntimeInterfaceCodec()
-    let request = PraxisRuntimeInterfaceRequest.resumeRun(
+    let request = PraxisRuntimeInterfaceRequest.commitCmpFlow(
       .init(
-        payloadSummary: "Resume this run",
-        runID: "run:session.codec:goal.codec"
+        payloadSummary: "Commit interface flow",
+        projectID: "cmp.codec.project",
+        agentID: "runtime.codec",
+        sessionID: "cmp.flow.codec",
+        eventIDs: [
+          runtimeInterfaceReferenceID("evt.codec.1"),
+          runtimeInterfaceReferenceID("evt.codec.2")
+        ],
+        changeSummary: "Commit typed interface event references",
+        syncIntent: .toParent
       )
     )
     let response = PraxisRuntimeInterfaceResponse(
@@ -3119,7 +3186,7 @@ struct HostRuntimeInterfaceTests {
         tickCount: 2,
         lifecycleDisposition: .resumed,
         checkpointReference: "checkpoint.run:session.codec:goal.codec",
-        pendingIntentID: "evt.resumed.run:session.codec:goal.codec:resume",
+        pendingIntentID: runtimeInterfaceReferenceID("evt.resumed.run:session.codec:goal.codec:resume"),
         recoveredEventCount: 1
       ),
       events: [
@@ -3128,7 +3195,7 @@ struct HostRuntimeInterfaceTests {
           detail: "Resumed running run run:session.codec:goal.codec.",
           runID: .init(rawValue: "run:session.codec:goal.codec"),
           sessionID: .init(rawValue: "session.codec"),
-          intentID: "evt.resumed.run:session.codec:goal.codec:resume"
+          intentID: runtimeInterfaceReferenceID("evt.resumed.run:session.codec:goal.codec:resume")
         )
       ],
       error: nil
@@ -3143,11 +3210,13 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       requestJSON ==
-        #"{"kind":"resumeRun","resumeRun":{"payloadSummary":"Resume this run","runID":"run:session.codec:goal.codec"}}"#
+        #"{"commitCmpFlow":{"agentID":"runtime.codec","changeSummary":"Commit typed interface event references","eventIDs":["evt.codec.1","evt.codec.2"],"payloadSummary":"Commit interface flow","projectID":"cmp.codec.project","sessionID":"cmp.flow.codec","syncIntent":"toParent"},"kind":"commitCmpFlow"}"#
     )
     #expect(responseJSON.contains(#""status":"success""#))
     #expect(!responseJSON.contains(#""error":"#))
     #expect(responseJSON.contains(#""snapshot":{"#))
+    #expect(responseJSON.contains(#""pendingIntentID":"evt.resumed.run:session.codec:goal.codec:resume""#))
+    #expect(responseJSON.contains(#""intentID":"evt.resumed.run:session.codec:goal.codec:resume""#))
     #expect(decodedRequest == request)
     #expect(decodedResponse == response)
   }
@@ -3173,7 +3242,7 @@ struct HostRuntimeInterfaceTests {
           detail: "model_inference: next",
           runID: .init(rawValue: "run:session.codec:goal.codec"),
           sessionID: .init(rawValue: "session.codec"),
-          intentID: "evt.follow-up"
+          intentID: runtimeInterfaceReferenceID("evt.follow-up")
         )
       ]
     )
@@ -3184,6 +3253,7 @@ struct HostRuntimeInterfaceTests {
 
     #expect(responseJSON.contains(#""name":"cmp.session.opened""#))
     #expect(responseJSON.contains(#""name":"run.follow_up_ready""#))
+    #expect(responseJSON.contains(#""intentID":"evt.follow-up""#))
     #expect(decodedResponse.events.map(\.name) == [.cmpSessionOpened, .runFollowUpReady])
     #expect(decodedResponse == response)
   }

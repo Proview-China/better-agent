@@ -17,6 +17,19 @@ private func requireRuntimeInterfaceField(
   return value
 }
 
+private func runtimeInterfaceReferenceID(
+  from rawValue: String?
+) -> PraxisRuntimeInterfaceReferenceID? {
+  guard let rawValue else {
+    return nil
+  }
+  let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !normalized.isEmpty else {
+    return nil
+  }
+  return PraxisRuntimeInterfaceReferenceID(rawValue: normalized)
+}
+
 private func requireRuntimeInterfaceCapabilityID(
   _ value: PraxisCapabilityID,
   named field: String
@@ -60,15 +73,16 @@ private func requireRuntimeInterfaceElements<Element>(
   return value
 }
 
-private func requireRuntimeInterfaceIdentifierElements(
-  _ value: [String],
+private func requireRuntimeInterfaceReferenceIDElements(
+  _ value: [PraxisRuntimeInterfaceReferenceID],
   named field: String
-) throws -> [String] {
+) throws -> [PraxisRuntimeInterfaceReferenceID] {
   let elements = try requireRuntimeInterfaceElements(value, named: field)
-  guard elements.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+  let normalized = elements.map { $0.rawValue.trimmingCharacters(in: .whitespacesAndNewlines) }
+  guard normalized.allSatisfy({ !$0.isEmpty }) else {
     throw PraxisError.invalidInput("Field \(field) must not contain blank identifiers.")
   }
-  return elements
+  return normalized.map(PraxisRuntimeInterfaceReferenceID.init(rawValue:))
 }
 
 private func runtimeInterfaceDecodingPath(from codingPath: [CodingKey]) -> String {
@@ -362,7 +376,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       tickCount: summary.tickCount,
       lifecycleDisposition: summary.lifecycleDisposition,
       checkpointReference: summary.checkpointReference,
-      pendingIntentID: summary.followUpAction?.intentID,
+      pendingIntentID: runtimeInterfaceReferenceID(from: summary.followUpAction?.intentID),
       recoveredEventCount: summary.recoveredEventCount
     )
     return .success(snapshot: snapshot, events: makeEvents(from: summary))
@@ -615,7 +629,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         .init(
           name: .cmpProjectRecovered,
           detail: recovery.summary,
-          intentID: recovery.packageID
+          intentID: runtimeInterfaceReferenceID(from: recovery.packageID)
         )
       ]
     )
@@ -654,7 +668,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         .init(
           name: .cmpFlowCommitted,
           detail: commit.summary,
-          intentID: commit.deltaID
+          intentID: runtimeInterfaceReferenceID(from: commit.deltaID)
         )
       ]
     )
@@ -673,7 +687,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         .init(
           name: .cmpFlowResolved,
           detail: resolve.summary,
-          intentID: resolve.snapshotID
+          intentID: runtimeInterfaceReferenceID(from: resolve.snapshotID)
         )
       ]
     )
@@ -692,7 +706,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         .init(
           name: .cmpFlowMaterialized,
           detail: materialize.summary,
-          intentID: materialize.packageID
+          intentID: runtimeInterfaceReferenceID(from: materialize.packageID)
         )
       ]
     )
@@ -716,7 +730,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         .init(
           name: eventName,
           detail: dispatch.summary,
-          intentID: dispatch.dispatchID
+          intentID: runtimeInterfaceReferenceID(from: dispatch.dispatchID)
         )
       ]
     )
@@ -734,7 +748,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         .init(
           name: .cmpFlowHistoryRequested,
           detail: history.summary,
-          intentID: history.packageID ?? history.snapshotID
+          intentID: runtimeInterfaceReferenceID(from: history.packageID ?? history.snapshotID)
         )
       ]
     )
@@ -768,7 +782,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         detail: summary.phaseSummary,
         runID: summary.runID,
         sessionID: summary.sessionID,
-        intentID: summary.followUpAction?.intentID
+        intentID: runtimeInterfaceReferenceID(from: summary.followUpAction?.intentID)
       )
     ]
 
@@ -779,7 +793,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
           detail: "\(followUpAction.kind.rawValue): \(followUpAction.reason)",
           runID: summary.runID,
           sessionID: summary.sessionID,
-          intentID: followUpAction.intentID
+          intentID: runtimeInterfaceReferenceID(from: followUpAction.intentID)
         )
       )
     }
@@ -989,7 +1003,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
       let sessionID = try requireRuntimeInterfaceField(payload.sessionID, named: "sessionID")
-      let eventIDs = try requireRuntimeInterfaceIdentifierElements(payload.eventIDs, named: "eventIDs")
+      let eventIDs = try requireRuntimeInterfaceReferenceIDElements(payload.eventIDs, named: "eventIDs")
       let changeSummary = try requireRuntimeInterfaceText(payload.changeSummary, named: "changeSummary")
       let commit = try await runtimeFacade.cmpFlowFacade.commitFlow(
         .init(
@@ -999,7 +1013,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
           runID: payload.runID,
           lineageID: payload.lineageID,
           parentAgentID: payload.parentAgentID,
-          eventIDs: eventIDs,
+          eventIDs: eventIDs.map(\.rawValue),
           baseRef: payload.baseRef,
           changeSummary: changeSummary,
           syncIntent: payload.syncIntent
