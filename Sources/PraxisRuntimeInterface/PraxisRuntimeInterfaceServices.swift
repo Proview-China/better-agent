@@ -572,7 +572,8 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         title: "CMP Ingest \(ingest.projectID)",
         summary: ingest.summary,
         projectID: ingest.projectID,
-        sessionID: .init(rawValue: ingest.sessionID)
+        sessionID: .init(rawValue: ingest.sessionID),
+        nextAction: ingest.nextAction
       ),
       events: [
         .init(

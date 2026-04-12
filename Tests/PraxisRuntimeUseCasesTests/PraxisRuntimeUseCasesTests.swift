@@ -885,7 +885,7 @@ struct PraxisRuntimeUseCasesTests {
     #expect(ingest.agentID == "runtime.local")
     #expect(ingest.sessionID == "cmp.flow.usecases")
     #expect(ingest.result.acceptedEventIDs.count == 1)
-    #expect(ingest.result.nextAction == "commit_context_delta")
+    #expect(ingest.result.nextAction == .commitContextDelta)
     #expect(ingest.ingress.sections.count == 1)
     #expect(ingest.loweredSections.isEmpty == false)
     #expect(commit.projectID == "cmp.local-runtime")
@@ -913,6 +913,33 @@ struct PraxisRuntimeUseCasesTests {
     #expect(status.agentID == "checker.local")
     #expect(status.latestDispatchStatus == .delivered)
     #expect(status.roles.isEmpty == false)
+  }
+
+  @Test
+  func cmpFlowIngestReturnsNoopNextActionWhenActiveSyncIsDisabled() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-ingest-noop-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let dependencies = try makeDependencies(rootDirectory: rootDirectory)
+    let ingestUseCase = PraxisIngestCmpFlowUseCase(dependencies: dependencies)
+
+    let ingest = try await ingestUseCase.execute(
+      PraxisIngestCmpFlowCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "cmp.flow.noop",
+        taskSummary: "Capture one runtime material without active sync",
+        materials: [
+          PraxisCmpRuntimeContextMaterial(kind: .userInput, ref: "payload:user:noop")
+        ],
+        requiresActiveSync: false
+      )
+    )
+
+    #expect(ingest.projectID == "cmp.local-runtime")
+    #expect(ingest.result.nextAction == PraxisCmpFlowIngestNextAction.noop)
+    #expect(ingest.result.acceptedEventIDs.count == 1)
   }
 
   @Test

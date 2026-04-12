@@ -1177,6 +1177,7 @@ struct HostRuntimeInterfaceTests {
     #expect(ingestResponse.snapshot?.kind == .cmpFlow)
     #expect(ingestResponse.snapshot?.title == "CMP Ingest cmp.local-runtime")
     #expect(ingestResponse.snapshot?.sessionID == .init(rawValue: "cmp.flow.session"))
+    #expect(ingestResponse.snapshot?.nextAction == .commitContextDelta)
     #expect(ingestResponse.events.map(\.name) == ["cmp.flow.ingested"])
     #expect(ingestResponse.events.first?.sessionID == .init(rawValue: "cmp.flow.session"))
     #expect(commitResponse.status == .success)
@@ -3060,6 +3061,7 @@ struct HostRuntimeInterfaceTests {
         title: "CMP Dispatch cmp.local-runtime",
         summary: "Typed CMP flow snapshot",
         projectID: "cmp.local-runtime",
+        nextAction: .commitContextDelta,
         activeLineStage: .candidateReady,
         qualityLabel: .usable,
         packageKind: .runtimeFill,
@@ -3075,6 +3077,7 @@ struct HostRuntimeInterfaceTests {
     let responseJSON = String(decoding: responseData, as: UTF8.self)
     let decodedResponse = try codec.decodeResponse(responseData)
 
+    #expect(responseJSON.contains(#""nextAction":"commit_context_delta""#))
     #expect(responseJSON.contains(#""activeLineStage":"candidateReady""#))
     #expect(responseJSON.contains(#""qualityLabel":"usable""#))
     #expect(responseJSON.contains(#""packageKind":"runtimeFill""#))
@@ -3083,6 +3086,28 @@ struct HostRuntimeInterfaceTests {
     #expect(responseJSON.contains(#""latestDispatchStatus":"retryScheduled""#))
     #expect(responseJSON.contains(#""roleCounts":{"dispatcher":1}"#))
     #expect(responseJSON.contains(#""roleStages":{"dispatcher":"retryScheduled"}"#))
+    #expect(decodedResponse == response)
+  }
+
+  @Test
+  func runtimeInterfaceCodecRoundTripsNoopCmpFlowNextActionAsStableRawValue() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let response = PraxisRuntimeInterfaceResponse.success(
+      snapshot: .init(
+        kind: .cmpFlow,
+        title: "CMP Ingest cmp.local-runtime",
+        summary: "Typed CMP flow snapshot",
+        projectID: "cmp.local-runtime",
+        nextAction: .noop
+      )
+    )
+
+    let responseData = try codec.encode(response)
+    let responseJSON = String(decoding: responseData, as: UTF8.self)
+    let decodedResponse = try codec.decodeResponse(responseData)
+
+    #expect(responseJSON.contains(#""nextAction":"noop""#))
+    #expect(decodedResponse.snapshot?.nextAction == .noop)
     #expect(decodedResponse == response)
   }
 
@@ -3131,6 +3156,17 @@ struct HostRuntimeInterfaceTests {
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let responseJSON =
       #"{"error":null,"events":[],"snapshot":{"kind":"cmpRoles","projectID":"cmp.local-runtime","roleStages":{"dispatcher":"broken_stage"},"summary":"Typed CMP roles snapshot","title":"CMP Roles cmp.local-runtime"},"status":"success"}"#
+
+    #expect(throws: DecodingError.self) {
+      _ = try codec.decodeResponse(Data(responseJSON.utf8))
+    }
+  }
+
+  @Test
+  func runtimeInterfaceCodecRejectsUnknownTypedCmpFlowNextActionFields() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let responseJSON =
+      #"{"error":null,"events":[],"snapshot":{"kind":"cmpFlow","nextAction":"broken_action","projectID":"cmp.local-runtime","summary":"Typed CMP flow snapshot","title":"CMP Ingest cmp.local-runtime"},"status":"success"}"#
 
     #expect(throws: DecodingError.self) {
       _ = try codec.decodeResponse(Data(responseJSON.utf8))

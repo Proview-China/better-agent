@@ -1573,6 +1573,7 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
   public let checkpointReference: String?
   public let pendingIntentID: String?
   public let recoveredEventCount: Int?
+  public let nextAction: PraxisCmpFlowIngestNextAction?
   public let activeLineStage: PraxisCmpActiveLineStage?
   public let qualityLabel: PraxisCmpCheckedSnapshotQualityLabel?
   public let packageKind: PraxisCmpContextPackageKind?
@@ -1598,6 +1599,7 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     checkpointReference: String? = nil,
     pendingIntentID: String? = nil,
     recoveredEventCount: Int? = nil,
+    nextAction: PraxisCmpFlowIngestNextAction? = nil,
     activeLineStage: PraxisCmpActiveLineStage? = nil,
     qualityLabel: PraxisCmpCheckedSnapshotQualityLabel? = nil,
     packageKind: PraxisCmpContextPackageKind? = nil,
@@ -1622,6 +1624,7 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     self.checkpointReference = checkpointReference
     self.pendingIntentID = pendingIntentID
     self.recoveredEventCount = recoveredEventCount
+    self.nextAction = nextAction
     self.activeLineStage = activeLineStage
     self.qualityLabel = qualityLabel
     self.packageKind = packageKind

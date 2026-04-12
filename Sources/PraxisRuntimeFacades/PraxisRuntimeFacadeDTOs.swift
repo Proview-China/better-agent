@@ -322,7 +322,7 @@ public struct PraxisCmpFlowIngestSnapshot: Sendable, Equatable, Codable {
   public let acceptedEventCount: Int
   public let sectionCount: Int
   public let storedSectionCount: Int
-  public let nextAction: String
+  public let nextAction: PraxisCmpFlowIngestNextAction
 
   public init(
     summary: String,
@@ -333,7 +333,7 @@ public struct PraxisCmpFlowIngestSnapshot: Sendable, Equatable, Codable {
     acceptedEventCount: Int,
     sectionCount: Int,
     storedSectionCount: Int,
-    nextAction: String
+    nextAction: PraxisCmpFlowIngestNextAction
   ) {
     self.summary = summary
     self.projectID = projectID

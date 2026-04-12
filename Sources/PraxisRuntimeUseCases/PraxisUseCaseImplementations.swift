@@ -1356,7 +1356,7 @@ private func ingestCmpFlow(
   let result = PraxisIngestRuntimeContextResult(
     status: .accepted,
     acceptedEventIDs: acceptedEventIDs,
-    nextAction: command.requiresActiveSync ? "commit_context_delta" : "noop",
+    nextAction: command.requiresActiveSync ? .commitContextDelta : .noop,
     metadata: [
       "requestID": .string(requestID.rawValue),
       "sectionCount": .number(Double(ingress.sections.count)),

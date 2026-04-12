@@ -640,16 +640,21 @@ public struct PraxisIngestRuntimeContextInput: Sendable, Equatable, Codable {
   }
 }
 
+public enum PraxisCmpFlowIngestNextAction: String, Sendable, Equatable, Codable {
+  case commitContextDelta = "commit_context_delta"
+  case noop
+}
+
 public struct PraxisIngestRuntimeContextResult: Sendable, Equatable, Codable {
   public let status: PraxisCmpInterfaceResultStatus
   public let acceptedEventIDs: [PraxisCmpEventID]
-  public let nextAction: String
+  public let nextAction: PraxisCmpFlowIngestNextAction
   public let metadata: [String: PraxisValue]
 
   public init(
     status: PraxisCmpInterfaceResultStatus,
     acceptedEventIDs: [PraxisCmpEventID],
-    nextAction: String,
+    nextAction: PraxisCmpFlowIngestNextAction,
     metadata: [String: PraxisValue] = [:]
   ) {
     self.status = status
