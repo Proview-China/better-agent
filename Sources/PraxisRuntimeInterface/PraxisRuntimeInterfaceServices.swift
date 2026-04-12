@@ -369,7 +369,13 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .tapStatus,
         title: "TAP Status \(status.projectID)",
         summary: "\(status.summary) \(status.readinessSummary)",
-        projectID: status.projectID
+        projectID: status.projectID,
+        agentID: status.agentID,
+        capabilityKey: status.latestCapabilityKey,
+        tapMode: status.tapMode,
+        riskLevel: status.riskLevel,
+        humanGateState: status.humanGateState,
+        decisionSummary: status.latestDecisionSummary
       ),
       events: [
         .init(
@@ -386,7 +392,10 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .tapHistory,
         title: "TAP History \(history.projectID)",
         summary: history.summary,
-        projectID: history.projectID
+        projectID: history.projectID,
+        agentID: history.agentID,
+        tapHistoryTotalCount: history.totalCount,
+        tapHistoryEntries: history.entries
       ),
       events: [
         .init(
@@ -478,7 +487,18 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpApproval,
         title: "CMP Approval \(approval.projectID)",
         summary: approval.summary,
-        projectID: approval.projectID
+        projectID: approval.projectID,
+        agentID: approval.agentID,
+        targetAgentID: approval.targetAgentID,
+        capabilityKey: approval.capabilityKey,
+        requestedTier: approval.requestedTier,
+        route: approval.route,
+        outcome: approval.outcome,
+        tapMode: approval.tapMode,
+        riskLevel: approval.riskLevel,
+        humanGateState: approval.humanGateState,
+        requestedAt: approval.requestedAt,
+        decisionSummary: approval.decisionSummary
       ),
       events: [
         .init(
@@ -495,7 +515,18 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         kind: .cmpApproval,
         title: "CMP Approval \(readback.projectID)",
         summary: readback.summary,
-        projectID: readback.projectID
+        projectID: readback.projectID,
+        agentID: readback.agentID,
+        targetAgentID: readback.targetAgentID,
+        capabilityKey: readback.capabilityKey,
+        requestedTier: readback.requestedTier,
+        route: readback.route,
+        outcome: readback.outcome,
+        tapMode: readback.tapMode,
+        riskLevel: readback.riskLevel,
+        humanGateState: readback.humanGateState,
+        requestedAt: readback.requestedAt,
+        decisionSummary: readback.decisionSummary
       ),
       events: [
         .init(

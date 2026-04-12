@@ -1128,10 +1128,19 @@ struct HostRuntimeInterfaceTests {
     #expect(tapStatusResponse.status == .success)
     #expect(tapStatusResponse.snapshot?.kind == .tapStatus)
     #expect(tapStatusResponse.snapshot?.title == "TAP Status cmp.local-runtime")
+    #expect(tapStatusResponse.snapshot?.tapMode == .restricted)
+    #expect(tapStatusResponse.snapshot?.riskLevel == .risky)
+    #expect(tapStatusResponse.snapshot?.humanGateState == .waitingApproval)
     #expect(tapStatusResponse.events.map(\.name) == ["tap.status.readback"])
     #expect(tapHistoryResponse.status == .success)
     #expect(tapHistoryResponse.snapshot?.kind == .tapHistory)
     #expect(tapHistoryResponse.snapshot?.title == "TAP History cmp.local-runtime")
+    #expect(tapHistoryResponse.snapshot?.tapHistoryTotalCount == 5)
+    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.count == 5)
+    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first?.requestedTier == .b1)
+    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first?.route == .humanReview)
+    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first?.outcome == .escalatedToHuman)
+    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first?.humanGateState == .waitingApproval)
     #expect(tapHistoryResponse.events.map(\.name) == ["tap.history.readback"])
     #expect(rolesReadbackResponse.status == .success)
     #expect(rolesReadbackResponse.snapshot?.kind == .cmpRoles)
@@ -1150,14 +1159,32 @@ struct HostRuntimeInterfaceTests {
     #expect(approvalRequestResponse.status == .success)
     #expect(approvalRequestResponse.snapshot?.kind == .cmpApproval)
     #expect(approvalRequestResponse.snapshot?.title == "CMP Approval cmp.local-runtime")
+    #expect(approvalRequestResponse.snapshot?.requestedTier == .b1)
+    #expect(approvalRequestResponse.snapshot?.route == .humanReview)
+    #expect(approvalRequestResponse.snapshot?.outcome == .escalatedToHuman)
+    #expect(approvalRequestResponse.snapshot?.tapMode == .restricted)
+    #expect(approvalRequestResponse.snapshot?.riskLevel == .normal)
+    #expect(approvalRequestResponse.snapshot?.humanGateState == .waitingApproval)
     #expect(approvalRequestResponse.events.map(\.name) == ["cmp.peer_approval.requested"])
     #expect(approvalDecisionResponse.status == .success)
     #expect(approvalDecisionResponse.snapshot?.kind == .cmpApproval)
     #expect(approvalDecisionResponse.snapshot?.title == "CMP Approval cmp.local-runtime")
+    #expect(approvalDecisionResponse.snapshot?.requestedTier == .b1)
+    #expect(approvalDecisionResponse.snapshot?.route == .humanReview)
+    #expect(approvalDecisionResponse.snapshot?.outcome == .approvedByHuman)
+    #expect(approvalDecisionResponse.snapshot?.tapMode == .restricted)
+    #expect(approvalDecisionResponse.snapshot?.riskLevel == .normal)
+    #expect(approvalDecisionResponse.snapshot?.humanGateState == .approved)
     #expect(approvalDecisionResponse.events.map(\.name) == ["cmp.peer_approval.decided"])
     #expect(approvalReadbackResponse.status == .success)
     #expect(approvalReadbackResponse.snapshot?.kind == .cmpApproval)
     #expect(approvalReadbackResponse.snapshot?.title == "CMP Approval cmp.local-runtime")
+    #expect(approvalReadbackResponse.snapshot?.requestedTier == .b1)
+    #expect(approvalReadbackResponse.snapshot?.route == .humanReview)
+    #expect(approvalReadbackResponse.snapshot?.outcome == .approvedByHuman)
+    #expect(approvalReadbackResponse.snapshot?.tapMode == .restricted)
+    #expect(approvalReadbackResponse.snapshot?.riskLevel == .normal)
+    #expect(approvalReadbackResponse.snapshot?.humanGateState == .approved)
     #expect(approvalReadbackResponse.events.map(\.name) == ["cmp.peer_approval.readback"])
     #expect(statusReadbackResponse.status == .success)
     #expect(statusReadbackResponse.snapshot?.kind == .cmpStatus)
@@ -1592,6 +1619,12 @@ struct HostRuntimeInterfaceTests {
     #expect(requestResponse.status == .success)
     #expect(requestResponse.snapshot?.kind == .cmpApproval)
     #expect(requestResponse.snapshot?.summary == "Approval snapshot summary for tool.git.")
+    #expect(requestResponse.snapshot?.requestedTier == .b1)
+    #expect(requestResponse.snapshot?.route == .humanReview)
+    #expect(requestResponse.snapshot?.outcome == .escalatedToHuman)
+    #expect(requestResponse.snapshot?.tapMode == .restricted)
+    #expect(requestResponse.snapshot?.riskLevel == .normal)
+    #expect(requestResponse.snapshot?.humanGateState == .waitingApproval)
     #expect(requestResponse.events.map(\.name) == ["cmp.peer_approval.requested"])
     #expect(requestResponse.events.first?.detail == "Escalated tool.git to human review.")
     #expect(requestResponse.events.first?.detail != requestResponse.snapshot?.summary)
@@ -1599,6 +1632,12 @@ struct HostRuntimeInterfaceTests {
     #expect(decideResponse.status == .success)
     #expect(decideResponse.snapshot?.kind == .cmpApproval)
     #expect(decideResponse.snapshot?.summary == "Approval decision snapshot for tool.git.")
+    #expect(decideResponse.snapshot?.requestedTier == .b1)
+    #expect(decideResponse.snapshot?.route == .humanReview)
+    #expect(decideResponse.snapshot?.outcome == .approvedByHuman)
+    #expect(decideResponse.snapshot?.tapMode == .restricted)
+    #expect(decideResponse.snapshot?.riskLevel == .normal)
+    #expect(decideResponse.snapshot?.humanGateState == .approved)
     #expect(decideResponse.events.map(\.name) == ["cmp.peer_approval.decided"])
     #expect(decideResponse.events.first?.detail == "Approved by reviewer.local.")
     #expect(decideResponse.events.first?.detail != decideResponse.snapshot?.summary)
@@ -1606,6 +1645,12 @@ struct HostRuntimeInterfaceTests {
     #expect(readbackResponse.status == .success)
     #expect(readbackResponse.snapshot?.kind == .cmpApproval)
     #expect(readbackResponse.snapshot?.summary == "Approval readback summary for tool.git.")
+    #expect(readbackResponse.snapshot?.requestedTier == .b1)
+    #expect(readbackResponse.snapshot?.route == .humanReview)
+    #expect(readbackResponse.snapshot?.outcome == .approvedByHuman)
+    #expect(readbackResponse.snapshot?.tapMode == .restricted)
+    #expect(readbackResponse.snapshot?.riskLevel == .normal)
+    #expect(readbackResponse.snapshot?.humanGateState == .approved)
     #expect(readbackResponse.events.map(\.name) == ["cmp.peer_approval.readback"])
     #expect(readbackResponse.events.first?.detail == readbackResponse.snapshot?.summary)
   }
@@ -3096,6 +3141,103 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceCodecRoundTripsTypedTapAndApprovalSnapshotFieldsAsStableRawValues() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let tapStatusResponse = PraxisRuntimeInterfaceResponse.success(
+      snapshot: .init(
+        kind: .tapStatus,
+        title: "TAP Status cmp.local-runtime",
+        summary: "Typed TAP status snapshot",
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        capabilityKey: "tool.shell.exec",
+        tapMode: .restricted,
+        riskLevel: .risky,
+        humanGateState: .waitingApproval,
+        decisionSummary: "Waiting for approval."
+      )
+    )
+    let tapHistoryResponse = PraxisRuntimeInterfaceResponse.success(
+      snapshot: .init(
+        kind: .tapHistory,
+        title: "TAP History cmp.local-runtime",
+        summary: "Typed TAP history snapshot",
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        tapHistoryTotalCount: 1,
+        tapHistoryEntries: [
+          .init(
+            agentID: "checker.local",
+            targetAgentID: "runtime.local",
+            capabilityKey: "tool.shell.exec",
+            requestedTier: .b2,
+            route: .humanReview,
+            outcome: .escalatedToHuman,
+            humanGateState: .waitingApproval,
+            updatedAt: "2026-04-12T00:00:00Z",
+            decisionSummary: "Escalated for review."
+          )
+        ]
+      )
+    )
+    let approvalResponse = PraxisRuntimeInterfaceResponse.success(
+      snapshot: .init(
+        kind: .cmpApproval,
+        title: "CMP Approval cmp.local-runtime",
+        summary: "Typed CMP approval snapshot",
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityKey: "tool.shell.exec",
+        requestedTier: .b2,
+        route: .humanReview,
+        outcome: .approvedByHuman,
+        tapMode: .restricted,
+        riskLevel: .risky,
+        humanGateState: .approved,
+        requestedAt: "2026-04-12T00:05:00Z",
+        decisionSummary: "Approved by reviewer.local."
+      )
+    )
+
+    let encodedTapStatus = try codec.encode(tapStatusResponse)
+    let encodedTapHistory = try codec.encode(tapHistoryResponse)
+    let encodedApproval = try codec.encode(approvalResponse)
+    let tapStatusJSON = String(decoding: encodedTapStatus, as: UTF8.self)
+    let tapHistoryJSON = String(decoding: encodedTapHistory, as: UTF8.self)
+    let approvalJSON = String(decoding: encodedApproval, as: UTF8.self)
+    let decodedTapStatus = try codec.decodeResponse(encodedTapStatus)
+    let decodedTapHistory = try codec.decodeResponse(encodedTapHistory)
+    let decodedApproval = try codec.decodeResponse(encodedApproval)
+
+    #expect(tapStatusJSON.contains(#""tapMode":"restricted""#))
+    #expect(tapStatusJSON.contains(#""riskLevel":"risky""#))
+    #expect(tapStatusJSON.contains(#""humanGateState":"waitingApproval""#))
+    #expect(decodedTapStatus.snapshot?.tapMode == .restricted)
+    #expect(decodedTapStatus.snapshot?.riskLevel == .risky)
+    #expect(decodedTapStatus.snapshot?.humanGateState == .waitingApproval)
+
+    #expect(tapHistoryJSON.contains(#""tapHistoryEntries":[{"agentID":"checker.local","capabilityKey":"tool.shell.exec","decisionSummary":"Escalated for review.","humanGateState":"waitingApproval","outcome":"escalated_to_human","requestedTier":"B2","route":"humanReview","targetAgentID":"runtime.local","updatedAt":"2026-04-12T00:00:00Z"}]"#))
+    #expect(decodedTapHistory.snapshot?.tapHistoryTotalCount == 1)
+    #expect(decodedTapHistory.snapshot?.tapHistoryEntries?.first?.requestedTier == .b2)
+    #expect(decodedTapHistory.snapshot?.tapHistoryEntries?.first?.route == .humanReview)
+    #expect(decodedTapHistory.snapshot?.tapHistoryEntries?.first?.outcome == .escalatedToHuman)
+
+    #expect(approvalJSON.contains(#""requestedTier":"B2""#))
+    #expect(approvalJSON.contains(#""route":"humanReview""#))
+    #expect(approvalJSON.contains(#""outcome":"approved_by_human""#))
+    #expect(approvalJSON.contains(#""tapMode":"restricted""#))
+    #expect(approvalJSON.contains(#""riskLevel":"risky""#))
+    #expect(approvalJSON.contains(#""humanGateState":"approved""#))
+    #expect(decodedApproval.snapshot?.requestedTier == .b2)
+    #expect(decodedApproval.snapshot?.route == .humanReview)
+    #expect(decodedApproval.snapshot?.outcome == .approvedByHuman)
+    #expect(decodedApproval.snapshot?.tapMode == .restricted)
+    #expect(decodedApproval.snapshot?.riskLevel == .risky)
+    #expect(decodedApproval.snapshot?.humanGateState == .approved)
+  }
+
+  @Test
   func runtimeInterfaceCodecRoundTripsNoopCmpFlowNextActionAsStableRawValue() throws {
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let response = PraxisRuntimeInterfaceResponse.success(
@@ -3187,6 +3329,22 @@ struct HostRuntimeInterfaceTests {
 
     #expect(throws: DecodingError.self) {
       _ = try codec.decodeResponse(Data(responseJSON.utf8))
+    }
+  }
+
+  @Test
+  func runtimeInterfaceCodecRejectsUnknownTypedApprovalAndTapFields() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let invalidApprovalRouteJSON =
+      #"{"error":null,"events":[],"snapshot":{"capabilityKey":"tool.shell.exec","humanGateState":"approved","kind":"cmpApproval","outcome":"approved_by_human","projectID":"cmp.local-runtime","requestedTier":"B2","riskLevel":"risky","route":"not_a_real_route","summary":"Typed CMP approval snapshot","tapMode":"restricted","title":"CMP Approval cmp.local-runtime"},"status":"success"}"#
+    let invalidTapHistoryRouteJSON =
+      #"{"error":null,"events":[],"snapshot":{"kind":"tapHistory","projectID":"cmp.local-runtime","summary":"Typed TAP history snapshot","tapHistoryEntries":[{"agentID":"checker.local","capabilityKey":"tool.shell.exec","decisionSummary":"Escalated for review.","humanGateState":"waitingApproval","outcome":"escalated_to_human","requestedTier":"B2","route":"not_a_real_route","targetAgentID":"runtime.local","updatedAt":"2026-04-12T00:00:00Z"}],"tapHistoryTotalCount":1,"title":"TAP History cmp.local-runtime"},"status":"success"}"#
+
+    #expect(throws: DecodingError.self) {
+      _ = try codec.decodeResponse(Data(invalidApprovalRouteJSON.utf8))
+    }
+    #expect(throws: DecodingError.self) {
+      _ = try codec.decodeResponse(Data(invalidTapHistoryRouteJSON.utf8))
     }
   }
 

@@ -5,6 +5,7 @@ import PraxisRun
 import PraxisRuntimeFacades
 import PraxisRuntimeUseCases
 import PraxisSession
+import PraxisTapReview
 import PraxisTapTypes
 
 public enum PraxisRuntimeInterfaceResponseStatus: String, Sendable, Equatable, Codable {
@@ -1563,6 +1564,9 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
   public let title: String
   public let summary: String
   public let projectID: String?
+  public let agentID: String?
+  public let targetAgentID: String?
+  public let capabilityKey: String?
   public let hostProfile: PraxisLocalRuntimeHostProfile?
   public let componentStatuses: PraxisCmpProjectComponentStatusMap?
   public let runID: PraxisRunID?
@@ -1584,12 +1588,25 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
   public let packageStatusCounts: PraxisCmpPackageStatusCountMap?
   public let roleCounts: PraxisCmpRoleCountMap?
   public let roleStages: PraxisCmpRoleStageMap?
+  public let requestedTier: PraxisTapCapabilityTier?
+  public let route: PraxisReviewerRoute?
+  public let outcome: PraxisCmpPeerApprovalOutcome?
+  public let tapMode: PraxisTapMode?
+  public let riskLevel: PraxisTapRiskLevel?
+  public let humanGateState: PraxisHumanGateState?
+  public let requestedAt: String?
+  public let decisionSummary: String?
+  public let tapHistoryTotalCount: Int?
+  public let tapHistoryEntries: [PraxisTapHistoryEntrySnapshot]?
 
   public init(
     kind: PraxisRuntimeInterfaceSnapshotKind,
     title: String,
     summary: String,
     projectID: String? = nil,
+    agentID: String? = nil,
+    targetAgentID: String? = nil,
+    capabilityKey: String? = nil,
     hostProfile: PraxisLocalRuntimeHostProfile? = nil,
     componentStatuses: PraxisCmpProjectComponentStatusMap? = nil,
     runID: PraxisRunID? = nil,
@@ -1610,12 +1627,25 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     latestDispatchStatus: PraxisCmpLatestDispatchStatus? = nil,
     packageStatusCounts: PraxisCmpPackageStatusCountMap? = nil,
     roleCounts: PraxisCmpRoleCountMap? = nil,
-    roleStages: PraxisCmpRoleStageMap? = nil
+    roleStages: PraxisCmpRoleStageMap? = nil,
+    requestedTier: PraxisTapCapabilityTier? = nil,
+    route: PraxisReviewerRoute? = nil,
+    outcome: PraxisCmpPeerApprovalOutcome? = nil,
+    tapMode: PraxisTapMode? = nil,
+    riskLevel: PraxisTapRiskLevel? = nil,
+    humanGateState: PraxisHumanGateState? = nil,
+    requestedAt: String? = nil,
+    decisionSummary: String? = nil,
+    tapHistoryTotalCount: Int? = nil,
+    tapHistoryEntries: [PraxisTapHistoryEntrySnapshot]? = nil
   ) {
     self.kind = kind
     self.title = title
     self.summary = summary
     self.projectID = projectID
+    self.agentID = agentID
+    self.targetAgentID = targetAgentID
+    self.capabilityKey = capabilityKey
     self.hostProfile = hostProfile
     self.componentStatuses = componentStatuses
     self.runID = runID
@@ -1637,6 +1667,16 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     self.packageStatusCounts = packageStatusCounts
     self.roleCounts = roleCounts
     self.roleStages = roleStages
+    self.requestedTier = requestedTier
+    self.route = route
+    self.outcome = outcome
+    self.tapMode = tapMode
+    self.riskLevel = riskLevel
+    self.humanGateState = humanGateState
+    self.requestedAt = requestedAt
+    self.decisionSummary = decisionSummary
+    self.tapHistoryTotalCount = tapHistoryTotalCount
+    self.tapHistoryEntries = tapHistoryEntries
   }
 }
 
