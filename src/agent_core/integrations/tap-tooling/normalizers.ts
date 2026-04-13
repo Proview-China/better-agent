@@ -680,17 +680,77 @@ function createDocWriteText(record: Record<string, unknown>): {
   title?: string;
   sectionCount: number;
 } {
-  const title = asString(record.title);
-  const summary = asString(record.summary);
+  const documentRecord = asRecord(record.document);
+  const title = asString(record.title) ?? asString(documentRecord?.title);
+  const summary = asString(record.summary) ?? asString(documentRecord?.summary);
+  const blocksValue = Array.isArray(record.blocks)
+    ? record.blocks
+    : Array.isArray(documentRecord?.blocks)
+      ? documentRecord.blocks
+      : [];
+  const blockText = blocksValue
+    .flatMap((entry) => {
+      const block = asRecord(entry);
+      if (!block) {
+        return [];
+      }
+      const heading = asString(block.heading) ?? asString(block.title);
+      const bodyValue = block.body;
+      const paragraphsValue = Array.isArray(block.paragraphs) ? block.paragraphs : undefined;
+      const text = asString(block.text)
+        ?? asString(block.content)
+        ?? (typeof bodyValue === "string"
+          ? bodyValue
+          : Array.isArray(bodyValue)
+            ? bodyValue.filter((item): item is string => typeof item === "string").join("\n")
+            : Array.isArray(paragraphsValue)
+              ? paragraphsValue.filter((item): item is string => typeof item === "string").join("\n")
+              : undefined);
+      if (!text) {
+        return [];
+      }
+      return [heading ? `${heading}\n${text}` : text];
+    })
+    .join("\n\n");
+  const topLevelBody = typeof record.body === "string"
+    ? record.body
+    : Array.isArray(record.body)
+      ? record.body.filter((item): item is string => typeof item === "string").join("\n")
+      : Array.isArray(record.bodyLines)
+        ? record.bodyLines.filter((item): item is string => typeof item === "string").join("\n")
+        : Array.isArray(record.paragraphs)
+          ? record.paragraphs.filter((item): item is string => typeof item === "string").join("\n")
+          : undefined;
+  const nestedBody = documentRecord
+    ? typeof documentRecord.body === "string"
+      ? documentRecord.body
+      : Array.isArray(documentRecord.body)
+        ? documentRecord.body.filter((item): item is string => typeof item === "string").join("\n")
+        : Array.isArray(documentRecord.bodyLines)
+          ? documentRecord.bodyLines.filter((item): item is string => typeof item === "string").join("\n")
+          : Array.isArray(documentRecord.paragraphs)
+            ? documentRecord.paragraphs.filter((item): item is string => typeof item === "string").join("\n")
+            : undefined
+    : undefined;
   const content = asString(record.content)
     ?? asString(record.markdown)
-    ?? asString(record.text);
-  const format = asString(record.format);
+    ?? asString(record.text)
+    ?? topLevelBody
+    ?? asString(documentRecord?.content)
+    ?? asString(documentRecord?.markdown)
+    ?? asString(documentRecord?.text)
+    ?? nestedBody
+    ?? (blockText.trim().length > 0 ? blockText : undefined);
+  const format = asString(record.format) ?? asString(documentRecord?.format);
   if (format && format !== "text" && format !== "markdown" && format !== "docx") {
     throw new Error("doc.write format currently supports only docx, text, or markdown.");
   }
 
-  const sectionsValue = Array.isArray(record.sections) ? record.sections : [];
+  const sectionsValue = Array.isArray(record.sections)
+    ? record.sections
+    : Array.isArray(documentRecord?.sections)
+      ? documentRecord.sections
+      : [];
   const sections = sectionsValue.map((entry, index) => {
     const section = asRecord(entry);
     const heading = section ? asString(section.heading) : undefined;
@@ -740,7 +800,8 @@ export function normalizeDocWriteInput(
 ): PreparedDocWriteState["input"] {
   const scope = getGrantedScope(plan);
   const record = asRecord(plan.input) ?? {};
-  const candidatePath = asString(record.path);
+  const documentRecord = asRecord(record.document);
+  const candidatePath = asString(record.path) ?? asString(documentRecord?.path);
   if (!candidatePath) {
     throw new Error("doc.write requires a non-empty path.");
   }

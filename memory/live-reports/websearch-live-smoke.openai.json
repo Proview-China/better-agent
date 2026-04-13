@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-19T12:33:46.615Z",
+  "generatedAt": "2026-04-08T04:58:05.400Z",
   "provider": "openai",
   "rows": [
     {
@@ -7,16 +7,16 @@
       "step": "native_plain",
       "ok": true,
       "model": "gpt-5.4",
-      "summary": "OK"
+      "summary": ""
     },
     {
       "provider": "openai",
       "step": "native_search",
       "ok": true,
       "model": "gpt-5.4",
-      "summary": "platform.openai.com/docs",
+      "summary": "",
       "details": {
-        "outputCount": 1
+        "outputCount": 0
       }
     },
     {
@@ -24,10 +24,10 @@
       "step": "rax_websearch",
       "ok": true,
       "model": "gpt-5.4",
-      "summary": "OpenAI’s official developer documentation domain is **developers.openai.com**. OpenAI’s own docs page says it hosts developer documentation on **developers.open",
+      "summary": "",
       "details": {
         "status": "success",
-        "sources": 18,
+        "sources": 0,
         "citations": 0
       }
     },
@@ -36,16 +36,16 @@
       "step": "native_plain",
       "ok": true,
       "model": "gpt-5",
-      "summary": "OK"
+      "summary": ""
     },
     {
       "provider": "openai",
       "step": "native_search",
       "ok": true,
       "model": "gpt-5",
-      "summary": "platform.openai.com",
+      "summary": "",
       "details": {
-        "outputCount": 2
+        "outputCount": 0
       }
     },
     {
@@ -53,11 +53,11 @@
       "step": "rax_websearch",
       "ok": true,
       "model": "gpt-5",
-      "summary": "The official documentation domain for OpenAI’s developer docs is:\n\n**`https://platform.openai.com/docs`**, which is part of the broader **`openai.com`** domain ",
+      "summary": "",
       "details": {
         "status": "success",
-        "sources": 7,
-        "citations": 1
+        "sources": 0,
+        "citations": 0
       }
     }
   ]

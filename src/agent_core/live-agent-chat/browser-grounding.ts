@@ -196,9 +196,7 @@ function extractVerifiedSourcePriceFromSnapshot(pathValue: string | undefined): 
   }
 
   const visibleSection = text.match(/heading "XAU\/USD - 黄金现货 美元"[\s\S]{0,4000}/u)?.[0] ?? text;
-  const price = visibleSection.match(/generic \[ref=[^\]]+\]: ([0-9][0-9,]*(?:\.[0-9]+)?)/u)?.[1]
-    ?? visibleSection.match(/当前XAU\/USD的汇率为([0-9,]+(?:\.[0-9]+)?)/u)?.[1]
-    ?? visibleSection.match(/买入价为([0-9,]+(?:\.[0-9]+)?)/u)?.[1];
+  const price = visibleSection.match(/generic \[ref=[^\]]+\]: ([0-9][0-9,]*(?:\.[0-9]+)?)/u)?.[1];
   const observedAt = visibleSection.match(/time \[ref=[^\]]+\]: ([0-9]{2}:[0-9]{2}:[0-9]{2})/u)?.[1];
 
   if (!price && !observedAt) {
@@ -454,10 +452,6 @@ export function updateBrowserTurnSummary(
   }
 
   if (pageUrl && !/google\.com\/search/iu.test(pageUrl) && !pageUrl.startsWith("https://example.com")) {
-    next.verifiedSourceUrl = pageUrl;
-    if (pageTitle) {
-      next.verifiedSourceTitle = pageTitle;
-    }
     const directPrice = extractGoldPriceUsdPerOunce(text);
     if (directPrice) {
       next.goldPriceUsdPerOunce = directPrice;
@@ -470,6 +464,22 @@ export function updateBrowserTurnSummary(
     }
     if (snapshotExtract?.observedAt) {
       next.goldPriceObservedAt = snapshotExtract.observedAt;
+    }
+    const verifiedByCurrentPage = Boolean(
+      directPrice
+      || snapshotExtract?.priceUsdPerOunce
+      || snapshotExtract?.observedAt,
+    );
+    if (verifiedByCurrentPage) {
+      next.verifiedSourceUrl = pageUrl;
+      if (pageTitle) {
+        next.verifiedSourceTitle = pageTitle;
+      }
+    } else {
+      next.candidateSourceUrl = pageUrl;
+      if (pageTitle) {
+        next.candidateSourceTitle = pageTitle;
+      }
     }
   }
 

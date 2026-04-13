@@ -1,0 +1,12 @@
+{
+  "trackerId": "f3084eb2-9916-4c2d-9610-d95a6e5ef003",
+  "title": "workflow telemetry smoke",
+  "description": "验证 workflow family telemetry",
+  "kind": "task",
+  "status": "pending",
+  "labels": [
+    "tui",
+    "workflow"
+  ],
+  "createdAt": "2026-04-12T16:41:17.266Z"
+}

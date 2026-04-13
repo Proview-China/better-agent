@@ -22,6 +22,8 @@ export const FOUNDATION_FAMILY_CAPABILITY_KEYS = [
   "repo.write",
   "spreadsheet.write",
   "doc.write",
+  "remote.exec",
+  "tracker.create",
   "code.edit",
   "code.patch",
   "shell.restricted",

@@ -23,6 +23,7 @@ import type {
   GitDiffInput,
   GitPushInput,
   GitStatusInput,
+  RemoteExecInput,
   RegisterTapToolingBaselineResult,
   RepoWriteEntry,
   RepoWriteInput,
@@ -33,6 +34,7 @@ import type {
   SpreadsheetWriteInput,
   TapToolingAdapterOptions,
   TapToolingRegistrationTarget,
+  TrackerCreateInput,
   WriteTodosInput,
 } from "./tap-tooling/shared.js";
 
@@ -47,6 +49,7 @@ export type {
   GitDiffInput,
   GitPushInput,
   GitStatusInput,
+  RemoteExecInput,
   RegisterTapToolingBaselineResult,
   RepoWriteEntry,
   RepoWriteInput,
@@ -57,6 +60,7 @@ export type {
   SpreadsheetWriteInput,
   TapToolingAdapterOptions,
   TapToolingRegistrationTarget,
+  TrackerCreateInput,
   WriteTodosInput,
 } from "./tap-tooling/shared.js";
 export {

@@ -42,6 +42,8 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, MCP, 
     "repo.write",
     "spreadsheet.write",
     "doc.write",
+    "remote.exec",
+    "tracker.create",
     "code.edit",
     "code.patch",
     "shell.restricted",
@@ -94,10 +96,10 @@ test("registerTapCapabilityFamilyAssembly wires foundation, search, skill, MCP, 
     "speech.synthesize",
     "image.generate",
   ]);
-  assert.equal(result.packages.length, 57);
-  assert.equal(result.bindings.length, 57);
+  assert.equal(result.packages.length, 59);
+  assert.equal(result.bindings.length, 59);
   assert.equal(result.activationFactoryRefs.length, activationFactories.size);
-  assert.equal(result.registrationAudit.length, 57);
+  assert.equal(result.registrationAudit.length, 59);
   assert.equal(result.activationFactoryAudit.length, activationFactories.size);
   assert.equal(registeredCapabilityKeys.includes("search.web"), true);
   assert.equal(registeredCapabilityKeys.includes("search.fetch"), true);

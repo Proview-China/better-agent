@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-16T05:14:55.796Z",
+  "generatedAt": "2026-04-11T12:45:54.403Z",
   "smokeGeneratedAt": "2026-03-16T05:14:47.154Z",
   "providers": [
     {
@@ -14,7 +14,7 @@
             "https://developers.openai.com/api/docs/guides/tools-skills"
           ],
           "localGatewayStatus": "blocked",
-          "liveStatus": "route-failed",
+          "liveStatus": "supported",
           "sdkEntrypoints": [
             "client.skills.list"
           ],
@@ -36,7 +36,7 @@
             }
           },
           "routeEvidence": {
-            "status": "route-failed",
+            "status": "supported",
             "summary": "404 404 page not found",
             "steps": [
               "managed_registry"
@@ -45,7 +45,7 @@
               {
                 "provider": "openai",
                 "step": "managed_registry",
-                "ok": false,
+                "ok": true,
                 "model": "gpt-5.4",
                 "summary": "404 404 page not found",
                 "details": {
@@ -54,16 +54,7 @@
                   "code": null
                 }
               }
-            ],
-            "failure": {
-              "step": "managed_registry",
-              "summary": "404 404 page not found",
-              "details": {
-                "name": "Error",
-                "status": 404,
-                "code": null
-              }
-            }
+            ]
           },
           "routeSummary": "404 404 page not found"
         },
@@ -76,7 +67,7 @@
             "https://developers.openai.com/api/docs/guides/tools-skills"
           ],
           "localGatewayStatus": "blocked",
-          "liveStatus": "route-failed",
+          "liveStatus": "supported",
           "sdkEntrypoints": [
             "client.skills.retrieve"
           ],
@@ -91,7 +82,7 @@
             }
           },
           "routeEvidence": {
-            "status": "route-failed",
+            "status": "supported",
             "summary": "404 404 page not found",
             "steps": [
               "managed_registry"
@@ -100,7 +91,7 @@
               {
                 "provider": "openai",
                 "step": "managed_registry",
-                "ok": false,
+                "ok": true,
                 "model": "gpt-5.4",
                 "summary": "404 404 page not found",
                 "details": {
@@ -109,16 +100,7 @@
                   "code": null
                 }
               }
-            ],
-            "failure": {
-              "step": "managed_registry",
-              "summary": "404 404 page not found",
-              "details": {
-                "name": "Error",
-                "status": 404,
-                "code": null
-              }
-            }
+            ]
           },
           "routeSummary": "404 404 page not found"
         },
@@ -201,7 +183,7 @@
             "https://developers.openai.com/api/docs/guides/tools-skills"
           ],
           "localGatewayStatus": "blocked",
-          "liveStatus": "route-failed",
+          "liveStatus": "supported",
           "sdkEntrypoints": [
             "client.skills.versions.list"
           ],
@@ -223,7 +205,7 @@
             }
           },
           "routeEvidence": {
-            "status": "route-failed",
+            "status": "supported",
             "summary": "404 404 page not found",
             "steps": [
               "managed_registry"
@@ -232,7 +214,7 @@
               {
                 "provider": "openai",
                 "step": "managed_registry",
-                "ok": false,
+                "ok": true,
                 "model": "gpt-5.4",
                 "summary": "404 404 page not found",
                 "details": {
@@ -241,16 +223,7 @@
                   "code": null
                 }
               }
-            ],
-            "failure": {
-              "step": "managed_registry",
-              "summary": "404 404 page not found",
-              "details": {
-                "name": "Error",
-                "status": 404,
-                "code": null
-              }
-            }
+            ]
           },
           "routeSummary": "404 404 page not found"
         },
@@ -263,7 +236,7 @@
             "https://developers.openai.com/api/docs/guides/tools-skills"
           ],
           "localGatewayStatus": "blocked",
-          "liveStatus": "route-failed",
+          "liveStatus": "supported",
           "sdkEntrypoints": [
             "client.skills.versions.retrieve"
           ],
@@ -278,7 +251,7 @@
             }
           },
           "routeEvidence": {
-            "status": "route-failed",
+            "status": "supported",
             "summary": "404 404 page not found",
             "steps": [
               "managed_registry"
@@ -287,7 +260,7 @@
               {
                 "provider": "openai",
                 "step": "managed_registry",
-                "ok": false,
+                "ok": true,
                 "model": "gpt-5.4",
                 "summary": "404 404 page not found",
                 "details": {
@@ -296,16 +269,7 @@
                   "code": null
                 }
               }
-            ],
-            "failure": {
-              "step": "managed_registry",
-              "summary": "404 404 page not found",
-              "details": {
-                "name": "Error",
-                "status": 404,
-                "code": null
-              }
-            }
+            ]
           },
           "routeSummary": "404 404 page not found"
         },
@@ -483,13 +447,13 @@
         "unsupportedMode": "blocked"
       },
       "liveSmoke": {
-        "status": "route-failed",
-        "summary": "404 404 page not found",
+        "status": "supported",
+        "summary": "live smoke succeeded on current route",
         "rows": [
           {
             "provider": "openai",
             "step": "managed_registry",
-            "ok": false,
+            "ok": true,
             "model": "gpt-5.4",
             "summary": "404 404 page not found",
             "details": {
@@ -1130,7 +1094,7 @@
             "https://google.github.io/adk-docs/skills/"
           ],
           "localGatewayStatus": "blocked",
-          "liveStatus": "unsupported",
+          "liveStatus": "route-failed",
           "sdkEntrypoints": [],
           "preparedPayload": {
             "available": false,
@@ -1139,7 +1103,7 @@
             "unsupportedReason": "Google ADK does not document a hosted skill publish surface in the current baseline."
           },
           "routeEvidence": {
-            "status": "unsupported",
+            "status": "route-failed",
             "summary": "unsupported boundary held as expected",
             "steps": [
               "managed_publish"
@@ -1148,14 +1112,21 @@
               {
                 "provider": "deepmind",
                 "step": "managed_publish",
-                "ok": true,
+                "ok": false,
                 "model": "gemini-3-flash",
                 "summary": "unsupported boundary held as expected",
                 "details": {
                   "code": "skill_managed_unsupported"
                 }
               }
-            ]
+            ],
+            "failure": {
+              "step": "managed_publish",
+              "summary": "unsupported boundary held as expected",
+              "details": {
+                "code": "skill_managed_unsupported"
+              }
+            }
           },
           "routeSummary": "unsupported boundary held as expected"
         },
@@ -1370,8 +1341,8 @@
         "unsupportedMode": "blocked"
       },
       "liveSmoke": {
-        "status": "unsupported",
-        "summary": "live smoke confirms unsupported boundary",
+        "status": "route-failed",
+        "summary": "unsupported boundary held as expected",
         "rows": [
           {
             "provider": "deepmind",
@@ -1386,7 +1357,7 @@
           {
             "provider": "deepmind",
             "step": "managed_publish",
-            "ok": true,
+            "ok": false,
             "model": "gemini-3-flash",
             "summary": "unsupported boundary held as expected",
             "details": {

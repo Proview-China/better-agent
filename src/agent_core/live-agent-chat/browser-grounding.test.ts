@@ -98,6 +98,74 @@ test("updateBrowserTurnSummary clears active obstruction after a normal page res
   assert.equal(resumed.goldPriceObservedAt, "08:48:38");
 });
 
+test("updateBrowserTurnSummary keeps opened source pages as candidates until facts are verified", () => {
+  const summary = updateBrowserTurnSummary({}, {
+    action: "navigate",
+    pageUrl: "https://cn.investing.com/currencies/xau-usd",
+    pageTitle: "XAU/USD - 黄金现货 美元",
+    text: [
+      "### Page",
+      "- Page URL: https://cn.investing.com/currencies/xau-usd",
+      "- Page Title: XAU/USD - 黄金现货 美元",
+      "### Content",
+      "这里只确认到了页面标题，还没有确认价格和时间。",
+    ].join("\n"),
+  });
+
+  assert.equal(summary.candidateSourceUrl, "https://cn.investing.com/currencies/xau-usd");
+  assert.equal(summary.verifiedSourceUrl, undefined);
+});
+
+test("updateBrowserTurnSummary does not rebind verified facts onto a later unverified page", () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "praxis-browser-grounding-"));
+  const sourceSnapshotPath = path.join(tempDir, "source.yml");
+  writeFileSync(sourceSnapshotPath, [
+    '- heading "XAU/USD - 黄金现货 美元" [level=1]',
+    '- generic [ref=e1]: 4755.44',
+    '- time [ref=e2]: 08:48:38',
+  ].join("\n"));
+
+  const verified = updateBrowserTurnSummary({}, {
+    action: "snapshot",
+    pageUrl: "https://cn.investing.com/currencies/xau-usd",
+    pageTitle: "XAU/USD - 黄金现货 美元",
+    snapshotPath: sourceSnapshotPath,
+  });
+
+  const laterPage = updateBrowserTurnSummary(verified, {
+    action: "navigate",
+    pageUrl: "https://example.net/quote-mirror",
+    pageTitle: "Mirror Quote Page",
+    text: "这里只确认到了标题，没有重新确认价格和时间。",
+  });
+
+  assert.equal(laterPage.verifiedSourceUrl, "https://cn.investing.com/currencies/xau-usd");
+  assert.equal(laterPage.candidateSourceUrl, "https://example.net/quote-mirror");
+  assert.equal(laterPage.goldPriceUsdPerOunce, "4755.44");
+  assert.equal(laterPage.goldPriceObservedAt, "08:48:38");
+});
+
+test("updateBrowserTurnSummary does not promote FAQ-only price text into verified page facts", () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "praxis-browser-grounding-"));
+  const faqSnapshotPath = path.join(tempDir, "faq-only.yml");
+  writeFileSync(faqSnapshotPath, [
+    '- heading "XAU/USD - 黄金现货 美元" [level=1]',
+    '- paragraph: 当前XAU/USD的汇率为4755.44，下面是常见问题。',
+    '- paragraph: 页面其余部分没有主报价组件。',
+  ].join("\n"));
+
+  const summary = updateBrowserTurnSummary({}, {
+    action: "snapshot",
+    pageUrl: "https://cn.investing.com/currencies/xau-usd",
+    pageTitle: "XAU/USD - 黄金现货 美元",
+    snapshotPath: faqSnapshotPath,
+  });
+
+  assert.equal(summary.verifiedSourceUrl, undefined);
+  assert.equal(summary.candidateSourceUrl, "https://cn.investing.com/currencies/xau-usd");
+  assert.equal(summary.goldPriceEvidenceSource, undefined);
+});
+
 test("updateBrowserTurnSummary marks cloudflare verification pages as active obstructions", () => {
   const blocked = updateBrowserTurnSummary({}, {
     action: "snapshot",
@@ -131,7 +199,8 @@ test("updateBrowserTurnSummary does not misclassify ordinary cloudflare articles
   });
 
   assert.equal(summary.activeObstruction, undefined);
-  assert.equal(summary.verifiedSourceUrl, "https://blog.example.com/cloudflare-security-verification-guide");
+  assert.equal(summary.candidateSourceUrl, "https://blog.example.com/cloudflare-security-verification-guide");
+  assert.equal(summary.verifiedSourceUrl, undefined);
 });
 
 test("browser obstruction helper keeps page-native gold tasks blocked", () => {

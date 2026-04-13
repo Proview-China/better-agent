@@ -14,8 +14,8 @@ test("foundation family check reports blocked when local tooling baseline is not
 
   assert.equal(result.familyKey, "foundation");
   assert.equal(result.productionLike, false);
-  assert.equal(result.summary.capabilityCount, 29);
-  assert.equal(result.summary.blockedCount, 29);
+  assert.equal(result.summary.capabilityCount, 31);
+  assert.equal(result.summary.blockedCount, 31);
   assert.equal(result.blockers.includes("missing_registration"), true);
   assert.equal(
     result.capabilityFindings.every((entry) => entry.status === "blocked"),
@@ -52,7 +52,7 @@ test("foundation family check reports production-like readiness once all local c
   const result = createFoundationFamilyAvailabilityCheck({ report });
 
   assert.equal(result.productionLike, true);
-  assert.equal(result.summary.capabilityCount, 29);
+  assert.equal(result.summary.capabilityCount, 31);
   assert.equal(result.summary.blockedCount, 0);
   assert.deepEqual(
     [...result.capabilityFindings.map((entry) => entry.capabilityKey)].sort(),

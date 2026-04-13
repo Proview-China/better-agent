@@ -48,6 +48,8 @@ test("test.run package is recognized as part of the B-group tooling baseline", (
   assert.equal(isTapToolingBaselineCapabilityKey("browser.playwright"), true);
   assert.equal(isTapToolingBaselineCapabilityKey("spreadsheet.write"), true);
   assert.equal(isTapToolingBaselineCapabilityKey("doc.write"), true);
+  assert.equal(isTapToolingBaselineCapabilityKey("remote.exec"), true);
+  assert.equal(isTapToolingBaselineCapabilityKey("tracker.create"), true);
   assert.equal(isTapToolingBaselineCapabilityKey("docs.read"), false);
 });
 
@@ -76,6 +78,34 @@ test("doc.write package carries first-wave docx generation metadata", () => {
   assert.match(
     capabilityPackage.policy.safetyFlags.join(" "),
     /docx_generation_v1/i,
+  );
+});
+
+test("remote.exec package carries risky ssh execution metadata", () => {
+  const capabilityPackage = createTapToolingCapabilityPackage("remote.exec");
+
+  assert.equal(capabilityPackage.policy.riskLevel, "risky");
+  assert.equal(
+    capabilityPackage.activationSpec?.adapterFactoryRef,
+    "factory:tap-tooling:remote.exec",
+  );
+  assert.match(
+    capabilityPackage.policy.safetyFlags.join(" "),
+    /ssh_transport_only/i,
+  );
+});
+
+test("tracker.create package carries local tracker artifact metadata", () => {
+  const capabilityPackage = createTapToolingCapabilityPackage("tracker.create");
+
+  assert.equal(capabilityPackage.policy.riskLevel, "normal");
+  assert.equal(
+    capabilityPackage.activationSpec?.adapterFactoryRef,
+    "factory:tap-tooling:tracker.create",
+  );
+  assert.match(
+    capabilityPackage.policy.safetyFlags.join(" "),
+    /json_artifact_v1/i,
   );
 });
 

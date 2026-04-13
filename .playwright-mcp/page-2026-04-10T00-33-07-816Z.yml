@@ -1,0 +1,471 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic:
+      - link "Skip to main content" [ref=e2] [cursor=pointer]
+      - link "Accessibility help" [ref=e3] [cursor=pointer]:
+        - /url: https://support.google.com/websearch/answer/181196?hl=en
+      - link "Accessibility feedback" [ref=e4] [cursor=pointer]
+  - generic [ref=e9]:
+    - search [ref=e10]:
+      - generic [ref=e12]:
+        - link "Go to Google Home" [ref=e14] [cursor=pointer]:
+          - /url: https://www.google.com/webhp?hl=en&sa=X&ved=0ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQPAgJ
+          - img [ref=e15]
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - combobox "Search" [ref=e26]: 国际实时金价 美元/盎司 国际实时金价 美元/盎司
+            - generic [ref=e27]:
+              - button "Clear" [ref=e29] [cursor=pointer]:
+                - img [ref=e31]
+              - generic [ref=e34]:
+                - button "Search by voice" [ref=e35] [cursor=pointer]:
+                  - img [ref=e36]
+                - button "Search by image" [ref=e38] [cursor=pointer]:
+                  - img [ref=e39]
+          - button "Search" [ref=e41] [cursor=pointer]:
+            - img [ref=e44]
+    - generic [ref=e46]:
+      - button "Settings" [ref=e48] [cursor=pointer]:
+        - img [ref=e51]
+      - generic [ref=e54]:
+        - button "Google apps" [ref=e56] [cursor=pointer]:
+          - img [ref=e57]
+        - link "Sign in" [ref=e61] [cursor=pointer]:
+          - /url: https://accounts.google.com/ServiceLogin?hl=en&passive=true&continue=https://www.google.com/search%3Fq%3D%25E5%259B%25BD%25E9%2599%2585%25E5%25AE%259E%25E6%2597%25B6%25E9%2587%2591%25E4%25BB%25B7%2520%25E7%25BE%258E%25E5%2585%2583%252F%25E7%259B%258E%25E5%258F%25B8%26sei%3DQEXYaaD2LtiPxc8P5sS9IQ&ec=futura_srp_og_si_72236_p
+  - generic [ref=e63]:
+    - navigation [ref=e69]:
+      - generic [ref=e73]:
+        - list [ref=e74]:
+          - listitem [ref=e75]:
+            - link "AI Mode" [ref=e78] [cursor=pointer]:
+              - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&udm=50&fbs=ADc_l-aN0CWEZBOHjofHoaMMDiKpn2Krr0IKqfflqqRk7juxKHJxMd-skALQX7h7BDSLmnrLZah5ffFCFYRYD0HQ_zjCelTgB6YfUaK6EcSFc7r60wBYO84j4pjzSelBaCxIPAHt5xVH2NEGVvVGjPDcmt99LPw03S46Ix88TOxkCRKzzDyseUM8DHS5BZPoDxUT-SYm2oqEngz0q0lqk9zBR_vfBebX7Q&aep=1&ntc=1&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ2J8OegQICxAE
+              - generic [ref=e81]: AI Mode
+          - listitem [ref=e82]:
+            - link "All" [disabled] [ref=e83]:
+              - generic [ref=e85]: All
+          - listitem [ref=e86]:
+            - link "News" [ref=e87] [cursor=pointer]:
+              - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&tbm=nws&source=lnms&fbs=ADc_l-aN0CWEZBOHjofHoaMMDiKpn2Krr0IKqfflqqRk7juxKHJxMd-skALQX7h7BDSLmnrLZah5ffFCFYRYD0HQ_zjCelTgB6YfUaK6EcSFc7r60wBYO84j4pjzSelBaCxIPAHt5xVH2NEGVvVGjPDcmt99LPw03S46Ix88TOxkCRKzzDyseUM8DHS5BZPoDxUT-SYm2oqEngz0q0lqk9zBR_vfBebX7Q&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ0pQJegQIDhAB
+              - generic [ref=e89]: News
+          - listitem [ref=e90]:
+            - link "Shopping" [ref=e91] [cursor=pointer]:
+              - /url: /search?sca_esv=ec43fa9020cedfa5&udm=28&fbs=ADc_l-aN0CWEZBOHjofHoaMMDiKpn2Krr0IKqfflqqRk7juxKHJxMd-skALQX7h7BDSLmnrLZah5ffFCFYRYD0HQ_zjCelTgB6YfUaK6EcSFc7r60wBYO84j4pjzSelBaCxIPAHt5xVH2NEGVvVGjPDcmt99LPw03S46Ix88TOxkCRKzzDyseUM8DHS5BZPoDxUT-SYm2oqEngz0q0lqk9zBR_vfBebX7Q&q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&ved=1t:220175&ictx=111
+              - generic [ref=e93]: Shopping
+          - listitem [ref=e94]:
+            - link "Forums" [ref=e95] [cursor=pointer]:
+              - /url: /search?sca_esv=ec43fa9020cedfa5&udm=18&fbs=ADc_l-aN0CWEZBOHjofHoaMMDiKpn2Krr0IKqfflqqRk7juxKHJxMd-skALQX7h7BDSLmnrLZah5ffFCFYRYD0HQ_zjCelTgB6YfUaK6EcSFc7r60wBYO84j4pjzSelBaCxIPAHt5xVH2NEGVvVGjPDcmt99LPw03S46Ix88TOxkCRKzzDyseUM8DHS5BZPoDxUT-SYm2oqEngz0q0lqk9zBR_vfBebX7Q&q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQs6gLegQIExAB
+              - generic [ref=e97]: Forums
+          - listitem [ref=e98]:
+            - link "Images" [ref=e99] [cursor=pointer]:
+              - /url: /search?sca_esv=ec43fa9020cedfa5&udm=2&fbs=ADc_l-aN0CWEZBOHjofHoaMMDiKpn2Krr0IKqfflqqRk7juxKHJxMd-skALQX7h7BDSLmnrLZah5ffFCFYRYD0HQ_zjCelTgB6YfUaK6EcSFc7r60wBYO84j4pjzSelBaCxIPAHt5xVH2NEGVvVGjPDcmt99LPw03S46Ix88TOxkCRKzzDyseUM8DHS5BZPoDxUT-SYm2oqEngz0q0lqk9zBR_vfBebX7Q&q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQtKgLegQIEhAB
+              - generic [ref=e101]: Images
+          - listitem [ref=e102]:
+            - link "Videos" [ref=e103] [cursor=pointer]:
+              - /url: /search?sca_esv=ec43fa9020cedfa5&udm=7&fbs=ADc_l-aN0CWEZBOHjofHoaMMDiKpn2Krr0IKqfflqqRk7juxKHJxMd-skALQX7h7BDSLmnrLZah5ffFCFYRYD0HQ_zjCelTgB6YfUaK6EcSFc7r60wBYO84j4pjzSelBaCxIPAHt5xVH2NEGVvVGjPDcmt99LPw03S46Ix88TOxkCRKzzDyseUM8DHS5BZPoDxUT-SYm2oqEngz0q0lqk9zBR_vfBebX7Q&q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQtKgLegQIDxAB
+              - generic [ref=e105]: Videos
+          - listitem [ref=e106]:
+            - button "More filters" [ref=e107] [cursor=pointer]:
+              - generic "More filters" [ref=e108]:
+                - generic [ref=e109]:
+                  - generic [ref=e110]: More
+                  - img [ref=e112]
+        - button "Tools" [ref=e115] [cursor=pointer]:
+          - generic [ref=e117]:
+            - generic [ref=e118]: Tools
+            - img [ref=e120]
+    - heading "Search Results" [level=1] [ref=e122]
+    - main [ref=e128]:
+      - generic [ref=e132]:
+        - generic [ref=e135]:
+          - heading "网页搜索结果" [level=2] [ref=e136]
+          - generic [ref=e137]:
+            - generic [ref=e140]:
+              - link "今日黄金现货对美元汇率(XAU USD) 英为财情 Investing.com https://cn.investing.com › currencies" [ref=e142] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/xau-usd
+                - heading "今日黄金现货对美元汇率(XAU USD)" [level=3] [ref=e143]
+                - generic [ref=e148]:
+                  - generic [ref=e150]: 英为财情 Investing.com
+                  - generic [ref=e152]: https://cn.investing.com › currencies
+              - generic [ref=e153]:
+                - generic [ref=e154]: ·
+                - link "Translate this page" [ref=e155] [cursor=pointer]:
+                  - /url: https://translate.google.com/translate?u=https://cn.investing.com/currencies/xau-usd&hl=en&sl=zh-CN&tl=en&client=search
+              - button "About this result" [ref=e156] [cursor=pointer]:
+                - img [ref=e159]
+            - generic [ref=e162]:
+              - generic [ref=e163]:
+                - text: 查询今日黄金现货对
+                - emphasis [ref=e164]: 美元
+                - text: 汇率(XAU USD)最新行情，
+                - emphasis [ref=e165]: 实时
+                - text: 走势图表，专业技术分析，投资者论坛，历史交易数据，最新消息和未来汇率预测。把握黄金现货兑
+                - emphasis [ref=e166]: 美元
+                - text: 投资机会。
+              - link "Read more" [ref=e167] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/xau-usd#:~:text=%E5%AE%9E%E6%97%B6%E5%A4%96%E6%B1%87
+        - generic [ref=e171]:
+          - generic [ref=e174]:
+            - link "今日纽约国际金价实时行情走势图 - 黄金价格 5huangjin.com https://www.5huangjin.com › ..." [ref=e176] [cursor=pointer]:
+              - /url: https://www.5huangjin.com/us/
+              - heading "今日纽约国际金价实时行情走势图 - 黄金价格" [level=3] [ref=e177]
+              - generic [ref=e182]:
+                - generic [ref=e184]: 5huangjin.com
+                - generic [ref=e186]: https://www.5huangjin.com › ...
+            - generic [ref=e187]:
+              - generic [ref=e188]: ·
+              - link "Translate this page" [ref=e189] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://www.5huangjin.com/us/&hl=en&sl=zh-CN&tl=en&client=search
+            - button "About this result" [ref=e190] [cursor=pointer]:
+              - img [ref=e193]
+          - generic [ref=e196]:
+            - generic [ref=e197]:
+              - text: 纽约
+              - emphasis [ref=e198]: 国际黄金价格
+              - text: . 美国纽约商品交易所
+              - emphasis [ref=e199]: 美元
+              - text: /
+              - emphasis [ref=e200]: 盎司
+              - text: . 4707.94. +29.34 +0.627%. 今开:4698.40 昨收:4678.60. 最高:4751.90 最低:4690.00. 上海
+              - emphasis [ref=e201]: 金价
+              - text: 伦敦
+              - emphasis [ref=e202]: 金价
+              - text: 刷新价格.
+              - emphasis [ref=e203]: 国际
+              - text: ...
+            - link "Read more" [ref=e204] [cursor=pointer]:
+              - /url: https://www.5huangjin.com/us/#:~:text=%E7%BA%BD%E7%BA%A6%E5%9B%BD%E9%99%85%E9%BB%84%E9%87%91%E4%BB%B7%E6%A0%BC,%E5%9B%BD%E9%99%85%E9%BB%84%E9%87%91%E4%BB%B7%E6%A0%BC%E8%B5%B0%E5%8A%BF%E5%9B%BE
+        - generic [ref=e208]:
+          - generic [ref=e211]:
+            - link "每盎司黄金价格 Kinesis Money https://kinesis.money › gold-price" [ref=e213] [cursor=pointer]:
+              - /url: https://kinesis.money/zh-hans/gold-price/gold-price-per-ounce/
+              - heading "每盎司黄金价格" [level=3] [ref=e214]
+              - generic [ref=e219]:
+                - generic [ref=e221]: Kinesis Money
+                - generic [ref=e223]: https://kinesis.money › gold-price
+            - generic [ref=e224]:
+              - generic [ref=e225]: ·
+              - link "Translate this page" [ref=e226] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://kinesis.money/zh-hans/gold-price/gold-price-per-ounce/&hl=en&sl=zh-CN&tl=en&client=search
+            - button "About this result" [ref=e227] [cursor=pointer]:
+              - img [ref=e230]
+          - generic [ref=e233]:
+            - generic [ref=e234]:
+              - text: 2023 年3 月，
+              - emphasis [ref=e235]: 黄金价格
+              - text: 约为每金衡
+              - emphasis [ref=e236]: 盎司
+              - text: 1,913
+              - emphasis [ref=e237]: 美元
+              - text: ，与1940-70 年代每金衡
+              - emphasis [ref=e238]: 盎司
+              - text: 约35
+              - emphasis [ref=e239]: 美元
+              - text: 的水平相比，涨幅超过5000%。
+              - emphasis [ref=e240]: 金价
+              - text: 是涨还是跌？
+            - link "Read more" [ref=e241] [cursor=pointer]:
+              - /url: https://kinesis.money/zh-hans/gold-price/gold-price-per-ounce/#:~:text=2023%20%E5%B9%B43%20%E6%9C%88%EF%BC%8C%E9%BB%84%E9%87%91%E4%BB%B7%E6%A0%BC%E7%BA%A6%E4%B8%BA%E6%AF%8F%E9%87%91%E8%A1%A1%E7%9B%8E%E5%8F%B81%2C913%20%E7%BE%8E%E5%85%83%EF%BC%8C%E4%B8%8E1940%2D70%20%E5%B9%B4%E4%BB%A3%E6%AF%8F%E9%87%91%E8%A1%A1%E7%9B%8E%E5%8F%B8%E7%BA%A635,%E9%87%91%E4%BB%B7%E6%98%AF%E6%B6%A8%E8%BF%98%E6%98%AF%E8%B7%8C%EF%BC%9F
+        - generic [ref=e245]:
+          - generic [ref=e248]:
+            - link "COMEX黄金(GC00Y)_行情中心 - 东方财富网 东方财富 https://quote.eastmoney.com › glob..." [ref=e250] [cursor=pointer]:
+              - /url: https://quote.eastmoney.com/globalfuture/GC00Y.html?jump_to_web=true
+              - heading "COMEX黄金(GC00Y)_行情中心 - 东方财富网" [level=3] [ref=e251]
+              - generic [ref=e256]:
+                - generic [ref=e258]: 东方财富
+                - generic [ref=e260]: https://quote.eastmoney.com › glob...
+            - generic [ref=e261]:
+              - generic [ref=e262]: ·
+              - link "Translate this page" [ref=e263] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://quote.eastmoney.com/globalfuture/GC00Y.html?jump_to_web%3Dtrue&hl=en&sl=zh-CN&tl=en&client=search
+            - button "About this result" [ref=e264] [cursor=pointer]:
+              - img [ref=e267]
+          - generic [ref=e270]:
+            - generic [ref=e271]:
+              - emphasis [ref=e272]: 每金衡盎司0.10美元
+              - text: ", 合约月份说明, 交易在本日历月;未来两个日历月;... 行情 ... 国际金价在5200美元关口盘整避险属性会否回归？03-11; 原油巨震！霍尔木兹海峡突发 ..."
+            - link "Read more" [ref=e273] [cursor=pointer]:
+              - /url: https://quote.eastmoney.com/globalfuture/GC00Y.html?jump_to_web=true#:~:text=%E6%AF%8F%E9%87%91%E8%A1%A1%E7%9B%8E%E5%8F%B80.10%E7%BE%8E%E5%85%83,%E8%A1%8C%E6%83%85%E6%8A%A5%E4%BB%B7&text=%E5%9B%BD%E9%99%85%E9%87%91%E4%BB%B7%E5%9C%A85200%E7%BE%8E%E5%85%83%E5%85%B3%E5%8F%A3%E7%9B%98%E6%95%B4%E9%81%BF%E9%99%A9%E5%B1%9E%E6%80%A7%E4%BC%9A%E5%90%A6%E5%9B%9E%E5%BD%92%EF%BC%9F03%2D11,%E5%8E%9F%E6%B2%B9%E5%B7%A8%E9%9C%87%EF%BC%81%E9%9C%8D%E5%B0%94%E6%9C%A8%E5%85%B9%E6%B5%B7%E5%B3%A1%E7%AA%81%E5%8F%91%EF%BC%81
+        - generic [ref=e277]:
+          - generic [ref=e280]:
+            - link "黄金价格走势图 BullionVault https://zh-hans.bullionvault.com › g..." [ref=e282] [cursor=pointer]:
+              - /url: https://zh-hans.bullionvault.com/gold-price-chart.do
+              - heading "黄金价格走势图" [level=3] [ref=e283]
+              - generic [ref=e288]:
+                - generic [ref=e290]: BullionVault
+                - generic [ref=e292]: https://zh-hans.bullionvault.com › g...
+            - generic [ref=e293]:
+              - generic [ref=e294]: ·
+              - link "Translate this page" [ref=e295] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://zh-hans.bullionvault.com/gold-price-chart.do&hl=en&sl=zh-CN&tl=en&client=search
+            - button "About this result" [ref=e296] [cursor=pointer]:
+              - img [ref=e299]
+          - generic [ref=e302]:
+            - generic [ref=e303]:
+              - emphasis [ref=e304]: BullionVault 的金价走势图将显示专业黄金市场的实时现货价格
+              - text: 。您也可以在BullionVault 以这些价格买入黄金。 我们提供最快的网上更新，每十秒都会刷新最新的即时数据 ...
+            - link "Read more" [ref=e305] [cursor=pointer]:
+              - /url: https://zh-hans.bullionvault.com/gold-price-chart.do#:~:text=BullionVault%20%E7%9A%84%E9%87%91%E4%BB%B7%E8%B5%B0%E5%8A%BF%E5%9B%BE%E5%B0%86%E6%98%BE%E7%A4%BA%E4%B8%93%E4%B8%9A%E9%BB%84%E9%87%91%E5%B8%82%E5%9C%BA%E7%9A%84%E5%AE%9E%E6%97%B6%E7%8E%B0%E8%B4%A7%E4%BB%B7%E6%A0%BC%E3%80%82%E6%82%A8%E4%B9%9F%E5%8F%AF%E4%BB%A5%E5%9C%A8BullionVault%20%E4%BB%A5%E8%BF%99%E4%BA%9B%E4%BB%B7%E6%A0%BC%E4%B9%B0%E5%85%A5%E9%BB%84%E9%87%91%E3%80%82,%E6%88%91%E4%BB%AC%E6%8F%90%E4%BE%9B%E6%9C%80%E5%BF%AB%E7%9A%84%E7%BD%91%E4%B8%8A%E6%9B%B4%E6%96%B0%EF%BC%8C%E6%AF%8F%E5%8D%81%E7%A7%92%E9%83%BD%E4%BC%9A%E5%88%B7%E6%96%B0%E6%9C%80%E6%96%B0%E7%9A%84%E5%8D%B3%E6%97%B6%E6%95%B0%E6%8D%AE%E4%B8%80%E6%AC%A1%E3%80%82
+        - generic [ref=e309]:
+          - generic [ref=e312]:
+            - link "XAUUSD图表— 黄金现货美元价格 TradingView https://cn.tradingview.com › XAU..." [ref=e314] [cursor=pointer]:
+              - /url: https://cn.tradingview.com/symbols/XAUUSD/
+              - heading "XAUUSD图表— 黄金现货美元价格" [level=3] [ref=e315]
+              - generic [ref=e320]:
+                - generic [ref=e322]: TradingView
+                - generic [ref=e324]: https://cn.tradingview.com › XAU...
+            - generic [ref=e325]:
+              - generic [ref=e326]: ·
+              - link "Translate this page" [ref=e327] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://cn.tradingview.com/symbols/XAUUSD/&hl=en&sl=zh-CN&tl=en&client=search
+            - button "About this result" [ref=e328] [cursor=pointer]:
+              - img [ref=e331]
+          - generic [ref=e334]:
+            - generic [ref=e335]:
+              - emphasis [ref=e336]: 实时
+              - text: 现货黄金兑
+              - emphasis [ref=e337]: 美元
+              - text: 汇率。免费XAU USD ... 伦敦金现开盘于4713
+              - emphasis [ref=e338]: 美元
+              - text: ，短线快速冲高至4829
+              - emphasis [ref=e339]: 美元
+              - text: ，市场呈现开盘即暴涨 ...
+            - link "Read more" [ref=e340] [cursor=pointer]:
+              - /url: https://cn.tradingview.com/symbols/XAUUSD/#:~:text=%E4%BC%A6%E6%95%A6%E9%87%91%E7%8E%B0%E5%BC%80%E7%9B%98%E4%BA%8E4713%E7%BE%8E%E5%85%83%EF%BC%8C%E7%9F%AD%E7%BA%BF%E5%BF%AB%E9%80%9F%E5%86%B2%E9%AB%98%E8%87%B34829%E7%BE%8E%E5%85%83%EF%BC%8C%E5%B8%82%E5%9C%BA%E5%91%88%E7%8E%B0%E5%BC%80%E7%9B%98%E5%8D%B3%E6%9A%B4%E6%B6%A8%E3%80%81%E5%A4%9A%E5%A4%B4%E5%AE%8C%E5%85%A8%E4%B8%BB%E5%AF%BC%E7%9A%84%E5%BC%BA%E5%8A%BF%E6%A0%BC%E5%B1%80%E3%80%82%20%E4%B8%BB%E8%A6%81%E9%A9%B1%E5%8A%A8%E5%9B%A0%E7%B4%A0%E6%98%AF1.%20%E9%81%BF%E9%99%A9%E6%83%85%E7%BB%AA%E9%87%8D%E7%87%83%EF%BC%9A%E4%B8%AD%E4%B8%9C%E5%B1%80%E5%8A%BF%E5%86%8D%E5%BA%A6%E7%B4%A7%E5%BC%A0%EF%BC%8C%E5%8F%A0%E5%8A%A0%E5%85%A8%E7%90%83%E5%9C%B0%E7%BC%98%E4%B8%8D%E7%A1%AE%E5%AE%9A%E6%80%A7%E5%8D%87%E6%B8%A9%EF%BC%8C%E9%81%BF%E9%99%A9%E8%B5%84%E9%87%91%E7%96%AF%E7%8B%82%E6%B6%8C%E5%85%A5%E9%BB%84%E9%87%91%E3%80%82%202.%20%E7%BE%8E%E5%85%83%E5%A4%A7%E5%B9%85%E8%B5%B0%E5%BC%B1%EF%BC%9A%E7%BE%8E%E5%85%83%E6%8C%87%E6%95%B0%E4%B8%8B%E7%A0%B4%E5%85%B3%E9%94%AE%E6%94%AF%E6%92%91%EF%BC%8C%E4%BB%A5%E7%BE%8E%E5%85%83%E8%AE%A1%E4%BB%B7%E7%9A%84%E9%BB%84%E9%87%91%E8%8E%B7%E5%BE%97%E5%BC%BA%E5%8A%B2%E6%8F%90%E6%8C%AF%E3%80%82
+        - generic [ref=e344]:
+          - generic [ref=e347]:
+            - link "国际现货黄金价格走势图-黄金实时行情分析-黄金k线图 汇通财经 https://quote.fx678.com › XAU" [ref=e349] [cursor=pointer]:
+              - /url: https://quote.fx678.com/symbol/XAU
+              - heading "国际现货黄金价格走势图-黄金实时行情分析-黄金k线图" [level=3] [ref=e350]
+              - generic [ref=e355]:
+                - generic [ref=e357]: 汇通财经
+                - generic [ref=e359]: https://quote.fx678.com › XAU
+            - generic [ref=e360]:
+              - generic [ref=e361]: ·
+              - link "Translate this page" [ref=e362] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://quote.fx678.com/symbol/XAU&hl=en&sl=zh-CN&tl=en&client=search
+            - button "About this result" [ref=e363] [cursor=pointer]:
+              - img [ref=e366]
+          - generic [ref=e369]:
+            - generic [ref=e370]:
+              - text: ...
+              - emphasis [ref=e371]: 美元
+              - text: /
+              - emphasis [ref=e372]: 盎司
+              - text: 关口，最新报4790.02
+              - emphasis [ref=e373]: 美元
+              - text: /
+              - emphasis [ref=e374]: 盎司
+              - text: ，日内涨1.49%； COMEX黄金期货主力最新报4815.20
+              - emphasis [ref=e375]: 美元
+              - text: /
+              - emphasis [ref=e376]: 盎司
+              - text: ，日内涨0.80%；; 2026-04-09 23:20:06现货黄金突破4780
+              - emphasis [ref=e377]: 美元
+              - text: /
+              - emphasis [ref=e378]: 盎司
+              - text: ，日内涨1.30% ...
+            - link "Read more" [ref=e379] [cursor=pointer]:
+              - /url: https://quote.fx678.com/symbol/XAU#:~:text=2026%2D04%2D09%2023%3A33%3A01%E7%8E%B0%E8%B4%A7%E9%BB%84%E9%87%91%E5%88%9A%E5%88%9A%E7%AA%81%E7%A0%B44790.00%E7%BE%8E%E5%85%83%2F%E7%9B%8E%E5%8F%B8%E5%85%B3%E5%8F%A3%EF%BC%8C%E6%9C%80%E6%96%B0%E6%8A%A54790.02%E7%BE%8E%E5%85%83%2F%E7%9B%8E%E5%8F%B8%EF%BC%8C%E6%97%A5%E5%86%85%E6%B6%A81.49%25%EF%BC%9B%20COMEX%E9%BB%84%E9%87%91%E6%9C%9F%E8%B4%A7%E4%B8%BB%E5%8A%9B%E6%9C%80%E6%96%B0%E6%8A%A54815.20%E7%BE%8E%E5%85%83%2F%E7%9B%8E%E5%8F%B8%EF%BC%8C%E6%97%A5%E5%86%85%E6%B6%A80.80%25%EF%BC%9B,2026%2D04%2D09%2023%3A20%3A06%E7%8E%B0%E8%B4%A7%E9%BB%84%E9%87%91%E7%AA%81%E7%A0%B44780%E7%BE%8E%E5%85%83%2F%E7%9B%8E%E5%8F%B8%EF%BC%8C%E6%97%A5%E5%86%85%E6%B6%A81.30%25%E3%80%82
+        - generic [ref=e383]:
+          - generic [ref=e386]:
+            - link "纽约黄金(GC)-期货行情,价格走势图,新闻-新浪财经 手机新浪网 https://gu.sina.cn › ..." [ref=e388] [cursor=pointer]:
+              - /url: https://gu.sina.cn/ft/hq/hf.php?symbol=GC
+              - heading "纽约黄金(GC)-期货行情,价格走势图,新闻-新浪财经" [level=3] [ref=e389]
+              - generic [ref=e394]:
+                - generic [ref=e396]: 手机新浪网
+                - generic [ref=e398]: https://gu.sina.cn › ...
+            - generic [ref=e399]:
+              - generic [ref=e400]: ·
+              - link "Translate this page" [ref=e401] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://gu.sina.cn/ft/hq/hf.php?symbol%3DGC&hl=en&sl=zh-CN&tl=en&client=search
+            - button "About this result" [ref=e402] [cursor=pointer]:
+              - img [ref=e405]
+          - generic [ref=e409]:
+            - text: 新浪财经期货行情中心为您提供欧洲洲际交易所、伦敦金属交易所、美国洲际交易所、上海期货交易所等交易所的期货品种、行情报价，包括COMEX黄金期货
+            - emphasis [ref=e410]: 实时
+            - text: 行情、
+            - emphasis [ref=e411]: 实时
+            - text: 价格、价格 ...
+          - generic [ref=e414]:
+            - generic [ref=e415]:
+              - img "Rated 4.8 out of 5, (140,000) user reviews" [ref=e416]:
+                - text: "4.8"
+                - img [ref=e417]
+                - text: (140,000)
+              - text: ·
+            - text: Free · ‎Finance
+        - generic [ref=e423]:
+          - generic [ref=e426]:
+            - link "国际黄金价格_上交所_美元走势 金投网 https://www.cngold.org › img_date" [ref=e428] [cursor=pointer]:
+              - /url: https://www.cngold.org/img_date/
+              - heading "国际黄金价格_上交所_美元走势" [level=3] [ref=e429]
+              - generic [ref=e434]:
+                - generic [ref=e436]: 金投网
+                - generic [ref=e438]: https://www.cngold.org › img_date
+            - generic [ref=e439]:
+              - generic [ref=e440]: ·
+              - link "Translate this page" [ref=e441] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://www.cngold.org/img_date/&hl=en&sl=zh-CN&tl=en&client=search
+            - button "About this result" [ref=e442] [cursor=pointer]:
+              - img [ref=e445]
+          - generic [ref=e448]:
+            - generic [ref=e449]:
+              - emphasis [ref=e450]: 国际
+              - text: 黄金(
+              - emphasis [ref=e451]: 美元
+              - text: /
+              - emphasis [ref=e452]: 盎司
+              - text: ). 国内黄金(人民币/克).
+              - emphasis [ref=e453]: 国际
+              - text: 黄金(
+              - emphasis [ref=e454]: 美元
+              - text: /
+              - emphasis [ref=e455]: 盎司
+              - text: ). 纸
+              - emphasis [ref=e456]: 黄金价格
+              - text: 行情. 名称, 最新价, 涨跌. 纸黄金(
+              - emphasis [ref=e457]: 美元
+              - text: ), ---, ---. 纸黄金(人民币), ---, ---. 纸白银（
+              - emphasis [ref=e458]: 美元
+              - text: ...
+            - link "Read more" [ref=e459] [cursor=pointer]:
+              - /url: https://www.cngold.org/img_date/#:~:text=%E5%9B%BD%E9%99%85%E9%BB%84%E9%87%91(%E7%BE%8E%E5%85%83%2F%E7%9B%8E%E5%8F%B8),%E7%BA%B8%E7%99%BD%E9%93%B6%EF%BC%88%E7%BE%8E%E5%85%83%EF%BC%89
+        - generic [ref=e463]:
+          - heading "People also ask" [level=2] [ref=e465]
+          - generic [ref=e466]:
+            - button "现在国际金价是多少？" [ref=e472] [cursor=pointer]:
+              - generic [ref=e474]: 现在国际金价是多少？
+              - img [ref=e477]
+            - button "今天金价多少钱一盎司？" [ref=e486] [cursor=pointer]:
+              - generic [ref=e488]: 今天金价多少钱一盎司？
+              - img [ref=e491]
+            - button "1盎司等于多少美元？" [ref=e500] [cursor=pointer]:
+              - generic [ref=e502]: 1盎司等于多少美元？
+              - img [ref=e505]
+            - button "美国一盎司黃金多少克？" [ref=e514] [cursor=pointer]:
+              - generic [ref=e516]: 美国一盎司黃金多少克？
+              - img [ref=e519]
+        - generic [ref=e524]:
+          - heading "网页搜索结果" [level=2] [ref=e525]
+          - generic [ref=e526]:
+            - generic [ref=e529]:
+              - link "黄金美元价格实时走势图 PrimeXBT https://primexbt.com › ... › Gold" [ref=e531] [cursor=pointer]:
+                - /url: https://primexbt.com/cn/price-chart/commodities/xau-usd
+                - heading "黄金美元价格实时走势图" [level=3] [ref=e532]
+                - generic [ref=e537]:
+                  - generic [ref=e539]: PrimeXBT
+                  - generic [ref=e541]: https://primexbt.com › ... › Gold
+              - generic [ref=e542]:
+                - generic [ref=e543]: ·
+                - link "Translate this page" [ref=e544] [cursor=pointer]:
+                  - /url: https://translate.google.com/translate?u=https://primexbt.com/cn/price-chart/commodities/xau-usd&hl=en&sl=zh-CN&tl=en&client=search
+              - button "About this result" [ref=e545] [cursor=pointer]:
+                - img [ref=e548]
+            - generic [ref=e551]:
+              - generic [ref=e552]:
+                - text: 黄金美元的实时走势图
+                - emphasis [ref=e553]: 以及
+                - text: 历史价格。显示的价格单位为USD 。截至04/08/26，黄金美元的当前价格为4744.01 。 ... TradingView提供的价格仅供参考。实际价格请以我们交易平台上 ...
+              - link "Read more" [ref=e554] [cursor=pointer]:
+                - /url: https://primexbt.com/cn/price-chart/commodities/xau-usd#:~:text=%E9%BB%84%E9%87%91%E7%BE%8E%E5%85%83%E7%9A%84%E5%AE%9E%E6%97%B6%E8%B5%B0%E5%8A%BF%E5%9B%BE%E4%BB%A5%E5%8F%8A%E5%8E%86%E5%8F%B2%E4%BB%B7%E6%A0%BC%E3%80%82%E6%98%BE%E7%A4%BA%E7%9A%84%E4%BB%B7%E6%A0%BC%E5%8D%95%E4%BD%8D%E4%B8%BAUSD%20%E3%80%82%E6%88%AA%E8%87%B304%2F08%2F26%EF%BC%8C%E9%BB%84%E9%87%91%E7%BE%8E%E5%85%83%E7%9A%84%E5%BD%93%E5%89%8D%E4%BB%B7%E6%A0%BC%E4%B8%BA4744.01%20%E3%80%82&text=TradingView%E6%8F%90%E4%BE%9B%E7%9A%84%E4%BB%B7%E6%A0%BC%E4%BB%85%E4%BE%9B%E5%8F%82%E8%80%83%E3%80%82%E5%AE%9E%E9%99%85%E4%BB%B7%E6%A0%BC%E8%AF%B7%E4%BB%A5%E6%88%91%E4%BB%AC%E4%BA%A4%E6%98%93%E5%B9%B3%E5%8F%B0%E4%B8%8A%E7%9A%84%E5%AE%9E%E6%97%B6%E6%95%B0%E6%8D%AE%E4%B8%BA%E5%87%86%E3%80%82%E2%80%9D
+      - generic [ref=e556]:
+        - generic [ref=e561]:
+          - heading "People also search for" [level=2] [ref=e563]
+          - generic [ref=e565]:
+            - generic [ref=e566]:
+              - link "国际金价多少钱一盎司" [ref=e570] [cursor=pointer]:
+                - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E5%9B%BD%E9%99%85%E9%87%91%E4%BB%B7%E5%A4%9A%E5%B0%91%E9%92%B1%E4%B8%80%E7%9B%8E%E5%8F%B8&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ1QJ6BAgsEAE
+                - generic [ref=e571]:
+                  - generic [ref=e576]: 国际金价多少钱一盎司
+                  - img [ref=e580]
+              - link "国际金价多少钱一克" [ref=e585] [cursor=pointer]:
+                - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E5%9B%BD%E9%99%85%E9%87%91%E4%BB%B7%E5%A4%9A%E5%B0%91%E9%92%B1%E4%B8%80%E5%85%8B&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ1QJ6BAgxEAE
+                - generic [ref=e586]:
+                  - generic [ref=e591]: 国际金价多少钱一克
+                  - img [ref=e595]
+              - link "实时国际金价" [ref=e600] [cursor=pointer]:
+                - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E5%AE%9E%E6%97%B6%E5%9B%BD%E9%99%85%E9%87%91%E4%BB%B7&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ1QJ6BAgzEAE
+                - generic [ref=e601]:
+                  - generic [ref=e606]: 实时国际金价
+                  - img [ref=e610]
+              - link "国际金价美元" [ref=e615] [cursor=pointer]:
+                - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E5%9B%BD%E9%99%85%E9%87%91%E4%BB%B7%E7%BE%8E%E5%85%83&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ1QJ6BAgyEAE
+                - generic [ref=e616]:
+                  - generic [ref=e621]: 国际金价美元
+                  - img [ref=e625]
+            - generic [ref=e627]:
+              - link "今日实时金价" [ref=e631] [cursor=pointer]:
+                - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E4%BB%8A%E6%97%A5%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ1QJ6BAgwEAE
+                - generic [ref=e632]:
+                  - generic [ref=e637]: 今日实时金价
+                  - img [ref=e641]
+              - link "黄金价格每盎司美元" [ref=e646] [cursor=pointer]:
+                - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E9%BB%84%E9%87%91%E4%BB%B7%E6%A0%BC%E6%AF%8F%E7%9B%8E%E5%8F%B8%E7%BE%8E%E5%85%83&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ1QJ6BAguEAE
+                - generic [ref=e647]:
+                  - generic [ref=e652]: 黄金价格每盎司美元
+                  - img [ref=e656]
+              - link "美国金价多少钱一盎司" [ref=e661] [cursor=pointer]:
+                - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E7%BE%8E%E5%9B%BD%E9%87%91%E4%BB%B7%E5%A4%9A%E5%B0%91%E9%92%B1%E4%B8%80%E7%9B%8E%E5%8F%B8&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ1QJ6BAgvEAE
+                - generic [ref=e662]:
+                  - generic [ref=e667]: 美国金价多少钱一盎司
+                  - img [ref=e671]
+              - link "美国金价多少钱一克" [ref=e676] [cursor=pointer]:
+                - /url: /search?sca_esv=ec43fa9020cedfa5&q=%E7%BE%8E%E5%9B%BD%E9%87%91%E4%BB%B7%E5%A4%9A%E5%B0%91%E9%92%B1%E4%B8%80%E5%85%8B&sa=X&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ1QJ6BAgtEAE
+                - generic [ref=e677]:
+                  - generic [ref=e682]: 美国金价多少钱一克
+                  - img [ref=e686]
+        - navigation [ref=e688]:
+          - heading "Page Navigation" [level=1] [ref=e689]
+          - text: "1"
+          - link "Page 2" [ref=e692] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=10&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAE
+            - text: "2"
+          - link "Page 3" [ref=e694] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=20&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAG
+            - text: "3"
+          - link "Page 4" [ref=e696] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=30&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAI
+            - text: "4"
+          - link "Page 5" [ref=e698] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=40&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAK
+            - text: "5"
+          - link "Page 6" [ref=e700] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=50&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAM
+            - text: "6"
+          - link "Page 7" [ref=e702] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=60&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAO
+            - text: "7"
+          - link "Page 8" [ref=e704] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=70&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAQ
+            - text: "8"
+          - link "Page 9" [ref=e706] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=80&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAS
+            - text: "9"
+          - link "Page 10" [ref=e708] [cursor=pointer]:
+            - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=90&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8tMDegQIBxAU
+            - text: "10"
+          - heading "Next" [level=2] [ref=e710]:
+            - link "Next" [ref=e711] [cursor=pointer]:
+              - /url: /search?q=%E5%9B%BD%E9%99%85%E5%AE%9E%E6%97%B6%E9%87%91%E4%BB%B7+%E7%BE%8E%E5%85%83/%E7%9B%8E%E5%8F%B8&sca_esv=ec43fa9020cedfa5&ei=QUXYaabHHPuMxc8P0_TGgAg&start=10&sa=N&sstk=Af77f_c4zj1XfSssOhSxkgVlEcjxLsBh_BmJQUST_IdCtCOssM4xWNfuyfOo4ucrSVrfuTaKXP8N_7dIKFrqoLSEunmmXbXNcufcVQ&ved=2ahUKEwjm64i2hOKTAxV7RvEDHVO6EYAQ8NMDegQIBxAW
+              - generic [ref=e713]: Next
+      - navigation
+    - contentinfo [ref=e714]:
+      - heading "Footer Links" [level=1] [ref=e715]
+      - generic [ref=e719]:
+        - generic [ref=e723]:
+          - button "San Francisco-Oakland-San Jose CA, California - From your IP address" [ref=e725] [cursor=pointer]:
+            - generic [ref=e726]: San Francisco-Oakland-San Jose CA, California
+            - generic [ref=e728]:
+              - text: "-"
+              - generic [ref=e729]: From your IP address
+          - text: "-"
+          - button "Update location" [ref=e731] [cursor=pointer]: Update location
+        - generic [ref=e734]:
+          - link "Help" [ref=e735] [cursor=pointer]:
+            - /url: https://support.google.com/websearch/?p=ws_results_help&hl=en&fg=1
+          - link "Send feedback" [ref=e736] [cursor=pointer]:
+            - /url: "#"
+          - link "Privacy" [ref=e737] [cursor=pointer]:
+            - /url: https://policies.google.com/privacy?hl=en&fg=1
+          - link "Terms" [ref=e738] [cursor=pointer]:
+            - /url: https://policies.google.com/terms?hl=en&fg=1

@@ -1,0 +1,13 @@
+{
+  "trackerId": "ab028c02-ef18-4250-9113-eb09e564e924",
+  "title": "P2 smoke tracker",
+  "description": "验证 tracker.create 仍然能从 core 真实落地",
+  "kind": "task",
+  "status": "pending",
+  "labels": [
+    "p2",
+    "smoke",
+    "tracker"
+  ],
+  "createdAt": "2026-04-11T11:11:46.409Z"
+}

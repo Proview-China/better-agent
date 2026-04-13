@@ -828,6 +828,8 @@ export function normalizeBrowserPlaywrightToolResult(
   const trimmed = mergedText
     ? trimCommandOutput(mergedText, maxOutputChars)
     : { text: "", truncated: false, originalChars: 0 };
+  const screenshotPath = mergedText.match(/\[Screenshot of viewport\]\((.+?)\)/u)?.[1]?.trim();
+  const snapshotPath = mergedText.match(/\[Snapshot\]\((.+?)\)/u)?.[1]?.trim();
   const pageUrl = mergedText.match(/^- Page URL:\s+(.+)$/mu)?.[1]?.trim();
   const pageTitle = mergedText.match(/^- Page Title:\s+(.+)$/mu)?.[1]?.trim();
   const blockedByInterstitial = typeof pageUrl === "string"
@@ -837,6 +839,8 @@ export function normalizeBrowserPlaywrightToolResult(
     truncated: trimmed.truncated,
     imageUrls,
     imageCount: imageUrls.length,
+    screenshotPath,
+    snapshotPath,
     pageUrl,
     pageTitle,
     blockedByInterstitial,
@@ -864,6 +868,8 @@ export function mergeBrowserPlaywrightToolResults(
     truncated: trimmed.truncated || primary.truncated || extra.truncated,
     imageUrls,
     imageCount: imageUrls.length,
+    screenshotPath: primary.screenshotPath ?? extra.screenshotPath,
+    snapshotPath: primary.snapshotPath ?? extra.snapshotPath,
     pageUrl: primary.pageUrl ?? extra.pageUrl,
     pageTitle: primary.pageTitle ?? extra.pageTitle,
     blockedByInterstitial: primary.blockedByInterstitial || extra.blockedByInterstitial,

@@ -1,0 +1,13 @@
+{
+  "trackerId": "8520f886-360d-47db-8857-74035cb41be3",
+  "title": "验证 remote.exec 首轮联调",
+  "description": "在远程主机上执行 hostname 并记录结果",
+  "kind": "task",
+  "status": "pending",
+  "labels": [
+    "p2",
+    "remote",
+    "verification"
+  ],
+  "createdAt": "2026-04-10T05:23:27.319Z"
+}

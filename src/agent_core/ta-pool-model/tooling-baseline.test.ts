@@ -33,6 +33,8 @@ test("tap bootstrap TMA profile carries the first-class tooling baseline", () =>
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "repo.write" }), true);
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "spreadsheet.write" }), true);
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "doc.write" }), true);
+  assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "remote.exec" }), true);
+  assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "tracker.create" }), true);
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "code.edit" }), true);
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "code.patch" }), true);
   assert.equal(isCapabilityAllowedByProfile({ profile: bootstrap, capabilityKey: "shell.session" }), true);

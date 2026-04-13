@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -45,10 +46,12 @@ import {
   normalizeGitDiffInput,
   normalizeGitPushInput,
   normalizeGitStatusInput,
+  normalizeRemoteExecInput,
   normalizeRepoWriteEntries,
   normalizeShellSessionInput,
   normalizeSkillDocGenerateInput,
   normalizeSpreadsheetWriteInput,
+  normalizeTrackerCreateInput,
   normalizeWriteTodosInput,
   SECRET_LIKE_GIT_PATH_PATTERNS,
 } from "./normalizers.js";
@@ -76,10 +79,12 @@ import {
   type PreparedGitDiffState,
   type PreparedGitPushState,
   type PreparedGitStatusState,
+  type PreparedRemoteExecState,
   type PreparedRepoWriteState,
   type PreparedShellSessionState,
   type PreparedSkillDocState,
   type PreparedSpreadsheetWriteState,
+  type PreparedTrackerCreateState,
   type PreparedWriteTodosState,
   type ShellSessionRuntimeState,
   type SpreadsheetWriteCellValue,
@@ -1407,6 +1412,93 @@ export class WriteTodosCapabilityAdapter implements CapabilityAdapter {
   }
 }
 
+export class TrackerCreateCapabilityAdapter implements CapabilityAdapter {
+  readonly id = "adapter.tracker.create";
+  readonly runtimeKind = "local-tooling";
+  readonly #workspaceRoot: string;
+  readonly #prepared = new Map<string, PreparedTrackerCreateState>();
+
+  constructor(options: TapToolingAdapterOptions) {
+    this.#workspaceRoot = path.resolve(options.workspaceRoot);
+  }
+
+  supports(plan: CapabilityInvocationPlan): boolean {
+    if (plan.capabilityKey !== "tracker.create") {
+      return false;
+    }
+    try {
+      normalizeTrackerCreateInput(plan, this.#workspaceRoot);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async prepare(plan: CapabilityInvocationPlan, lease: CapabilityLease): Promise<PreparedCapabilityCall> {
+    const input = normalizeTrackerCreateInput(plan, this.#workspaceRoot);
+    const prepared = createPreparedCapabilityCall({
+      lease,
+      plan,
+      executionMode: "direct",
+      preparedPayloadRef: `tracker-create:${plan.planId}`,
+      metadata: {
+        planId: plan.planId,
+      },
+    });
+    this.#prepared.set(prepared.preparedId, { input });
+    return prepared;
+  }
+
+  async execute(prepared: PreparedCapabilityCall) {
+    const state = this.#prepared.get(prepared.preparedId);
+    if (!state) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        error: {
+          code: "tracker_create_prepared_state_missing",
+          message: `Prepared tracker.create state for ${prepared.preparedId} was not found.`,
+        },
+      });
+    }
+    this.#prepared.delete(prepared.preparedId);
+
+    if (state.input.createParents) {
+      await mkdir(path.dirname(state.input.absolutePath), { recursive: true });
+    }
+    const artifact = {
+      trackerId: state.input.trackerId || randomUUID(),
+      title: state.input.title,
+      description: state.input.description,
+      kind: state.input.kind,
+      status: state.input.status,
+      labels: state.input.labels,
+      owner: state.input.owner,
+      metadata: state.input.metadata,
+      createdAt: new Date().toISOString(),
+    };
+    const serialized = `${JSON.stringify(artifact, null, 2)}\n`;
+    await writeFile(state.input.absolutePath, serialized, "utf8");
+    return createCapabilityResultEnvelope({
+      executionId: prepared.preparedId,
+      status: "success",
+      output: {
+        trackerId: artifact.trackerId,
+        path: state.input.relativeWorkspacePath,
+        title: artifact.title,
+        kind: artifact.kind,
+        statusValue: artifact.status,
+        labels: artifact.labels,
+        bytesWritten: Buffer.byteLength(serialized, "utf8"),
+      },
+      metadata: {
+        capabilityKey: "tracker.create",
+        runtimeKind: this.runtimeKind,
+      },
+    });
+  }
+}
+
 export class SkillDocGenerateCapabilityAdapter implements CapabilityAdapter {
   readonly id = "adapter.skill.doc.generate";
   readonly runtimeKind = "local-tooling";
@@ -1540,6 +1632,7 @@ function buildSpreadsheetPythonScript(): string {
     "out_path = sys.argv[2]",
     "with open(spec_path, 'r', encoding='utf-8') as fh:",
     "    spec = json.load(fh)",
+    "sheet_name = escape(str(spec.get('sheetName') or 'Sheet1'))",
     "headers = spec.get('headers') or []",
     "rows = spec.get('rows') or []",
     "sheet_rows = []",
@@ -1594,9 +1687,9 @@ function buildSpreadsheetPythonScript(): string {
     "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>",
     "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>",
     "</Relationships>''',",
-    "    'xl/workbook.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+    "    'xl/workbook.xml': f'''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
     "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">",
-    "<sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>",
+    "<sheets><sheet name=\"{sheet_name}\" sheetId=\"1\" r:id=\"rId1\"/></sheets>",
     "</workbook>''',",
     "    'xl/_rels/workbook.xml.rels': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
     "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
@@ -1716,6 +1809,7 @@ export class SpreadsheetWriteCapabilityAdapter implements CapabilityAdapter {
     try {
       const specPath = path.join(tempDir, "spreadsheet-write.json");
       await writeFile(specPath, JSON.stringify({
+        sheetName: input.sheetName,
         headers: input.headers,
         rows: input.rows,
       }), "utf8");
@@ -1748,6 +1842,7 @@ export class SpreadsheetWriteCapabilityAdapter implements CapabilityAdapter {
         output: {
           path: input.relativeWorkspacePath,
           format: input.format,
+          sheetName: input.sheetName,
           rowCount: input.rowCount,
           columnCount: input.columnCount,
           sheetCount: 1,
@@ -1872,6 +1967,164 @@ export class DocWriteCapabilityAdapter implements CapabilityAdapter {
     } finally {
       await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     }
+  }
+}
+
+function quotePosixShellArg(value: string): string {
+  return `'${value.replace(/'/gu, `'\"'\"'`)}'`;
+}
+
+function buildRemoteExecScript(input: PreparedRemoteExecState["input"]): string {
+  const assignments = Object.entries(input.env ?? {})
+    .map(([key, value]) => `${key}=${quotePosixShellArg(value)}`)
+    .join(" ");
+  const command = [input.command, ...input.args].map((entry) => quotePosixShellArg(entry)).join(" ");
+  const execCommand = `${assignments ? `${assignments} ` : ""}exec ${command}`.trim();
+  if (input.cwd) {
+    return `cd ${quotePosixShellArg(input.cwd)} && ${execCommand}`;
+  }
+  return execCommand;
+}
+
+function buildRemoteExecCommandInput(input: PreparedRemoteExecState["input"]): NormalizedCommandInput {
+  const target = input.user ? `${input.user}@${input.host}` : input.host;
+  const args = [
+    "-o",
+    "BatchMode=yes",
+    ...(input.strictHostKeyChecking
+      ? []
+      : ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]),
+    ...(input.port ? ["-p", String(input.port)] : []),
+    ...(input.identityFile ? ["-i", input.identityFile] : []),
+    target,
+    `bash -lc ${quotePosixShellArg(buildRemoteExecScript(input))}`,
+  ];
+  return {
+    command: "ssh",
+    args,
+    cwd: process.cwd(),
+    relativeWorkspaceCwd: ".",
+    timeoutMs: input.timeoutMs,
+    runInBackground: false,
+    tty: false,
+    maxOutputChars: input.maxOutputChars,
+    commandSummary: `ssh ${target} ${input.command}${input.args.length > 0 ? ` ${input.args.join(" ")}` : ""}`,
+    commandKind: "general",
+    description: input.description,
+  };
+}
+
+export class RemoteExecCapabilityAdapter implements CapabilityAdapter {
+  readonly id = "adapter.remote.exec";
+  readonly runtimeKind = "local-tooling";
+  readonly #commandRunner: (
+    input: NormalizedCommandInput,
+  ) => Promise<CommandExecutionResult>;
+  readonly #defaultTimeoutMs: number;
+  readonly #prepared = new Map<string, PreparedRemoteExecState>();
+
+  constructor(options: TapToolingAdapterOptions) {
+    this.#commandRunner = options.commandRunner ?? createDefaultCommandRunner();
+    this.#defaultTimeoutMs = options.defaultShellTimeoutMs ?? 15_000;
+  }
+
+  supports(plan: CapabilityInvocationPlan): boolean {
+    if (plan.capabilityKey !== "remote.exec") {
+      return false;
+    }
+    try {
+      normalizeRemoteExecInput(plan, this.#defaultTimeoutMs);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async prepare(plan: CapabilityInvocationPlan, lease: CapabilityLease): Promise<PreparedCapabilityCall> {
+    const input = normalizeRemoteExecInput(plan, this.#defaultTimeoutMs);
+    const prepared = createPreparedCapabilityCall({
+      lease,
+      plan,
+      executionMode: "direct",
+      preparedPayloadRef: `remote-exec:${plan.planId}`,
+      metadata: {
+        planId: plan.planId,
+      },
+    });
+    this.#prepared.set(prepared.preparedId, { input });
+    return prepared;
+  }
+
+  async execute(prepared: PreparedCapabilityCall) {
+    const state = this.#prepared.get(prepared.preparedId);
+    if (!state) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        error: {
+          code: "remote_exec_prepared_state_missing",
+          message: `Prepared remote.exec state for ${prepared.preparedId} was not found.`,
+        },
+      });
+    }
+    this.#prepared.delete(prepared.preparedId);
+
+    const result = await runSimpleCommand(
+      this.#commandRunner,
+      buildRemoteExecCommandInput(state.input),
+    );
+    const stdout = trimCommandOutput(result.stdout, state.input.maxOutputChars);
+    const stderr = trimCommandOutput(result.stderr, state.input.maxOutputChars);
+
+    if (result.timedOut || result.exitCode !== 0) {
+      return createCapabilityResultEnvelope({
+        executionId: prepared.preparedId,
+        status: "failed",
+        error: {
+          code: result.timedOut ? "remote_exec_timeout" : "remote_exec_failed",
+          message: result.timedOut
+            ? `remote.exec timed out on ${state.input.host}.`
+            : `remote.exec failed on ${state.input.host} with exit code ${result.exitCode ?? "unknown"}.`,
+          details: {
+            host: state.input.host,
+            user: state.input.user,
+            port: state.input.port,
+            command: state.input.command,
+            args: state.input.args,
+            stdout: stdout.text,
+            stderr: stderr.text,
+          },
+        },
+        metadata: {
+          capabilityKey: "remote.exec",
+          runtimeKind: this.runtimeKind,
+        },
+      });
+    }
+
+    return createCapabilityResultEnvelope({
+      executionId: prepared.preparedId,
+      status: stdout.truncated || stderr.truncated ? "partial" : "success",
+      output: {
+        host: state.input.host,
+        user: state.input.user,
+        port: state.input.port,
+        command: state.input.command,
+        args: state.input.args,
+        cwd: state.input.cwd,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        stdoutChars: stdout.originalChars,
+        stderrChars: stderr.originalChars,
+        stdoutTruncated: stdout.truncated,
+        stderrTruncated: stderr.truncated,
+        exitCode: result.exitCode,
+      },
+      metadata: {
+        capabilityKey: "remote.exec",
+        runtimeKind: this.runtimeKind,
+      },
+    });
   }
 }
 
@@ -2626,6 +2879,10 @@ export function createTapToolingCapabilityAdapter(
       return new SpreadsheetWriteCapabilityAdapter(options);
     case "doc.write":
       return new DocWriteCapabilityAdapter(options);
+    case "remote.exec":
+      return new RemoteExecCapabilityAdapter(options);
+    case "tracker.create":
+      return new TrackerCreateCapabilityAdapter(options);
     case "code.edit":
       return new CodeEditCapabilityAdapter(options);
     case "code.patch":

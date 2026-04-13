@@ -1,0 +1,1028 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e4]:
+      - generic [ref=e6]:
+        - link "Investing.com - 领先金融门户" [ref=e8] [cursor=pointer]:
+          - /url: https://cn.investing.com/
+          - img "Investing.com - 领先金融门户" [ref=e9]
+        - generic [ref=e22]:
+          - searchbox "Search Stocks, Currencies" [ref=e25]
+          - button [ref=e26] [cursor=pointer]:
+            - img [ref=e27]
+        - generic [ref=e29]:
+          - link "劲爆优惠50%" [ref=e30] [cursor=pointer]:
+            - /url: /pro/pricing
+          - list [ref=e31]:
+            - listitem [ref=e32]:
+              - button "登录" [ref=e33] [cursor=pointer]:
+                - generic [ref=e34]: 登录
+              - text: /
+            - listitem [ref=e35]:
+              - button "免费注册" [ref=e36] [cursor=pointer]:
+                - generic [ref=e37]: 免费注册
+        - button "notifications" [ref=e39] [cursor=pointer]:
+          - img [ref=e40]
+        - button [ref=e43] [cursor=pointer]:
+          - img [ref=e44]
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - text: /
+          - navigation [ref=e47]:
+            - list [ref=e48]:
+              - listitem [ref=e49]:
+                - link "实时行情" [ref=e51] [cursor=pointer]:
+                  - /url: https://cn.investing.com/markets/
+                  - generic [ref=e53]: 实时行情
+                  - img [ref=e54]
+              - listitem [ref=e56]:
+                - link "投资组合" [ref=e58] [cursor=pointer]:
+                  - /url: https://cn.investing.com/portfolio/
+                  - generic [ref=e59]:
+                    - img [ref=e60]
+                    - generic [ref=e62]: 投资组合
+              - listitem
+              - listitem [ref=e63]:
+                - link "实时图表" [ref=e65] [cursor=pointer]:
+                  - /url: https://cn.investing.com/charts/
+                  - generic [ref=e67]: 实时图表
+              - listitem [ref=e68]:
+                - link "市场资讯" [ref=e70] [cursor=pointer]:
+                  - /url: https://cn.investing.com/news/
+                  - generic [ref=e72]: 市场资讯
+              - listitem [ref=e73]:
+                - link "分析评论" [ref=e75] [cursor=pointer]:
+                  - /url: https://cn.investing.com/analysis/
+                  - generic [ref=e77]: 分析评论
+              - listitem [ref=e78]:
+                - link "技术分析" [ref=e80] [cursor=pointer]:
+                  - /url: https://cn.investing.com/technical/
+                  - generic [ref=e82]: 技术分析
+              - listitem [ref=e83]:
+                - link "工具" [ref=e85] [cursor=pointer]:
+                  - /url: https://cn.investing.com/tools/
+                  - generic [ref=e87]: 工具
+              - listitem [ref=e88]:
+                - link "教育" [ref=e90] [cursor=pointer]:
+                  - /url: https://cn.investing.com/education/
+                  - generic [ref=e92]: 教育
+              - listitem [ref=e93]:
+                - link "提醒" [ref=e95] [cursor=pointer]:
+                  - /url: https://cn.investing.com/alerts/
+                  - generic [ref=e97]: 提醒
+              - listitem [ref=e98]:
+                - link "下载APP" [ref=e100] [cursor=pointer]:
+                  - /url: https://cn.investing.com/mobile/
+                  - generic [ref=e102]: 下载APP
+              - listitem
+              - listitem [ref=e103]:
+                - link [ref=e105] [cursor=pointer]:
+                  - /url: https://cn.investing.com/pro/
+                  - img [ref=e108]
+              - listitem [ref=e112]:
+                - generic [ref=e114]:
+                  - generic [ref=e116]: 更多
+                  - img [ref=e117]
+        - navigation [ref=e121]:
+          - list [ref=e122]:
+            - listitem [ref=e123]:
+              - link "外汇" [ref=e124] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies
+            - listitem [ref=e125]:
+              - link "单一货币" [ref=e126] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/single-currency-crosses
+            - listitem [ref=e127]:
+              - link "外汇主货币对汇率" [ref=e128] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/streaming-forex-rates-majors
+            - listitem [ref=e129]:
+              - link "适时货币对汇率" [ref=e130] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/live-currency-cross-rates
+            - listitem [ref=e131]:
+              - link "汇率表" [ref=e132] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/exchange-rates-table
+            - listitem [ref=e133]:
+              - link "美元指数期货" [ref=e134] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/us-dollar-index
+            - listitem [ref=e135]:
+              - link "货币期货" [ref=e136] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/fx-futures
+        - generic [ref=e138]:
+          - generic [ref=e139]:
+            - generic [ref=e140]: ⚖️ 我关注列表中的股票当前风险水平如何？
+            - link "问问WarrenAI" [ref=e141] [cursor=pointer]:
+              - /url: https://cn.investing.com/warrenai?prompt=我关注列表中的股票当前风险水平如何？
+              - strong [ref=e142]: 问问WarrenAI
+          - img [ref=e144] [cursor=pointer]
+    - generic [ref=e146]:
+      - generic [ref=e148]: 广告
+      - generic [ref=e149]:
+        - text: 广告
+        - generic [ref=e150]:
+          - generic [ref=e151]:
+            - generic [ref=e152]:
+              - generic [ref=e153]:
+                - generic [ref=e154]:
+                  - generic [ref=e155]:
+                    - heading "XAU/USD - 黄金现货 美元" [level=1] [ref=e156]
+                    - img [ref=e160]
+                  - generic [ref=e164]:
+                    - generic [ref=e166] [cursor=pointer]:
+                      - img [ref=e167]
+                      - generic [ref=e169]: 实时外汇
+                    - generic [ref=e171]:
+                      - text: 货币
+                      - generic [ref=e174]:
+                        - img [ref=e175]
+                        - generic [ref=e176] [cursor=pointer]:
+                          - generic [ref=e177]: USD
+                          - img [ref=e178]
+                - generic [ref=e180]:
+                  - button "添加至投资组合" [ref=e182] [cursor=pointer]:
+                    - img [ref=e183]
+                    - generic [ref=e185]: 添加至投资组合
+                  - img [ref=e188] [cursor=pointer]
+              - generic [ref=e193]:
+                - generic [ref=e194]:
+                  - generic [ref=e195]:
+                    - generic [ref=e196]: 4,748.18
+                    - generic [ref=e197]:
+                      - generic [ref=e198]: "-17.82"
+                      - generic [ref=e199]: (-0.37%)
+                      - img [ref=e200]
+                  - generic [ref=e202]:
+                    - img [ref=e204]
+                    - generic [ref=e206]:
+                      - generic [ref=e207]: 闭盘
+                      - text: ·
+                      - time [ref=e208]: 04:59:58
+                - generic [ref=e209]:
+                  - generic [ref=e210]:
+                    - generic [ref=e211]: 当日幅度
+                    - generic [ref=e212]:
+                      - generic [ref=e213]: 4,731.04
+                      - img [ref=e216]
+                      - generic [ref=e219]: 4,795.42
+                  - generic [ref=e220]:
+                    - generic [ref=e221]: 52 周范围
+                    - generic [ref=e222]:
+                      - generic [ref=e223]: 3,120.52
+                      - img [ref=e226]
+                      - generic [ref=e229]: 5,595.46
+            - navigation [ref=e230]:
+              - list [ref=e232]:
+                - listitem [ref=e233] [cursor=pointer]:
+                  - generic [ref=e235]: 总况
+                - listitem [ref=e236] [cursor=pointer]:
+                  - link "图表" [ref=e237]:
+                    - /url: https://cn.investing.com/currencies/xau-usd-chart
+                - listitem [ref=e238] [cursor=pointer]:
+                  - link "资讯和分析" [ref=e239]:
+                    - /url: https://cn.investing.com/currencies/xau-usd-news
+                - listitem [ref=e240] [cursor=pointer]:
+                  - link "技术" [ref=e241]:
+                    - /url: https://cn.investing.com/currencies/xau-usd-technical
+                - listitem [ref=e242] [cursor=pointer]:
+                  - link "论坛" [ref=e243]:
+                    - /url: https://cn.investing.com/currencies/xau-usd-commentary
+              - list [ref=e245]:
+                - listitem [ref=e246]:
+                  - generic [ref=e247]: 概览
+                - listitem [ref=e248]:
+                  - link "历史数据" [ref=e249] [cursor=pointer]:
+                    - /url: https://cn.investing.com/currencies/xau-usd-historical-data
+                - listitem [ref=e250]:
+                  - link "期权" [ref=e251] [cursor=pointer]:
+                    - /url: https://cn.investing.com/currencies/xau-usd-options
+                - listitem [ref=e252]:
+                  - link "货币转换器" [ref=e253] [cursor=pointer]:
+                    - /url: https://cn.investing.com/currencies/xau-usd-converter
+            - generic [ref=e258]:
+              - generic [ref=e260]:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: 买入
+                      - generic: 卖出
+              - generic [ref=e261]:
+                - generic [ref=e262]:
+                  - button "K 线图" [ref=e263] [cursor=pointer]:
+                    - img [ref=e264]
+                  - button "区域图" [ref=e269] [cursor=pointer]:
+                    - img [ref=e270]
+                - button "比较" [ref=e275] [cursor=pointer]:
+                  - img [ref=e277]
+                  - generic [ref=e279]: 比较
+                - generic [ref=e280]:
+                  - button "1" [ref=e281] [cursor=pointer]:
+                    - generic [ref=e282]: "1"
+                  - button "5" [ref=e283] [cursor=pointer]:
+                    - generic [ref=e284]: "5"
+                  - button "15" [ref=e285] [cursor=pointer]:
+                    - generic [ref=e286]: "15"
+                  - button "30" [ref=e287] [cursor=pointer]:
+                    - generic [ref=e288]: "30"
+                  - button "1H" [ref=e289] [cursor=pointer]:
+                    - generic [ref=e290]: 1H
+                  - button "5H" [ref=e291] [cursor=pointer]:
+                    - generic [ref=e292]: 5H
+                  - button "1D" [ref=e293] [cursor=pointer]:
+                    - generic [ref=e294]: 1D
+                  - button "1W" [ref=e295] [cursor=pointer]:
+                    - generic [ref=e296]: 1W
+                  - button "1M" [ref=e297] [cursor=pointer]:
+                    - generic [ref=e298]: 1M
+                - button "显示/隐藏资讯" [ref=e299] [cursor=pointer]:
+                  - img [ref=e300]
+                - link "技术图表" [ref=e304] [cursor=pointer]:
+                  - /url: https://cn.investing.com/currencies/xau-usd-chart
+                  - generic [ref=e305]: 技术图表
+                  - img [ref=e306]
+              - generic [ref=e308] [cursor=pointer]:
+                - generic [ref=e309]:
+                  - generic [ref=e310]:
+                    - generic [ref=e311]: XAU/USD - 黄金现货 美元
+                    - generic [ref=e313]:
+                      - img [ref=e315]
+                      - generic [ref=e317]: 4,748.18
+                      - generic [ref=e318]:
+                        - generic [ref=e319]: "-17.82"
+                        - generic [ref=e320]: (-0.37%)
+                  - generic [ref=e323]:
+                    - button "图表分析" [ref=e324]:
+                      - generic [ref=e325]:
+                        - img [ref=e326]
+                        - generic [ref=e328]: 图表分析
+                    - img [ref=e330]
+                - generic [ref=e332]:
+                  - img [ref=e333]
+                  - generic [ref=e335]:
+                    - generic [ref=e337]: "N"
+                    - generic [ref=e340]: "N"
+                    - generic [ref=e343]: "N"
+                    - generic [ref=e346]: "N"
+                    - generic [ref=e349]: "N"
+                    - generic [ref=e352]: "N"
+                    - generic [ref=e355]: "N"
+                  - generic "This 15 minute mountain chart displays price over time for symbol SPY between 4/9/2026, 12:00:00 PM and 4/11/2026, 5:30:00 AM." [ref=e359]
+                - generic [ref=e361]:
+                  - button "1日 -0.37%" [ref=e362]:
+                    - generic [ref=e363]: 1日
+                    - generic [ref=e364]: "-0.37%"
+                  - button "1周 +1.53%" [ref=e365]:
+                    - generic [ref=e366]: 1周
+                    - generic [ref=e367]: +1.53%
+                  - button "1个月 -8.56%" [ref=e368]:
+                    - generic [ref=e369]: 1个月
+                    - generic [ref=e370]: "-8.56%"
+                  - button "3个月 +5.27%" [ref=e371]:
+                    - generic [ref=e372]: 3个月
+                    - generic [ref=e373]: +5.27%
+                  - button "6个月 +18.16%" [ref=e374]:
+                    - generic [ref=e375]: 6个月
+                    - generic [ref=e376]: +18.16%
+                  - button "1年 +49.60%" [ref=e377]:
+                    - generic [ref=e378]: 1年
+                    - generic [ref=e379]: +49.60%
+                  - button "5年 +172.40%" [ref=e380]:
+                    - generic [ref=e381]: 5年
+                    - generic [ref=e382]: +172.40%
+                  - button "最大值 +851.54%" [ref=e383]:
+                    - generic [ref=e384]: 最大值
+                    - generic [ref=e385]: +851.54%
+            - generic [ref=e388]:
+              - generic [ref=e389]:
+                - generic [ref=e390]:
+                  - term [ref=e391]:
+                    - generic [ref=e393]: 昨收
+                  - definition [ref=e394]:
+                    - generic [ref=e395]: 4,765.65
+                - generic [ref=e396]:
+                  - term [ref=e397]:
+                    - generic [ref=e399]: 开盘
+                  - definition [ref=e400]:
+                    - generic [ref=e401]: 4,765.77
+                - generic [ref=e402]:
+                  - term [ref=e403]:
+                    - generic [ref=e405]: 1年涨跌幅
+                  - definition [ref=e406]:
+                    - generic [ref=e407]: 49.6%
+              - generic [ref=e408]:
+                - generic [ref=e409]:
+                  - term [ref=e410]: 卖价
+                  - definition [ref=e411]:
+                    - generic [ref=e412]: 4,748.43
+                - generic [ref=e413]:
+                  - term [ref=e414]: 买价
+                  - definition [ref=e415]:
+                    - generic [ref=e416]: 4,750.29
+              - generic [ref=e417]:
+                - generic [ref=e418]:
+                  - term [ref=e419]: 当日幅度
+                  - definition [ref=e420]:
+                    - generic [ref=e421]: 4,731.04
+                    - text: "-"
+                    - generic [ref=e422]: 4,795.42
+                - generic [ref=e423]:
+                  - term [ref=e424]: 52 周范围
+                  - definition [ref=e425]:
+                    - generic [ref=e426]: 3,120.52
+                    - text: "-"
+                    - generic [ref=e427]: 5,595.46
+            - generic [ref=e429]:
+              - generic [ref=e430]:
+                - generic [ref=e431]: "类型:"
+                - generic "货币" [ref=e432]
+              - generic [ref=e433]:
+                - generic [ref=e434]: "种类:"
+                - generic "新兴市场" [ref=e435]
+              - generic [ref=e436]:
+                - generic [ref=e437]: "基准货币:"
+                - generic "黄金现货" [ref=e438]
+              - generic [ref=e439]:
+                - generic [ref=e440]: "第二货币:"
+                - generic "美元" [ref=e441]
+            - generic [ref=e442]:
+              - generic [ref=e443]:
+                - generic [ref=e444]: 目前你怎么看XAU/USD？
+                - generic [ref=e445]: 投票以查看统计结果
+              - generic [ref=e446]:
+                - button "看空" [ref=e447] [cursor=pointer]:
+                  - img [ref=e448]
+                  - text: 看空
+                - generic [ref=e450]: 或
+                - button "看多" [ref=e451] [cursor=pointer]:
+                  - img [ref=e452]
+                  - text: 看多
+            - generic [ref=e454]:
+              - generic [ref=e455]:
+                - generic [ref=e456]:
+                  - heading "XAU/USD - 黄金现货 美元的资讯和分析评论" [level=2] [ref=e458]:
+                    - link "XAU/USD - 黄金现货 美元的资讯和分析评论" [ref=e459] [cursor=pointer]:
+                      - /url: https://cn.investing.com/currencies/xau-usd-news
+                      - generic [ref=e460]: XAU/USD - 黄金现货 美元的资讯和分析评论
+                      - img [ref=e461]
+                  - button "总结XAU/USD的最新消息" [ref=e463] [cursor=pointer]:
+                    - generic [ref=e464]:
+                      - img [ref=e465]
+                      - generic [ref=e467]: 总结XAU/USD的最新消息
+                - list [ref=e468]:
+                  - listitem [ref=e469]:
+                    - article [ref=e470]:
+                      - figure [ref=e471]:
+                        - generic [ref=e472]:
+                          - link:
+                            - /url: https://cn.investing.com/news/stock-market-news/article-3306785
+                      - generic [ref=e473]:
+                        - link "国泰海通：黄金牛市基础仍在 短期的调整与波动仍然可以带来较好的配置机会" [ref=e474] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/stock-market-news/article-3306785
+                        - list [ref=e475]:
+                          - listitem [ref=e476]: 智通财经
+                          - listitem [ref=e477]:
+                            - time [ref=e479]: 4 小时以前
+                  - listitem [ref=e480]:
+                    - article [ref=e481]:
+                      - figure [ref=e482]:
+                        - generic [ref=e483]:
+                          - link:
+                            - /url: https://cn.investing.com/news/stock-market-news/article-3306304
+                      - generic [ref=e484]:
+                        - link "“战后交易风口”来了! 美银高喊大宗商品黄金时代 半导体、消费与中国科技蓄势腾飞" [ref=e485] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/stock-market-news/article-3306304
+                        - list [ref=e486]:
+                          - listitem [ref=e487]: 智通财经
+                          - listitem [ref=e488]:
+                            - time [ref=e490]: 23 小时以前
+                  - listitem [ref=e491]:
+                    - article [ref=e492]:
+                      - figure [ref=e493]:
+                        - generic [ref=e494]:
+                          - link:
+                            - /url: https://cn.investing.com/news/stock-market-news/article-3306763
+                      - generic [ref=e495]:
+                        - link "中信证券：大宗商品2026Q2价格分化延续 继续看好能化产品价格表现" [ref=e496] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/stock-market-news/article-3306763
+                        - list [ref=e497]:
+                          - listitem [ref=e498]: 智通财经
+                          - listitem [ref=e499]:
+                            - time [ref=e501]: 6 小时以前
+                  - listitem [ref=e502]:
+                    - article [ref=e503]:
+                      - figure [ref=e504]:
+                        - generic [ref=e505]:
+                          - link:
+                            - /url: https://cn.investing.com/news/company-news/article-93CH-3306278
+                      - generic [ref=e506]:
+                        - link "UIL Limited资产净值3月因中东冲突下跌6%" [ref=e507] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/company-news/article-93CH-3306278
+                        - list [ref=e508]:
+                          - listitem [ref=e509]: Investing.com
+                          - listitem [ref=e510]:
+                            - time [ref=e512]: 23 小时以前
+                  - listitem [ref=e513]:
+                    - article [ref=e514]:
+                      - figure [ref=e515]:
+                        - generic [ref=e516]:
+                          - link:
+                            - /url: https://cn.investing.com/news/stock-market-news/article-3306637
+                      - generic [ref=e517]:
+                        - link "隔夜美股 | 纳指录得八连涨 Coreweave(CRWV.US)大涨10.87% 美油创六年来最大单周跌幅" [ref=e518] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/stock-market-news/article-3306637
+                        - list [ref=e519]:
+                          - listitem [ref=e520]: 智通财经
+                          - listitem [ref=e521]:
+                            - time [ref=e523]: 14 小时以前
+                  - listitem [ref=e524]:
+                    - article [ref=e525]:
+                      - figure [ref=e526]:
+                        - generic [ref=e527]:
+                          - link:
+                            - /url: https://cn.investing.com/news/stock-market-news/article-3306228
+                      - generic [ref=e528]:
+                        - link "港股风向标｜地缘情绪降温恒指26000点得而复失 市场再度聚焦高弹性资产" [ref=e529] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/stock-market-news/article-3306228
+                        - list [ref=e530]:
+                          - listitem [ref=e531]: 财联社
+                          - listitem [ref=e532]:
+                            - time [ref=e534]: 23 小时以前
+                  - listitem [ref=e535]:
+                    - article [ref=e536]:
+                      - figure [ref=e537]:
+                        - generic [ref=e538]:
+                          - link:
+                            - /url: https://cn.investing.com/news/stock-market-news/article-3306635
+                      - generic [ref=e539]:
+                        - link "【早报】证监会：增设创业板第四套上市标准；主板ST股涨跌幅拟调整为10%" [ref=e540] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/stock-market-news/article-3306635
+                        - list [ref=e541]:
+                          - listitem [ref=e542]: 财联社
+                          - listitem [ref=e543]:
+                            - time [ref=e545]: 14 小时以前
+                  - listitem [ref=e546]:
+                    - article [ref=e547]:
+                      - figure [ref=e548]:
+                        - generic [ref=e549]:
+                          - link:
+                            - /url: https://cn.investing.com/news/stock-market-news/article-3306229
+                      - generic [ref=e550]:
+                        - link "美国3月核心CPI涨幅低于预期 油价冲击推高通胀但未形成全面扩散" [ref=e551] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/stock-market-news/article-3306229
+                        - list [ref=e552]:
+                          - listitem [ref=e553]: 财联社
+                          - listitem [ref=e554]:
+                            - time [ref=e556]: 23 小时以前
+                  - listitem [ref=e557]:
+                    - article [ref=e558]:
+                      - figure [ref=e559]:
+                        - generic [ref=e560]:
+                          - link:
+                            - /url: https://cn.investing.com/news/company-news/article-93CH-3306457
+                      - generic [ref=e561]:
+                        - link "Versamet以3.4亿美元完成收购Eskay Creek金矿权益" [ref=e562] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/company-news/article-93CH-3306457
+                        - list [ref=e563]:
+                          - listitem [ref=e564]: Investing.com
+                          - listitem [ref=e565]:
+                            - time [ref=e567]: 18 小时以前
+                  - listitem [ref=e568]:
+                    - article [ref=e569]:
+                      - figure [ref=e570]:
+                        - generic [ref=e571]:
+                          - link:
+                            - /url: https://cn.investing.com/news/stock-market-news/article-3306056
+                      - generic [ref=e572]:
+                        - link "大摩分析师：黄金避险地位遭质疑 铝价或持续受支撑" [ref=e573] [cursor=pointer]:
+                          - /url: https://cn.investing.com/news/stock-market-news/article-3306056
+                        - list [ref=e574]:
+                          - listitem [ref=e575]: 财联社
+                          - listitem [ref=e576]:
+                            - time [ref=e578]: 2026年4月10日
+              - link "显示更多" [ref=e580] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/xau-usd-news
+            - heading "技术分析" [level=2] [ref=e581]:
+              - link "技术分析" [ref=e582] [cursor=pointer]:
+                - /url: https://cn.investing.com/currencies/xau-usd-technical
+                - text: 技术分析
+                - img [ref=e583]
+            - tablist [ref=e587]:
+              - tab "1 分钟 解锁" [ref=e588] [cursor=pointer]:
+                - link "1 分钟 解锁" [ref=e589]:
+                  - /url: /pro/pricing?entry=tech_analysis_1m
+                  - generic [ref=e590]:
+                    - text: 1 分钟
+                    - img [ref=e591]
+                  - generic [ref=e593]:
+                    - img [ref=e594]
+                    - generic [ref=e596]: 解锁
+              - tab "5分钟 解锁" [ref=e597] [cursor=pointer]:
+                - link "5分钟 解锁" [ref=e598]:
+                  - /url: /pro/pricing?entry=tech_analysis_5m
+                  - generic [ref=e599]:
+                    - text: 5分钟
+                    - img [ref=e600]
+                  - generic [ref=e602]:
+                    - img [ref=e603]
+                    - generic [ref=e605]: 解锁
+              - tab "15分钟 解锁" [ref=e606] [cursor=pointer]:
+                - link "15分钟 解锁" [ref=e607]:
+                  - /url: /pro/pricing?entry=tech_analysis_15m
+                  - generic [ref=e608]:
+                    - text: 15分钟
+                    - img [ref=e609]
+                  - generic [ref=e611]:
+                    - img [ref=e612]
+                    - generic [ref=e614]: 解锁
+              - tab "30分钟 强力卖出" [ref=e615] [cursor=pointer]:
+                - generic [ref=e616]: 30分钟
+                - generic [ref=e617]: 强力卖出
+              - tab "1小时 强力卖出" [ref=e618] [cursor=pointer]:
+                - generic [ref=e619]: 1小时
+                - generic [ref=e620]: 强力卖出
+              - tab "5 小时 中性" [ref=e621] [cursor=pointer]:
+                - generic [ref=e622]: 5 小时
+                - generic [ref=e623]: 中性
+              - tab "1日 强力买入" [ref=e624] [cursor=pointer]:
+                - generic [ref=e625]: 1日
+                - generic [ref=e626]: 强力买入
+              - tab "1周 强力买入" [ref=e627] [cursor=pointer]:
+                - generic [ref=e628]: 1周
+                - generic [ref=e629]: 强力买入
+              - tab "1个月 强力买入" [ref=e630] [cursor=pointer]:
+                - generic [ref=e631]: 1个月
+                - generic [ref=e632]: 强力买入
+            - generic [ref=e634]:
+              - generic [ref=e635]:
+                - generic [ref=e636]: 总结
+                - generic [ref=e638]:
+                  - generic [ref=e639]:
+                    - generic [ref=e664]: 强力卖出
+                    - generic [ref=e665]: 卖出
+                    - generic [ref=e666]: 中性
+                    - generic [ref=e667]: 买入
+                    - generic [ref=e668]: 强力买入
+                  - generic [ref=e669]: 强力卖出
+              - generic [ref=e670]:
+                - generic [ref=e671]: 技术指标
+                - generic [ref=e688]: 强力卖出
+              - generic [ref=e689]:
+                - generic [ref=e690]: 移动平均指数
+                - generic [ref=e707]: 卖出
+            - generic [ref=e708]:
+              - generic [ref=e709]:
+                - heading "财经日历" [level=2] [ref=e710]:
+                  - link "财经日历" [ref=e711] [cursor=pointer]:
+                    - /url: https://cn.investing.com/economic-calendar/
+                    - generic [ref=e712]: 财经日历
+                    - img [ref=e713]
+                - generic [ref=e716]:
+                  - generic [ref=e717]:
+                    - generic [ref=e718]: "当前时间:"
+                    - text: 21:48(GMT +8:00)
+                  - img [ref=e720]
+              - table [ref=e723]:
+                - rowgroup [ref=e724]:
+                  - row "时间 货币 活动 重要性 今值 预测值 前值" [ref=e725]:
+                    - columnheader "时间" [ref=e726]:
+                      - generic [ref=e728]: 时间
+                    - columnheader "货币" [ref=e729]:
+                      - generic [ref=e731]: 货币
+                    - columnheader "活动" [ref=e732]:
+                      - generic [ref=e734]: 活动
+                    - columnheader "重要性" [ref=e735]:
+                      - generic [ref=e737]: 重要性
+                    - columnheader "今值" [ref=e738]:
+                      - generic [ref=e740]: 今值
+                    - columnheader "预测值" [ref=e741]:
+                      - generic [ref=e743]: 预测值
+                    - columnheader "前值" [ref=e744]:
+                      - generic [ref=e746]: 前值
+                    - columnheader [ref=e747]
+                - rowgroup [ref=e748]:
+                  - row "2026年4月11日星期六" [ref=e749]:
+                    - cell "2026年4月11日星期六" [ref=e750]:
+                      - generic [ref=e751]: 2026年4月11日星期六
+                  - row "01:00 US US 美国当周贝克休斯石油钻井总数(口) 411.00 411.00" [ref=e752]:
+                    - cell "01:00" [ref=e753]:
+                      - generic [ref=e754]: 01:00
+                    - cell "US US" [ref=e755]:
+                      - generic [ref=e757]:
+                        - img "US" [ref=e759]
+                        - generic [ref=e760]: US
+                    - cell "美国当周贝克休斯石油钻井总数(口)" [ref=e761]:
+                      - link "美国当周贝克休斯石油钻井总数(口)" [ref=e763] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/baker-hughes-u.s.-rig-count-1652
+                        - generic [ref=e764]: 美国当周贝克休斯石油钻井总数(口)
+                    - cell [ref=e765]:
+                      - generic [ref=e766]:
+                        - img [ref=e767]
+                        - img [ref=e769]
+                        - img [ref=e771]
+                    - cell "411.00" [ref=e773]
+                    - cell [ref=e774]
+                    - cell "411.00" [ref=e775]:
+                      - generic [ref=e776]: "411.00"
+                    - cell [ref=e777]
+                  - row "01:00 US US 美国当周贝克休斯总钻井总数(口) 545.00 548.00" [ref=e779]:
+                    - cell "01:00" [ref=e780]:
+                      - generic [ref=e781]: 01:00
+                    - cell "US US" [ref=e782]:
+                      - generic [ref=e784]:
+                        - img "US" [ref=e786]
+                        - generic [ref=e787]: US
+                    - cell "美国当周贝克休斯总钻井总数(口)" [ref=e788]:
+                      - link "美国当周贝克休斯总钻井总数(口)" [ref=e790] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/u.s.-baker-hughes-total-rig-count-1810
+                        - generic [ref=e791]: 美国当周贝克休斯总钻井总数(口)
+                    - cell [ref=e792]:
+                      - generic [ref=e793]:
+                        - img [ref=e794]
+                        - img [ref=e796]
+                        - img [ref=e798]
+                    - cell "545.00" [ref=e800]
+                    - cell [ref=e801]
+                    - cell "548.00" [ref=e802]:
+                      - generic [ref=e803]: "548.00"
+                    - cell [ref=e804]
+                  - row "02:00 US US 美国政府预算(美元) (三月) -164.00B -157.80B -308.00B" [ref=e806]:
+                    - cell "02:00" [ref=e807]:
+                      - generic [ref=e808]: 02:00
+                    - cell "US US" [ref=e809]:
+                      - generic [ref=e811]:
+                        - img "US" [ref=e813]
+                        - generic [ref=e814]: US
+                    - cell "美国政府预算(美元) (三月)" [ref=e815]:
+                      - link "美国政府预算(美元) (三月)" [ref=e817] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/federal-budget-balance-369
+                        - generic [ref=e818]: 美国政府预算(美元) (三月)
+                    - cell [ref=e819]:
+                      - generic [ref=e820]:
+                        - img [ref=e821]
+                        - img [ref=e823]
+                        - img [ref=e825]
+                    - cell "-164.00B" [ref=e827]
+                    - cell "-157.80B" [ref=e828]
+                    - cell "-308.00B" [ref=e829]:
+                      - generic [ref=e830]: "-308.00B"
+                    - cell [ref=e831]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-铝 0.30K -0.90K" [ref=e833]:
+                    - cell "03:30" [ref=e834]:
+                      - generic [ref=e835]: 03:30
+                    - cell "US US" [ref=e836]:
+                      - generic [ref=e838]:
+                        - img "US" [ref=e840]
+                        - generic [ref=e841]: US
+                    - cell "美国商品期货交易委员会投机净仓位-铝" [ref=e842]:
+                      - link "美国商品期货交易委员会投机净仓位-铝" [ref=e844] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-aluminium-speculative-net-positions-1821
+                        - generic [ref=e845]: 美国商品期货交易委员会投机净仓位-铝
+                    - cell [ref=e846]:
+                      - generic [ref=e847]:
+                        - img [ref=e848]
+                        - img [ref=e850]
+                        - img [ref=e852]
+                    - cell "0.30K" [ref=e854]
+                    - cell [ref=e855]
+                    - cell "-0.90K" [ref=e856]:
+                      - generic [ref=e857]: "-0.90K"
+                    - cell [ref=e858]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-铜 40.20K 40.10K" [ref=e860]:
+                    - cell "03:30" [ref=e861]:
+                      - generic [ref=e862]: 03:30
+                    - cell "US US" [ref=e863]:
+                      - generic [ref=e865]:
+                        - img "US" [ref=e867]
+                        - generic [ref=e868]: US
+                    - cell "美国商品期货交易委员会投机净仓位-铜" [ref=e869]:
+                      - link "美国商品期货交易委员会投机净仓位-铜" [ref=e871] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-copper-speculative-positions-1620
+                        - generic [ref=e872]: 美国商品期货交易委员会投机净仓位-铜
+                    - cell [ref=e873]:
+                      - generic [ref=e874]:
+                        - img [ref=e875]
+                        - img [ref=e877]
+                        - img [ref=e879]
+                    - cell "40.20K" [ref=e881]
+                    - cell [ref=e882]
+                    - cell "40.10K" [ref=e883]:
+                      - generic [ref=e884]: 40.10K
+                    - cell [ref=e885]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-玉米 290.80K 334.80K" [ref=e887]:
+                    - cell "03:30" [ref=e888]:
+                      - generic [ref=e889]: 03:30
+                    - cell "US US" [ref=e890]:
+                      - generic [ref=e892]:
+                        - img "US" [ref=e894]
+                        - generic [ref=e895]: US
+                    - cell "美国商品期货交易委员会投机净仓位-玉米" [ref=e896]:
+                      - link "美国商品期货交易委员会投机净仓位-玉米" [ref=e898] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-corn-speculative-positions-1813
+                        - generic [ref=e899]: 美国商品期货交易委员会投机净仓位-玉米
+                    - cell [ref=e900]:
+                      - generic [ref=e901]:
+                        - img [ref=e902]
+                        - img [ref=e904]
+                        - img [ref=e906]
+                    - cell "290.80K" [ref=e908]
+                    - cell [ref=e909]
+                    - cell "334.80K" [ref=e910]:
+                      - generic [ref=e911]: 334.80K
+                    - cell [ref=e912]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-原油 202.20K 213.50K" [ref=e914]:
+                    - cell "03:30" [ref=e915]:
+                      - generic [ref=e916]: 03:30
+                    - cell "US US" [ref=e917]:
+                      - generic [ref=e919]:
+                        - img "US" [ref=e921]
+                        - generic [ref=e922]: US
+                    - cell "美国商品期货交易委员会投机净仓位-原油" [ref=e923]:
+                      - link "美国商品期货交易委员会投机净仓位-原油" [ref=e925] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-crude-oil-speculative-positions-1653
+                        - generic [ref=e926]: 美国商品期货交易委员会投机净仓位-原油
+                    - cell [ref=e927]:
+                      - generic [ref=e928]:
+                        - img [ref=e929]
+                        - img [ref=e931]
+                        - img [ref=e933]
+                    - cell "202.20K" [ref=e935]
+                    - cell [ref=e936]
+                    - cell "213.50K" [ref=e937]:
+                      - generic [ref=e938]: 213.50K
+                    - cell [ref=e939]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-黄金 156.30K 163.20K" [ref=e941]:
+                    - cell "03:30" [ref=e942]:
+                      - generic [ref=e943]: 03:30
+                    - cell "US US" [ref=e944]:
+                      - generic [ref=e946]:
+                        - img "US" [ref=e948]
+                        - generic [ref=e949]: US
+                    - cell "美国商品期货交易委员会投机净仓位-黄金" [ref=e950]:
+                      - link "美国商品期货交易委员会投机净仓位-黄金" [ref=e952] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-gold-speculative-positions-1618
+                        - generic [ref=e953]: 美国商品期货交易委员会投机净仓位-黄金
+                    - cell [ref=e954]:
+                      - generic [ref=e955]:
+                        - img [ref=e956]
+                        - img [ref=e958]
+                        - img [ref=e960]
+                    - cell "156.30K" [ref=e962]
+                    - cell [ref=e963]
+                    - cell "163.20K" [ref=e964]:
+                      - generic [ref=e965]: 163.20K
+                    - cell [ref=e966]
+                  - row "03:30 US US 商品期货交易委员会投机净仓位-纳斯达克100 12.50K 20.60K" [ref=e968]:
+                    - cell "03:30" [ref=e969]:
+                      - generic [ref=e970]: 03:30
+                    - cell "US US" [ref=e971]:
+                      - generic [ref=e973]:
+                        - img "US" [ref=e975]
+                        - generic [ref=e976]: US
+                    - cell "商品期货交易委员会投机净仓位-纳斯达克100" [ref=e977]:
+                      - link "商品期货交易委员会投机净仓位-纳斯达克100" [ref=e979] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-nasdaq-100-speculative-positions-1959
+                        - generic [ref=e980]: 商品期货交易委员会投机净仓位-纳斯达克100
+                    - cell [ref=e981]:
+                      - generic [ref=e982]:
+                        - img [ref=e983]
+                        - img [ref=e985]
+                        - img [ref=e987]
+                    - cell "12.50K" [ref=e989]
+                    - cell [ref=e990]
+                    - cell "20.60K" [ref=e991]:
+                      - generic [ref=e992]: 20.60K
+                    - cell [ref=e993]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-天然气 -184.00K -167.50K" [ref=e995]:
+                    - cell "03:30" [ref=e996]:
+                      - generic [ref=e997]: 03:30
+                    - cell "US US" [ref=e998]:
+                      - generic [ref=e1000]:
+                        - img "US" [ref=e1002]
+                        - generic [ref=e1003]: US
+                    - cell "美国商品期货交易委员会投机净仓位-天然气" [ref=e1004]:
+                      - link "美国商品期货交易委员会投机净仓位-天然气" [ref=e1006] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-natural-gas-speculative-positions-1820
+                        - generic [ref=e1007]: 美国商品期货交易委员会投机净仓位-天然气
+                    - cell [ref=e1008]:
+                      - generic [ref=e1009]:
+                        - img [ref=e1010]
+                        - img [ref=e1012]
+                        - img [ref=e1014]
+                    - cell "-184.00K" [ref=e1016]
+                    - cell [ref=e1017]
+                    - cell "-167.50K" [ref=e1018]:
+                      - generic [ref=e1019]: "-167.50K"
+                    - cell [ref=e1020]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-标普500 -45.70K -42.50K" [ref=e1022]:
+                    - cell "03:30" [ref=e1023]:
+                      - generic [ref=e1024]: 03:30
+                    - cell "US US" [ref=e1025]:
+                      - generic [ref=e1027]:
+                        - img "US" [ref=e1029]
+                        - generic [ref=e1030]: US
+                    - cell "美国商品期货交易委员会投机净仓位-标普500" [ref=e1031]:
+                      - link "美国商品期货交易委员会投机净仓位-标普500" [ref=e1033] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-s-p-500-speculative-positions-1619
+                        - generic [ref=e1034]: 美国商品期货交易委员会投机净仓位-标普500
+                    - cell [ref=e1035]:
+                      - generic [ref=e1036]:
+                        - img [ref=e1037]
+                        - img [ref=e1039]
+                        - img [ref=e1041]
+                    - cell "-45.70K" [ref=e1043]
+                    - cell [ref=e1044]
+                    - cell "-42.50K" [ref=e1045]:
+                      - generic [ref=e1046]: "-42.50K"
+                    - cell [ref=e1047]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-白银 23.40K 23.90K" [ref=e1049]:
+                    - cell "03:30" [ref=e1050]:
+                      - generic [ref=e1051]: 03:30
+                    - cell "US US" [ref=e1052]:
+                      - generic [ref=e1054]:
+                        - img "US" [ref=e1056]
+                        - generic [ref=e1057]: US
+                    - cell "美国商品期货交易委员会投机净仓位-白银" [ref=e1058]:
+                      - link "美国商品期货交易委员会投机净仓位-白银" [ref=e1060] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-silver-speculative-positions-1621
+                        - generic [ref=e1061]: 美国商品期货交易委员会投机净仓位-白银
+                    - cell [ref=e1062]:
+                      - generic [ref=e1063]:
+                        - img [ref=e1064]
+                        - img [ref=e1066]
+                        - img [ref=e1068]
+                    - cell "23.40K" [ref=e1070]
+                    - cell [ref=e1071]
+                    - cell "23.90K" [ref=e1072]:
+                      - generic [ref=e1073]: 23.90K
+                    - cell [ref=e1074]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-大豆 208.50K 227.80K" [ref=e1076]:
+                    - cell "03:30" [ref=e1077]:
+                      - generic [ref=e1078]: 03:30
+                    - cell "US US" [ref=e1079]:
+                      - generic [ref=e1081]:
+                        - img "US" [ref=e1083]
+                        - generic [ref=e1084]: US
+                    - cell "美国商品期货交易委员会投机净仓位-大豆" [ref=e1085]:
+                      - link "美国商品期货交易委员会投机净仓位-大豆" [ref=e1087] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-soybeans-speculative-positions-1811
+                        - generic [ref=e1088]: 美国商品期货交易委员会投机净仓位-大豆
+                    - cell [ref=e1089]:
+                      - generic [ref=e1090]:
+                        - img [ref=e1091]
+                        - img [ref=e1093]
+                        - img [ref=e1095]
+                    - cell "208.50K" [ref=e1097]
+                    - cell [ref=e1098]
+                    - cell "227.80K" [ref=e1099]:
+                      - generic [ref=e1100]: 227.80K
+                    - cell [ref=e1101]
+                  - row "03:30 US US 美国商品期货交易委员会投机净仓位-小麦 -18.70K -9.40K" [ref=e1103]:
+                    - cell "03:30" [ref=e1104]:
+                      - generic [ref=e1105]: 03:30
+                    - cell "US US" [ref=e1106]:
+                      - generic [ref=e1108]:
+                        - img "US" [ref=e1110]
+                        - generic [ref=e1111]: US
+                    - cell "美国商品期货交易委员会投机净仓位-小麦" [ref=e1112]:
+                      - link "美国商品期货交易委员会投机净仓位-小麦" [ref=e1114] [cursor=pointer]:
+                        - /url: https://cn.investing.com/economic-calendar/cftc-wheat-speculative-positions-1812
+                        - generic [ref=e1115]: 美国商品期货交易委员会投机净仓位-小麦
+                    - cell [ref=e1116]:
+                      - generic [ref=e1117]:
+                        - img [ref=e1118]
+                        - img [ref=e1120]
+                        - img [ref=e1122]
+                    - cell "-18.70K" [ref=e1124]
+                    - cell [ref=e1125]
+                    - cell "-9.40K" [ref=e1126]:
+                      - generic [ref=e1127]: "-9.40K"
+                    - cell [ref=e1128]
+            - generic [ref=e1130]:
+              - heading "常见问题" [level=2] [ref=e1131]
+              - generic [ref=e1132]:
+                - heading "当前XAU/USD的汇率是多少？" [level=3] [ref=e1135]
+                - generic [ref=e1137]: 当前XAU/USD的汇率为4,748.18，前收盘价为4,765.65。
+              - generic [ref=e1138]:
+                - heading "XAU/USD每日波动区间是多少？" [level=3] [ref=e1141]
+                - generic [ref=e1143]: 今日XAU/USD的交易区间为4,731.04至4,795.42。
+              - generic [ref=e1144]:
+                - heading "今日XAU/USD的开盘价是多少？" [level=3] [ref=e1147]
+                - generic [ref=e1149]: 今日XAU/USD的开盘价为4,765.77。
+              - generic [ref=e1150]:
+                - heading "XAU/USD 的买价和卖价是多少？" [level=3] [ref=e1153]
+                - generic [ref=e1155]: XAU/USD 的买入价为4,748.43 ，卖出价为4,750.29 。
+              - generic [ref=e1156]:
+                - heading "XAU/USD的52周波动区间是多少？" [level=3] [ref=e1159]
+                - generic [ref=e1161]: XAU/USD的52周波动区间为3,120.52至 5,595.46。
+              - generic [ref=e1162]:
+                - heading "基于技术指标，当前对XAU/USD的建议是买入还是卖出？" [level=3] [ref=e1165]
+                - generic [ref=e1167]: 基于技术指标分析，当前对XAU/USD的操作建议为强力买入。
+          - generic [ref=e1170]:
+            - text: 广告 广告 广告 广告
+            - generic [ref=e1172]:
+              - button "实时行情" [ref=e1173] [cursor=pointer]:
+                - img [ref=e1175]
+                - generic [ref=e1177]: 实时行情
+              - button "问问WarrenAI 新" [ref=e1178] [cursor=pointer]:
+                - img [ref=e1180]
+                - generic [ref=e1182]: 问问WarrenAI
+                - generic [ref=e1184]: 新
+              - button "AI精选股" [ref=e1185] [cursor=pointer]:
+                - img [ref=e1187]
+                - generic [ref=e1189]: AI精选股
+              - button "自选组合" [ref=e1190] [cursor=pointer]:
+                - img [ref=e1192]
+                - generic [ref=e1194]: 自选组合
+              - button "XAU/USD讨论" [ref=e1195] [cursor=pointer]:
+                - img [ref=e1197]
+                - generic [ref=e1199]: XAU/USD讨论
+              - button "提醒" [ref=e1200] [cursor=pointer]:
+                - img [ref=e1202]
+                - generic [ref=e1204]: 提醒
+              - button "财经要闻" [ref=e1205] [cursor=pointer]:
+                - img [ref=e1207]
+                - generic [ref=e1209]: 财经要闻
+              - button "工具" [ref=e1210] [cursor=pointer]:
+                - img [ref=e1212]
+                - generic [ref=e1214]: 工具
+      - generic [ref=e1215]:
+        - generic [ref=e1217]:
+          - generic [ref=e1221]:
+            - generic [ref=e1223]:
+              - generic [ref=e1224]: 安装我们的APP
+              - generic [ref=e1225]: 扫描二维码，安装APP
+              - navigation [ref=e1226]:
+                - list [ref=e1227]:
+                  - listitem [ref=e1228]:
+                    - link "App Store" [ref=e1229] [cursor=pointer]:
+                      - /url: https://app.appsflyer.com/id1390978161?pid=direct_inv&c=refactored&af_channel=%2Fcurrencies%2Fxau-usd&af_adset=cn&af_ad=footer+install+buttons&af_pmod_priority=null&af_sub_siteid=null&click_id=null&af_sub1=null&af_ad_id=null&af_sub2=null&af_sub3=null&af_sub4=null&af_sub5=null&af_keywords=null&af_adset_id=null
+                      - img [ref=e1230]
+                      - generic [ref=e1232]: App Store
+            - img [ref=e1235]
+          - navigation [ref=e1238]:
+            - list [ref=e1239]:
+              - listitem [ref=e1240]:
+                - link "博客" [ref=e1242] [cursor=pointer]:
+                  - /url: https://cn.investing.com/blog/
+              - listitem [ref=e1243]:
+                - link "APP下载" [ref=e1245] [cursor=pointer]:
+                  - /url: https://cn.investing.com/mobile/
+              - listitem [ref=e1246]:
+                - link "投资组合" [ref=e1248] [cursor=pointer]:
+                  - /url: https://cn.investing.com/portfolio/
+              - listitem [ref=e1249]:
+                - link "网站管理员工具" [ref=e1251] [cursor=pointer]:
+                  - /url: /webmaster-tools
+            - list [ref=e1252]:
+              - listitem [ref=e1253]:
+                - link "关于我们" [ref=e1255] [cursor=pointer]:
+                  - /url: /about-us
+              - listitem [ref=e1256]:
+                - link "广告" [ref=e1258] [cursor=pointer]:
+                  - /url: https://cn.investing.com/about-us/advertise
+              - listitem [ref=e1259]:
+                - link "帮助与支持" [ref=e1261] [cursor=pointer]:
+                  - /url: /about-us/contact-us
+        - generic [ref=e1263]:
+          - generic [ref=e1264]:
+            - img [ref=e1266]
+            - navigation [ref=e1271]:
+              - list [ref=e1272]:
+                - listitem [ref=e1273]:
+                  - link "东方财富" [ref=e1274] [cursor=pointer]:
+                    - /url: http://caifuhao.eastmoney.com/cfh/131764
+                    - img [ref=e1275]
+                - listitem [ref=e1277]:
+                  - link "今日头条" [ref=e1278] [cursor=pointer]:
+                    - /url: https://www.toutiao.com/c/user/73440322965/#mid=1582295894509582
+                    - img [ref=e1279]
+                - listitem [ref=e1281]:
+                  - link "雪球" [ref=e1282] [cursor=pointer]:
+                    - /url: https://xueqiu.com/8071319229/column
+                    - img [ref=e1283]
+                - listitem [ref=e1285]:
+                  - link "微博" [ref=e1286] [cursor=pointer]:
+                    - /url: https://weibo.com/u/6221128572?refer_flag=1001030102_&is_all=14
+                    - img [ref=e1287]
+          - generic [ref=e1289]:
+            - text: "风险批露: 交易股票、外汇、商品、期货、债券、基金等金融工具或加密货币属高风险行为，这些风险包括损失您的部分或全部投资金额，所以交易并非适合所有投资者。加密货币价格极易波动，可能受金融、监管或政治事件等外部因素的影响。保证金交易会放大金融风险。"
+            - text: 在决定交易任何金融工具或加密货币前，您应当充分了解与金融市场交易相关的风险和成本，并谨慎考虑您的投资目标、经验水平以及风险偏好，必要时应当寻求专业意见。
+            - text: Fusion Media提醒您，本网站所含数据未必实时、准确。本网站的数据和价格未必由市场或交易所提供，而可能由做市商提供，所以价格可能并不准确且可能与实际市场价格行情存在差异。即该价格仅为指示性价格，反映行情走势，不宜为交易目的使用。对于您因交易行为或依赖本网站所含信息所导致的任何损失，Fusion Media及本网站所含数据的提供商不承担责任。
+            - text: 未经Fusion Media及/或数据提供商书面许可，禁止使用、存储、复制、展现、修改、传播或分发本网站所含数据。提供本网站所含数据的供应商及交易所保留其所有知识产权。
+            - text: 本网站的广告客户可能会根据您与广告或广告主的互动情况，向Fusion Media支付费用。
+            - text: 本协议的英文版本系主要版本。如英文版本与中文版本存在差异，以英文版本为准。
+          - generic [ref=e1290]:
+            - generic [ref=e1291]:
+              - generic [ref=e1292]: © 2007-2026
+              - text: "- Fusion Media Limited | 粤ICP备17131071号 | 保留所有权利。"
+            - navigation [ref=e1294]:
+              - list [ref=e1295]:
+                - listitem [ref=e1296]:
+                  - link "条款及条件" [ref=e1297] [cursor=pointer]:
+                    - /url: https://cdn.investing.com/about-us/terms_and_conditions.pdf
+                - listitem [ref=e1298]:
+                  - link "隐私政策" [ref=e1299] [cursor=pointer]:
+                    - /url: https://cn.investing.com/about-us/privacy-policy
+                - listitem [ref=e1300]:
+                  - link "风险警示" [ref=e1301] [cursor=pointer]:
+                    - /url: https://cdn.investing.com/about-us/risk_warning.pdf
+                - listitem [ref=e1302]:
+                  - link "Do not sell my personal information" [ref=e1303] [cursor=pointer]:
+                    - /url: ""
+  - alert [ref=e1304]

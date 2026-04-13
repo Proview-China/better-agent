@@ -1,23 +1,196 @@
 {
-  "generatedAt": "2026-04-06T12:32:05.667Z",
+  "generatedAt": "2026-04-11T18:03:17.937Z",
   "provider": "openai",
   "baseURL": "https://gmn.chuangzuoli.com/v1",
   "rows": [
     {
       "provider": "openai",
+      "role": "icma",
+      "ok": true,
+      "model": "gpt-5.4",
+      "mode": "llm_required",
+      "status": "live_applied",
+      "summary": "保留当前任务最有用的运行时上下文，按输入来源拆分为意图块，并在不改写根系统提示的前提下，自动推断并仅附加受控 CMP 片段，同时生成 operator guide 与 child guide 以供后续交接。",
+      "details": {
+        "sourceAnchorRefs": [
+          "payload:cmp-live:user:1",
+          "payload:cmp-live:tool:1"
+        ],
+        "chunkingMode": "multi_auto",
+        "autoFragmentPolicy": {
+          "strategy": "llm_infer_from_materials",
+          "detectedKinds": [
+            "constraint",
+            "risk",
+            "flow"
+          ]
+        },
+        "intentChunks": [
+          {
+            "chunkId": "cmp-live-icma-1:chunk:0",
+            "taskSummary": "请保留当前任务最有用的上下文，并生成 operator guide 与 child guide。 :: user_input",
+            "materialRefs": [
+              "payload:cmp-live:user:1"
+            ],
+            "detectedFragmentKinds": [
+              "constraint",
+              "risk",
+              "flow"
+            ],
+            "operatorGuide": "先保留和当前任务直接相关的约束与目标。",
+            "childGuide": "如果要给子任务播种，这一块仍然只能经由 child ICMA 进入子链。"
+          },
+          {
+            "chunkId": "cmp-live-icma-1:chunk:1",
+            "taskSummary": "请保留当前任务最有用的上下文，并生成 operator guide 与 child guide。 :: tool_result",
+            "materialRefs": [
+              "payload:cmp-live:tool:1"
+            ],
+            "detectedFragmentKinds": [
+              "constraint",
+              "risk",
+              "flow"
+            ],
+            "operatorGuide": "先保留工具结果里的高信噪比状态、错误和依赖变化。",
+            "childGuide": "如果要给子任务播种，这一块仍然只能经由 child ICMA 进入子链。"
+          }
+        ],
+        "operatorGuide": "Preserve high-signal input and emit controlled pre-sections only.",
+        "childGuide": "Any child seed must enter child ICMA only.",
+        "elapsedMs": 51007
+      }
+    },
+    {
+      "provider": "openai",
+      "role": "iterator",
+      "ok": true,
+      "model": "gpt-5.4",
+      "mode": "llm_required",
+      "status": "live_applied",
+      "summary": "Prepared material from the listed source sections has been advanced into candidate commit commit-cmp-live-1 as a single minimum auditable review unit, so progression should advance and the stable review ref is preserved for downstream checking.",
+      "details": {
+        "sourceSectionIds": [
+          "section-pre-live-1",
+          "section-pre-live-2"
+        ],
+        "progressionVerdict": "advance_review",
+        "reviewRefAnnotation": "Stable review ref refs/cmp/review/candidate-cmp-live-1 remains bound to candidate-cmp-live-1 for checker handoff; minimum auditable review unit is commit, annotated against commit-cmp-live-1.",
+        "reviewRef": "refs/cmp/review/candidate-cmp-live-1",
+        "elapsedMs": 39128
+      }
+    },
+    {
+      "provider": "openai",
+      "role": "checker",
+      "ok": true,
+      "model": "gpt-5.4",
+      "mode": "llm_required",
+      "status": "live_applied",
+      "summary": "No material drift or structural ambiguity identified from the provided checked context; preserve the current checked section as the high-signal core.",
+      "details": {
+        "shortReason": "Checked output is already concise and on-task.",
+        "splitExecutions": [
+          {
+            "decisionRef": "snapshot-cmp-live-1:split",
+            "sourceSectionId": "section-pre-live-1",
+            "proposedSectionIds": [
+              "section-checked-live-1"
+            ],
+            "rationale": "split candidate sections into executable checked targets"
+          }
+        ],
+        "mergeExecutions": [],
+        "promoteRationale": "Promotion is supported because the checked result appears to have already consolidated the source material into a single focused section without introducing observable noise, and no material restructuring is warranted based on the available evidence.",
+        "elapsedMs": 8733
+      }
+    },
+    {
+      "provider": "openai",
+      "role": "dbagent",
+      "flow": "active",
+      "ok": true,
+      "model": "gpt-5.4",
+      "mode": "llm_required",
+      "status": "live_applied",
+      "summary": "Checked material is organized as a differentiated family with the active package kept as the primary return, the historical timeline preserved as a distinct attached package, and task snapshots emitted per checked context so current state, historical return, and task-level recovery remain explicit and reusable.",
+      "details": {
+        "packageTopology": "active_plus_timeline_plus_task_snapshots",
+        "bundleSchemaVersion": "cmp-dispatch-bundle/v1",
+        "primaryPackageStrategy": "materialize_active_context_as_primary_package",
+        "timelinePackageStrategy": "attach_timeline_as_secondary_package",
+        "taskSnapshotStrategy": "emit_task_snapshot_per_checked_context",
+        "elapsedMs": 4428
+      }
+    },
+    {
+      "provider": "openai",
       "role": "dispatcher",
       "flow": "active",
       "ok": true,
-      "model": "gpt-5.4-mini",
+      "model": "gpt-5.4",
       "mode": "llm_required",
       "status": "live_applied",
-      "summary": "Child seed is restricted to the child ICMA path.",
+      "summary": "Child seed packages enter only through the child ICMA path.",
       "details": {
         "targetIngress": "child_icma_only",
         "packageMode": "child_seed_via_icma",
         "bodyStrategy": "child_seed_full",
         "scopePolicy": "child_seed_only_enters_child_icma",
-        "elapsedMs": 3144
+        "elapsedMs": 6949
+      }
+    },
+    {
+      "provider": "openai",
+      "role": "dispatcher",
+      "flow": "active",
+      "ok": true,
+      "model": "gpt-5.4",
+      "mode": "llm_required",
+      "status": "live_applied",
+      "summary": "peer: Peer exchange requires explicit parent approval before routing.",
+      "details": {
+        "targetIngress": "peer_exchange",
+        "packageMode": "peer_exchange_slim",
+        "bodyStrategy": "peer_exchange_slim",
+        "scopePolicy": "peer_exchange_requires_explicit_parent_approval",
+        "approvalStatus": "pending_parent_core_approval",
+        "approvalChain": "parent_dbagent_then_parent_core_agent",
+        "elapsedMs": 6860
+      }
+    },
+    {
+      "provider": "openai",
+      "role": "dbagent",
+      "flow": "passive",
+      "ok": true,
+      "model": "gpt-5.4",
+      "mode": "llm_required",
+      "status": "live_applied",
+      "summary": "passive: Checked material is organized for passive mode by centering the smallest complete clean historical return as the primary package, while keeping timeline and task snapshot roles explicit for durable recall and differentiated reuse within the same package family.",
+      "details": {
+        "flow": "passive",
+        "packageTopology": "passive_reply_plus_timeline_plus_task_snapshots",
+        "bundleSchemaVersion": "cmp-dispatch-bundle/v1",
+        "passivePackagingStrategy": "historical_reply_clean_return",
+        "elapsedMs": 11221
+      }
+    },
+    {
+      "provider": "openai",
+      "role": "dispatcher",
+      "flow": "passive",
+      "ok": true,
+      "model": "gpt-5.4",
+      "mode": "llm_required",
+      "status": "live_applied",
+      "summary": "passive: Passive historical replies return cleanly through core.",
+      "details": {
+        "flow": "passive",
+        "targetIngress": "core_agent_return",
+        "packageMode": "historical_reply_return",
+        "bodyStrategy": "historical_return",
+        "scopePolicy": "historical_reply_returns_via_core_path",
+        "elapsedMs": 7773
       }
     }
   ]

@@ -1,0 +1,10 @@
+- generic [ref=e2]:
+  - separator [ref=e3]
+  - generic [ref=e4]:
+    - text: Our systems have detected unusual traffic from your computer network. Please try your request again later.
+    - link "Why did this happen?" [ref=e5] [cursor=pointer]:
+      - /url: "#"
+    - generic [ref=e6]:
+      - text: "IP address: 38.181.81.198 ≠ 2a0e:aa00:318::"
+      - text: "Time: 2026-04-09T09:06:50Z"
+      - text: "URL: https://www.google.com/search?q=%E5%9B%BD%E9%99%85%E9%87%91%E4%BB%B7%20%E7%BE%8E%E5%85%83%2F%E7%9B%8E%E5%8F%B8"

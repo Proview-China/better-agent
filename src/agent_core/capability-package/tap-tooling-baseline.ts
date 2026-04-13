@@ -8,6 +8,8 @@ export const TAP_TOOLING_BASELINE_CAPABILITY_KEYS = [
   "repo.write",
   "spreadsheet.write",
   "doc.write",
+  "remote.exec",
+  "tracker.create",
   "code.edit",
   "code.patch",
   "shell.restricted",
@@ -438,6 +440,259 @@ export function createTapToolingCapabilityPackage(
           rollbackStrategy: "restore prior binding or delete generated docx outputs",
           deprecateStrategy: "freeze new document generation before removal",
           cleanupStrategy: "drain in-flight doc writes before replacement",
+          generationPolicy: "create_next_generation",
+        },
+        activationSpec,
+        replayPolicy: "re_review_then_dispatch",
+        metadata: {
+          packageKind: "tap-tooling-baseline",
+        },
+      });
+    }
+    case "remote.exec": {
+      const activationSpec = {
+        targetPool: "ta-capability-pool",
+        activationMode: "activate_after_verify" as const,
+        registerOrReplace: "register_or_replace" as const,
+        generationStrategy: "create_next_generation" as const,
+        drainStrategy: "graceful" as const,
+        manifestPayload: {
+          capabilityKey,
+          capabilityId: "capability:remote.exec:1",
+          version: "1.0.0",
+          generation: 1,
+          kind: "tool",
+          description: "Execute a bounded command on a remote machine over SSH with structured host and command inputs.",
+          tags: ["tap", "bootstrap", "remote", "ssh", "exec"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        bindingPayload: {
+          adapterId: "adapter.remote.exec",
+          runtimeKind: "local-tooling",
+          remoteTransport: "ssh",
+          workspaceScope: "workspace-and-remote",
+        },
+        adapterFactoryRef: "factory:tap-tooling:remote.exec",
+      };
+
+      return createCapabilityPackage({
+        manifest: {
+          capabilityKey,
+          capabilityKind: "tool",
+          tier: "B2",
+          version: "1.0.0",
+          generation: 1,
+          description: "Execute a bounded command on a remote machine over SSH with structured host and command inputs.",
+          dependencies: [],
+          tags: ["tap", "bootstrap", "remote", "ssh", "exec"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          supportedPlatforms: ["linux", "macos", "windows"],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        adapter: {
+          adapterId: "adapter.remote.exec",
+          runtimeKind: "local-tooling",
+          supports: ["remote_exec"],
+          prepare: { ref: "adapter.prepare:remote.exec" },
+          execute: { ref: "adapter.execute:remote.exec" },
+          cancel: { ref: "adapter.cancel:remote.exec" },
+          resultMapping: {
+            successStatuses: ["success", "partial"],
+            artifactKinds: ["usage", "verification"],
+          },
+        },
+        policy: {
+          defaultBaseline: {
+            grantedTier: "B2",
+            mode: "standard",
+            scope: createWorkspaceScope(["exec", "remote.exec"]),
+          },
+          recommendedMode: "standard",
+          riskLevel: "risky",
+          defaultScope: createWorkspaceScope(["exec", "remote.exec"]),
+          reviewRequirements: ["allow_with_constraints"],
+          safetyFlags: ["remote_side_effect", "ssh_transport_only", "bounded_output"],
+          humanGateRequirements: ["remote_execution_requires_review"],
+        },
+        builder: {
+          builderId: "builder.remote.exec",
+          buildStrategy: "builtin-bootstrap-tooling",
+          requiresNetwork: true,
+          requiresInstall: false,
+          requiresSystemWrite: false,
+          allowedWorkdirScope: ["workspace/**"],
+          activationSpecRef: createCapabilityPackageActivationSpecRef(activationSpec),
+          replayCapability: "re_review_then_dispatch",
+        },
+        verification: {
+          smokeEntry: "smoke:remote.exec",
+          healthEntry: "health:remote.exec",
+          successCriteria: ["ssh command executes with bounded stdout/stderr", "host and command are reflected in the result metadata"],
+          failureSignals: ["host missing", "ssh transport failure", "remote command timeout", "remote command exits non-zero"],
+          evidenceOutput: ["remote-host", "remote-command", "remote-output"],
+        },
+        usage: {
+          usageDocRef: "docs/ability/25-tap-capability-package-template.md",
+          bestPractices: [
+            "Use explicit host, user, and command fields instead of free-form shell blobs.",
+            "Keep remote commands bounded and idempotent when possible.",
+          ],
+          knownLimits: [
+            "First version uses SSH only and does not manage long-lived remote sessions.",
+            "Remote environment and authentication must already be configured on the local machine.",
+          ],
+          exampleInvocations: [
+            {
+              exampleId: "remote.exec.hostname",
+              capabilityKey,
+              operation: "remote_exec",
+              input: {
+                host: "example-host",
+                user: "deploy",
+                command: "hostname",
+              },
+            },
+          ],
+        },
+        lifecycle: {
+          installStrategy: "built-in bootstrap registration",
+          replaceStrategy: "register_or_replace",
+          rollbackStrategy: "restore prior binding; remote side effects remain explicit operator concern",
+          deprecateStrategy: "freeze new remote executions before removal",
+          cleanupStrategy: "drain in-flight remote executions before replacement",
+          generationPolicy: "create_next_generation",
+        },
+        activationSpec,
+        replayPolicy: "re_review_then_dispatch",
+        metadata: {
+          packageKind: "tap-tooling-baseline",
+        },
+      });
+    }
+    case "tracker.create": {
+      const activationSpec = {
+        targetPool: "ta-capability-pool",
+        activationMode: "activate_after_verify" as const,
+        registerOrReplace: "register_or_replace" as const,
+        generationStrategy: "create_next_generation" as const,
+        drainStrategy: "graceful" as const,
+        manifestPayload: {
+          capabilityKey,
+          capabilityId: "capability:tracker.create:1",
+          version: "1.0.0",
+          generation: 1,
+          kind: "tool",
+          description: "Create a durable local tracker artifact for a task, incident, or follow-up item.",
+          tags: ["tap", "bootstrap", "tracker", "artifact"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        bindingPayload: {
+          adapterId: "adapter.tracker.create",
+          runtimeKind: "local-tooling",
+          workspaceScope: "workspace-only",
+        },
+        adapterFactoryRef: "factory:tap-tooling:tracker.create",
+      };
+
+      return createCapabilityPackage({
+        manifest: {
+          capabilityKey,
+          capabilityKind: "tool",
+          tier: "B0",
+          version: "1.0.0",
+          generation: 1,
+          description: "Create a durable local tracker artifact for a task, incident, or follow-up item.",
+          dependencies: ["repo.write"],
+          tags: ["tap", "bootstrap", "tracker", "artifact"],
+          routeHints: [{ key: "runtime", value: "local-tooling" }],
+          supportedPlatforms: ["linux", "macos", "windows"],
+          metadata: {
+            baselineFamily: "tap-bootstrap-tma",
+            formalPackage: true,
+          },
+        },
+        adapter: {
+          adapterId: "adapter.tracker.create",
+          runtimeKind: "local-tooling",
+          supports: ["create_tracker"],
+          prepare: { ref: "adapter.prepare:tracker.create" },
+          execute: { ref: "adapter.execute:tracker.create" },
+          cancel: { ref: "adapter.cancel:tracker.create" },
+          resultMapping: {
+            successStatuses: ["success"],
+            artifactKinds: ["usage", "verification"],
+          },
+        },
+        policy: {
+          defaultBaseline: {
+            grantedTier: "B0",
+            mode: "balanced",
+            scope: createWorkspaceScope(["write", "mkdir", "tracker.create"]),
+          },
+          recommendedMode: "permissive",
+          riskLevel: "normal",
+          defaultScope: createWorkspaceScope(["write", "mkdir", "tracker.create"]),
+          reviewRequirements: ["allow"],
+          safetyFlags: ["workspace_tracker_only", "json_artifact_v1"],
+          humanGateRequirements: [],
+        },
+        builder: {
+          builderId: "builder.tracker.create",
+          buildStrategy: "builtin-bootstrap-tooling",
+          requiresNetwork: false,
+          requiresInstall: false,
+          requiresSystemWrite: false,
+          allowedWorkdirScope: ["workspace/**"],
+          activationSpecRef: createCapabilityPackageActivationSpecRef(activationSpec),
+          replayCapability: "re_review_then_dispatch",
+        },
+        verification: {
+          smokeEntry: "smoke:tracker.create",
+          healthEntry: "health:tracker.create",
+          successCriteria: ["tracker artifact is written locally with id, title, and status", "result includes tracker id and output path"],
+          failureSignals: ["title missing", "path escapes workspace", "artifact write failure"],
+          evidenceOutput: ["tracker-id", "tracker-path", "tracker-artifact"],
+        },
+        usage: {
+          usageDocRef: "docs/ability/25-tap-capability-package-template.md",
+          bestPractices: [
+            "Keep tracker titles short and specific.",
+            "Use labels and metadata to preserve follow-up context without inflating the title.",
+          ],
+          knownLimits: [
+            "First version writes local JSON tracker artifacts rather than integrating with an external issue tracker.",
+            "This capability creates records; it does not yet update or sync them.",
+          ],
+          exampleInvocations: [
+            {
+              exampleId: "tracker.create.followup",
+              capabilityKey,
+              operation: "create_tracker",
+              input: {
+                title: "Verify remote rollout result",
+                description: "Follow up after the remote host applies the config.",
+                labels: ["rollout", "follow-up"],
+              },
+            },
+          ],
+        },
+        lifecycle: {
+          installStrategy: "built-in bootstrap registration",
+          replaceStrategy: "register_or_replace",
+          rollbackStrategy: "restore prior binding or delete created tracker artifacts",
+          deprecateStrategy: "freeze new tracker creations before removal",
+          cleanupStrategy: "drain in-flight tracker writes before replacement",
           generationPolicy: "create_next_generation",
         },
         activationSpec,

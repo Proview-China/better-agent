@@ -180,6 +180,45 @@ test("normalizeDocWriteInput accepts markdown and text aliases as doc content", 
   assert.match(textNormalized.textContent, /Observed at: 08:48:38/u);
 });
 
+test("normalizeDocWriteInput accepts nested document wrapper and blocks payloads", () => {
+  const normalized = normalizeDocWriteInput(
+    createPlan("doc.write", {
+      path: "artifacts/wrapped.docx",
+      document: {
+        title: "Wrapped Doc",
+        blocks: [
+          { heading: "Observation", text: "Current price: 4755.44 USD/oz" },
+          { text: "Observed at: 08:48:38" },
+        ],
+      },
+    }),
+    "/tmp/workspace",
+  );
+
+  assert.equal(normalized.relativeWorkspacePath, "artifacts/wrapped.docx");
+  assert.match(normalized.textContent, /Wrapped Doc/u);
+  assert.match(normalized.textContent, /Observation/u);
+  assert.match(normalized.textContent, /Observed at: 08:48:38/u);
+});
+
+test("normalizeDocWriteInput accepts bodyLines as document content", () => {
+  const normalized = normalizeDocWriteInput(
+    createPlan("doc.write", {
+      path: "artifacts/body-lines.docx",
+      title: "Body Lines Doc",
+      bodyLines: [
+        "Current price: 4755.44 USD/oz",
+        "Observed at: 08:48:38",
+      ],
+    }),
+    "/tmp/workspace",
+  );
+
+  assert.match(normalized.textContent, /Body Lines Doc/u);
+  assert.match(normalized.textContent, /Current price: 4755\.44 USD\/oz/u);
+  assert.match(normalized.textContent, /Observed at: 08:48:38/u);
+});
+
 test("normalizeCodeEditInput accepts planner edit arrays with find/replace", () => {
   const normalized = normalizeCodeEditInput(
     createPlan("code.edit", {

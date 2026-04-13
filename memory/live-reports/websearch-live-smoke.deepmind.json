@@ -1,31 +1,17 @@
 {
-  "generatedAt": "2026-03-16T05:10:41.419Z",
+  "generatedAt": "2026-04-08T04:59:29.289Z",
   "provider": "deepmind",
   "rows": [
     {
       "provider": "deepmind",
       "step": "native_plain",
-      "ok": true,
-      "model": "gemini-3.1-pro-preview",
-      "summary": "OK"
-    },
-    {
-      "provider": "deepmind",
-      "step": "native_search",
-      "ok": true,
-      "model": "gemini-3.1-pro-preview",
-      "summary": "ai.google.dev"
-    },
-    {
-      "provider": "deepmind",
-      "step": "rax_websearch",
-      "ok": true,
-      "model": "gemini-3.1-pro-preview",
-      "summary": "The official documentation",
+      "ok": false,
+      "model": "gemini-3-flash",
+      "summary": "{\"error\":{\"message\":\"分组 优质gemini、官转gemini、优质官转gemini 下模型 gemini-3-flash 无可用渠道（distributor） (request id: 2026040812592965867778Y7pp3PEh)\",\"type\":\"new_api_error\"}}",
       "details": {
-        "status": "success",
-        "sources": 0,
-        "citations": 0
+        "name": "ApiError",
+        "status": 503,
+        "code": null
       }
     }
   ]
