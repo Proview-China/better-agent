@@ -2855,31 +2855,82 @@ struct PraxisRuntimeUseCasesTests {
         limit: 5
       )
     )
+    let alignCommand = PraxisAlignMpCommand(
+      projectID: "mp.local-runtime",
+      memoryID: ingest.primaryMemoryID,
+      alignedAt: "2026-04-13T10:06:00Z",
+      queryText: "verify onboarding summary"
+    )
+    let align = try await PraxisAlignMpUseCase(dependencies: dependencies).execute(alignCommand)
+    let archiveCommand = PraxisArchiveMpCommand(
+      projectID: "mp.local-runtime",
+      memoryID: ingest.primaryMemoryID,
+      archivedAt: "2026-04-13T10:08:00Z",
+      reason: "Archive superseded onboarding memory"
+    )
+    let archive = try await PraxisArchiveMpUseCase(dependencies: dependencies).execute(archiveCommand)
 
     let encodedIngest = try encodeUseCaseTestJSON(ingest)
+    let encodedAlignCommand = try encodeUseCaseTestJSON(alignCommand)
+    let encodedArchiveCommand = try encodeUseCaseTestJSON(archiveCommand)
+    let encodedHistoryCommand = try encodeUseCaseTestJSON(
+      PraxisRequestMpHistoryCommand(
+        projectID: "mp.local-runtime",
+        requesterAgentID: "runtime.local",
+        requesterSessionID: "history.session",
+        reason: "Need historical context",
+        query: "onboarding",
+        scopeLevels: [.project],
+        limit: 5
+      )
+    )
+    let encodedAlign = try encodeUseCaseTestJSON(align)
+    let encodedArchive = try encodeUseCaseTestJSON(archive)
     let encodedResolve = try encodeUseCaseTestJSON(resolve)
     let encodedHistory = try encodeUseCaseTestJSON(history)
 
     #expect(encodedIngest.contains(#""sessionID":" session.ingest ""#))
     #expect(encodedIngest.contains(#""storageKey":"memory\/created""#))
+    #expect(encodedAlignCommand.contains(#""memoryID":"\#(ingest.primaryMemoryID)""#))
+    #expect(encodedArchiveCommand.contains(#""memoryID":"\#(ingest.primaryMemoryID)""#))
+    #expect(encodedHistoryCommand.contains(#""requesterSessionID":"history.session""#))
+    #expect(encodedAlign.contains(#""updatedMemoryIDs":["\#(ingest.primaryMemoryID)"]"#))
+    #expect(encodedAlign.contains(#""supersededMemoryIDs":[]"#))
+    #expect(encodedAlign.contains(#""staleMemoryIDs":[]"#))
+    #expect(encodedArchive.contains(#""memoryID":"\#(ingest.primaryMemoryID)""#))
     #expect(encodedResolve.contains(#""primaryMemoryIDs":["memory.primary"]"#))
     #expect(encodedResolve.contains(#""supportingMemoryIDs":["memory.supporting"]"#))
     #expect(encodedResolve.contains(#""omittedSupersededMemoryIDs":["memory.superseded"]"#))
     #expect(encodedHistory.contains(#""primaryMemoryIDs":["memory.primary"]"#))
     #expect(encodedHistory.contains(#""supportingMemoryIDs":["memory.supporting"]"#))
+    #expect(encodedHistory.contains(#""omittedSupersededMemoryIDs":["memory.superseded"]"#))
 
-    for encoded in [encodedIngest, encodedResolve, encodedHistory] {
+    for encoded in [
+      encodedAlignCommand,
+      encodedArchiveCommand,
+      encodedHistoryCommand,
+      encodedIngest,
+      encodedAlign,
+      encodedArchive,
+      encodedResolve,
+      encodedHistory,
+    ] {
       for forbiddenKey in ["\"title\":", "\"kind\":", "\"terminal\"", "\"screen\"", "\"viewState\"", "\"prompt\""] {
         #expect(!encoded.contains(forbiddenKey))
       }
     }
 
     #expect(ingest.sessionID == " session.ingest ")
+    #expect(align.updatedMemoryIDs == [ingest.primaryMemoryID])
+    #expect(align.supersededMemoryIDs.isEmpty)
+    #expect(align.staleMemoryIDs.isEmpty)
+    #expect(archive.memoryID == ingest.primaryMemoryID)
     #expect(resolve.primaryMemoryIDs == ["memory.primary"])
     #expect(resolve.supportingMemoryIDs == ["memory.supporting"])
     #expect(resolve.omittedSupersededMemoryIDs == ["memory.superseded"])
     #expect(history.primaryMemoryIDs == ["memory.primary"])
     #expect(history.supportingMemoryIDs == ["memory.supporting"])
+    #expect(history.omittedSupersededMemoryIDs == ["memory.superseded"])
   }
 
   @Test

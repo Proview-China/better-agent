@@ -1567,27 +1567,64 @@ struct PraxisRuntimeFacadesTests {
         limit: 5
       )
     )
+    let align = try await facade.mpFacade.align(
+      .init(
+        projectID: "mp.local-runtime",
+        memoryID: ingest.primaryMemoryID,
+        alignedAt: "2026-04-13T10:06:00Z",
+        queryText: "verify onboarding summary"
+      )
+    )
+    let archive = try await facade.mpFacade.archive(
+      .init(
+        projectID: "mp.local-runtime",
+        memoryID: ingest.primaryMemoryID,
+        archivedAt: "2026-04-13T10:08:00Z",
+        reason: "Archive superseded onboarding memory"
+      )
+    )
 
     let encodedIngest = try encodeFacadeTestJSON(ingest)
+    let encodedAlign = try encodeFacadeTestJSON(align)
+    let encodedArchive = try encodeFacadeTestJSON(archive)
     let encodedResolve = try encodeFacadeTestJSON(resolve)
     let encodedHistory = try encodeFacadeTestJSON(history)
 
     #expect(encodedIngest.contains(#""sessionID":" session.ingest ""#))
     #expect(encodedIngest.contains(#""storageKey":"memory\/created""#))
+    #expect(encodedAlign.contains(#""updatedMemoryIDs":["\#(ingest.primaryMemoryID)"]"#))
+    #expect(encodedAlign.contains(#""supersededMemoryIDs":[]"#))
+    #expect(encodedAlign.contains(#""staleMemoryIDs":[]"#))
+    #expect(encodedArchive.contains(#""memoryID":"\#(ingest.primaryMemoryID)""#))
     #expect(encodedResolve.contains(#""primaryMemoryIDs":["memory.primary"]"#))
     #expect(encodedResolve.contains(#""supportingMemoryIDs":["memory.supporting"]"#))
+    #expect(encodedResolve.contains(#""omittedSupersededMemoryIDs":["memory.superseded"]"#))
+    #expect(encodedHistory.contains(#""primaryMemoryIDs":["memory.primary"]"#))
     #expect(encodedHistory.contains(#""supportingMemoryIDs":["memory.supporting"]"#))
+    #expect(encodedHistory.contains(#""omittedSupersededMemoryIDs":["memory.superseded"]"#))
 
-    for encoded in [encodedIngest, encodedResolve, encodedHistory] {
+    for encoded in [
+      encodedIngest,
+      encodedAlign,
+      encodedArchive,
+      encodedResolve,
+      encodedHistory,
+    ] {
       for forbiddenKey in ["\"title\":", "\"kind\":", "\"terminal\"", "\"screen\"", "\"viewState\"", "\"buttonLabel\""] {
         #expect(!encoded.contains(forbiddenKey))
       }
     }
 
     #expect(ingest.sessionID == " session.ingest ")
+    #expect(align.updatedMemoryIDs == [ingest.primaryMemoryID])
+    #expect(align.supersededMemoryIDs.isEmpty)
+    #expect(align.staleMemoryIDs.isEmpty)
+    #expect(archive.memoryID == ingest.primaryMemoryID)
     #expect(resolve.primaryMemoryIDs == ["memory.primary"])
     #expect(resolve.supportingMemoryIDs == ["memory.supporting"])
+    #expect(resolve.omittedSupersededMemoryIDs == ["memory.superseded"])
     #expect(history.primaryMemoryIDs == ["memory.primary"])
     #expect(history.supportingMemoryIDs == ["memory.supporting"])
+    #expect(history.omittedSupersededMemoryIDs == ["memory.superseded"])
   }
 }

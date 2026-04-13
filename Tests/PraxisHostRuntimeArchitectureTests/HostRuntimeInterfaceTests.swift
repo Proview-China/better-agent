@@ -1945,6 +1945,203 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceRejectsBlankMpMutationAndRequesterIdentifiersBeforeDispatch() async throws {
+    let runtimeInterface = makeStubbedRuntimeInterface(
+      mpFacade: makeStubMpFacade()
+    )
+
+    let blankCheckedSnapshotResponse = await runtimeInterface.handle(
+      .ingestMp(
+        .init(
+          payloadSummary: "Reject empty checked snapshot reference",
+          projectID: "mp.local-runtime",
+          agentID: "runtime.local",
+          summary: "This request should fail before reaching MP ingest.",
+          checkedSnapshotRef: runtimeInterfaceReferenceID(""),
+          branchRef: "main"
+        )
+      )
+    )
+    let blankAlignMemoryResponse = await runtimeInterface.handle(
+      .alignMp(
+        .init(
+          payloadSummary: "Reject blank align memory identifier",
+          projectID: "mp.local-runtime",
+          memoryID: "   "
+        )
+      )
+    )
+    let blankPromoteMemoryResponse = await runtimeInterface.handle(
+      .promoteMp(
+        .init(
+          payloadSummary: "Reject blank promote memory identifier",
+          projectID: "mp.local-runtime",
+          memoryID: "",
+          targetPromotionState: .acceptedByParent
+        )
+      )
+    )
+    let blankArchiveMemoryResponse = await runtimeInterface.handle(
+      .archiveMp(
+        .init(
+          payloadSummary: "Reject blank archive memory identifier",
+          projectID: "mp.local-runtime",
+          memoryID: "\t\t"
+        )
+      )
+    )
+    let blankResolveRequesterResponse = await runtimeInterface.handle(
+      .resolveMp(
+        .init(
+          payloadSummary: "Reject blank resolve requester identifier",
+          projectID: "mp.local-runtime",
+          query: "onboarding",
+          requesterAgentID: "   "
+        )
+      )
+    )
+    let blankHistoryRequesterResponse = await runtimeInterface.handle(
+      .requestMpHistory(
+        .init(
+          payloadSummary: "Reject blank history requester identifier",
+          projectID: "mp.local-runtime",
+          requesterAgentID: "",
+          reason: "Need historical memory trace",
+          query: "onboarding"
+        )
+      )
+    )
+
+    #expect(blankCheckedSnapshotResponse.status == .failure)
+    #expect(blankCheckedSnapshotResponse.error?.code == .invalidInput)
+    #expect(blankCheckedSnapshotResponse.error?.message == "Field checkedSnapshotRef must not be empty.")
+
+    for response in [blankAlignMemoryResponse, blankPromoteMemoryResponse, blankArchiveMemoryResponse] {
+      #expect(response.status == .failure)
+      #expect(response.error?.code == .missingRequiredField)
+      #expect(response.error?.message == "Required field memoryID is missing.")
+    }
+
+    for response in [blankResolveRequesterResponse, blankHistoryRequesterResponse] {
+      #expect(response.status == .failure)
+      #expect(response.error?.code == .missingRequiredField)
+      #expect(response.error?.message == "Required field requesterAgentID is missing.")
+    }
+  }
+
+  @Test
+  func runtimeInterfacePreservesMpRequesterIdentityAndScopeOrderingWithoutCanonicalizing() async throws {
+    let runtimeInterface = makeStubbedRuntimeInterface(
+      mpFacade: makeStubMpFacade(
+        resolveMp: { command in
+          guard command.requesterAgentID == " runtime.resolve " else {
+            throw PraxisError.invalidInput("resolveMp requesterAgentID was normalized unexpectedly.")
+          }
+          guard command.requesterSessionID == " session.resolve " else {
+            throw PraxisError.invalidInput("resolveMp requesterSessionID was normalized unexpectedly.")
+          }
+          guard command.scopeLevels == [.agentIsolated, .project] else {
+            throw PraxisError.invalidInput("resolveMp scopeLevels were normalized unexpectedly.")
+          }
+          return PraxisMpResolveResult(
+            projectID: command.projectID,
+            query: command.query,
+            summary: "MP resolve preserved requester and scope ordering boundary values.",
+            primaryMemoryIDs: ["memory.primary"],
+            supportingMemoryIDs: ["memory.supporting"],
+            omittedSupersededMemoryIDs: [],
+            rerankComposition: .init(
+              fresh: 1,
+              aging: 1,
+              stale: 0,
+              superseded: 0,
+              aligned: 1,
+              unreviewed: 1,
+              drifted: 0
+            ),
+            roleCounts: .init(counts: [.dispatcher: 1]),
+            roleStages: .init(stages: [.dispatcher: .assembleBundle]),
+            issues: []
+          )
+        },
+        requestMpHistory: { command in
+          guard command.requesterAgentID == "\thistory.agent\t" else {
+            throw PraxisError.invalidInput("requestMpHistory requesterAgentID was normalized unexpectedly.")
+          }
+          guard command.requesterSessionID == " history.session " else {
+            throw PraxisError.invalidInput("requestMpHistory requesterSessionID was normalized unexpectedly.")
+          }
+          guard command.scopeLevels == [.project, .agentIsolated] else {
+            throw PraxisError.invalidInput("requestMpHistory scopeLevels were normalized unexpectedly.")
+          }
+          return PraxisMpHistoryResult(
+            projectID: command.projectID,
+            requesterAgentID: command.requesterAgentID,
+            query: command.query,
+            reason: command.reason,
+            summary: "MP history preserved requester and scope ordering boundary values.",
+            primaryMemoryIDs: ["history.primary"],
+            supportingMemoryIDs: ["history.supporting"],
+            omittedSupersededMemoryIDs: [],
+            rerankComposition: .init(
+              fresh: 1,
+              aging: 1,
+              stale: 0,
+              superseded: 0,
+              aligned: 1,
+              unreviewed: 1,
+              drifted: 0
+            ),
+            roleCounts: .init(counts: [.dispatcher: 1]),
+            roleStages: .init(stages: [.dispatcher: .assembleBundle]),
+            issues: []
+          )
+        }
+      )
+    )
+
+    let resolveResponse = await runtimeInterface.handle(
+      .resolveMp(
+        .init(
+          payloadSummary: "Preserve MP resolve requester boundary fields",
+          projectID: "mp.local-runtime",
+          query: "onboarding",
+          requesterAgentID: " runtime.resolve ",
+          sessionID: " session.resolve ",
+          scopeLevels: [.agentIsolated, .project],
+          limit: 4
+        )
+      )
+    )
+    let historyResponse = await runtimeInterface.handle(
+      .requestMpHistory(
+        .init(
+          payloadSummary: "Preserve MP history requester boundary fields",
+          projectID: "mp.local-runtime",
+          requesterAgentID: "\thistory.agent\t",
+          sessionID: " history.session ",
+          reason: "Need historical memory trace",
+          query: "onboarding",
+          scopeLevels: [.project, .agentIsolated],
+          limit: 4
+        )
+      )
+    )
+
+    #expect(resolveResponse.status == .success)
+    #expect(resolveResponse.snapshot?.kind == .mpResolve)
+    #expect(resolveResponse.snapshot?.projectID == "mp.local-runtime")
+    #expect(resolveResponse.snapshot?.sessionID?.rawValue == " session.resolve ")
+    #expect(resolveResponse.snapshot?.summary == "MP resolve preserved requester and scope ordering boundary values.")
+
+    #expect(historyResponse.status == .success)
+    #expect(historyResponse.snapshot?.kind == .mpHistory)
+    #expect(historyResponse.snapshot?.projectID == "mp.local-runtime")
+    #expect(historyResponse.snapshot?.sessionID?.rawValue == " history.session ")
+    #expect(historyResponse.snapshot?.summary == "MP history preserved requester and scope ordering boundary values.")
+  }
+
+  @Test
   func runtimeInterfacePreservesMpSearchReadbackAndSmokeBoundaryFieldsWithoutCanonicalizing() async throws {
     let runtimeInterface = makeStubbedRuntimeInterface(
       mpFacade: makeStubMpFacade(
