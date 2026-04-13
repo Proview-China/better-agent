@@ -131,6 +131,7 @@ public final class PraxisCLIApp {
   }
 
   public func run(arguments: [String]) async throws -> String {
+    try validateConfiguration()
     let invocation = try commandParser.parse(arguments)
 
     switch invocation {
@@ -150,6 +151,12 @@ public final class PraxisCLIApp {
       return terminalRenderer.render(events: events, drained: drain)
     case .help:
       return terminalRenderer.renderHelp()
+    }
+  }
+
+  private func validateConfiguration() throws {
+    guard !configuration.interactive else {
+      throw PraxisCLIError.interactiveModeUnsupported
     }
   }
 }
@@ -202,10 +209,10 @@ public struct PraxisCLICommandParser: Sendable {
     case "inspect-mp":
       return .runtime(.init(request: .inspectMp))
     case "run-goal":
-      let payloadSummary = arguments.dropFirst().joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !payloadSummary.isEmpty else {
-        throw PraxisCLIError.missingArgument("run-goal")
-      }
+      let payloadSummary = try parseRequiredPositionalArgument(
+        command: "run-goal",
+        arguments: arguments.dropFirst()
+      )
       let invocationToken = UUID().uuidString.lowercased()
       return .runtime(
         .init(
@@ -220,10 +227,10 @@ public struct PraxisCLICommandParser: Sendable {
         )
       )
     case "resume-run":
-      let runID = arguments.dropFirst().joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !runID.isEmpty else {
-        throw PraxisCLIError.missingArgument("resume-run")
-      }
+      let runID = try parseRequiredPositionalArgument(
+        command: "resume-run",
+        arguments: arguments.dropFirst()
+      )
       return .runtime(
         .init(
           request: .resumeRun(
@@ -244,6 +251,27 @@ public struct PraxisCLICommandParser: Sendable {
     default:
       throw PraxisCLIError.unknownCommand(firstArgument)
     }
+  }
+
+  private func parseRequiredPositionalArgument(
+    command: String,
+    arguments: ArraySlice<String>
+  ) throws -> String {
+    guard !arguments.isEmpty else {
+      throw PraxisCLIError.missingArgument(command)
+    }
+
+    if let invalidFlag = arguments.first(where: { $0.hasPrefix("--") }) {
+      throw PraxisCLIError.invalidFlag(invalidFlag)
+    }
+
+    let joined = arguments
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !joined.isEmpty else {
+      throw PraxisCLIError.missingArgument(command)
+    }
+    return joined
   }
 }
 

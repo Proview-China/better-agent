@@ -29,6 +29,7 @@ public enum PraxisCLIError: Error, Sendable, Equatable, LocalizedError {
   case unknownCommand(String)
   case missingArgument(String)
   case invalidFlag(String)
+  case interactiveModeUnsupported
   case runtimeFailure(PraxisRuntimeInterfaceErrorEnvelope?)
 
   public var errorDescription: String? {
@@ -39,6 +40,8 @@ public enum PraxisCLIError: Error, Sendable, Equatable, LocalizedError {
       return "Missing required argument for \(command)"
     case .invalidFlag(let flag):
       return "Unsupported CLI flag: \(flag)"
+    case .interactiveModeUnsupported:
+      return "Interactive mode is not supported in this CLI build. Use an explicit command instead."
     case .runtimeFailure(let envelope):
       guard let envelope else {
         return "Runtime request failed without an error envelope."

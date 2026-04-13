@@ -7,6 +7,7 @@ private final class StubRuntimeInterface: @unchecked Sendable, PraxisRuntimeInte
   let bootstrap: PraxisRuntimeInterfaceSnapshot
   let response: PraxisRuntimeInterfaceResponse
   let bufferedEvents: [PraxisRuntimeInterfaceEvent]
+  private(set) var handledRequests: [PraxisRuntimeInterfaceRequest] = []
 
   init(
     bootstrap: PraxisRuntimeInterfaceSnapshot = .init(
@@ -27,7 +28,8 @@ private final class StubRuntimeInterface: @unchecked Sendable, PraxisRuntimeInte
   }
 
   func handle(_ request: PraxisRuntimeInterfaceRequest) async -> PraxisRuntimeInterfaceResponse {
-    response
+    handledRequests.append(request)
+    return response
   }
 
   func snapshotEvents() async -> [PraxisRuntimeInterfaceEvent] {
@@ -82,6 +84,12 @@ struct PraxisCLITests {
     }
     #expect(throws: PraxisCLIError.invalidFlag("--unknown")) {
       try parser.parse(["events", "--unknown"])
+    }
+    #expect(throws: PraxisCLIError.invalidFlag("--flag")) {
+      try parser.parse(["run-goal", "--flag"])
+    }
+    #expect(throws: PraxisCLIError.invalidFlag("--flag")) {
+      try parser.parse(["resume-run", "--flag"])
     }
     #expect(renderer.renderHelp().contains("run-goal <summary>"))
   }
@@ -233,5 +241,85 @@ struct PraxisCLITests {
     #expect(drainedOutput.contains("run.started"))
     #expect(drainedOutput.contains("run.follow_up_ready"))
     #expect(emptyOutput == "No buffered events are available.")
+  }
+
+  @Test
+  func cliAppRejectsUnknownCommandsWithStableUserFacingMessage() async throws {
+    let runtimeInterface = StubRuntimeInterface(
+      response: .success(
+        snapshot: .init(kind: .inspection, title: "Unused", summary: "Unused")
+      )
+    )
+    let app = PraxisCLIApp(
+      configuration: .init(interactive: false),
+      runtimeInterface: runtimeInterface
+    )
+
+    do {
+      _ = try await app.run(arguments: ["unknown-command"])
+      Issue.record("Expected invalid CLI command to throw.")
+    } catch let error as PraxisCLIError {
+      #expect(error == .unknownCommand("unknown-command"))
+      #expect(error.errorDescription == "Unknown CLI command: unknown-command")
+    }
+
+    #expect(runtimeInterface.handledRequests.isEmpty)
+  }
+
+  @Test
+  func cliAppRejectsFlagsForRunGoalAndResumeRunWithStableMessages() async throws {
+    let runtimeInterface = StubRuntimeInterface(
+      response: .success(
+        snapshot: .init(kind: .inspection, title: "Unused", summary: "Unused")
+      )
+    )
+    let app = PraxisCLIApp(
+      configuration: .init(interactive: false),
+      runtimeInterface: runtimeInterface
+    )
+
+    do {
+      _ = try await app.run(arguments: ["run-goal", "--dry-run"])
+      Issue.record("Expected run-goal flag validation to throw.")
+    } catch let error as PraxisCLIError {
+      #expect(error == .invalidFlag("--dry-run"))
+      #expect(error.errorDescription == "Unsupported CLI flag: --dry-run")
+    }
+
+    do {
+      _ = try await app.run(arguments: ["resume-run", "--latest"])
+      Issue.record("Expected resume-run flag validation to throw.")
+    } catch let error as PraxisCLIError {
+      #expect(error == .invalidFlag("--latest"))
+      #expect(error.errorDescription == "Unsupported CLI flag: --latest")
+    }
+
+    #expect(runtimeInterface.handledRequests.isEmpty)
+  }
+
+  @Test
+  func cliAppFailsFastWhenInteractiveModeIsRequested() async throws {
+    let runtimeInterface = StubRuntimeInterface(
+      response: .success(
+        snapshot: .init(kind: .inspection, title: "Unused", summary: "Unused")
+      )
+    )
+    let app = PraxisCLIApp(
+      configuration: .init(interactive: true),
+      runtimeInterface: runtimeInterface
+    )
+
+    do {
+      _ = try await app.run(arguments: ["inspect-architecture"])
+      Issue.record("Expected interactive mode to fail fast.")
+    } catch let error as PraxisCLIError {
+      #expect(error == .interactiveModeUnsupported)
+      #expect(
+        error.errorDescription
+          == "Interactive mode is not supported in this CLI build. Use an explicit command instead."
+      )
+    }
+
+    #expect(runtimeInterface.handledRequests.isEmpty)
   }
 }
