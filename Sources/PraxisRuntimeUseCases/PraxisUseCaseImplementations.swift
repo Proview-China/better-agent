@@ -1393,7 +1393,7 @@ private func commitCmpFlow(
   let delta = PraxisCmpContextDelta(
     id: .init(rawValue: "delta.\(UUID().uuidString.lowercased())"),
     agentID: command.agentID,
-    baseRef: command.baseRef,
+    baseRef: command.baseRef?.rawValue,
     eventRefs: command.eventIDs,
     changeSummary: command.changeSummary,
     createdAt: createdAt,
@@ -1471,7 +1471,7 @@ private func resolveCmpFlow(
     agentID: command.agentID,
     projectID: command.projectID,
     lineageID: command.lineageID,
-    branchRef: command.branchRef ?? lineage.branchFamily.cmpBranch
+    branchRef: command.branchRef ?? .init(rawValue: lineage.branchFamily.cmpBranch)
   )
   let descriptors = try await dependencies.hostAdapters.projectionStore?.describe(
     .init(projectID: command.projectID, lineageID: input.lineageID, agentID: command.agentID)
@@ -1482,7 +1482,7 @@ private func resolveCmpFlow(
       id: .init(rawValue: "\(descriptor.projectionID.rawValue):checked"),
       lineageID: descriptor.lineageID ?? lineage.id,
       agentID: descriptor.agentID ?? command.agentID,
-      branchRef: input.branchRef ?? lineage.branchFamily.cmpBranch,
+      branchRef: input.branchRef?.rawValue ?? lineage.branchFamily.cmpBranch,
       commitRef: descriptor.storageKey ?? descriptor.projectionID.rawValue,
       checkedAt: descriptor.updatedAt ?? runtimeNow(),
       qualityLabel: .usable,
@@ -1500,7 +1500,7 @@ private func resolveCmpFlow(
     snapshot: snapshot,
     metadata: [
       "lineageID": .string((input.lineageID ?? lineage.id).rawValue),
-      "branchRef": .string(input.branchRef ?? lineage.branchFamily.cmpBranch),
+      "branchRef": .string(input.branchRef?.rawValue ?? lineage.branchFamily.cmpBranch),
     ]
   )
   let summary = snapshot.map {
@@ -2060,7 +2060,7 @@ private func requestCmpHistory(
     }
     if let requestedBranchRef = command.query.branchRef,
        descriptor.metadata["branchRef"]?.stringValue != nil,
-       descriptor.metadata["branchRef"]?.stringValue != requestedBranchRef {
+       descriptor.metadata["branchRef"]?.stringValue != requestedBranchRef.rawValue {
       return nil
     }
     return cmpCheckedSnapshot(
@@ -2236,7 +2236,7 @@ private func recoverCmpProject(
     }
     if let branchRef = command.branchRef,
        let descriptorBranchRef = descriptor.metadata["branchRef"]?.stringValue,
-       descriptorBranchRef != branchRef {
+       descriptorBranchRef != branchRef.rawValue {
       return false
     }
     return true
@@ -2247,7 +2247,7 @@ private func recoverCmpProject(
       from: descriptor,
       defaultLineageID: descriptor.lineageID ?? defaultLineageID,
       defaultAgentID: descriptor.agentID ?? sourceAgentID,
-      defaultBranchRef: command.branchRef ?? descriptor.metadata["branchRef"]?.stringValue ?? "cmp/\(descriptor.agentID ?? sourceAgentID)"
+      defaultBranchRef: command.branchRef?.rawValue ?? descriptor.metadata["branchRef"]?.stringValue ?? "cmp/\(descriptor.agentID ?? sourceAgentID)"
     )
   }
   let projections = zip(scopedDescriptors, checkedSnapshots).map { descriptor, snapshot in
@@ -2274,7 +2274,7 @@ private func recoverCmpProject(
       from: descriptor,
       defaultLineageID: descriptor.lineageID ?? defaultLineageID,
       defaultAgentID: descriptor.agentID ?? sourceAgentID,
-      defaultBranchRef: command.branchRef ?? descriptor.metadata["branchRef"]?.stringValue ?? "cmp/\(descriptor.agentID ?? sourceAgentID)"
+      defaultBranchRef: command.branchRef?.rawValue ?? descriptor.metadata["branchRef"]?.stringValue ?? "cmp/\(descriptor.agentID ?? sourceAgentID)"
     )
     let projection = cmpProjectionRecord(from: descriptor, snapshot: snapshot)
     let availableSectionIDs = Set(scopedDescriptors.flatMap { cmpProjectionSectionIDs(from: $0) })

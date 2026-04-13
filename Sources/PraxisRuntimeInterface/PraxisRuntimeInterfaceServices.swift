@@ -111,6 +111,19 @@ private func requireRuntimeInterfaceReferenceIDElements(
   return elements
 }
 
+private func requireRuntimeInterfaceCmpRef(
+  _ value: PraxisCmpRefName?,
+  named field: String
+) throws -> PraxisCmpRefName? {
+  guard let value else {
+    return nil
+  }
+  guard !value.rawValue.isEmpty else {
+    throw PraxisError.invalidInput("Field \(field) must not be empty.")
+  }
+  return value
+}
+
 private func cmpHistoricalContextQuery(
   from query: PraxisRuntimeInterfaceCmpHistoryQuery
 ) -> PraxisCmpHistoricalContextQuery {
@@ -1006,13 +1019,14 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
       let targetAgentID = try requireRuntimeInterfaceField(payload.targetAgentID, named: "targetAgentID")
       let reason = try requireRuntimeInterfaceText(payload.reason, named: "reason")
+      let branchRef = try requireRuntimeInterfaceCmpRef(payload.branchRef, named: "branchRef")
       let recoverCommand: PraxisRecoverCmpProjectCommand = .init(
         projectID: projectID,
         agentID: agentID,
         targetAgentID: targetAgentID,
         reason: reason,
         lineageID: payload.lineageID.map { PraxisCmpLineageID(rawValue: $0.rawValue) },
-        branchRef: payload.branchRef,
+        branchRef: branchRef,
         snapshotID: payload.snapshotID.map { PraxisCmpSnapshotID(rawValue: $0.rawValue) },
         packageKind: payload.packageKind,
         fidelityLabel: payload.fidelityLabel
@@ -1048,6 +1062,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       let sessionID = try requireRuntimeInterfaceField(payload.sessionID, named: "sessionID")
       let eventIDs = try requireRuntimeInterfaceReferenceIDElements(payload.eventIDs, named: "eventIDs")
       let changeSummary = try requireRuntimeInterfaceText(payload.changeSummary, named: "changeSummary")
+      let baseRef = try requireRuntimeInterfaceCmpRef(payload.baseRef, named: "baseRef")
       let commitCommand: PraxisCommitCmpFlowCommand = .init(
         projectID: projectID,
         agentID: agentID,
@@ -1056,7 +1071,7 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
         lineageID: payload.lineageID.map { PraxisCmpLineageID(rawValue: $0.rawValue) },
         parentAgentID: payload.parentAgentID,
         eventIDs: eventIDs.map { PraxisCmpEventID(rawValue: $0.rawValue) },
-        baseRef: payload.baseRef,
+        baseRef: baseRef,
         changeSummary: changeSummary,
         syncIntent: payload.syncIntent
       )
@@ -1067,11 +1082,12 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
     case .resolveCmpFlow(let payload):
       let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let agentID = try requireRuntimeInterfaceField(payload.agentID, named: "agentID")
+      let branchRef = try requireRuntimeInterfaceCmpRef(payload.branchRef, named: "branchRef")
       let resolveCommand: PraxisResolveCmpFlowCommand = .init(
         projectID: projectID,
         agentID: agentID,
         lineageID: payload.lineageID.map { PraxisCmpLineageID(rawValue: $0.rawValue) },
-        branchRef: payload.branchRef
+        branchRef: branchRef
       )
       let resolve = try await runtimeFacade.cmpFlowFacade.resolveFlow(
         resolveCommand
@@ -1128,12 +1144,20 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
       let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
       let requesterAgentID = try requireRuntimeInterfaceField(payload.requesterAgentID, named: "requesterAgentID")
       let reason = try requireRuntimeInterfaceText(payload.reason, named: "reason")
+      let historyQuery = PraxisRuntimeInterfaceCmpHistoryQuery(
+        snapshotID: payload.query.snapshotID,
+        lineageID: payload.query.lineageID,
+        branchRef: try requireRuntimeInterfaceCmpRef(payload.query.branchRef, named: "query.branchRef"),
+        packageKindHint: payload.query.packageKindHint,
+        projectionVisibilityHint: payload.query.projectionVisibilityHint,
+        metadata: payload.query.metadata
+      )
       let history = try await runtimeFacade.cmpFlowFacade.requestHistory(
         .init(
           projectID: projectID,
           requesterAgentID: requesterAgentID,
           reason: reason,
-          query: cmpHistoricalContextQuery(from: payload.query)
+          query: cmpHistoricalContextQuery(from: historyQuery)
         )
       )
       return response(from: history)

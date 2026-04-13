@@ -3493,6 +3493,112 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceLegacyBlankCmpRefInitializersCollapseToNil() {
+    let recoverPayload = PraxisRuntimeInterfaceRecoverCmpProjectRequestPayload(
+      payloadSummary: "Recover through legacy blank branch ref",
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      targetAgentID: "checker.local",
+      reason: "Recover focused context",
+      branchRef: "   "
+    )
+    let commitPayload = PraxisRuntimeInterfaceCommitCmpFlowRequestPayload(
+      payloadSummary: "Commit through legacy blank base ref",
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.session",
+      eventIDs: [runtimeInterfaceReferenceID("evt.cmp.1")],
+      baseRef: "   ",
+      changeSummary: "Commit accepted flow event",
+      syncIntent: .toParent
+    )
+    let resolvePayload = PraxisRuntimeInterfaceResolveCmpFlowRequestPayload(
+      payloadSummary: "Resolve through legacy blank branch ref",
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      branchRef: "   "
+    )
+    let historyQuery = PraxisRuntimeInterfaceCmpHistoryQuery(branchRef: "   ")
+
+    #expect(recoverPayload.branchRef == nil)
+    #expect(commitPayload.baseRef == nil)
+    #expect(resolvePayload.branchRef == nil)
+    #expect(historyQuery.branchRef == nil)
+  }
+
+  @Test
+  func runtimeInterfaceTypedBlankCmpRefInitializersCollapseToNil() {
+    let blankTypedRef = PraxisCmpRefName(rawValue: "   ")
+    let recoverPayload = PraxisRuntimeInterfaceRecoverCmpProjectRequestPayload(
+      payloadSummary: "Recover through typed blank branch ref",
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      targetAgentID: "checker.local",
+      reason: "Recover focused context",
+      branchRef: blankTypedRef
+    )
+    let commitPayload = PraxisRuntimeInterfaceCommitCmpFlowRequestPayload(
+      payloadSummary: "Commit through typed blank base ref",
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.session",
+      eventIDs: [runtimeInterfaceReferenceID("evt.cmp.1")],
+      baseRef: blankTypedRef,
+      changeSummary: "Commit accepted flow event",
+      syncIntent: .toParent
+    )
+    let resolvePayload = PraxisRuntimeInterfaceResolveCmpFlowRequestPayload(
+      payloadSummary: "Resolve through typed blank branch ref",
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      branchRef: blankTypedRef
+    )
+    let historyQuery = PraxisRuntimeInterfaceCmpHistoryQuery(branchRef: blankTypedRef)
+
+    #expect(blankTypedRef.rawValue.isEmpty)
+    #expect(recoverPayload.branchRef == nil)
+    #expect(commitPayload.baseRef == nil)
+    #expect(resolvePayload.branchRef == nil)
+    #expect(historyQuery.branchRef == nil)
+  }
+
+  @Test
+  func runtimeInterfaceRejectsDecodedBlankCmpRefWrappersFromJSONString() async throws {
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let cases: [(String, String)] = [
+      (
+        #"{"kind":"recoverCmpProject","recoverCmpProject":{"payloadSummary":"Blank decoded recover branch ref","projectID":"cmp.local-runtime","agentID":"runtime.local","targetAgentID":"checker.local","reason":"Recover focused context","branchRef":"   ","packageKind":"historicalReply"}}"#,
+        "Field branchRef must not be empty."
+      ),
+      (
+        #"{"kind":"commitCmpFlow","commitCmpFlow":{"payloadSummary":"Blank decoded commit base ref","projectID":"cmp.local-runtime","agentID":"runtime.local","sessionID":"cmp.flow.session","eventIDs":["evt.cmp.1"],"baseRef":"   ","changeSummary":"Commit accepted flow event","syncIntent":"toParent"}}"#,
+        "Field baseRef must not be empty."
+      ),
+      (
+        #"{"kind":"resolveCmpFlow","resolveCmpFlow":{"payloadSummary":"Blank decoded resolve branch ref","projectID":"cmp.local-runtime","agentID":"runtime.local","branchRef":"   "}}"#,
+        "Field branchRef must not be empty."
+      ),
+      (
+        #"{"kind":"requestCmpHistory","requestCmpHistory":{"payloadSummary":"Blank decoded history branch ref","projectID":"cmp.local-runtime","requesterAgentID":"checker.local","reason":"Recover focused context","query":{"branchRef":"   ","metadata":{}}}}"#,
+        "Field query.branchRef must not be empty."
+      ),
+    ]
+
+    for (json, message) in cases {
+      let request = try codec.decodeRequest(Data(json.utf8))
+      let response = await runtimeInterface.handle(request)
+
+      #expect(response.status == .failure)
+      #expect(response.error?.code == .invalidInput)
+      #expect(response.error?.message == message)
+    }
+  }
+
+  @Test
   func runtimeInterfaceReturnsStructuredCheckpointNotFoundErrorEnvelope() async throws {
     let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
       hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
@@ -4546,7 +4652,7 @@ struct HostRuntimeInterfaceTests {
     let expectedQuery = PraxisCmpHistoricalContextQuery(
       snapshotID: .init(rawValue: "snapshot.history.runtime"),
       lineageID: .init(rawValue: "lineage.history.runtime"),
-      branchRef: "cmp/runtime",
+      branchRef: .init(rawValue: "cmp/runtime"),
       packageKindHint: .historicalReply,
       projectionVisibilityHint: .acceptedByParent,
       metadata: [
@@ -4646,10 +4752,14 @@ struct HostRuntimeInterfaceTests {
   func runtimeInterfaceRoutesCmpLineagePayloadsThroughUnifiedOptionalTypedInitializers() async throws {
     let expectedRecoverLineage = PraxisCmpLineageID(rawValue: "lineage.recover.runtime")
     let expectedCommitLineage = PraxisCmpLineageID(rawValue: "lineage.commit.runtime")
+    let expectedRecoverBranchRef = PraxisCmpRefName(rawValue: "cmp/recover.runtime")
+    let expectedCommitBaseRef = PraxisCmpRefName(rawValue: "main")
+    let expectedResolveBranchRef = PraxisCmpRefName(rawValue: "cmp/resolve.runtime")
     let commitEventID = PraxisCmpEventID(rawValue: "event.runtime.1")
     let cmpFacade = makeStubCmpFacade(
       recoverCmpProject: { command in
         #expect(command.lineageID == expectedRecoverLineage)
+        #expect(command.branchRef == expectedRecoverBranchRef)
         return PraxisCmpProjectRecovery(
           projectID: command.projectID,
           sourceAgentID: command.agentID,
@@ -4695,6 +4805,7 @@ struct HostRuntimeInterfaceTests {
       },
       commitCmpFlow: { command in
         #expect(command.lineageID == expectedCommitLineage)
+        #expect(command.baseRef == expectedCommitBaseRef)
         let delta = PraxisCmpContextDelta(
           id: .init(rawValue: "delta.runtime.commit"),
           agentID: command.agentID,
@@ -4733,6 +4844,7 @@ struct HostRuntimeInterfaceTests {
       },
       resolveCmpFlow: { command in
         #expect(command.lineageID == nil)
+        #expect(command.branchRef == expectedResolveBranchRef)
         return PraxisCmpFlowResolve(
           projectID: command.projectID,
           agentID: command.agentID,
@@ -4755,7 +4867,8 @@ struct HostRuntimeInterfaceTests {
           agentID: "runtime.local",
           targetAgentID: "checker.local",
           reason: "Recover through unified initializer",
-          lineageID: runtimeInterfaceReferenceID(expectedRecoverLineage.rawValue)
+          lineageID: runtimeInterfaceReferenceID(expectedRecoverLineage.rawValue),
+          branchRef: expectedRecoverBranchRef.rawValue
         )
       )
     )
@@ -4782,6 +4895,7 @@ struct HostRuntimeInterfaceTests {
           sessionID: "cmp.session.runtime",
           lineageID: runtimeInterfaceReferenceID(expectedCommitLineage.rawValue),
           eventIDs: [runtimeInterfaceReferenceID(commitEventID.rawValue)],
+          baseRef: expectedCommitBaseRef.rawValue,
           changeSummary: "Commit through unified initializer",
           syncIntent: .toParent
         )
@@ -4792,7 +4906,8 @@ struct HostRuntimeInterfaceTests {
         .init(
           payloadSummary: "Resolve omitted lineage",
           projectID: "cmp.local-runtime",
-          agentID: "runtime.local"
+          agentID: "runtime.local",
+          branchRef: expectedResolveBranchRef.rawValue
         )
       )
     )
@@ -5316,7 +5431,7 @@ struct HostRuntimeInterfaceTests {
           .init(
             snapshotID: runtimeInterfaceReferenceID("snapshot.history.runtime"),
             lineageID: runtimeInterfaceReferenceID("lineage.history.runtime"),
-            branchRef: "cmp/runtime",
+            branchRef: .init(rawValue: "cmp/runtime"),
             packageKindHint: .historicalReply,
             projectionVisibilityHint: .acceptedByParent,
             metadata: [
@@ -5400,13 +5515,31 @@ struct HostRuntimeInterfaceTests {
     let decodedResolveRequest = try codec.decodeRequest(resolveData)
 
     #expect(recoverJSON.contains(#""lineageID":"lineage.recover.runtime""#))
+    #expect(recoverJSON.contains(#""branchRef":"cmp\/recover""#))
     #expect(ingestJSON.contains(#""lineageID":"lineage.ingest.runtime""#))
     #expect(commitJSON.contains(#""lineageID":"lineage.commit.runtime""#))
+    #expect(commitJSON.contains(#""baseRef":"main""#))
     #expect(resolveJSON.contains(#""lineageID":"lineage.resolve.runtime""#))
+    #expect(resolveJSON.contains(#""branchRef":"cmp\/resolve""#))
     #expect(decodedRecoverRequest == recoverRequest)
     #expect(decodedIngestRequest == ingestRequest)
     #expect(decodedCommitRequest == commitRequest)
     #expect(decodedResolveRequest == resolveRequest)
+    if case .recoverCmpProject(let payload) = decodedRecoverRequest {
+      #expect(payload.branchRef == .init(rawValue: "cmp/recover"))
+    } else {
+      Issue.record("Expected recoverCmpProject payload.")
+    }
+    if case .commitCmpFlow(let payload) = decodedCommitRequest {
+      #expect(payload.baseRef == .init(rawValue: "main"))
+    } else {
+      Issue.record("Expected commitCmpFlow payload.")
+    }
+    if case .resolveCmpFlow(let payload) = decodedResolveRequest {
+      #expect(payload.branchRef == .init(rawValue: "cmp/resolve"))
+    } else {
+      Issue.record("Expected resolveCmpFlow payload.")
+    }
   }
 
   @Test

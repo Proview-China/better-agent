@@ -127,7 +127,7 @@ public struct PraxisDeliveryPlanner: Sendable {
       if let requestedLineageID, snapshot.lineageID != requestedLineageID {
         return false
       }
-      if let requestedBranchRef, snapshot.branchRef != requestedBranchRef {
+      if let requestedBranchRef, snapshot.branchRef != requestedBranchRef.rawValue {
         return false
       }
       return true

@@ -24,6 +24,30 @@ func praxisCmpOptional(_ value: String?) -> String? {
   return trimmed.isEmpty ? nil : trimmed
 }
 
+/// Normalizes an optional CMP ref hint into the minimal typed boundary wrapper.
+///
+/// Blank input is treated as omitted so legacy optional-string initializers do not
+/// produce non-nil empty wrappers.
+///
+/// - Parameter value: Optional raw CMP ref text.
+/// - Returns: A normalized typed ref, or `nil` when the input is absent or blank.
+@inline(__always)
+public func praxisCmpOptionalRef(_ value: String?) -> PraxisCmpRefName? {
+  praxisCmpOptional(value).map(PraxisCmpRefName.init(rawValue:))
+}
+
+/// Normalizes an optional typed CMP ref hint by collapsing blank wrappers to `nil`.
+///
+/// - Parameter value: Optional typed CMP ref hint.
+/// - Returns: The original ref when it still carries non-empty boundary text; otherwise `nil`.
+@inline(__always)
+public func praxisCmpNormalizedRef(_ value: PraxisCmpRefName?) -> PraxisCmpRefName? {
+  guard let value, !value.rawValue.isEmpty else {
+    return nil
+  }
+  return value
+}
+
 func praxisCmpUnique(_ values: [String]) -> [String] {
   var seen = Set<String>()
   var result: [String] = []

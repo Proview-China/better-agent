@@ -417,11 +417,36 @@ public struct PraxisRuntimeInterfaceRecoverCmpProjectRequestPayload: Sendable, E
   public let targetAgentID: String
   public let reason: String
   public let lineageID: PraxisRuntimeInterfaceReferenceID?
-  public let branchRef: String?
+  public let branchRef: PraxisCmpRefName?
   public let snapshotID: PraxisRuntimeInterfaceReferenceID?
   public let packageKind: PraxisCmpContextPackageKind
   public let fidelityLabel: PraxisCmpContextPackageFidelityLabel?
 
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    agentID: String,
+    targetAgentID: String,
+    reason: String,
+    lineageID: PraxisRuntimeInterfaceReferenceID? = nil,
+    branchRef: PraxisCmpRefName? = nil,
+    snapshotID: PraxisRuntimeInterfaceReferenceID? = nil,
+    packageKind: PraxisCmpContextPackageKind = .historicalReply,
+    fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.agentID = agentID
+    self.targetAgentID = targetAgentID
+    self.reason = reason
+    self.lineageID = lineageID
+    self.branchRef = praxisCmpNormalizedRef(branchRef)
+    self.snapshotID = snapshotID
+    self.packageKind = packageKind
+    self.fidelityLabel = fidelityLabel
+  }
+
+  @_disfavoredOverload
   public init(
     payloadSummary: String,
     projectID: String,
@@ -434,16 +459,18 @@ public struct PraxisRuntimeInterfaceRecoverCmpProjectRequestPayload: Sendable, E
     packageKind: PraxisCmpContextPackageKind = .historicalReply,
     fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil
   ) {
-    self.payloadSummary = payloadSummary
-    self.projectID = projectID
-    self.agentID = agentID
-    self.targetAgentID = targetAgentID
-    self.reason = reason
-    self.lineageID = lineageID
-    self.branchRef = branchRef
-    self.snapshotID = snapshotID
-    self.packageKind = packageKind
-    self.fidelityLabel = fidelityLabel
+    self.init(
+      payloadSummary: payloadSummary,
+      projectID: projectID,
+      agentID: agentID,
+      targetAgentID: targetAgentID,
+      reason: reason,
+      lineageID: lineageID,
+      branchRef: praxisCmpOptionalRef(branchRef),
+      snapshotID: snapshotID,
+      packageKind: packageKind,
+      fidelityLabel: fidelityLabel
+    )
   }
 }
 
@@ -493,10 +520,37 @@ public struct PraxisRuntimeInterfaceCommitCmpFlowRequestPayload: Sendable, Equat
   public let lineageID: PraxisRuntimeInterfaceReferenceID?
   public let parentAgentID: String?
   public let eventIDs: [PraxisRuntimeInterfaceReferenceID]
-  public let baseRef: String?
+  public let baseRef: PraxisCmpRefName?
   public let changeSummary: String
   public let syncIntent: PraxisCmpContextSyncIntent
 
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    agentID: String,
+    sessionID: String,
+    runID: String? = nil,
+    lineageID: PraxisRuntimeInterfaceReferenceID? = nil,
+    parentAgentID: String? = nil,
+    eventIDs: [PraxisRuntimeInterfaceReferenceID],
+    baseRef: PraxisCmpRefName? = nil,
+    changeSummary: String,
+    syncIntent: PraxisCmpContextSyncIntent
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.agentID = agentID
+    self.sessionID = sessionID
+    self.runID = runID
+    self.lineageID = lineageID
+    self.parentAgentID = parentAgentID
+    self.eventIDs = eventIDs
+    self.baseRef = praxisCmpNormalizedRef(baseRef)
+    self.changeSummary = changeSummary
+    self.syncIntent = syncIntent
+  }
+
+  @_disfavoredOverload
   public init(
     payloadSummary: String,
     projectID: String,
@@ -510,17 +564,19 @@ public struct PraxisRuntimeInterfaceCommitCmpFlowRequestPayload: Sendable, Equat
     changeSummary: String,
     syncIntent: PraxisCmpContextSyncIntent
   ) {
-    self.payloadSummary = payloadSummary
-    self.projectID = projectID
-    self.agentID = agentID
-    self.sessionID = sessionID
-    self.runID = runID
-    self.lineageID = lineageID
-    self.parentAgentID = parentAgentID
-    self.eventIDs = eventIDs
-    self.baseRef = baseRef
-    self.changeSummary = changeSummary
-    self.syncIntent = syncIntent
+    self.init(
+      payloadSummary: payloadSummary,
+      projectID: projectID,
+      agentID: agentID,
+      sessionID: sessionID,
+      runID: runID,
+      lineageID: lineageID,
+      parentAgentID: parentAgentID,
+      eventIDs: eventIDs,
+      baseRef: praxisCmpOptionalRef(baseRef),
+      changeSummary: changeSummary,
+      syncIntent: syncIntent
+    )
   }
 }
 
@@ -529,8 +585,23 @@ public struct PraxisRuntimeInterfaceResolveCmpFlowRequestPayload: Sendable, Equa
   public let projectID: String
   public let agentID: String
   public let lineageID: PraxisRuntimeInterfaceReferenceID?
-  public let branchRef: String?
+  public let branchRef: PraxisCmpRefName?
 
+  public init(
+    payloadSummary: String,
+    projectID: String,
+    agentID: String,
+    lineageID: PraxisRuntimeInterfaceReferenceID? = nil,
+    branchRef: PraxisCmpRefName? = nil
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
+    self.agentID = agentID
+    self.lineageID = lineageID
+    self.branchRef = praxisCmpNormalizedRef(branchRef)
+  }
+
+  @_disfavoredOverload
   public init(
     payloadSummary: String,
     projectID: String,
@@ -538,11 +609,13 @@ public struct PraxisRuntimeInterfaceResolveCmpFlowRequestPayload: Sendable, Equa
     lineageID: PraxisRuntimeInterfaceReferenceID? = nil,
     branchRef: String? = nil
   ) {
-    self.payloadSummary = payloadSummary
-    self.projectID = projectID
-    self.agentID = agentID
-    self.lineageID = lineageID
-    self.branchRef = branchRef
+    self.init(
+      payloadSummary: payloadSummary,
+      projectID: projectID,
+      agentID: agentID,
+      lineageID: lineageID,
+      branchRef: praxisCmpOptionalRef(branchRef)
+    )
   }
 }
 
@@ -631,7 +704,7 @@ public struct PraxisRuntimeInterfaceRetryCmpDispatchRequestPayload: Sendable, Eq
 public struct PraxisRuntimeInterfaceCmpHistoryQuery: Sendable, Equatable, Codable {
   public let snapshotID: PraxisRuntimeInterfaceReferenceID?
   public let lineageID: PraxisRuntimeInterfaceReferenceID?
-  public let branchRef: String?
+  public let branchRef: PraxisCmpRefName?
   public let packageKindHint: PraxisCmpContextPackageKind?
   public let projectionVisibilityHint: PraxisCmpProjectionVisibilityLevel?
   public let metadata: [String: PraxisValue]
@@ -648,17 +721,36 @@ public struct PraxisRuntimeInterfaceCmpHistoryQuery: Sendable, Equatable, Codabl
   public init(
     snapshotID: PraxisRuntimeInterfaceReferenceID? = nil,
     lineageID: PraxisRuntimeInterfaceReferenceID? = nil,
-    branchRef: String? = nil,
+    branchRef: PraxisCmpRefName? = nil,
     packageKindHint: PraxisCmpContextPackageKind? = nil,
     projectionVisibilityHint: PraxisCmpProjectionVisibilityLevel? = nil,
     metadata: [String: PraxisValue] = [:]
   ) {
     self.snapshotID = snapshotID
     self.lineageID = lineageID
-    self.branchRef = branchRef
+    self.branchRef = praxisCmpNormalizedRef(branchRef)
     self.packageKindHint = packageKindHint
     self.projectionVisibilityHint = projectionVisibilityHint
     self.metadata = metadata
+  }
+
+  @_disfavoredOverload
+  public init(
+    snapshotID: PraxisRuntimeInterfaceReferenceID? = nil,
+    lineageID: PraxisRuntimeInterfaceReferenceID? = nil,
+    branchRef: String? = nil,
+    packageKindHint: PraxisCmpContextPackageKind? = nil,
+    projectionVisibilityHint: PraxisCmpProjectionVisibilityLevel? = nil,
+    metadata: [String: PraxisValue] = [:]
+  ) {
+    self.init(
+      snapshotID: snapshotID,
+      lineageID: lineageID,
+      branchRef: praxisCmpOptionalRef(branchRef),
+      packageKindHint: packageKindHint,
+      projectionVisibilityHint: projectionVisibilityHint,
+      metadata: metadata
+    )
   }
 }
 

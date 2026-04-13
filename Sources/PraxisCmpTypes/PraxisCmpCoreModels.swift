@@ -562,7 +562,7 @@ public struct PraxisCmpEscalationAlert: Sendable, Equatable, Codable {
 public struct PraxisCmpHistoricalContextQuery: Sendable, Equatable, Codable {
   public let snapshotID: PraxisCmpSnapshotID?
   public let lineageID: PraxisCmpLineageID?
-  public let branchRef: String?
+  public let branchRef: PraxisCmpRefName?
   public let packageKindHint: PraxisCmpContextPackageKind?
   public let projectionVisibilityHint: PraxisCmpProjectionVisibilityLevel?
   public let metadata: [String: PraxisValue]
@@ -579,17 +579,36 @@ public struct PraxisCmpHistoricalContextQuery: Sendable, Equatable, Codable {
   public init(
     snapshotID: PraxisCmpSnapshotID? = nil,
     lineageID: PraxisCmpLineageID? = nil,
-    branchRef: String? = nil,
+    branchRef: PraxisCmpRefName? = nil,
     packageKindHint: PraxisCmpContextPackageKind? = nil,
     projectionVisibilityHint: PraxisCmpProjectionVisibilityLevel? = nil,
     metadata: [String: PraxisValue] = [:]
   ) {
     self.snapshotID = snapshotID
     self.lineageID = lineageID
-    self.branchRef = branchRef
+    self.branchRef = praxisCmpNormalizedRef(branchRef)
     self.packageKindHint = packageKindHint
     self.projectionVisibilityHint = projectionVisibilityHint
     self.metadata = metadata
+  }
+
+  @_disfavoredOverload
+  public init(
+    snapshotID: PraxisCmpSnapshotID? = nil,
+    lineageID: PraxisCmpLineageID? = nil,
+    branchRef: String? = nil,
+    packageKindHint: PraxisCmpContextPackageKind? = nil,
+    projectionVisibilityHint: PraxisCmpProjectionVisibilityLevel? = nil,
+    metadata: [String: PraxisValue] = [:]
+  ) {
+    self.init(
+      snapshotID: snapshotID,
+      lineageID: lineageID,
+      branchRef: praxisCmpOptionalRef(branchRef),
+      packageKindHint: packageKindHint,
+      projectionVisibilityHint: projectionVisibilityHint,
+      metadata: metadata
+    )
   }
 }
 
@@ -670,11 +689,34 @@ public struct PraxisCommitContextDeltaInput: Sendable, Equatable, Codable {
   public let sessionID: String
   public let runID: String?
   public let eventIDs: [PraxisCmpEventID]
-  public let baseRef: String?
+  public let baseRef: PraxisCmpRefName?
   public let changeSummary: String
   public let syncIntent: PraxisCmpContextSyncIntent
   public let metadata: [String: PraxisValue]
 
+  public init(
+    agentID: String,
+    projectID: String,
+    sessionID: String,
+    runID: String? = nil,
+    eventIDs: [PraxisCmpEventID],
+    baseRef: PraxisCmpRefName? = nil,
+    changeSummary: String,
+    syncIntent: PraxisCmpContextSyncIntent,
+    metadata: [String: PraxisValue] = [:]
+  ) {
+    self.agentID = agentID
+    self.projectID = projectID
+    self.sessionID = sessionID
+    self.runID = runID
+    self.eventIDs = eventIDs
+    self.baseRef = praxisCmpNormalizedRef(baseRef)
+    self.changeSummary = changeSummary
+    self.syncIntent = syncIntent
+    self.metadata = metadata
+  }
+
+  @_disfavoredOverload
   public init(
     agentID: String,
     projectID: String,
@@ -686,15 +728,17 @@ public struct PraxisCommitContextDeltaInput: Sendable, Equatable, Codable {
     syncIntent: PraxisCmpContextSyncIntent,
     metadata: [String: PraxisValue] = [:]
   ) {
-    self.agentID = agentID
-    self.projectID = projectID
-    self.sessionID = sessionID
-    self.runID = runID
-    self.eventIDs = eventIDs
-    self.baseRef = baseRef
-    self.changeSummary = changeSummary
-    self.syncIntent = syncIntent
-    self.metadata = metadata
+    self.init(
+      agentID: agentID,
+      projectID: projectID,
+      sessionID: sessionID,
+      runID: runID,
+      eventIDs: eventIDs,
+      baseRef: praxisCmpOptionalRef(baseRef),
+      changeSummary: changeSummary,
+      syncIntent: syncIntent,
+      metadata: metadata
+    )
   }
 }
 
@@ -721,9 +765,24 @@ public struct PraxisResolveCheckedSnapshotInput: Sendable, Equatable, Codable {
   public let agentID: String
   public let projectID: String
   public let lineageID: PraxisCmpLineageID?
-  public let branchRef: String?
+  public let branchRef: PraxisCmpRefName?
   public let metadata: [String: PraxisValue]
 
+  public init(
+    agentID: String,
+    projectID: String,
+    lineageID: PraxisCmpLineageID? = nil,
+    branchRef: PraxisCmpRefName? = nil,
+    metadata: [String: PraxisValue] = [:]
+  ) {
+    self.agentID = agentID
+    self.projectID = projectID
+    self.lineageID = lineageID
+    self.branchRef = praxisCmpNormalizedRef(branchRef)
+    self.metadata = metadata
+  }
+
+  @_disfavoredOverload
   public init(
     agentID: String,
     projectID: String,
@@ -731,11 +790,13 @@ public struct PraxisResolveCheckedSnapshotInput: Sendable, Equatable, Codable {
     branchRef: String? = nil,
     metadata: [String: PraxisValue] = [:]
   ) {
-    self.agentID = agentID
-    self.projectID = projectID
-    self.lineageID = lineageID
-    self.branchRef = branchRef
-    self.metadata = metadata
+    self.init(
+      agentID: agentID,
+      projectID: projectID,
+      lineageID: lineageID,
+      branchRef: praxisCmpOptionalRef(branchRef),
+      metadata: metadata
+    )
   }
 }
 

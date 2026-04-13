@@ -474,7 +474,7 @@ public struct PraxisRecoverCmpProjectCommand: Sendable, Equatable, Codable {
   public let targetAgentID: String
   public let reason: String
   public let lineageID: PraxisCmpLineageID?
-  public let branchRef: String?
+  public let branchRef: PraxisCmpRefName?
   public let snapshotID: PraxisCmpSnapshotID?
   public let packageKind: PraxisCmpContextPackageKind
   public let fidelityLabel: PraxisCmpContextPackageFidelityLabel?
@@ -485,7 +485,7 @@ public struct PraxisRecoverCmpProjectCommand: Sendable, Equatable, Codable {
     targetAgentID: String,
     reason: String,
     lineageID: PraxisCmpLineageID?,
-    branchRef: String? = nil,
+    branchRef: PraxisCmpRefName? = nil,
     snapshotID: PraxisCmpSnapshotID? = nil,
     packageKind: PraxisCmpContextPackageKind = .historicalReply,
     fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil,
@@ -496,7 +496,7 @@ public struct PraxisRecoverCmpProjectCommand: Sendable, Equatable, Codable {
     self.targetAgentID = targetAgentID
     self.reason = reason
     self.lineageID = lineageID
-    self.branchRef = branchRef
+    self.branchRef = praxisCmpNormalizedRef(branchRef)
     self.snapshotID = snapshotID
     self.packageKind = packageKind
     self.fidelityLabel = fidelityLabel
@@ -508,7 +508,7 @@ public struct PraxisRecoverCmpProjectCommand: Sendable, Equatable, Codable {
     targetAgentID: String,
     reason: String,
     lineageID: PraxisCmpLineageID? = nil,
-    branchRef: String? = nil,
+    branchRef: PraxisCmpRefName? = nil,
     snapshotID: PraxisCmpSnapshotID? = nil,
     packageKind: PraxisCmpContextPackageKind = .historicalReply,
     fidelityLabel: PraxisCmpContextPackageFidelityLabel? = nil
@@ -545,7 +545,7 @@ public struct PraxisRecoverCmpProjectCommand: Sendable, Equatable, Codable {
       targetAgentID: targetAgentID,
       reason: reason,
       lineageID: lineageID.map(PraxisCmpLineageID.init(rawValue:)),
-      branchRef: branchRef,
+      branchRef: praxisCmpOptionalRef(branchRef),
       snapshotID: snapshotID,
       packageKind: packageKind,
       fidelityLabel: fidelityLabel,
@@ -734,7 +734,7 @@ public struct PraxisCommitCmpFlowCommand: Sendable, Equatable, Codable {
   public let lineageID: PraxisCmpLineageID?
   public let parentAgentID: String?
   public let eventIDs: [PraxisCmpEventID]
-  public let baseRef: String?
+  public let baseRef: PraxisCmpRefName?
   public let changeSummary: String
   public let syncIntent: PraxisCmpContextSyncIntent
 
@@ -746,7 +746,7 @@ public struct PraxisCommitCmpFlowCommand: Sendable, Equatable, Codable {
     lineageID: PraxisCmpLineageID?,
     parentAgentID: String? = nil,
     eventIDs: [PraxisCmpEventID],
-    baseRef: String? = nil,
+    baseRef: PraxisCmpRefName? = nil,
     changeSummary: String,
     syncIntent: PraxisCmpContextSyncIntent,
     canonical _: Void
@@ -758,7 +758,7 @@ public struct PraxisCommitCmpFlowCommand: Sendable, Equatable, Codable {
     self.lineageID = lineageID
     self.parentAgentID = parentAgentID
     self.eventIDs = eventIDs
-    self.baseRef = baseRef
+    self.baseRef = praxisCmpNormalizedRef(baseRef)
     self.changeSummary = changeSummary
     self.syncIntent = syncIntent
   }
@@ -771,7 +771,7 @@ public struct PraxisCommitCmpFlowCommand: Sendable, Equatable, Codable {
     lineageID: PraxisCmpLineageID? = nil,
     parentAgentID: String? = nil,
     eventIDs: [PraxisCmpEventID],
-    baseRef: String? = nil,
+    baseRef: PraxisCmpRefName? = nil,
     changeSummary: String,
     syncIntent: PraxisCmpContextSyncIntent
   ) {
@@ -811,7 +811,7 @@ public struct PraxisCommitCmpFlowCommand: Sendable, Equatable, Codable {
       lineageID: lineageID.map(PraxisCmpLineageID.init(rawValue:)),
       parentAgentID: parentAgentID,
       eventIDs: eventIDs,
-      baseRef: baseRef,
+      baseRef: praxisCmpOptionalRef(baseRef),
       changeSummary: changeSummary,
       syncIntent: syncIntent,
       canonical: ()
@@ -848,26 +848,26 @@ public struct PraxisResolveCmpFlowCommand: Sendable, Equatable, Codable {
   public let projectID: String
   public let agentID: String
   public let lineageID: PraxisCmpLineageID?
-  public let branchRef: String?
+  public let branchRef: PraxisCmpRefName?
 
   init(
     projectID: String,
     agentID: String,
     lineageID: PraxisCmpLineageID?,
-    branchRef: String? = nil,
+    branchRef: PraxisCmpRefName? = nil,
     canonical _: Void
   ) {
     self.projectID = projectID
     self.agentID = agentID
     self.lineageID = lineageID
-    self.branchRef = branchRef
+    self.branchRef = praxisCmpNormalizedRef(branchRef)
   }
 
   public init(
     projectID: String,
     agentID: String,
     lineageID: PraxisCmpLineageID? = nil,
-    branchRef: String? = nil
+    branchRef: PraxisCmpRefName? = nil
   ) {
     self.init(
       projectID: projectID,
@@ -889,7 +889,7 @@ public struct PraxisResolveCmpFlowCommand: Sendable, Equatable, Codable {
       projectID: projectID,
       agentID: agentID,
       lineageID: lineageID.map(PraxisCmpLineageID.init(rawValue:)),
-      branchRef: branchRef,
+      branchRef: praxisCmpOptionalRef(branchRef),
       canonical: ()
     )
   }

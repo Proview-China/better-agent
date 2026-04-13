@@ -1205,6 +1205,57 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func cmpBoundaryRefCommandsRoundTripTypedRefsWhileKeepingJSONStringShape() throws {
+    let branchRef = PraxisCmpRefName(rawValue: "cmp/runtime")
+    let baseRef = PraxisCmpRefName(rawValue: "main")
+    let recover = PraxisRecoverCmpProjectCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      targetAgentID: "checker.local",
+      reason: "Recover checker context",
+      branchRef: branchRef
+    )
+    let commit = PraxisCommitCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.typed-refs",
+      eventIDs: [.init(rawValue: "evt.typed-ref.1")],
+      baseRef: baseRef,
+      changeSummary: "Commit one typed base ref",
+      syncIntent: .toParent
+    )
+    let resolve = PraxisResolveCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      branchRef: branchRef
+    )
+    let history = PraxisRequestCmpHistoryCommand(
+      projectID: "cmp.local-runtime",
+      requesterAgentID: "checker.local",
+      reason: "Recover focused context",
+      query: .init(branchRef: branchRef)
+    )
+
+    let encodedRecover = try encodeUseCaseTestJSON(recover)
+    let encodedCommit = try encodeUseCaseTestJSON(commit)
+    let encodedResolve = try encodeUseCaseTestJSON(resolve)
+    let encodedHistory = try encodeUseCaseTestJSON(history)
+    let decodedRecover = try decodeUseCaseTestJSON(PraxisRecoverCmpProjectCommand.self, from: encodedRecover)
+    let decodedCommit = try decodeUseCaseTestJSON(PraxisCommitCmpFlowCommand.self, from: encodedCommit)
+    let decodedResolve = try decodeUseCaseTestJSON(PraxisResolveCmpFlowCommand.self, from: encodedResolve)
+    let decodedHistory = try decodeUseCaseTestJSON(PraxisRequestCmpHistoryCommand.self, from: encodedHistory)
+
+    #expect(encodedRecover.contains(#""branchRef":"cmp\/runtime""#))
+    #expect(encodedCommit.contains(#""baseRef":"main""#))
+    #expect(encodedResolve.contains(#""branchRef":"cmp\/runtime""#))
+    #expect(encodedHistory.contains(#""query":{"branchRef":"cmp\/runtime""#))
+    #expect(decodedRecover.branchRef == branchRef)
+    #expect(decodedCommit.baseRef == baseRef)
+    #expect(decodedResolve.branchRef == branchRef)
+    #expect(decodedHistory.query.branchRef == branchRef)
+  }
+
+  @Test
   func cmpFlowCommandInitializersAcceptOptionalTypedLineageAlongsideLegacyStringAndOmittedLineage() {
     let optionalTypedLineageID: PraxisCmpLineageID? = .init(rawValue: "lineage.cmp.local-runtime.runtime.local")
     let missingTypedLineageID: PraxisCmpLineageID? = nil
@@ -1243,6 +1294,148 @@ struct PraxisRuntimeUseCasesTests {
     #expect(ingestTypedNil.lineageID == nil)
     #expect(commitOmitted.lineageID == nil)
     #expect(resolveString.lineageID == .init(rawValue: "lineage.cmp.local-runtime.runtime.local"))
+  }
+
+  @Test
+  func cmpBoundaryRefInitializersAcceptTypedLegacyStringAndOmittedRefs() {
+    let typedBranchRef: PraxisCmpRefName? = .init(rawValue: "cmp/runtime")
+    let missingBranchRef: PraxisCmpRefName? = nil
+    let legacyBranchRef: String? = " cmp/recover "
+    let legacyBaseRef: String? = " main "
+
+    let recoverTyped = PraxisRecoverCmpProjectCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      targetAgentID: "checker.local",
+      reason: "Recover checker context",
+      branchRef: typedBranchRef
+    )
+    let commitString = PraxisCommitCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.source-compat",
+      lineageID: Optional<String>.none,
+      eventIDs: [.init(rawValue: "evt.source-compat.1")],
+      baseRef: legacyBaseRef,
+      changeSummary: "Commit through legacy base ref path",
+      syncIntent: .toParent
+    )
+    let resolveNil = PraxisResolveCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      branchRef: missingBranchRef
+    )
+    let historyString = PraxisRequestCmpHistoryCommand(
+      projectID: "cmp.local-runtime",
+      requesterAgentID: "checker.local",
+      reason: "Recover focused context",
+      query: .init(branchRef: legacyBranchRef)
+    )
+
+    #expect(recoverTyped.branchRef == .init(rawValue: "cmp/runtime"))
+    #expect(commitString.baseRef == PraxisCmpRefName(rawValue: "main"))
+    #expect(resolveNil.branchRef == nil)
+    #expect(historyString.query.branchRef == .init(rawValue: "cmp/recover"))
+  }
+
+  @Test
+  func cmpLegacyBlankRefInitializersCollapseToNilAcrossCommandAndQueryBoundaries() {
+    let recover = PraxisRecoverCmpProjectCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      targetAgentID: "checker.local",
+      reason: "Recover checker context",
+      lineageID: Optional<String>.none,
+      branchRef: "   "
+    )
+    let commit = PraxisCommitCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.blank-ref",
+      lineageID: Optional<String>.none,
+      eventIDs: [.init(rawValue: "evt.blank-ref.1")],
+      baseRef: "   ",
+      changeSummary: "Commit through blank base ref path",
+      syncIntent: .toParent
+    )
+    let resolve = PraxisResolveCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      lineageID: Optional<String>.none,
+      branchRef: "   "
+    )
+    let history = PraxisCmpHistoricalContextQuery(branchRef: "   ")
+    let deltaInput = PraxisCommitContextDeltaInput(
+      agentID: "runtime.local",
+      projectID: "cmp.local-runtime",
+      sessionID: "cmp.flow.blank-ref",
+      eventIDs: [.init(rawValue: "evt.blank-ref.1")],
+      baseRef: "   ",
+      changeSummary: "Commit through blank base ref path",
+      syncIntent: .toParent
+    )
+    let resolveInput = PraxisResolveCheckedSnapshotInput(
+      agentID: "runtime.local",
+      projectID: "cmp.local-runtime",
+      branchRef: "   "
+    )
+
+    #expect(recover.branchRef == nil)
+    #expect(commit.baseRef == nil)
+    #expect(resolve.branchRef == nil)
+    #expect(history.branchRef == nil)
+    #expect(deltaInput.baseRef == nil)
+    #expect(resolveInput.branchRef == nil)
+  }
+
+  @Test
+  func cmpDirectTypedBlankRefInitializersCollapseToNilAcrossCommandAndQueryBoundaries() {
+    let blankTypedRef = PraxisCmpRefName(rawValue: "   ")
+
+    let recover = PraxisRecoverCmpProjectCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      targetAgentID: "checker.local",
+      reason: "Recover checker context",
+      branchRef: blankTypedRef
+    )
+    let commit = PraxisCommitCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      sessionID: "cmp.flow.blank-typed-ref",
+      eventIDs: [.init(rawValue: "evt.blank-typed-ref.1")],
+      baseRef: blankTypedRef,
+      changeSummary: "Commit through blank typed base ref path",
+      syncIntent: .toParent
+    )
+    let resolve = PraxisResolveCmpFlowCommand(
+      projectID: "cmp.local-runtime",
+      agentID: "runtime.local",
+      branchRef: blankTypedRef
+    )
+    let history = PraxisCmpHistoricalContextQuery(branchRef: blankTypedRef)
+    let deltaInput = PraxisCommitContextDeltaInput(
+      agentID: "runtime.local",
+      projectID: "cmp.local-runtime",
+      sessionID: "cmp.flow.blank-typed-ref",
+      eventIDs: [.init(rawValue: "evt.blank-typed-ref.1")],
+      baseRef: blankTypedRef,
+      changeSummary: "Commit through blank typed base ref path",
+      syncIntent: .toParent
+    )
+    let resolveInput = PraxisResolveCheckedSnapshotInput(
+      agentID: "runtime.local",
+      projectID: "cmp.local-runtime",
+      branchRef: blankTypedRef
+    )
+
+    #expect(blankTypedRef.rawValue.isEmpty)
+    #expect(recover.branchRef == nil)
+    #expect(commit.baseRef == nil)
+    #expect(resolve.branchRef == nil)
+    #expect(history.branchRef == nil)
+    #expect(deltaInput.baseRef == nil)
+    #expect(resolveInput.branchRef == nil)
   }
 
   @Test
