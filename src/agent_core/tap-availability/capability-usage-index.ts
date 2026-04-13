@@ -33,6 +33,12 @@ export const TAP_HARDENED_CORE_INDEX_CAPABILITY_KEYS = [
   "mcp.listTools",
   "mcp.listResources",
   "mcp.readResource",
+  "mp.search",
+  "mp.resolve",
+  "mp.history.request",
+  "mp.materialize",
+  "mp.promote",
+  "mp.archive",
   "remote.exec",
   "tracker.create",
   "spreadsheet.read",
@@ -217,6 +223,36 @@ const CORE_HINTS: Record<string, { coreHint: string; defaultNextAction?: string 
       "Use for read-only resource contents once you already know the target URI or have just discovered it.",
     defaultNextAction: "summarize_resource_contents",
   },
+  "mp.search": {
+    coreHint:
+      "Use when you need governed memory retrieval across MP scopes instead of reconstructing history ad hoc inside core.",
+    defaultNextAction: "report_memory_hits",
+  },
+  "mp.resolve": {
+    coreHint:
+      "Use when you need MP to return a high-signal primary and supporting memory bundle for the current task.",
+    defaultNextAction: "report_memory_bundle",
+  },
+  "mp.history.request": {
+    coreHint:
+      "Use when the task explicitly needs routed history replay rather than current executable context alone.",
+    defaultNextAction: "report_history_bundle",
+  },
+  "mp.materialize": {
+    coreHint:
+      "Use when checked or stored context should become durable MP memory instead of remaining only in the current turn.",
+    defaultNextAction: "report_materialized_memory",
+  },
+  "mp.promote": {
+    coreHint:
+      "Use when an MP memory record should move to a broader scope under explicit lineage and promoter rules.",
+    defaultNextAction: "report_promoted_memory",
+  },
+  "mp.archive": {
+    coreHint:
+      "Use when an MP memory record should be retired cleanly while preserving audit and lineage facts.",
+    defaultNextAction: "report_archived_memory",
+  },
   "remote.exec": {
     coreHint:
       "Use for bounded remote commands with explicit host, user, and command. Return host, exitCode, stdout, and stderr clearly.",
@@ -267,6 +303,17 @@ const CORE_HINTS: Record<string, { coreHint: string; defaultNextAction?: string 
 function trimLine(text: string, max = 220): string {
   const normalized = text.replace(/\s+/gu, " ").trim();
   return normalized.length <= max ? normalized : `${normalized.slice(0, max - 1)}…`;
+}
+
+function renderExampleInput(example: CapabilityPackageUsageExample | undefined): string | undefined {
+  if (!example?.input || typeof example.input !== "object") {
+    return undefined;
+  }
+  try {
+    return trimLine(JSON.stringify(example.input));
+  } catch {
+    return undefined;
+  }
 }
 
 export function createTapCapabilityUsageIndex(input: {
@@ -336,10 +383,22 @@ export function renderTapCapabilityUsageIndexForCore(
       const exampleOperation = entry.exampleInvocation?.operation
         ? ` example:${entry.exampleInvocation.operation}`
         : "";
+      const exampleInput = renderExampleInput(entry.exampleInvocation)
+        ? ` input:${renderExampleInput(entry.exampleInvocation)}`
+        : "";
+      const exampleNotes = entry.exampleInvocation?.notes
+        ? ` notes:${trimLine(entry.exampleInvocation.notes)}`
+        : "";
       const nextAction = entry.defaultNextAction
         ? ` next:${entry.defaultNextAction}`
         : "";
-      return `- ${entry.capabilityKey} [${entry.familyKey} / ${entry.riskLevel} / ${entry.recommendedMode}${entry.availabilityStatus ? ` / ${entry.availabilityStatus}` : ""}]${exampleOperation}${nextAction}: ${trimLine(entry.coreHint)}`;
+      const bestPractice = entry.bestPractices[0]
+        ? ` do:${trimLine(entry.bestPractices[0])}`
+        : "";
+      const knownLimit = entry.knownLimits[0]
+        ? ` avoid:${trimLine(entry.knownLimits[0])}`
+        : "";
+      return `- ${entry.capabilityKey} [${entry.familyKey} / ${entry.riskLevel} / ${entry.recommendedMode}${entry.availabilityStatus ? ` / ${entry.availabilityStatus}` : ""}]${exampleOperation}${exampleInput}${exampleNotes}${nextAction}: ${trimLine(entry.coreHint)}${bestPractice}${knownLimit}`;
     })
     .join("\n");
 }

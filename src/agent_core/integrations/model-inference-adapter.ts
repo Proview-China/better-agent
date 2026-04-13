@@ -8,6 +8,7 @@ import type {
 import { createPreparedCapabilityCall } from "../capability-invocation/index.js";
 import { createCapabilityResultEnvelope } from "../capability-result/index.js";
 import type { GoalFrameCompiled, ModelInferenceIntent } from "../types/index.js";
+import { renderGoalPromptBlocksInstructionText } from "../goal/goal-compiler.js";
 import { executeModelInference, type ModelInferenceExecutionResult } from "./model-inference.js";
 
 export const MODEL_INFERENCE_CAPABILITY_KEY = "model.infer";
@@ -63,6 +64,53 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
+function normalizeCompiledGoalFrame(value: unknown): GoalFrameCompiled | undefined {
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    return undefined;
+  }
+
+  const frame = value as GoalFrameCompiled;
+  const instructionText = typeof frame.instructionText === "string"
+    ? frame.instructionText
+    : undefined;
+
+  const promptBlocks = Array.isArray(frame.promptBlocks)
+    ? frame.promptBlocks
+        .filter(
+          (block): block is NonNullable<GoalFrameCompiled["promptBlocks"]>[number] =>
+            !!block
+            && typeof block === "object"
+            && typeof block.key === "string"
+            && (!("title" in block) || typeof block.title === "string" || typeof block.title === "undefined")
+            && Array.isArray(block.lines)
+            && block.lines.every((line) => typeof line === "string")
+        )
+        .map((block) => ({
+          ...block,
+          lines: [...block.lines],
+          metadata:
+            block.metadata && typeof block.metadata === "object" && !Array.isArray(block.metadata)
+              ? { ...block.metadata }
+              : undefined,
+        }))
+    : undefined;
+
+  const normalizedInstructionText = instructionText
+    ?? (promptBlocks && promptBlocks.length > 0
+      ? renderGoalPromptBlocksInstructionText(promptBlocks)
+      : undefined);
+
+  if (typeof frame.goalId !== "string" || !normalizedInstructionText) {
+    return undefined;
+  }
+
+  return {
+    ...frame,
+    instructionText: normalizedInstructionText,
+    promptBlocks,
+  };
+}
+
 function parsePlanInput(plan: CapabilityInvocationPlan): {
   provider: string;
   model: string;
@@ -73,7 +121,7 @@ function parsePlanInput(plan: CapabilityInvocationPlan): {
   const input = plan.input as ModelInferenceAdapterPlanInput;
   const provider = asString(input.provider);
   const model = asString(input.model);
-  const frame = input.frame as GoalFrameCompiled | undefined;
+  const frame = normalizeCompiledGoalFrame(input.frame);
 
   if (!provider) {
     throw new Error("model.infer invocation is missing provider.");
@@ -81,7 +129,7 @@ function parsePlanInput(plan: CapabilityInvocationPlan): {
   if (!model) {
     throw new Error("model.infer invocation is missing model.");
   }
-  if (!frame || typeof frame !== "object" || typeof frame.instructionText !== "string") {
+  if (!frame) {
     throw new Error("model.infer invocation is missing a valid compiled goal frame.");
   }
 

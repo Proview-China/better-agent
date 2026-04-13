@@ -35,8 +35,11 @@ test("renderTapCapabilityUsageIndexForCore emits concise capability guidance", (
   assert.match(text, /code\.edit/u);
   assert.match(text, /search\.fetch/u);
   assert.match(text, /example:/u);
+  assert.match(text, /input:/u);
   assert.match(text, /next:route_readback_by_path_kind/u);
   assert.match(text, /next:report_backend_and_page_facts/u);
+  assert.match(text, /do:/u);
+  assert.match(text, /avoid:/u);
 });
 
 test("createTapCapabilityUsageIndex can surface read, git, and mcp guidance together", () => {
@@ -56,6 +59,26 @@ test("createTapCapabilityUsageIndex can surface read, git, and mcp guidance toge
   assert.match(index.entries[0]?.coreHint ?? "", /repo-local source/u);
   assert.equal(index.entries[1]?.defaultNextAction, "decide_next_git_step");
   assert.equal(index.entries[3]?.defaultNextAction, "summarize_resource_contents");
+});
+
+test("createTapCapabilityUsageIndex can surface mp family guidance when mp capabilities are registered", () => {
+  const index = createTapCapabilityUsageIndex({
+    availableCapabilityKeys: [
+      "mp.search",
+      "mp.resolve",
+      "mp.history.request",
+      "mp.materialize",
+    ],
+  });
+
+  assert.deepEqual(
+    index.entries.map((entry) => entry.capabilityKey),
+    ["mp.search", "mp.resolve", "mp.history.request", "mp.materialize"],
+  );
+  assert.equal(index.entries[0]?.defaultNextAction, "report_memory_hits");
+  assert.equal(index.entries[1]?.defaultNextAction, "report_memory_bundle");
+  assert.equal(index.entries[2]?.defaultNextAction, "report_history_bundle");
+  assert.equal(index.entries[3]?.defaultNextAction, "report_materialized_memory");
 });
 
 test("createTapCapabilityUsageIndex includes second-wave execution and user-io capabilities in declared order", () => {

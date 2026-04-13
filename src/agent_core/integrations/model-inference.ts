@@ -6,6 +6,11 @@ import type { ProviderId, SdkLayer } from "../../rax/index.js";
 import { rax } from "../../rax/index.js";
 import type { ModelInferenceIntent, KernelResult } from "../types/index.js";
 import type { RaxFacade as FullRaxFacade } from "../../rax/facade.js";
+import {
+  buildChatCompletionMessagesFromPromptParts,
+  buildResponsesInputFromPromptParts,
+  readPromptMessagesMetadata,
+} from "./prompt-message-parts.js";
 
 type GenerateFacade = Pick<FullRaxFacade, "generate">;
 
@@ -485,6 +490,7 @@ export async function executeModelInference(
   const maxOutputTokens = readPositiveIntegerMetadata(metadata, "maxOutputTokens");
   const reasoningEffort = readStringMetadata(metadata, "reasoningEffort") as "low" | "medium" | "high" | undefined;
   const inputImageUrls = readStringArrayMetadata(metadata, "inputImageUrls");
+  const promptMessages = readPromptMessagesMetadata(metadata?.promptMessages);
 
   if (provider !== "openai") {
     throw new Error(`Model inference integration currently only supports provider ${"openai"}, received ${provider}.`);
@@ -501,38 +507,20 @@ export async function executeModelInference(
       variant === "chat_completions_compat"
         ? {
             model,
-            messages: [
-              {
-                role: "user",
-                content: inputImageUrls?.length
-                  ? [
-                    { type: "text", text: params.intent.frame.instructionText },
-                    ...inputImageUrls.map((imageUrl) => ({
-                      type: "image_url" as const,
-                      image_url: { url: imageUrl },
-                    })),
-                  ]
-                  : params.intent.frame.instructionText,
-              },
-            ],
+            messages: buildChatCompletionMessagesFromPromptParts({
+              instructionText: params.intent.frame.instructionText,
+              promptMessages,
+              inputImageUrls,
+            }),
             maxCompletionTokens: maxOutputTokens,
             reasoningEffort: reasoningEffort ?? config.reasoningEffort as "low" | "medium" | "high" | undefined,
           }
         : {
-            input: inputImageUrls?.length
-              ? [
-                {
-                  role: "user",
-                  content: [
-                    { type: "input_text" as const, text: params.intent.frame.instructionText },
-                    ...inputImageUrls.map((imageUrl) => ({
-                      type: "input_image" as const,
-                      image_url: imageUrl,
-                    })),
-                  ],
-                },
-              ]
-              : params.intent.frame.instructionText,
+            input: buildResponsesInputFromPromptParts({
+              instructionText: params.intent.frame.instructionText,
+              promptMessages,
+              inputImageUrls,
+            }),
             maxOutputTokens,
             reasoning: reasoningEffort ? { effort: reasoningEffort } : undefined,
           },

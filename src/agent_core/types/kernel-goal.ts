@@ -32,9 +32,17 @@ export interface GoalFrameNormalized {
   metadata?: Record<string, unknown>;
 }
 
+export interface GoalPromptBlock {
+  key: string;
+  title?: string;
+  lines: string[];
+  metadata?: Record<string, unknown>;
+}
+
 export interface GoalFrameCompiled {
   goalId: GoalId;
   instructionText: string;
+  promptBlocks?: GoalPromptBlock[];
   successCriteria: GoalCriterion[];
   failureCriteria: GoalCriterion[];
   constraints: GoalConstraint[];
