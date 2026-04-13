@@ -39,6 +39,7 @@
 ### Residual notes
 
 - Coverage is representative, not exhaustive.
+- This log captures the package at its own step in the sequence. Later MP boundary backfill packages add more matrix coverage, so this file should not be read as a full end-state summary by itself.
 - This package does not introduce full typed migration for MP `projectID / sessionID / memoryID`.
 - This package does not refactor `PraxisRuntimeInterfaceServices`.
 - This package does not touch HostContracts seams, UI/TUI/GUI/TS, or local-baseline execution semantics.

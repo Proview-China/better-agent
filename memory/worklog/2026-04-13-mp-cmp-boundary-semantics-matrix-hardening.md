@@ -13,23 +13,24 @@
   - `requestHistory`
   - encoded command/result payloads for those paths
   - stable ID list shape assertions for mutation/history payloads
-  - forbidden presentation-field assertions on both command and result JSON
+  - limited denylist assertions for a few forbidden presentation-field names on command and result JSON
 - Expanded the existing real-path `PraxisRuntimeFacadesTests` MP workflow snapshot test so it now covers:
   - `align`
   - `archive`
   - `resolve`
   - `requestHistory`
   - stable ID list shape assertions on facade snapshots
-  - forbidden host/presentation-field assertions across all touched snapshots
+  - limited denylist assertions for a few forbidden host/presentation-field names across the touched snapshots
 
 ## Why This Package Exists
 
 - The previous two MP packages established representative boundary coverage, but some exact-match and requester-identity paths were still under-specified.
-- This package converts those remaining high-risk gaps into testable invariants without widening scope into a new model migration or service refactor.
+- This package is a follow-up matrix/backfill on top of those earlier MP boundary packages, not a new architecture phase.
+- It converts those remaining high-risk gaps into a tighter regression net without widening scope into a new model migration or service refactor.
 - The focus stays on host-neutral boundary behavior:
   - no silent trim/canonicalization of request identifiers
   - no accidental relaxation from “explicit bad value” to “missing value”
-  - no host/presentation wording injected into use-case or facade result payloads
+  - limited regression checks against a small set of host/presentation-flavored field names in use-case and facade payloads; this is not a complete proof of DTO schema or wording provenance
 
 ## Files Touched
 
@@ -49,6 +50,7 @@
 ## Residuals
 
 - Coverage is stronger, but still intentionally selective rather than exhaustive.
+- The denylist/shape assertions in this package are a finite regression net. They do not prove that the DTO schema is presentation-free or that every summary/issues field is sourced from a host-neutral vocabulary.
 - This package does **not** perform:
   - full typed migration of `projectID` / `sessionID` / `memoryID`
   - `RuntimeInterfaceServices` refactors

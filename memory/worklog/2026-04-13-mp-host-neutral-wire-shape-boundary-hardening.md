@@ -9,9 +9,9 @@
   - `archiveMp`
   - `resolveMp`
   - `requestMpHistory`
-- Added real `RuntimeInterfaceServices` request-mapping guards for:
+- Added representative `runtimeInterface.handle(...)` boundary-behavior coverage for the current `RuntimeInterfaceServices` request-mapping semantics, including:
   - blank `checkedSnapshotRef` rejection on `ingestMp`
-  - padded exact-match fields on `resolveMp`, `requestMpHistory`, `alignMp`, `promoteMp`, and `archiveMp`
+  - exact-match field preservation on `resolveMp`, `requestMpHistory`, `alignMp`, `promoteMp`, and `archiveMp`
 - Added one real MP use-case execution-path test:
   - `PraxisIngestMpUseCase`
   - `PraxisResolveMpUseCase`
@@ -25,7 +25,7 @@
 
 ## Why this package exists
 
-The remaining non-UI risk on the MP path was not a large model refactor. It was the absence of a tight behavior net around the `RuntimeInterface -> UseCase -> Facade` boundary. This package turns that risk into explicit tests so future cleanup cannot silently trim, collapse, or presentation-decorate MP request/response fields.
+The remaining non-UI risk on the MP path was not a large model refactor. It was the absence of a tight behavior net around the `RuntimeInterface -> UseCase -> Facade` boundary. This package turns that risk into explicit tests on the covered paths, reducing regression risk around silent trim/collapse or presentation-style decoration of MP request/response fields.
 
 ## Validation
 
@@ -38,7 +38,7 @@ The remaining non-UI risk on the MP path was not a large model refactor. It was 
 
 - This package does not migrate MP `memoryID` / `projectID` / `sessionID` into new domain identifier types.
 - `RuntimeInterfaceServices` still contains thin per-branch mapping code; this package only hardens its behavior surface.
-- The request-side guards are representative, not exhaustive. They now explicitly cover:
+- The request-side coverage is representative, not exhaustive. These paths are now explicitly covered by tests, not by new service-layer guards:
   - `ingestMp.checkedSnapshotRef`
   - `resolveMp.requesterSessionID`
   - `requestMpHistory.requesterSessionID`
