@@ -15,8 +15,10 @@ import PraxisSession
 import PraxisState
 import PraxisTapReview
 import PraxisTapTypes
+@testable import PraxisFFI
 @testable import PraxisRuntimeComposition
 @testable import PraxisRuntimeFacades
+@testable import PraxisRuntimeGateway
 @testable import PraxisRuntimeInterface
 @testable import PraxisRuntimePresentationBridge
 import PraxisRuntimeUseCases
@@ -842,7 +844,10 @@ struct HostRuntimeInterfaceTests {
   @Test
   func runtimeInterfaceBuildsNeutralRunResponseAndBuffersEvents() async throws {
     let hostAdapters = PraxisHostAdapterRegistry.scaffoldDefaults()
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: hostAdapters)
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: hostAdapters,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
 
     let response = await runtimeInterface.handle(
       .runGoal(
@@ -957,7 +962,10 @@ struct HostRuntimeInterfaceTests {
         )
       ])
     )
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: hostAdapters)
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: hostAdapters,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
 
     let response = await runtimeInterface.handle(
       .resumeRun(
@@ -978,8 +986,9 @@ struct HostRuntimeInterfaceTests {
 
   @Test
   func runtimeInterfaceRoutesCmpSessionAndProjectRequests() async throws {
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(
-      hostAdapters: PraxisHostAdapterRegistry.localDefaults()
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.localDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
     )
 
     let sessionResponse = await runtimeInterface.handle(
@@ -1411,7 +1420,10 @@ struct HostRuntimeInterfaceTests {
         updatedAt: "2026-04-11T04:30:00Z"
       )
     )
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: registry,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
 
     let response = await runtimeInterface.handle(
       .recoverCmpProject(
@@ -1544,7 +1556,10 @@ struct HostRuntimeInterfaceTests {
         updatedAt: "2026-04-11T00:05:00Z"
       )
     )
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: registry,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
 
     let rolesResponse = await runtimeInterface.handle(
       .readbackCmpRoles(
@@ -1595,8 +1610,9 @@ struct HostRuntimeInterfaceTests {
       .appendingPathComponent("praxis-runtime-interface-retry-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: rootDirectory) }
 
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(
-      hostAdapters: PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
     )
 
     _ = await runtimeInterface.handle(
@@ -2879,8 +2895,9 @@ struct HostRuntimeInterfaceTests {
 
   @Test
   func runtimeInterfaceRoundTripsColonContainingSessionIDsAcrossRunAndResume() async throws {
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(
-      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults()
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
     )
 
     let started = await runtimeInterface.handle(
@@ -2913,8 +2930,9 @@ struct HostRuntimeInterfaceTests {
 
   @Test
   func runtimeInterfaceReturnsStructuredMissingFieldErrorEnvelope() async throws {
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(
-      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults()
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
     )
 
     let response = await runtimeInterface.handle(
@@ -2936,8 +2954,9 @@ struct HostRuntimeInterfaceTests {
 
   @Test
   func runtimeInterfaceRecoverCmpProjectReturnsStructuredMissingFieldErrors() async throws {
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(
-      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults()
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
     )
     let cases: [(String, PraxisRuntimeInterfaceRequest)] = [
       (
@@ -3475,8 +3494,9 @@ struct HostRuntimeInterfaceTests {
 
   @Test
   func runtimeInterfaceReturnsStructuredCheckpointNotFoundErrorEnvelope() async throws {
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(
-      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults()
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
     )
     let runID = "run:pct~team%3Aalpha:goal.missing-checkpoint"
 
@@ -3635,7 +3655,10 @@ struct HostRuntimeInterfaceTests {
         updatedAt: "2026-04-12T00:00:00Z"
       )
     )
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: registry,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
 
     let readbackResponse = await runtimeInterface.handle(
       .readbackCmpControl(
@@ -3701,7 +3724,10 @@ struct HostRuntimeInterfaceTests {
         ]
       )
     )
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: registry,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
 
     let response = await runtimeInterface.handle(
       .retryCmpDispatch(
@@ -3749,7 +3775,10 @@ struct HostRuntimeInterfaceTests {
         ]
       )
     )
-    let runtimeInterface = try PraxisRuntimeBridgeFactory.makeRuntimeInterface(hostAdapters: registry)
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: registry,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
 
     let rolesResponse = await runtimeInterface.handle(
       .readbackCmpRoles(
@@ -3862,7 +3891,10 @@ struct HostRuntimeInterfaceTests {
   @Test
   func runtimeInterfaceRegistryRoutesRequestsAcrossIndependentHandles() async throws {
     let hostAdapters = PraxisHostAdapterRegistry.scaffoldDefaults()
-    let registry = PraxisRuntimeBridgeFactory.makeRuntimeInterfaceRegistry(hostAdapters: hostAdapters)
+    let registry = PraxisRuntimeGatewayFactory.makeRuntimeInterfaceRegistry(
+      hostAdapters: hostAdapters,
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
 
     let firstHandle = try await registry.openSession()
     let secondHandle = try await registry.openSession()
@@ -3911,8 +3943,9 @@ struct HostRuntimeInterfaceTests {
 
   @Test
   func runtimeInterfaceRegistryReturnsSessionNotFoundForClosedHandles() async throws {
-    let registry = PraxisRuntimeBridgeFactory.makeRuntimeInterfaceRegistry(
-      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults()
+    let registry = PraxisRuntimeGatewayFactory.makeRuntimeInterfaceRegistry(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
     )
     let handle = try await registry.openSession()
 

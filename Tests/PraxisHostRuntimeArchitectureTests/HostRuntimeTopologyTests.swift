@@ -1,4 +1,6 @@
+import Foundation
 import Testing
+@testable import PraxisFFI
 @testable import PraxisRuntimeComposition
 @testable import PraxisRuntimeFacades
 @testable import PraxisRuntimeGateway
@@ -31,12 +33,13 @@ struct HostRuntimeTopologyTests {
   ]
 
   @Test
-  func runtimeSplitIntoSixLayers() {
+  func runtimeSplitIncludesDedicatedFfiTarget() {
     #expect(PraxisRuntimeCompositionModule.boundary.name == "PraxisRuntimeComposition")
     #expect(PraxisRuntimeUseCasesModule.boundary.name == "PraxisRuntimeUseCases")
     #expect(PraxisRuntimeFacadesModule.boundary.name == "PraxisRuntimeFacades")
     #expect(PraxisRuntimeInterfaceModule.boundary.name == "PraxisRuntimeInterface")
     #expect(PraxisRuntimeGatewayModule.boundary.name == "PraxisRuntimeGateway")
+    #expect(PraxisFFIModule.boundary.name == "PraxisFFI")
     #expect(PraxisRuntimePresentationBridgeModule.boundary.name == "PraxisRuntimePresentationBridge")
   }
 
@@ -76,5 +79,45 @@ struct HostRuntimeTopologyTests {
       PraxisRuntimePresentationBridgeModule.bootstrap.rules.count
         == expectedPresentationBridgeRules.count
     )
+  }
+
+  @Test
+  func ffiTargetIsDeclaredSeparatelyFromPresentationBridgeOwnership() throws {
+    let projectRoot = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let packageManifest = try String(contentsOf: projectRoot.appendingPathComponent("Package.swift"))
+    let presentationBridgeFactory = try String(
+      contentsOf: projectRoot.appendingPathComponent(
+        "Sources/PraxisRuntimePresentationBridge/PraxisRuntimeBridgeFactory.swift"
+      )
+    )
+    let presentationModels = try String(
+      contentsOf: projectRoot.appendingPathComponent(
+        "Sources/PraxisRuntimePresentationBridge/PraxisPresentationModels.swift"
+      )
+    )
+    let ffiBridgeSource = try String(
+      contentsOf: projectRoot.appendingPathComponent("Sources/PraxisFFI/PraxisFFIBridge.swift")
+    )
+    guard let ffiTargetStart = packageManifest.range(of: #"name: "PraxisFFI""#)?.lowerBound,
+          let ffiTargetEnd = packageManifest[ffiTargetStart...].range(of: #"path: "Sources/PraxisFFI""#)?.upperBound else {
+      Issue.record("Expected Package.swift to declare a dedicated PraxisFFI target block.")
+      return
+    }
+    let ffiTargetBlock = String(packageManifest[ffiTargetStart..<ffiTargetEnd])
+
+    #expect(packageManifest.contains(#"name: "PraxisFFI""#))
+    #expect(packageManifest.contains(#"path: "Sources/PraxisFFI""#))
+    #expect(ffiTargetBlock.contains(#""PraxisRuntimeGateway""#))
+    #expect(ffiTargetBlock.contains(#""PraxisRuntimeInterface""#))
+    #expect(ffiTargetBlock.contains(#""PraxisRuntimeComposition""#) == false)
+    #expect(ffiTargetBlock.contains(#""PraxisRuntimeFacades""#) == false)
+    #expect(presentationBridgeFactory.contains("makeFFIBridge") == false)
+    #expect(presentationBridgeFactory.contains("makeRuntimeInterface") == false)
+    #expect(presentationBridgeFactory.contains("makeRuntimeInterfaceRegistry") == false)
+    #expect(presentationModels.contains("PraxisFFIEventEnvelope") == false)
+    #expect(ffiBridgeSource.contains("public final class PraxisFFIBridge"))
   }
 }

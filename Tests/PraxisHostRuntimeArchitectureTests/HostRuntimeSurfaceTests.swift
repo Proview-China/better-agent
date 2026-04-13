@@ -17,8 +17,10 @@ import PraxisTapReview
 import PraxisTapTypes
 import PraxisToolingContracts
 import PraxisWorkspaceContracts
+@testable import PraxisFFI
 @testable import PraxisRuntimeComposition
 @testable import PraxisRuntimeFacades
+@testable import PraxisRuntimeGateway
 @testable import PraxisRuntimeInterface
 @testable import PraxisRuntimePresentationBridge
 
@@ -1213,7 +1215,7 @@ struct HostRuntimeSurfaceTests {
 
   @Test
   func ffiBridgeRoutesEncodedRuntimeInterfaceRequestsAcrossSessionHandles() async throws {
-    let ffiBridge = try PraxisRuntimeBridgeFactory.makeFFIBridge()
+    let ffiBridge = PraxisFFIFactory.makeFFIBridge()
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let handle = try await ffiBridge.openRuntimeSession()
 
@@ -1234,6 +1236,7 @@ struct HostRuntimeSurfaceTests {
     let eventEnvelope = try JSONDecoder().decode(PraxisFFIEventEnvelope.self, from: eventData)
 
     #expect(response.status == .success)
+    #expect(ffiBridge.exportArchitectureSnapshot() == PraxisRuntimeGatewayModule.bootstrap)
     #expect(response.snapshot?.sessionID?.rawValue == "session.ffi-smoke")
     #expect(response.events.map(\.name) == [.runStarted, .runFollowUpReady])
     #expect(eventEnvelope.status == .success)
@@ -1245,7 +1248,7 @@ struct HostRuntimeSurfaceTests {
 
   @Test
   func ffiBridgeReturnsStructuredFailuresForInvalidPayloadAndClosedHandle() async throws {
-    let ffiBridge = try PraxisRuntimeBridgeFactory.makeFFIBridge()
+    let ffiBridge = PraxisFFIFactory.makeFFIBridge()
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let handle = try await ffiBridge.openRuntimeSession()
 
@@ -1304,7 +1307,7 @@ struct HostRuntimeSurfaceTests {
 
   @Test
   func ffiBridgeAcceptsLegacyFlatRuntimeInterfaceRequests() async throws {
-    let ffiBridge = try PraxisRuntimeBridgeFactory.makeFFIBridge()
+    let ffiBridge = PraxisFFIFactory.makeFFIBridge()
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let handle = try await ffiBridge.openRuntimeSession()
     let legacyRunGoalJSON = """

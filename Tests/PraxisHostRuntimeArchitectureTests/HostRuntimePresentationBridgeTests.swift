@@ -76,14 +76,13 @@ struct HostRuntimePresentationBridgeTests {
 
   @Test
   @MainActor
-  func applePresentationBridgeBuffersRunEventsAndSharesBootstrapWithFFI() async throws {
+  func applePresentationBridgeBuffersRunEventsIndependentlyFromFFI() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("praxis-apple-bridge-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: rootDirectory) }
 
     let hostAdapters = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
     let bridge = try PraxisRuntimeBridgeFactory.makeApplePresentationBridge(hostAdapters: hostAdapters)
-    let ffiBridge = try PraxisRuntimeBridgeFactory.makeFFIBridge(hostAdapters: hostAdapters)
     let goal = PraxisCompiledGoal(
       normalizedGoal: .init(
         id: .init(rawValue: "apple.goal.catalog"),
@@ -106,7 +105,6 @@ struct HostRuntimePresentationBridgeTests {
     #expect(snapshotEvents.map(\.name) == ["run.started", "run.follow_up_ready"])
     #expect(drainedEvents == snapshotEvents)
     #expect(eventsAfterDrain.isEmpty)
-    #expect(ffiBridge.exportArchitectureSnapshot() == PraxisRuntimePresentationBridgeModule.bootstrap)
   }
 
   #if canImport(PraxisAppleUI)

@@ -1,7 +1,6 @@
 import PraxisRuntimeComposition
 import PraxisRuntimeFacades
 import PraxisRuntimeGateway
-import PraxisRuntimeInterface
 
 public enum PraxisRuntimeBridgeFactory {
   private static let sharedLocalHostAdapters = PraxisHostAdapterRegistry.localDefaults()
@@ -74,44 +73,4 @@ public enum PraxisRuntimeBridgeFactory {
     )
   }
 
-  public static func makeFFIBridge() throws -> PraxisFFIBridge {
-    try makeFFIBridge(hostAdapters: sharedLocalHostAdapters, blueprint: PraxisRuntimePresentationBridgeModule.bootstrap)
-  }
-
-  public static func makeRuntimeInterface() throws -> PraxisRuntimeInterfaceSession {
-    try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
-      hostAdapters: sharedLocalHostAdapters,
-      blueprint: PraxisRuntimePresentationBridgeModule.bootstrap
-    )
-  }
-
-  public static func makeRuntimeInterfaceRegistry() -> PraxisRuntimeInterfaceRegistry {
-    PraxisRuntimeGatewayFactory.makeRuntimeInterfaceRegistry(
-      hostAdapters: sharedLocalHostAdapters,
-      blueprint: PraxisRuntimePresentationBridgeModule.bootstrap
-    )
-  }
-
-  static func makeRuntimeInterface(
-    hostAdapters: PraxisHostAdapterRegistry = sharedLocalHostAdapters,
-    blueprint: PraxisRuntimeBlueprint = PraxisRuntimePresentationBridgeModule.bootstrap
-  ) throws -> PraxisRuntimeInterfaceSession {
-    try PraxisRuntimeGatewayFactory.makeRuntimeInterface(hostAdapters: hostAdapters, blueprint: blueprint)
-  }
-
-  static func makeRuntimeInterfaceRegistry(
-    hostAdapters: PraxisHostAdapterRegistry = sharedLocalHostAdapters,
-    blueprint: PraxisRuntimeBlueprint = PraxisRuntimePresentationBridgeModule.bootstrap
-  ) -> PraxisRuntimeInterfaceRegistry {
-    PraxisRuntimeGatewayFactory.makeRuntimeInterfaceRegistry(hostAdapters: hostAdapters, blueprint: blueprint)
-  }
-
-  static func makeFFIBridge(
-    hostAdapters: PraxisHostAdapterRegistry = sharedLocalHostAdapters,
-    blueprint: PraxisRuntimeBlueprint = PraxisRuntimePresentationBridgeModule.bootstrap
-  ) throws -> PraxisFFIBridge {
-    PraxisFFIBridge(
-      runtimeInterfaceRegistry: makeRuntimeInterfaceRegistry(hostAdapters: hostAdapters, blueprint: blueprint)
-    )
-  }
 }

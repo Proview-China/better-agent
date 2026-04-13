@@ -1,5 +1,3 @@
-import PraxisRuntimeInterface
-
 public enum PraxisPresentationIntent: String, Sendable, Codable {
   case inspectArchitecture
   case runGoal
@@ -58,48 +56,5 @@ public struct PraxisPresentationEvent: Sendable, Equatable, Codable {
     self.runID = runID
     self.sessionID = sessionID
     self.intentID = intentID
-  }
-}
-
-public struct PraxisFFIEventEnvelope: Sendable, Equatable, Codable {
-  public let status: PraxisRuntimeInterfaceResponseStatus
-  public let handle: PraxisRuntimeInterfaceSessionHandle
-  public let events: [PraxisRuntimeInterfaceEvent]
-  public let error: PraxisRuntimeInterfaceErrorEnvelope?
-
-  public init(
-    status: PraxisRuntimeInterfaceResponseStatus,
-    handle: PraxisRuntimeInterfaceSessionHandle,
-    events: [PraxisRuntimeInterfaceEvent] = [],
-    error: PraxisRuntimeInterfaceErrorEnvelope? = nil
-  ) {
-    self.status = status
-    self.handle = handle
-    self.events = events
-    self.error = error
-  }
-
-  public static func success(
-    handle: PraxisRuntimeInterfaceSessionHandle,
-    events: [PraxisRuntimeInterfaceEvent]
-  ) -> PraxisFFIEventEnvelope {
-    .init(
-      status: .success,
-      handle: handle,
-      events: events,
-      error: nil
-    )
-  }
-
-  public static func failure(
-    handle: PraxisRuntimeInterfaceSessionHandle,
-    error: PraxisRuntimeInterfaceErrorEnvelope
-  ) -> PraxisFFIEventEnvelope {
-    .init(
-      status: .failure,
-      handle: handle,
-      events: [],
-      error: error
-    )
   }
 }

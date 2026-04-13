@@ -103,6 +103,8 @@ public enum PraxisRuntimeGatewayModule {
   )
 }
 
+public typealias PraxisRuntimeGatewayBlueprint = PraxisRuntimeBlueprint
+
 /// Builds portal-agnostic runtime access surfaces for CLI and future exported libraries.
 ///
 /// This factory owns only the neutral bootstrap path. Native presentation bridges remain outside

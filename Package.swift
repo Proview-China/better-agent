@@ -61,6 +61,7 @@ let hostRuntimeTargets = [
   "PraxisRuntimeFacades",
   "PraxisRuntimeInterface",
   "PraxisRuntimeGateway",
+  "PraxisFFI",
   "PraxisRuntimePresentationBridge",
 ]
 
@@ -117,6 +118,7 @@ hostRuntimeArchitectureTestsTarget = .testTarget(
     "PraxisRuntimeUseCases",
     "PraxisRuntimeFacades",
     "PraxisRuntimeInterface",
+    "PraxisFFI",
     "PraxisRuntimePresentationBridge",
     "PraxisMpTypes",
     "PraxisAppleUI",
@@ -133,6 +135,7 @@ hostRuntimeArchitectureTestsTarget = .testTarget(
     "PraxisRuntimeUseCases",
     "PraxisRuntimeFacades",
     "PraxisRuntimeInterface",
+    "PraxisFFI",
     "PraxisRuntimePresentationBridge",
     "PraxisMpTypes",
   ],
@@ -648,6 +651,15 @@ let package = Package(
         "PraxisRuntimeInterface",
       ],
       path: "Sources/PraxisRuntimePresentationBridge",
+    ),
+    .target(
+      name: "PraxisFFI",
+      dependencies: [
+        "PraxisCoreTypes",
+        "PraxisRuntimeGateway",
+        "PraxisRuntimeInterface",
+      ],
+      path: "Sources/PraxisFFI",
     ),
     .executableTarget(
       name: "PraxisCLI",

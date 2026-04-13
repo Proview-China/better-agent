@@ -1,7 +1,6 @@
 import Foundation
 import PraxisGoal
 import PraxisRuntimeFacades
-import PraxisRuntimeInterface
 import PraxisRun
 
 public final class PraxisCLICommandBridge {
@@ -123,95 +122,5 @@ public final class PraxisApplePresentationBridge {
 
   public func drainEvents() async -> [PraxisPresentationEvent] {
     await eventStream.drain()
-  }
-}
-
-public final class PraxisFFIBridge {
-  public let runtimeInterfaceRegistry: PraxisRuntimeInterfaceRegistry
-  public let runtimeInterfaceCodec: any PraxisRuntimeInterfaceCoding
-
-  public init(
-    runtimeInterfaceRegistry: PraxisRuntimeInterfaceRegistry,
-    runtimeInterfaceCodec: any PraxisRuntimeInterfaceCoding = PraxisJSONRuntimeInterfaceCodec()
-  ) {
-    self.runtimeInterfaceRegistry = runtimeInterfaceRegistry
-    self.runtimeInterfaceCodec = runtimeInterfaceCodec
-  }
-
-  public func exportArchitectureSnapshot() -> PraxisRuntimeBlueprint {
-    PraxisRuntimePresentationBridgeModule.bootstrap
-  }
-
-  public func openRuntimeSession() async throws -> PraxisRuntimeInterfaceSessionHandle {
-    try await runtimeInterfaceRegistry.openSession()
-  }
-
-  public func activeRuntimeSessionHandles() async -> [PraxisRuntimeInterfaceSessionHandle] {
-    await runtimeInterfaceRegistry.activeHandles()
-  }
-
-  public func closeRuntimeSession(_ handle: PraxisRuntimeInterfaceSessionHandle) async -> Bool {
-    await runtimeInterfaceRegistry.closeSession(handle)
-  }
-
-  public func handleEncodedRequest(
-    _ requestData: Data,
-    on handle: PraxisRuntimeInterfaceSessionHandle
-  ) async throws -> Data {
-    let request: PraxisRuntimeInterfaceRequest
-    do {
-      request = try runtimeInterfaceCodec.decodeRequest(requestData)
-    } catch {
-      return try runtimeInterfaceCodec.encode(
-        .failure(
-          error: .init(
-            code: .invalidInput,
-            message: "Failed to decode runtime interface request payload: \(error)"
-          )
-        )
-      )
-    }
-
-    let response = await runtimeInterfaceRegistry.handle(request, on: handle)
-    return try runtimeInterfaceCodec.encode(response)
-  }
-
-  public func snapshotEncodedEvents(
-    for handle: PraxisRuntimeInterfaceSessionHandle
-  ) async throws -> Data {
-    try encodeEventEnvelope(await eventEnvelope(snapshot: true, for: handle))
-  }
-
-  public func drainEncodedEvents(
-    for handle: PraxisRuntimeInterfaceSessionHandle
-  ) async throws -> Data {
-    try encodeEventEnvelope(await eventEnvelope(snapshot: false, for: handle))
-  }
-
-  private func eventEnvelope(
-    snapshot: Bool,
-    for handle: PraxisRuntimeInterfaceSessionHandle
-  ) async -> PraxisFFIEventEnvelope {
-    let events = snapshot
-      ? await runtimeInterfaceRegistry.snapshotEvents(for: handle)
-      : await runtimeInterfaceRegistry.drainEvents(for: handle)
-
-    guard let events else {
-      return .failure(
-        handle: handle,
-        error: .init(
-          code: .sessionNotFound,
-          message: "Runtime interface session handle \(handle.rawValue) was not found."
-        )
-      )
-    }
-
-    return .success(handle: handle, events: events)
-  }
-
-  private func encodeEventEnvelope(_ envelope: PraxisFFIEventEnvelope) throws -> Data {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    return try encoder.encode(envelope)
   }
 }
