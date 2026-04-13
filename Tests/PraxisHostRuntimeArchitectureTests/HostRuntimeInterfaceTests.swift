@@ -1945,6 +1945,167 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfacePreservesMpSearchReadbackAndSmokeBoundaryFieldsWithoutCanonicalizing() async throws {
+    let runtimeInterface = makeStubbedRuntimeInterface(
+      mpFacade: makeStubMpFacade(
+        searchMp: { command in
+          guard command.projectID == " mp.local-runtime " else {
+            throw PraxisError.invalidInput("searchMp projectID was normalized unexpectedly.")
+          }
+          guard command.sessionID == " session.search " else {
+            throw PraxisError.invalidInput("searchMp sessionID was normalized unexpectedly.")
+          }
+          guard command.scopeLevels == [.project, .agentIsolated] else {
+            throw PraxisError.invalidInput("searchMp scopeLevels were normalized unexpectedly.")
+          }
+          guard command.includeSuperseded else {
+            throw PraxisError.invalidInput("searchMp includeSuperseded changed unexpectedly.")
+          }
+          return PraxisMpSearchResult(
+            projectID: command.projectID,
+            query: command.query,
+            summary: "MP search preserved raw boundary values.",
+            hits: [
+              .init(
+                memoryID: " memory.primary ",
+                agentID: "runtime.local",
+                scopeLevel: .project,
+                memoryKind: .semantic,
+                freshnessStatus: .fresh,
+                alignmentStatus: .aligned,
+                summary: "Host-neutral memory result",
+                storageKey: " memory/primary ",
+                semanticScore: 0.94,
+                finalScore: 1.0,
+                rankExplanation: "freshness=fresh"
+              )
+            ],
+            issues: []
+          )
+        },
+        readbackMp: { command in
+          guard command.projectID == "\tmp.local-runtime\t" else {
+            throw PraxisError.invalidInput("readbackMp projectID was normalized unexpectedly.")
+          }
+          guard command.sessionID == " readback.session " else {
+            throw PraxisError.invalidInput("readbackMp sessionID was normalized unexpectedly.")
+          }
+          guard command.query.isEmpty else {
+            throw PraxisError.invalidInput("readbackMp blank query baseline changed unexpectedly.")
+          }
+          guard command.scopeLevels == [.project] else {
+            throw PraxisError.invalidInput("readbackMp scopeLevels were normalized unexpectedly.")
+          }
+          guard command.includeSuperseded else {
+            throw PraxisError.invalidInput("readbackMp includeSuperseded changed unexpectedly.")
+          }
+          return PraxisMpReadback(
+            projectID: command.projectID,
+            summary: "MP readback preserved raw boundary values.",
+            totalMemoryCount: 2,
+            primaryCount: 1,
+            supportingCount: 1,
+            omittedSupersededCount: 0,
+            freshnessBreakdown: .init(counts: [.fresh: 1, .aging: 1]),
+            alignmentBreakdown: .init(counts: [.aligned: 1, .unreviewed: 1]),
+            scopeBreakdown: .init(counts: [.project: 2]),
+            issues: []
+          )
+        },
+        smokeMp: { command in
+          guard command.projectID == " smoke.project " else {
+            throw PraxisError.invalidInput("smokeMp projectID was normalized unexpectedly.")
+          }
+          return PraxisMpSmoke(
+            projectID: command.projectID,
+            summary: "MP smoke preserved raw boundary values.",
+            checks: [
+              .init(id: "semantic_memory_store", gate: .memoryStore, status: .ready, summary: "ok")
+            ]
+          )
+        }
+      )
+    )
+
+    let blankSearchProjectResponse = await runtimeInterface.handle(
+      .searchMp(
+        .init(
+          payloadSummary: "Reject blank MP search project",
+          projectID: "   ",
+          query: "onboarding"
+        )
+      )
+    )
+    let blankSearchQueryResponse = await runtimeInterface.handle(
+      .searchMp(
+        .init(
+          payloadSummary: "Reject blank MP search query",
+          projectID: "mp.local-runtime",
+          query: "   "
+        )
+      )
+    )
+    let searchResponse = await runtimeInterface.handle(
+      .searchMp(
+        .init(
+          payloadSummary: "Preserve MP search boundary fields",
+          projectID: " mp.local-runtime ",
+          query: "onboarding",
+          scopeLevels: [.project, .agentIsolated],
+          limit: 4,
+          agentID: "runtime.local",
+          sessionID: " session.search ",
+          includeSuperseded: true
+        )
+      )
+    )
+    let readbackResponse = await runtimeInterface.handle(
+      .readbackMp(
+        .init(
+          payloadSummary: "Preserve MP readback boundary fields",
+          projectID: "\tmp.local-runtime\t",
+          query: "",
+          scopeLevels: [.project],
+          limit: 6,
+          agentID: "runtime.local",
+          sessionID: " readback.session ",
+          includeSuperseded: true
+        )
+      )
+    )
+    let smokeResponse = await runtimeInterface.handle(
+      .smokeMp(
+        .init(
+          payloadSummary: "Preserve MP smoke project field",
+          projectID: " smoke.project "
+        )
+      )
+    )
+
+    #expect(blankSearchProjectResponse.status == .failure)
+    #expect(blankSearchProjectResponse.error?.code == .missingRequiredField)
+    #expect(blankSearchProjectResponse.error?.message == "Required field projectID is missing.")
+    #expect(blankSearchQueryResponse.status == .failure)
+    #expect(blankSearchQueryResponse.error?.code == .invalidInput)
+    #expect(blankSearchQueryResponse.error?.message == "Field query must not be empty.")
+
+    #expect(searchResponse.status == .success)
+    #expect(searchResponse.snapshot?.kind == .mpSearch)
+    #expect(searchResponse.snapshot?.projectID == " mp.local-runtime ")
+    #expect(searchResponse.snapshot?.summary == "MP search preserved raw boundary values.")
+
+    #expect(readbackResponse.status == .success)
+    #expect(readbackResponse.snapshot?.kind == .mpReadback)
+    #expect(readbackResponse.snapshot?.projectID == "\tmp.local-runtime\t")
+    #expect(readbackResponse.snapshot?.summary == "MP readback preserved raw boundary values.")
+
+    #expect(smokeResponse.status == .success)
+    #expect(smokeResponse.snapshot?.kind == .mpSmoke)
+    #expect(smokeResponse.snapshot?.projectID == " smoke.project ")
+    #expect(smokeResponse.snapshot?.summary == "MP smoke preserved raw boundary values.")
+  }
+
+  @Test
   func runtimeInterfaceResolveCmpFlowNotFoundKeepsSuccessEnvelopeAndNilIntentID() async throws {
     let runtimeInterface = makeStubbedRuntimeInterface(
       cmpFacade: makeStubCmpFacade(
@@ -3831,6 +3992,69 @@ struct HostRuntimeInterfaceTests {
     #expect(decodedArchive == archiveRequest)
     #expect(decodedResolve == resolveRequest)
     #expect(decodedHistory == historyRequest)
+  }
+
+  @Test
+  func runtimeInterfaceCodecRoundTripsMpSearchReadbackAndSmokeRequestsAsStableStrings() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let searchRequest = PraxisRuntimeInterfaceRequest.searchMp(
+      .init(
+        payloadSummary: "Search MP neutral memory",
+        projectID: " mp.local-runtime ",
+        query: "onboarding",
+        scopeLevels: [.project, .agentIsolated],
+        limit: 7,
+        agentID: "runtime.local",
+        sessionID: " session.search ",
+        includeSuperseded: true
+      )
+    )
+    let readbackRequest = PraxisRuntimeInterfaceRequest.readbackMp(
+      .init(
+        payloadSummary: "Read back MP neutral memory",
+        projectID: "\tmp.local-runtime\t",
+        query: "",
+        scopeLevels: [.project],
+        limit: 8,
+        agentID: "runtime.local",
+        sessionID: " readback.session ",
+        includeSuperseded: true
+      )
+    )
+    let smokeRequest = PraxisRuntimeInterfaceRequest.smokeMp(
+      .init(
+        payloadSummary: "Smoke MP neutral surface",
+        projectID: " smoke.project "
+      )
+    )
+
+    let searchData = try codec.encode(searchRequest)
+    let readbackData = try codec.encode(readbackRequest)
+    let smokeData = try codec.encode(smokeRequest)
+
+    let searchJSON = String(decoding: searchData, as: UTF8.self)
+    let readbackJSON = String(decoding: readbackData, as: UTF8.self)
+    let smokeJSON = String(decoding: smokeData, as: UTF8.self)
+
+    let decodedSearch = try codec.decodeRequest(searchData)
+    let decodedReadback = try codec.decodeRequest(readbackData)
+    let decodedSmoke = try codec.decodeRequest(smokeData)
+
+    #expect(
+      searchJSON ==
+        #"{"kind":"searchMp","searchMp":{"agentID":"runtime.local","includeSuperseded":true,"limit":7,"payloadSummary":"Search MP neutral memory","projectID":" mp.local-runtime ","query":"onboarding","scopeLevels":["project","agent_isolated"],"sessionID":" session.search "}}"#
+    )
+    #expect(
+      readbackJSON ==
+        #"{"kind":"readbackMp","readbackMp":{"agentID":"runtime.local","includeSuperseded":true,"limit":8,"payloadSummary":"Read back MP neutral memory","projectID":"\tmp.local-runtime\t","query":"","scopeLevels":["project"],"sessionID":" readback.session "}}"#
+    )
+    #expect(
+      smokeJSON ==
+        #"{"kind":"smokeMp","smokeMp":{"payloadSummary":"Smoke MP neutral surface","projectID":" smoke.project "}}"#
+    )
+    #expect(decodedSearch == searchRequest)
+    #expect(decodedReadback == readbackRequest)
+    #expect(decodedSmoke == smokeRequest)
   }
 
   @Test

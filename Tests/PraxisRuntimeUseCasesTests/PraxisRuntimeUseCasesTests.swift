@@ -2616,6 +2616,132 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func mpSearchReadbackAndSmokeUseCasesProjectStableNeutralBoundarySemanticsWithoutPresentationKeys() async throws {
+    let memoryStore = StubSemanticMemoryStore(
+      bundleResult: .init(
+        primaryMemoryIDs: [" memory.primary "],
+        supportingMemoryIDs: [" memory.supporting "],
+        omittedSupersededMemoryIDs: []
+      ),
+      searchResults: [
+        PraxisSemanticMemoryRecord(
+          id: " memory.primary ",
+          projectID: " mp.local-runtime ",
+          agentID: "runtime.local",
+          sessionID: " session.search ",
+          scopeLevel: .project,
+          memoryKind: .semantic,
+          summary: "Boundary-preserving primary memory",
+          storageKey: " memory/primary ",
+          freshnessStatus: .fresh,
+          alignmentStatus: .aligned,
+          embeddingStorageKey: " embed/primary "
+        ),
+        PraxisSemanticMemoryRecord(
+          id: " memory.supporting ",
+          projectID: " mp.local-runtime ",
+          agentID: "runtime.local",
+          sessionID: " session.search ",
+          scopeLevel: .project,
+          memoryKind: .summary,
+          summary: "Boundary-preserving supporting memory",
+          storageKey: " memory/supporting ",
+          freshnessStatus: .aging,
+          alignmentStatus: .unreviewed,
+          embeddingStorageKey: " embed/supporting "
+        ),
+      ]
+    )
+    let dependencies = try makeDependencies(
+      hostAdapters: PraxisHostAdapterRegistry(
+        providerInferenceExecutor: PraxisStubProviderInferenceExecutor { _ in
+          PraxisProviderInferenceResponse(
+            output: .init(summary: "stubbed inference"),
+            receipt: .init(
+              capabilityKey: "provider.infer",
+              backend: "stub-provider",
+              status: .succeeded,
+              summary: "Inference is stubbed for MP boundary tests."
+            )
+          )
+        },
+        browserGroundingCollector: PraxisStubBrowserGroundingCollector { _ in
+          PraxisBrowserGroundingEvidenceBundle(
+            pages: [
+              .init(role: .verifiedSource, url: "https://example.com/mp-boundary")
+            ],
+            facts: [
+              .init(name: "mp-boundary", status: .verified, value: "reachable")
+            ]
+          )
+        },
+        semanticSearchIndex: PraxisStubSemanticSearchIndex(
+          cannedResults: [
+            "onboarding": [
+              .init(id: "match-1", score: 0.95, contentSummary: "Boundary-preserving primary memory", storageKey: " memory/primary "),
+              .init(id: "match-2", score: 0.74, contentSummary: "Boundary-preserving supporting memory", storageKey: " memory/supporting "),
+            ]
+          ]
+        ),
+        semanticMemoryStore: memoryStore
+      )
+    )
+
+    let search = try await PraxisSearchMpUseCase(dependencies: dependencies).execute(
+      .init(
+        projectID: " mp.local-runtime ",
+        query: "onboarding",
+        scopeLevels: [.project],
+        limit: 5,
+        agentID: "runtime.local",
+        sessionID: " session.search ",
+        includeSuperseded: true
+      )
+    )
+    let readback = try await PraxisReadbackMpUseCase(dependencies: dependencies).execute(
+      .init(
+        projectID: " mp.local-runtime ",
+        query: "",
+        scopeLevels: [.project],
+        limit: 5,
+        agentID: "runtime.local",
+        sessionID: " session.search ",
+        includeSuperseded: true
+      )
+    )
+    let smoke = try await PraxisSmokeMpUseCase(dependencies: dependencies).execute(
+      .init(projectID: " mp.local-runtime ")
+    )
+
+    let encodedSearch = try encodeUseCaseTestJSON(search)
+    let encodedReadback = try encodeUseCaseTestJSON(readback)
+    let encodedSmoke = try encodeUseCaseTestJSON(smoke)
+
+    #expect(encodedSearch.contains(#""projectID":"mp.local-runtime""#))
+    #expect(encodedSearch.contains(#""memoryID":"memory.primary""#))
+    #expect(encodedSearch.contains(#""storageKey":"memory\/primary""#))
+    #expect(encodedReadback.contains(#""projectID":"mp.local-runtime""#))
+    #expect(encodedSmoke.contains(#""projectID":" mp.local-runtime ""#))
+
+    for encoded in [encodedSearch, encodedReadback, encodedSmoke] {
+      for forbiddenKey in ["\"title\":", "\"kind\":", "\"terminal\"", "\"screen\"", "\"viewState\"", "\"prompt\""] {
+        #expect(!encoded.contains(forbiddenKey))
+      }
+    }
+
+    #expect(search.projectID == "mp.local-runtime")
+    #expect(search.query == "onboarding")
+    #expect(search.hits.map(\.memoryID) == ["memory.primary", "memory.supporting"])
+    #expect(search.hits.map(\.storageKey) == ["memory/primary", "memory/supporting"])
+    #expect(readback.projectID == "mp.local-runtime")
+    #expect(readback.totalMemoryCount == 2)
+    #expect(readback.primaryCount == 1)
+    #expect(readback.supportingCount == 1)
+    #expect(smoke.projectID == " mp.local-runtime ")
+    #expect(smoke.checks.map(\.gate).contains(.semanticSearch))
+  }
+
+  @Test
   func mpReadbackUseCaseRoundTripsTypedBreakdownMapsAndRejectsUnknownKeys() throws {
     let readback = PraxisMpReadback(
       projectID: "mp.local-runtime",
