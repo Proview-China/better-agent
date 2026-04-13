@@ -288,13 +288,16 @@ public struct PraxisCLICommandParser: Sendable {
       throw PraxisCLIError.invalidFlag(invalidFlag)
     }
 
-    let joined = arguments
-      .joined(separator: " ")
+    guard arguments.count == 1 else {
+      throw PraxisCLIError.unexpectedArguments(command)
+    }
+
+    let value = arguments[arguments.startIndex]
       .trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !joined.isEmpty else {
+    guard !value.isEmpty else {
       throw PraxisCLIError.missingArgument(command)
     }
-    return joined
+    return value
   }
 }
 

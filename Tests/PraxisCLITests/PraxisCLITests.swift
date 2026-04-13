@@ -112,6 +112,31 @@ struct PraxisCLITests {
   }
 
   @Test
+  func resumeRunParserRequiresSingleStrictPositionalArgument() throws {
+    let parser = PraxisCLICommandParser()
+    let invocation = try parser.parse(["resume-run", "run:123"])
+
+    switch invocation {
+    case .runtime(let command):
+      guard case .resumeRun(let payload) = command.request else {
+        Issue.record("Expected resume-run parse to produce a resumeRun request.")
+        return
+      }
+      #expect(payload.runID == "run:123")
+      #expect(payload.payloadSummary == "run:123")
+    default:
+      Issue.record("Expected resume-run parse to produce a runtime invocation.")
+    }
+
+    #expect(throws: PraxisCLIError.invalidFlag("--latest")) {
+      try parser.parse(["resume-run", "--latest"])
+    }
+    #expect(throws: PraxisCLIError.unexpectedArguments("resume-run")) {
+      try parser.parse(["resume-run", "run:123", "extra-token"])
+    }
+  }
+
+  @Test
   func runGoalParserGeneratesDistinctGoalAndSessionIdentifiers() throws {
     let parser = PraxisCLICommandParser()
     let first = try parser.parse(["run-goal", "First CLI goal"])
@@ -284,7 +309,7 @@ struct PraxisCLITests {
   }
 
   @Test
-  func cliAppRejectsFlagsForRunGoalAndResumeRunWithStableMessages() async throws {
+  func cliAppRejectsInvalidRunGoalAndResumeRunArgumentsWithStableMessages() async throws {
     let runtimeInterface = StubRuntimeInterface(
       response: .success(
         snapshot: .init(kind: .inspection, title: "Unused", summary: "Unused")
@@ -309,6 +334,14 @@ struct PraxisCLITests {
     } catch let error as PraxisCLIError {
       #expect(error == .invalidFlag("--latest"))
       #expect(error.errorDescription == "Unsupported CLI flag: --latest")
+    }
+
+    do {
+      _ = try await app.run(arguments: ["resume-run", "run:123", "extra-token"])
+      Issue.record("Expected resume-run extra positional validation to throw.")
+    } catch let error as PraxisCLIError {
+      #expect(error == .unexpectedArguments("resume-run"))
+      #expect(error.errorDescription == "Unexpected extra arguments for resume-run")
     }
 
     #expect(runtimeInterface.handledRequests.isEmpty)
