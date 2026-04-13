@@ -23,6 +23,7 @@ import PraxisWorkspaceContracts
 @testable import PraxisRuntimeGateway
 @testable import PraxisRuntimeInterface
 @testable import PraxisRuntimePresentationBridge
+import PraxisRuntimeUseCases
 
 private func capabilityID(_ rawValue: String) -> PraxisCapabilityID {
   PraxisCapabilityID(rawValue: rawValue)
@@ -2393,6 +2394,82 @@ struct HostRuntimeSurfaceTests {
     #expect(tapHistory.entries.contains {
       $0.capabilityKey == PraxisCapabilityID(rawValue: "tool.git") && $0.outcome == .approvedByHuman
     })
+  }
+
+  @Test
+  func explicitRejectAndReleaseDecisionsPreserveTapSemanticsAcrossSurfaceReadback() async throws {
+    let scenarios: [(
+      label: String,
+      decision: PraxisCmpPeerApprovalDecision,
+      expectedOutcome: PraxisCmpPeerApprovalOutcome,
+      expectedHumanGateState: PraxisHumanGateState,
+      expectedApprovedCount: Int,
+      expectedDecisionSummary: String
+    )] = [
+      ("reject", .reject, .rejectedByHuman, .rejected, 0, "Rejected git access for checker"),
+      ("release", .release, .gateReleased, .approved, 1, "Released git access gate for checker"),
+    ]
+
+    for scenario in scenarios {
+      let expectedDecisionSummary = scenario.expectedDecisionSummary
+      let rootDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("praxis-peer-approval-\(scenario.label)-\(UUID().uuidString)", isDirectory: true)
+      defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+      let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+      let runtimeFacade = try PraxisRuntimeBridgeFactory.makeRuntimeFacade(hostAdapters: registry)
+
+      _ = try await runtimeFacade.cmpFacade.requestPeerApproval(
+        PraxisRequestCmpPeerApprovalCommand(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: .init(rawValue: "tool.git"),
+          requestedTier: .b1,
+          summary: "Escalate git access to checker"
+        )
+      )
+      let decision = try await runtimeFacade.cmpFacade.decidePeerApproval(
+        PraxisDecideCmpPeerApprovalCommand(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: .init(rawValue: "tool.git"),
+          decision: scenario.decision,
+          reviewerAgentID: "reviewer.local",
+          decisionSummary: expectedDecisionSummary
+        )
+      )
+      let readback = try await runtimeFacade.cmpFacade.readbackPeerApproval(
+        PraxisReadbackCmpPeerApprovalCommand(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: .init(rawValue: "tool.git")
+        )
+      )
+      let tapStatus = try await runtimeFacade.inspectionFacade.readbackTapStatus(
+        PraxisReadbackTapStatusCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+      )
+      let tapHistory = try await runtimeFacade.inspectionFacade.readbackTapHistory(
+        PraxisReadbackTapHistoryCommand(projectID: "cmp.local-runtime", agentID: "checker.local", limit: 10)
+      )
+
+      #expect(decision.outcome == scenario.expectedOutcome)
+      #expect(decision.humanGateState == scenario.expectedHumanGateState)
+      #expect(readback.found)
+      #expect(readback.outcome == scenario.expectedOutcome)
+      #expect(readback.humanGateState == scenario.expectedHumanGateState)
+      #expect(tapStatus.pendingApprovalCount == 0)
+      #expect(tapStatus.approvedApprovalCount == scenario.expectedApprovedCount)
+      #expect(tapStatus.humanGateState == scenario.expectedHumanGateState)
+      #expect(tapHistory.entries.contains {
+        $0.capabilityKey == PraxisCapabilityID(rawValue: "tool.git")
+          && $0.outcome == scenario.expectedOutcome
+          && $0.humanGateState == scenario.expectedHumanGateState
+          && $0.decisionSummary == expectedDecisionSummary
+      })
+    }
   }
 
   @Test

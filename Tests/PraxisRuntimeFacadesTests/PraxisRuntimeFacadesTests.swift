@@ -417,6 +417,71 @@ struct PraxisRuntimeFacadesTests {
   }
 
   @Test
+  func cmpFacadePreservesExplicitPeerApprovalDecisionOutcomesAcrossReadback() async throws {
+    let scenarios: [(
+      label: String,
+      decision: PraxisCmpPeerApprovalDecision,
+      expectedOutcome: PraxisCmpPeerApprovalOutcome,
+      expectedHumanGateState: PraxisHumanGateState,
+      expectedDecisionSummary: String
+    )] = [
+      ("approve", .approve, .approvedByHuman, .approved, "Approved git access for checker"),
+      ("reject", .reject, .rejectedByHuman, .rejected, "Rejected git access for checker"),
+      ("release", .release, .gateReleased, .approved, "Released git access gate for checker"),
+    ]
+
+    for scenario in scenarios {
+      let rootDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("praxis-runtime-facades-peer-approval-\(scenario.label)-\(UUID().uuidString)", isDirectory: true)
+      defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+      let facade = try PraxisRuntimeGatewayFactory.makeRuntimeFacade(
+        hostAdapters: PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory),
+        blueprint: PraxisRuntimeGatewayModule.bootstrap
+      )
+
+      _ = try await facade.cmpRolesFacade.requestPeerApproval(
+        PraxisRequestCmpPeerApprovalCommand(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: .init(rawValue: "tool.git"),
+          requestedTier: .b1,
+          summary: "Escalate git access to checker"
+        )
+      )
+      let decisionSnapshot = try await facade.cmpRolesFacade.decidePeerApproval(
+        PraxisDecideCmpPeerApprovalCommand(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: .init(rawValue: "tool.git"),
+          decision: scenario.decision,
+          reviewerAgentID: "reviewer.local",
+          decisionSummary: scenario.expectedDecisionSummary
+        )
+      )
+      let readbackSnapshot = try await facade.cmpReadbackFacade.readbackPeerApproval(
+        PraxisReadbackCmpPeerApprovalCommand(
+          projectID: "cmp.local-runtime",
+          agentID: "runtime.local",
+          targetAgentID: "checker.local",
+          capabilityKey: .init(rawValue: "tool.git")
+        )
+      )
+
+      #expect(decisionSnapshot.outcome == scenario.expectedOutcome)
+      #expect(decisionSnapshot.humanGateState == scenario.expectedHumanGateState)
+      #expect(decisionSnapshot.decisionSummary == scenario.expectedDecisionSummary)
+
+      #expect(readbackSnapshot.found)
+      #expect(readbackSnapshot.outcome == scenario.expectedOutcome)
+      #expect(readbackSnapshot.humanGateState == scenario.expectedHumanGateState)
+      #expect(readbackSnapshot.decisionSummary == scenario.expectedDecisionSummary)
+    }
+  }
+
+  @Test
   func cmpRoleCountMapsRoundTripTypedRoleKeys() throws {
     let roleCounts = PraxisCmpRoleCountMap(
       counts: [

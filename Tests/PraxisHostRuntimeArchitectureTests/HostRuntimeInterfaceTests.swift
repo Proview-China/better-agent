@@ -1396,6 +1396,124 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfacePreservesRejectAndReleasePeerApprovalOutcomesAcrossReadback() async throws {
+    let scenarios: [(
+      label: String,
+      decision: PraxisCmpPeerApprovalDecision,
+      expectedOutcome: PraxisCmpPeerApprovalOutcome,
+      expectedHumanGateState: PraxisHumanGateState,
+      expectedDecisionSummary: String
+    )] = [
+      ("reject", .reject, .rejectedByHuman, .rejected, "Rejected git access for checker"),
+      ("release", .release, .gateReleased, .approved, "Released git access gate for checker"),
+    ]
+
+    for scenario in scenarios {
+      let rootDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("praxis-runtime-interface-peer-approval-\(scenario.label)-\(UUID().uuidString)", isDirectory: true)
+      defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+      let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+      let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+        hostAdapters: registry,
+        blueprint: PraxisRuntimeGatewayModule.bootstrap
+      )
+      let expectedDecisionSummary = scenario.expectedDecisionSummary
+
+      let requestResponse = await runtimeInterface.handle(
+        .requestCmpPeerApproval(
+          .init(
+            payloadSummary: "Request CMP peer approval",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: .init(rawValue: "tool.git"),
+            requestedTier: .b1,
+            summary: "Escalate git access to checker"
+          )
+        )
+      )
+      let decideResponse = await runtimeInterface.handle(
+        .decideCmpPeerApproval(
+          .init(
+            payloadSummary: "\(scenario.label.capitalized) CMP peer approval",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: .init(rawValue: "tool.git"),
+            decision: scenario.decision,
+            reviewerAgentID: "reviewer.local",
+            decisionSummary: expectedDecisionSummary
+          )
+        )
+      )
+      let readbackResponse = await runtimeInterface.handle(
+        .readbackCmpPeerApproval(
+          .init(
+            payloadSummary: "Read back CMP peer approval",
+            projectID: "cmp.local-runtime",
+            agentID: "runtime.local",
+            targetAgentID: "checker.local",
+            capabilityKey: .init(rawValue: "tool.git")
+          )
+        )
+      )
+      let tapStatusResponse = await runtimeInterface.handle(
+        .readbackTapStatus(
+          .init(
+            payloadSummary: "Read back TAP status",
+            projectID: "cmp.local-runtime",
+            agentID: "checker.local"
+          )
+        )
+      )
+      let tapHistoryResponse = await runtimeInterface.handle(
+        .readbackTapHistory(
+          .init(
+            payloadSummary: "Read back TAP history",
+            projectID: "cmp.local-runtime",
+            agentID: "checker.local",
+            limit: 10
+          )
+        )
+      )
+
+      let expectedRoute = requestResponse.snapshot?.route
+
+      #expect(requestResponse.status == .success)
+      #expect(requestResponse.snapshot?.humanGateState == .waitingApproval)
+      #expect(expectedRoute != nil)
+
+      #expect(decideResponse.status == .success)
+      #expect(decideResponse.snapshot?.kind == .cmpApproval)
+      #expect(decideResponse.snapshot?.outcome == scenario.expectedOutcome)
+      #expect(decideResponse.snapshot?.humanGateState == scenario.expectedHumanGateState)
+      #expect(decideResponse.snapshot?.route == expectedRoute)
+
+      #expect(readbackResponse.status == .success)
+      #expect(readbackResponse.snapshot?.kind == .cmpApproval)
+      #expect(readbackResponse.snapshot?.outcome == scenario.expectedOutcome)
+      #expect(readbackResponse.snapshot?.humanGateState == scenario.expectedHumanGateState)
+      #expect(readbackResponse.snapshot?.route == expectedRoute)
+
+      #expect(tapStatusResponse.status == .success)
+      #expect(tapStatusResponse.snapshot?.kind == .tapStatus)
+      #expect(tapStatusResponse.snapshot?.humanGateState == scenario.expectedHumanGateState)
+
+      #expect(tapHistoryResponse.status == .success)
+      #expect(tapHistoryResponse.snapshot?.kind == .tapHistory)
+      let matchingHistoryEntry = tapHistoryResponse.snapshot?.tapHistoryEntries?.contains {
+        $0.capabilityKey == .init(rawValue: "tool.git")
+          && $0.route == expectedRoute
+          && $0.outcome == scenario.expectedOutcome
+          && $0.humanGateState == scenario.expectedHumanGateState
+          && $0.decisionSummary == expectedDecisionSummary
+      }
+      #expect(matchingHistoryEntry == true)
+    }
+  }
+
+  @Test
   func runtimeInterfaceRecoverCmpProjectReturnsCmpRecoverSnapshotAndRecoveredEvent() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("praxis-runtime-interface-recover-\(UUID().uuidString)", isDirectory: true)
