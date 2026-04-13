@@ -33,57 +33,59 @@
 
 ### 2.2 当前 Swift 侧状态
 
-- SwiftPM phase-1 target 骨架已经建立完成。
-- `Package.swift` 中的 target 依赖方向已经冻结。
-- 当前 Swift 代码已经能表达：
+- SwiftPM phase-1 target 拓扑已经稳定，不再只是“可编译骨架”。
+- `Package.swift` 中的 target 依赖方向仍保持冻结，且大部分 phase-1 target 已进入“有真实规则 / use case / facade / contract”的状态。
+- 当前 Swift 代码已经稳定表达：
   - 子域边界
   - Host 分层
-  - PresentationBridge 入口规则
-  - 若干 placeholder DTO / facade / use case
-- 最近已吸收 `integrate/dev-master-cmp` 的模块化方向：
-  - CMP facade / service 不再只靠一个大表面承接，而是已经出现 `session`、`flow`、`project`、`roles`、`control`、`readback` 这些清晰缝
-  - HostRuntime 内部也已经出现 `activeFlow`、`project`、`tapBridge` 这样的服务切面
-  - HostContracts 侧已经开始出现 MP baseline、semantic memory、browser grounding、multimodal user-io 的明确契约占位
-- 当前 Swift 已不再只是“可编译骨架 + 架构守卫测试”：
-  - `PraxisRuntimeComposition` 默认 local profile 已经具备第一批真实本地 adapter：
-    - checkpoint / journal / projection / delivery truth
-    - embedding / semantic memory / semantic search
-    - message bus
-    - shell executor
-    - git readiness probe
-    - workspace reader / searcher / writer
-    - git executor
-    - lineage store
-  - `PraxisCLI` 已具备最小命令式壳：
-    - `inspect-architecture`
-    - `inspect-tap`
-    - `inspect-cmp`
-    - `inspect-mp`
-    - `run-goal`
-    - `resume-run`
-    - `events`
-- 但当前 Swift 仍然没有承接 TS 的完整 live/runtime 深度：
-  - provider live inference 仍默认是 scaffold surface
-  - browser grounding / multimodal user-io 仍默认是 scaffold surface
+  - RuntimeInterface / PresentationBridge 入口规则
+  - 宿主无关的 typed request / response / summary / facade surface
+- 最近这轮 HostRuntime 收口后，CMP/MP 的中立表面已经不再只是规划目标：
+  - CMP 侧 `session`、`project`、`flow`、`roles`、`control`、`readback` 已经进入 Swift host-neutral runtime surface，而不是仍停留在单一大 facade
+  - MP 侧 `ingest / align / promote / archive / resolve / history / search / readback / smoke` 已经具备可验证的 use case / facade / interface 路径
+  - RuntimeInterface / Facades / UseCases 上大量 stringly-typed surface 已被收成 typed contract，包括 opaque references、lineage references、event names、role-stage telemetry、recovery source、capability IDs 等
+- `PraxisRuntimeComposition.localDefaults(rootDirectory:)` 当前已经具备一批真实本地 runtime lanes：
+  - checkpoint / journal / projection / delivery truth
+  - embedding metadata / semantic memory / semantic search
+  - message bus
+  - workspace reader / searcher / writer
+  - shell executor
+  - git readiness probe / minimal git executor
+  - lineage store
+- `localDefaults` 不再适合被统称为“scaffold runtime”：
+  - persistence / workspace / git / message-bus / lineage 是真实 local runtime lanes
+  - provider inference / browser grounding / audio transcription / speech synthesis / image generation 这些 surface 现在按 provenance 真值区分为 `unavailable`、`scaffoldPlaceholder`、`localBaseline`、`composed`
+  - inspection / smoke wording 已同步跟随 provenance truth，不再把“有 adapter”一律说成 host-backed
+- `PraxisCLI` 仍只保留最小命令式壳：
+  - `inspect-architecture`
+  - `inspect-tap`
+  - `inspect-cmp`
+  - `inspect-mp`
+  - `run-goal`
+  - `resume-run`
+  - `events`
+- 当前 Swift 仍然没有承接 TS 的完整 live/runtime 深度：
+  - provider / browser / multimodal user-io 的 live host depth 仍未完成，当前更像 scaffold placeholder、local baseline 或已组合 surface 的分层体系，而不是统一 live lane
   - 本地持久化已切到 SQLite-backed single-file baseline，但还没有进入正式 schema versioning / migration policy
+  - `PraxisFFI` 仍未作为正式 target 收口，当前只有最小 encoded bridge surface
 
 ### 2.3 当前验证状态
 
-截至 `2026-04-11`，本地已确认：
+截至 `2026-04-13`，本地已确认：
 
 - `swift test` 通过
 - Swift package tests 已切换到 `Swift Testing`
-- 当前 `swift test` 快照为：
-  - `150` tests
-  - `39` suites
-- `npm run typecheck` 当前未全绿：
-  - `src/agent_core/live-agent-chat.ts:1690` 存在 TypeScript 参数个数错误
+- 当前 `swift test` 最新快照为：
+  - `355` tests
+  - `53` suites
+- `npm run typecheck` 当前仍未全绿：
+  - `src/agent_core/live-agent-chat.ts:1690` 仍存在 TypeScript 参数个数错误
 
 这说明：
 
-- Swift 主路径当前是可编译、可守卫、且已具备一批真实 local runtime adapter 的
-- 但它还不是 TS 运行时的功能等价替代
-- TS 侧当前仍是行为参考基线，而不是“所有静态检查都完全健康”的基线
+- Swift 非 UI 主线当前已经不是“target 规划 + 架构守卫”阶段，而是已具备大体可用的 HostRuntime / CMP / MP / TAP 中立表面与对应行为回归网
+- 但它还不是 TS 运行时的功能等价替代，也还没有正式冻结导出层与 live host 深度
+- TS 侧当前仍是行为参考基线；上面的 `typecheck` 问题是可选尾账，不是当前 Swift 非 UI 主线 blocker
 
 ## 3. 总目标
 
@@ -417,7 +419,7 @@ Core 禁止直接依赖：
 - `PraxisTapReview`、`PraxisTapProvision` 已承接 review route / decision、tool-review 统一审查面、asset registry、provision planner、verification/rollback plan 等纯规则面
 - `PraxisTapRuntime`、`PraxisTapAvailability` 已承接 replay policy、human gate、runtime snapshot、availability audit、gate decision、failure taxonomy 等运行期语义与可用性规则
 - 已明确把 reviewer worker bridge、model hook、tool runtime handoff、install/repo write/network side effect 留在 HostContracts / HostRuntime，不回灌进 TAP Core
-- 已补齐对应 Swift Testing 测试，覆盖 topology、governance、review/provision/runtime/availability 的首轮样本；截至 `2026-04-11`，整包 `swift test` 为 `150` tests / `39` suites 全绿
+- 已补齐对应 Swift Testing 测试，覆盖 topology、governance、review/provision/runtime/availability 的首轮样本；当前全仓最新验证快照见 `2.3 当前验证状态`
 
 覆盖 target：
 
@@ -508,58 +510,37 @@ Core 禁止直接依赖：
 
 ### Wave 6：HostRuntime
 
-进度记录（`2026-04-11`）：
+当前进度记录（截至 `2026-04-13`）：
 
-- 已基本覆盖到当前阶段所需的 HostRuntime 接口可用性
-- `PraxisRuntimeComposition`、`PraxisRuntimeUseCases`、`PraxisRuntimeFacades`、`PraxisRuntimeInterface`、`PraxisRuntimePresentationBridge` 已形成可验证闭环
+- `PraxisRuntimeComposition`、`PraxisRuntimeUseCases`、`PraxisRuntimeFacades`、`PraxisRuntimeInterface`、`PraxisRuntimeGateway`、`PraxisRuntimePresentationBridge` 已形成持续被真实测试覆盖的 HostRuntime 闭环。
 - 当前已经具备：
-  - host-backed inspection / run / resume 最小运行链
-  - replay-aware resume contract
+  - replay-aware `run / resume` 最小运行链
   - typed runtime interface request / structured response / error envelope
-  - runtime interface session registry / opaque handle lifecycle
+  - session handle lifecycle / opaque reference surface
   - `PraxisFFIBridge` 的最小 encoded bridge surface
-- `PraxisRuntimeComposition` 默认 local profile 当前已不再只是 scaffold 装配：
-  - 已有真实 local persistence / semantic memory / message bus / shell / git probe
-  - 已补入真实 workspace reader/searcher/writer
-  - 已补入最小 system git executor
-  - 已补入 local lineage store
-- 本地 structured persistence 已从多份 JSON 文件收敛为单一 SQLite-backed runtime store：
-  - checkpoint
-  - journal
-  - projection
-  - delivery truth
-  - embedding metadata
-  - semantic memory
-  - lineage
-- `PraxisInspectCmpUseCase` 当前也不再只看“adapter 是否存在”，而是开始读取：
-  - workspace 读写检索状态
-  - git repository verify 状态
-  - projection 引用到的 lineage resolution 状态
-- `PraxisRunGoalUseCase` / `PraxisResumeRunUseCase` 已开始把本地 runtime 真相写回宿主持久化：
-  - projection descriptor
-  - lineage descriptor
-  - delivery truth
-  - message bus publication side effect
-- 这意味着当前 Wave 6 已进入“最小 local runtime 闭环”阶段，而不是只停留在 neutral bridge / facade 可调用
-- 这些覆盖已经足以支撑后续多语言 UI / shell / CLI adapter 继续演进，不需要现在就把 Swift CLI / SwiftUI 做成主产品面，也不需要现在就把完整 FFI target、C ABI、字符串/内存管理策略一次性做死
-- 当前 Wave 6 尚未收口的主要缺口是：
-  - `PraxisRuntimeInterface` 仍主要覆盖 run / resume / inspection / catalog
-  - TS 当前已拆开的 `session / project / flow / roles / readback` 中立表面还没有完整升格成 Swift neutral contract
-  - provider inference / browser grounding / multimodal user-io 仍主要停留在 scaffold surface
+  - CMP / MP inspection、readback、smoke、history、workflow mutation 的真实 facade / use case / interface 路径
+- `PraxisRuntimeComposition.localDefaults(rootDirectory:)` 当前已明确区分两类东西：
+  - 真实 local runtime lanes：persistence、workspace、git、message bus、semantic memory/search、lineage
+  - 仍需按 provenance 真值描述的 host-facing lanes：provider inference、browser grounding、audio/speech/image multimodal surfaces
+- Wave 6 这轮已完成的关键收口包括：
+  - `session / project / flow / roles / control / readback` 等 CMP host-neutral surface 的持续 typed 化与守卫测试
+  - MP `ingest / align / promote / archive / resolve / history / search / readback / smoke` 的边界行为、wire-shape 与 telemetry contract 加固
+  - runtime interface opaque references、lineage references、event names、TAP capability IDs、tool-review governance signals、CMP recovery source、role-stage telemetry 等弱类型 contract 的持续 typed migration
+  - `localDefaults` provenance truth 收口：`unavailable / scaffoldPlaceholder / localBaseline / composed`
+  - CMP/TAP readback wording truth 收口：只有真正来自 persisted state 或 append-only runtime events 的路径保留 `persisted` 语义，其余 fallback 路径改回 `current ... state/view`
+- 这意味着当前 Wave 6 已经从“最小 local runtime 闭环”继续推进到“host-neutral surface 与 truth wording 收口”阶段，而不是仍停留在 neutral bridge 可调用的早期状态。
+- 当前 Wave 6 的可信残余项主要是：
+  - SQLite-backed runtime store 仍缺正式 schema versioning / migration policy
+  - provider / browser / multimodal user-io 仍未形成完整 live host depth，当前主要是 scaffold placeholder、local baseline 与 composed surface 的组合
+  - provenance / mixed-fallback 行为网仍是高价值回归网，不是对所有 host-surface 传播路径的完备证明
+  - `PraxisFFI` 仍未正式升格成独立导出 target
 - 当前阶段应刻意保留的弹性包括：
   - 真实导出函数表如何组织
   - 跨线程调用约束
   - 流式 token / partial update 协议
   - 最终的句柄释放与缓冲区所有权模型
-
-进度记录（`2026-04-12`）：
-
-- MP host workflow 这一轮补了 3 个已经被 review 暴露出来的真实语义缺口：
-  - `PraxisAlignMpUseCase` 现在会像 `promote/archive` 一样校验 memory 的 `project ownership`，避免跨 project 误改 foreign memory
-  - `PraxisResolveMpUseCase` / `PraxisRequestMpHistoryUseCase` 不再把 shared bundle 检索错误收窄到 `requesterAgentID`，project-shared memory 可以被其他 agent 正常读到
-  - `PraxisMpHostRetrievalService` 现在会在 pre-rank candidate snapshot 阶段保留 superseded memory ID，用于稳定产出 `omittedSupersededMemoryIDs` diagnostics
-- 这说明当前 Wave 6 不只是“neutral surface 已接通”，也开始进入对 MP shared retrieval / governance / diagnostics 做真实语义收口的阶段
-- 本轮已补对应验证并执行 `swift test`，结果为 `220 tests / 51 suites` 全通过
+- 当前本地验证快照见 `2.3`：
+  - `swift test` 为 `355` tests / `53` suites 全通过
 
 覆盖 target：
 
@@ -861,19 +842,22 @@ Core 禁止直接依赖：
 - TS TAP governance vs Swift TAP governance
 - TS CMP routing vs Swift CMP routing
 
-## 14. 当前开工建议
+## 14. 当前剩余项与下一步建议
 
-按当前进度，下一轮建议不再回到“从 Wave 0 顺序开工”的视角，而是直接沿着当前缺口收口：
+按当前进度，Swift 非 UI 主线已经从“大块架构迁移”进入“剩余真值与导出边界收口”阶段。可信的剩余项目前压缩为：
 
-1. 优先补完 Wave 6 的 neutral runtime surface
-   - 把 `session / project / flow / roles / readback` 升格成稳定的 RuntimeInterface / facade / use case 表面
-   - 避免 HostRuntime 重新长回“大 runtime 方法集”
+1. 继续补强 Wave 6 的 truth / provenance residual
+   - 为 mixed provenance、mixed fallback、override path 继续补行为回归网
+   - 重点不是再发明新的大 facade，而是防止现有 host-neutral surface 在 wording、summary、inspection、smoke 上重新漂强
 2. 继续做实 local runtime baseline
-   - 在保持四层边界不变的前提下，补强 local runtime 守卫测试
    - 为 SQLite-backed runtime store 引入明确的 schema versioning / migration policy
-3. 然后再推进 Wave 7
+   - 保持 `localDefaults` 中真实 local lane 与 scaffold/local-baseline/composed host-facing lane 的边界清晰
+3. 再推进 Wave 7 的导出层
    - 优先把现有 `PraxisFFIBridge` 升格成正式 `PraxisFFI`
-   - UI / shell 如由其它语言实现，优先建立在 `RuntimeInterface` / `PraxisFFI` 之上，而不是反向塑造 Core/Runtime contract
+   - `PraxisCLI` 继续只承担最小验证入口
+   - `TUI / GUI` 仍不属于当前这份 Swift 非 UI 收口范围
+4. 作为可选尾账处理 TS UI 问题
+   - `src/agent_core/live-agent-chat.ts:1690` 仍可顺手修，但它不是当前 Swift 主线 blocker
 
 最重要的一句话：
 
