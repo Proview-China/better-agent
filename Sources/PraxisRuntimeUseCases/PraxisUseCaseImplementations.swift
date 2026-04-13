@@ -2746,7 +2746,7 @@ private func cmpPeerApprovalReadback(
     targetAgentID: descriptor.targetAgentID,
     capabilityKey: capabilityID,
     requestedTier: fields.requestedTier,
-    summary: "CMP peer approval readback reconstructed the latest TAP-routed approval state from host-backed review truth.",
+    summary: "CMP peer approval readback reconstructed the latest TAP-routed approval state from persisted review state.",
     route: fields.route,
     outcome: fields.outcome,
     tapMode: fields.tapMode,
@@ -2811,7 +2811,7 @@ private func readbackTapStatus(
   return PraxisTapStatusReadback(
     projectID: command.projectID,
     agentID: command.agentID,
-    summary: "TAP status readback summarizes host-backed governance readiness, available capability surfaces, and persisted approval pressure.",
+    summary: "TAP status readback summarizes current governance state, available capability surfaces, and current approval pressure.",
     readinessSummary: readinessSummary,
     tapMode: tapMode,
     riskLevel: riskLevel,
@@ -3169,9 +3169,13 @@ private func readbackTapHistory(
     : try tapHistoryEntries(from: eventRecords, limit: clampedLimit)
   let summary: String
   if eventRecords.isEmpty {
-    summary = "TAP history readback reconstructed recent host-backed approval activity\(scopeSummary)."
+    if descriptors.isEmpty {
+      summary = "TAP history readback reports the current approval activity view\(scopeSummary)."
+    } else {
+      summary = "TAP history readback reconstructed recent persisted approval activity\(scopeSummary)."
+    }
   } else {
-    summary = "TAP history readback replayed append-only host-backed TAP runtime events\(scopeSummary)."
+    summary = "TAP history readback replayed append-only persisted TAP runtime events\(scopeSummary)."
   }
 
   return PraxisTapHistoryReadback(
@@ -3709,7 +3713,7 @@ private func readbackCmpRoles(
   return PraxisCmpRolesReadback(
     projectID: command.projectID,
     agentID: command.agentID,
-    summary: "CMP roles readback reconstructed five-agent assignment state from host-backed projections, packages, and delivery truth without binding callers to any specific host surface.",
+    summary: "CMP roles readback reconstructed five-agent assignment state from current projections, packages, and delivery state without binding callers to any specific host surface.",
     roles: roles,
     latestPackageID: scope.latestPackage?.packageID,
     latestDispatchStatus: latestDispatchStatus,
@@ -3736,7 +3740,7 @@ private func readbackCmpControl(
   return PraxisCmpControlReadback(
     projectID: command.projectID,
     agentID: command.agentID,
-    summary: "CMP control readback reconstructed execution defaults, automation gates, and latest dispatch hints from host-backed runtime truth without coupling callers to any host-specific surface.",
+    summary: "CMP control readback reconstructed execution defaults, automation gates, and latest dispatch hints from current runtime state without coupling callers to any host-specific surface.",
     control: try await cmpResolvedControlSurface(
       projectID: command.projectID,
       agentID: command.agentID,
@@ -4490,7 +4494,7 @@ public final class PraxisReadbackCmpProjectUseCase: PraxisReadbackCmpProjectUseC
   ///
   /// - Parameter command: The project readback command.
   /// - Returns: A structured readback summary for the requested project.
-  /// - Throws: Propagates host adapter failures encountered while reading local runtime truth.
+  /// - Throws: Propagates host adapter failures encountered while reading persisted runtime state.
   public func execute(_ command: PraxisReadbackCmpProjectCommand) async throws -> PraxisCmpProjectReadback {
     try await buildCmpProjectReadback(projectID: command.projectID, dependencies: dependencies)
   }
@@ -4622,7 +4626,7 @@ public final class PraxisRetryCmpDispatchUseCase: PraxisRetryCmpDispatchUseCaseP
     self.dependencies = dependencies
   }
 
-  /// Retries one previously attempted CMP dispatch using host-backed package truth instead of caller-owned state.
+  /// Retries one previously attempted CMP dispatch using persisted package state instead of caller-owned state.
   ///
   /// - Parameter command: The neutral retry command scoped to one stored package.
   /// - Returns: A dispatch receipt after the package is replayed through the same host-neutral delivery surface.
@@ -4659,7 +4663,7 @@ public final class PraxisReadbackCmpRolesUseCase: PraxisReadbackCmpRolesUseCaseP
   /// Reads a host-neutral CMP roles panel that summarizes five-agent assignments and stages.
   ///
   /// - Parameter command: The neutral roles-readback command.
-  /// - Returns: A compact roles panel reconstructed from current host-backed runtime truth.
+  /// - Returns: A compact roles panel reconstructed from current projections, packages, and delivery state.
   /// - Throws: Propagates host store lookup failures.
   public func execute(_ command: PraxisReadbackCmpRolesCommand) async throws -> PraxisCmpRolesReadback {
     try await readbackCmpRoles(command: command, dependencies: dependencies)
@@ -4676,7 +4680,7 @@ public final class PraxisReadbackCmpControlUseCase: PraxisReadbackCmpControlUseC
   /// Reads a host-neutral CMP control panel that summarizes execution defaults and dispatch hints.
   ///
   /// - Parameter command: The neutral control-readback command.
-  /// - Returns: A compact control panel reconstructed from current host-backed runtime truth.
+  /// - Returns: A compact control panel reconstructed from current resolved control and dispatch state.
   /// - Throws: Propagates host store lookup failures.
   public func execute(_ command: PraxisReadbackCmpControlCommand) async throws -> PraxisCmpControlReadback {
     try await readbackCmpControl(command: command, dependencies: dependencies)
@@ -4761,7 +4765,7 @@ public final class PraxisReadbackCmpStatusUseCase: PraxisReadbackCmpStatusUseCas
   /// Reads a host-neutral CMP status panel that summarizes roles, control defaults, and object-model readiness.
   ///
   /// - Parameter command: The neutral status-readback command.
-  /// - Returns: A compact status panel reconstructed from current host-backed runtime truth.
+  /// - Returns: A compact status panel reconstructed from current governance state.
   /// - Throws: Propagates host store lookup failures.
   public func execute(_ command: PraxisReadbackCmpStatusCommand) async throws -> PraxisCmpStatusReadback {
     try await readbackCmpStatus(command: command, dependencies: dependencies)

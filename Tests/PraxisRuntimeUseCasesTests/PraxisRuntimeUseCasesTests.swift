@@ -255,7 +255,7 @@ struct PraxisRuntimeUseCasesTests {
     let readback = PraxisTapStatusReadback(
       projectID: "cmp.local-runtime",
       agentID: "checker.local",
-      summary: "TAP status readback summarizes host-backed governance readiness.",
+      summary: "TAP status readback summarizes current governance state.",
       readinessSummary: "2 capabilities are currently registered.",
       tapMode: .restricted,
       riskLevel: .risky,
@@ -276,7 +276,7 @@ struct PraxisRuntimeUseCasesTests {
     #expect(decoded.availableCapabilityIDs == [capabilityID("tool.git"), capabilityID("tool.shell.exec")])
 
     let invalidJSON =
-      #"{"agentID":"checker.local","approvedApprovalCount":0,"availableCapabilityCount":1,"availableCapabilityIDs":[42],"humanGateState":"waitingApproval","issues":[],"latestCapabilityKey":"tool.shell.exec","latestDecisionSummary":"Waiting for approval","pendingApprovalCount":1,"projectID":"cmp.local-runtime","readinessSummary":"1 capability is registered.","riskLevel":"risky","summary":"TAP status readback summarizes host-backed governance readiness.","tapMode":"restricted"}"#
+      #"{"agentID":"checker.local","approvedApprovalCount":0,"availableCapabilityCount":1,"availableCapabilityIDs":[42],"humanGateState":"waitingApproval","issues":[],"latestCapabilityKey":"tool.shell.exec","latestDecisionSummary":"Waiting for approval","pendingApprovalCount":1,"projectID":"cmp.local-runtime","readinessSummary":"1 capability is registered.","riskLevel":"risky","summary":"TAP status readback summarizes current governance state.","tapMode":"restricted"}"#
 
     #expect(throws: DecodingError.self) {
       try decodeUseCaseTestJSON(PraxisTapStatusReadback.self, from: invalidJSON)
@@ -1020,6 +1020,8 @@ struct PraxisRuntimeUseCasesTests {
     #expect(roles.latestDispatchStatus == .delivered)
     #expect(!roles.summary.contains("CLI"))
     #expect(!roles.summary.contains("GUI"))
+    #expect(roles.summary.contains("current projections, packages, and delivery state"))
+    #expect(roles.summary.contains("host-backed") == false)
     #expect(status.projectID == "cmp.local-runtime")
     #expect(status.agentID == "checker.local")
     #expect(status.latestDispatchStatus == .delivered)
@@ -1654,6 +1656,8 @@ struct PraxisRuntimeUseCasesTests {
     #expect(controlReadback.control.fallbackPolicy == .registryOnly)
     #expect(controlReadback.control.recoveryPreference == .resumeLatest)
     #expect(controlReadback.control.automation[.autoDispatch] == false)
+    #expect(controlReadback.summary.contains("current runtime state"))
+    #expect(controlReadback.summary.contains("host-backed") == false)
     #expect(approvalReadback.found)
     #expect(approvalReadback.capabilityKey == PraxisCapabilityID(rawValue: "tool.git"))
     #expect(approvalReadback.requestedTier == .b1)
@@ -1662,6 +1666,8 @@ struct PraxisRuntimeUseCasesTests {
     #expect(approvalReadback.tapMode == .restricted)
     #expect(approvalReadback.humanGateState == .approved)
     #expect(approvalReadback.decisionSummary == "Approved git access for checker")
+    #expect(approvalReadback.summary.contains("persisted review state"))
+    #expect(approvalReadback.summary.contains("host-backed") == false)
     #expect(statusReadback.projectID == "cmp.local-runtime")
     #expect(statusReadback.agentID == "checker.local")
     #expect(statusReadback.control.executionStyle == .manual)
@@ -1779,9 +1785,15 @@ struct PraxisRuntimeUseCasesTests {
       #expect(readback.outcome == testCase.outcome)
       #expect(readback.humanGateState == testCase.humanGateState)
       #expect(readback.decisionSummary == testCase.decisionSummary)
+      #expect(readback.summary.contains("persisted review state"))
+      #expect(readback.summary.contains("host-backed") == false)
       #expect(tapStatus.pendingApprovalCount == 0)
       #expect(tapStatus.approvedApprovalCount == testCase.approvedApprovalCount)
       #expect(tapStatus.humanGateState == testCase.humanGateState)
+      #expect(tapStatus.summary.contains("current governance state"))
+      #expect(tapStatus.summary.contains("host-backed") == false)
+      #expect(tapHistory.summary.contains("persisted"))
+      #expect(tapHistory.summary.contains("host-backed") == false)
       #expect(
         tapHistory.entries.contains {
           $0.capabilityKey == PraxisCapabilityID(rawValue: "tool.git")
@@ -1836,6 +1848,10 @@ struct PraxisRuntimeUseCasesTests {
     #expect(tapStatus.tapMode == .restricted)
     #expect(tapStatus.humanGateState == .waitingApproval)
     #expect(tapStatus.availableCapabilityIDs.contains(capabilityID("tool.shell")))
+    #expect(tapStatus.summary.contains("current governance state"))
+    #expect(tapStatus.summary.contains("host-backed") == false)
+    #expect(tapHistory.summary.contains("persisted"))
+    #expect(tapHistory.summary.contains("host-backed") == false)
     let containsEscalatedApproval = tapHistory.entries.contains { entry in
       entry.capabilityKey == PraxisCapabilityID(rawValue: "tool.shell.exec")
         && entry.requestedTier == .b2
@@ -1844,6 +1860,48 @@ struct PraxisRuntimeUseCasesTests {
         && entry.humanGateState == .waitingApproval
     }
     #expect(containsEscalatedApproval)
+  }
+
+  @Test
+  func cmpAndTapReadbacksKeepCurrentStateWordingWhenStoresAreMissing() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-missing-readback-stores-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let baseRegistry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let registry = hostAdaptersRemovingCmpReadbackStores(from: baseRegistry)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let readbackTapStatusUseCase = PraxisReadbackTapStatusUseCase(dependencies: dependencies)
+    let readbackTapHistoryUseCase = PraxisReadbackTapHistoryUseCase(dependencies: dependencies)
+    let readbackRolesUseCase = PraxisReadbackCmpRolesUseCase(dependencies: dependencies)
+    let readbackControlUseCase = PraxisReadbackCmpControlUseCase(dependencies: dependencies)
+
+    let tapStatus = try await readbackTapStatusUseCase.execute(
+      PraxisReadbackTapStatusCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let tapHistory = try await readbackTapHistoryUseCase.execute(
+      PraxisReadbackTapHistoryCommand(projectID: "cmp.local-runtime", agentID: "checker.local", limit: 10)
+    )
+    let roles = try await readbackRolesUseCase.execute(
+      PraxisReadbackCmpRolesCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+    let control = try await readbackControlUseCase.execute(
+      PraxisReadbackCmpControlCommand(projectID: "cmp.local-runtime", agentID: "checker.local")
+    )
+
+    #expect(tapStatus.summary.contains("current governance state"))
+    #expect(tapStatus.summary.contains("persisted") == false)
+    #expect(tapStatus.issues.contains { $0.contains("CMP peer approval store adapter is still missing") })
+    #expect(tapHistory.summary.contains("current approval activity view"))
+    #expect(tapHistory.summary.contains("persisted") == false)
+    #expect(tapHistory.issues.contains { $0.contains("TAP runtime event store adapter is still missing") })
+    #expect(roles.summary.contains("current projections, packages, and delivery state"))
+    #expect(roles.summary.contains("persisted") == false)
+    #expect(roles.issues.contains { $0.contains("CMP package registry adapter is still missing") })
+    #expect(control.summary.contains("current runtime state"))
+    #expect(control.summary.contains("persisted") == false)
+    #expect(control.control.executionStyle == .automatic)
+    #expect(control.control.mode == .activePreferred)
   }
 
   @Test
@@ -3294,5 +3352,56 @@ struct PraxisRuntimeUseCasesTests {
       hostAdapters: hostAdapters,
       blueprint: PraxisRuntimeGatewayModule.bootstrap
     ).makeDependencyGraph()
+  }
+
+  private func hostAdaptersRemovingCmpReadbackStores(
+    from registry: PraxisHostAdapterRegistry
+  ) -> PraxisHostAdapterRegistry {
+    PraxisHostAdapterRegistry(
+      runtimeRootDirectory: registry.runtimeRootDirectory,
+      workspaceRootDirectory: registry.workspaceRootDirectory,
+      capabilityExecutor: registry.capabilityExecutor,
+      providerInferenceExecutor: registry.providerInferenceExecutor,
+      providerEmbeddingExecutor: registry.providerEmbeddingExecutor,
+      providerFileStore: registry.providerFileStore,
+      providerBatchExecutor: registry.providerBatchExecutor,
+      providerSkillRegistry: registry.providerSkillRegistry,
+      providerSkillActivator: registry.providerSkillActivator,
+      providerMCPExecutor: registry.providerMCPExecutor,
+      workspaceReader: registry.workspaceReader,
+      workspaceSearcher: registry.workspaceSearcher,
+      workspaceWriter: registry.workspaceWriter,
+      shellExecutor: registry.shellExecutor,
+      browserExecutor: registry.browserExecutor,
+      browserGroundingCollector: registry.browserGroundingCollector,
+      gitAvailabilityProbe: registry.gitAvailabilityProbe,
+      gitExecutor: registry.gitExecutor,
+      processSupervisor: registry.processSupervisor,
+      checkpointStore: registry.checkpointStore,
+      journalStore: registry.journalStore,
+      projectionStore: registry.projectionStore,
+      cmpContextPackageStore: nil,
+      cmpControlStore: nil,
+      cmpPeerApprovalStore: nil,
+      tapRuntimeEventStore: nil,
+      messageBus: registry.messageBus,
+      deliveryTruthStore: nil,
+      embeddingStore: registry.embeddingStore,
+      semanticSearchIndex: registry.semanticSearchIndex,
+      semanticMemoryStore: registry.semanticMemoryStore,
+      lineageStore: registry.lineageStore,
+      userInputDriver: registry.userInputDriver,
+      permissionDriver: registry.permissionDriver,
+      terminalPresenter: registry.terminalPresenter,
+      conversationPresenter: registry.conversationPresenter,
+      audioTranscriptionDriver: registry.audioTranscriptionDriver,
+      speechSynthesisDriver: registry.speechSynthesisDriver,
+      imageGenerationDriver: registry.imageGenerationDriver,
+      providerInferenceSurfaceProvenance: registry.providerInferenceSurfaceProvenance,
+      browserGroundingSurfaceProvenance: registry.browserGroundingSurfaceProvenance,
+      audioTranscriptionSurfaceProvenance: registry.audioTranscriptionSurfaceProvenance,
+      speechSynthesisSurfaceProvenance: registry.speechSynthesisSurfaceProvenance,
+      imageGenerationSurfaceProvenance: registry.imageGenerationSurfaceProvenance
+    )
   }
 }
