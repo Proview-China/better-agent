@@ -1863,6 +1863,59 @@ struct PraxisRuntimeUseCasesTests {
   }
 
   @Test
+  func tapHistoryReadbackKeepsPersistedWordingWhenEventStoreIsMissingButApprovalDescriptorsRemain() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "praxis-runtime-usecases-tap-history-partial-fallback-\(UUID().uuidString)",
+        isDirectory: true
+      )
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let baseRegistry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let registry = hostAdaptersRemovingTapRuntimeEventStore(from: baseRegistry)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let updateControlUseCase = PraxisUpdateCmpControlUseCase(dependencies: dependencies)
+    let requestApprovalUseCase = PraxisRequestCmpPeerApprovalUseCase(dependencies: dependencies)
+    let readbackTapHistoryUseCase = PraxisReadbackTapHistoryUseCase(dependencies: dependencies)
+
+    _ = try await updateControlUseCase.execute(
+      PraxisUpdateCmpControlCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: .manual,
+        mode: .peerReview,
+        automation: .init(values: [.autoDispatch: false])
+      )
+    )
+    _ = try await requestApprovalUseCase.execute(
+      PraxisRequestCmpPeerApprovalCommand(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityKey: .init(rawValue: "tool.shell.exec"),
+        requestedTier: .b2,
+        summary: "Escalate shell execution for checker"
+      )
+    )
+
+    let tapHistory = try await readbackTapHistoryUseCase.execute(
+      PraxisReadbackTapHistoryCommand(projectID: "cmp.local-runtime", agentID: "checker.local", limit: 10)
+    )
+
+    #expect(tapHistory.summary.contains("persisted approval activity"))
+    #expect(tapHistory.summary.contains("current approval activity view") == false)
+    #expect(tapHistory.issues.contains { $0.contains("TAP runtime event store adapter is still missing") })
+    let containsPersistedApprovalDescriptor = tapHistory.entries.contains { entry in
+      entry.capabilityKey == PraxisCapabilityID(rawValue: "tool.shell.exec")
+        && entry.requestedTier == .b2
+        && entry.route == .toolReview
+        && entry.outcome == .redirectedToProvisioning
+        && entry.humanGateState == .waitingApproval
+    }
+    #expect(containsPersistedApprovalDescriptor)
+  }
+
+  @Test
   func cmpAndTapReadbacksKeepCurrentStateWordingWhenStoresAreMissing() async throws {
     let rootDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("praxis-runtime-usecases-missing-readback-stores-\(UUID().uuidString)", isDirectory: true)
@@ -3352,6 +3405,57 @@ struct PraxisRuntimeUseCasesTests {
       hostAdapters: hostAdapters,
       blueprint: PraxisRuntimeGatewayModule.bootstrap
     ).makeDependencyGraph()
+  }
+
+  private func hostAdaptersRemovingTapRuntimeEventStore(
+    from registry: PraxisHostAdapterRegistry
+  ) -> PraxisHostAdapterRegistry {
+    PraxisHostAdapterRegistry(
+      runtimeRootDirectory: registry.runtimeRootDirectory,
+      workspaceRootDirectory: registry.workspaceRootDirectory,
+      capabilityExecutor: registry.capabilityExecutor,
+      providerInferenceExecutor: registry.providerInferenceExecutor,
+      providerEmbeddingExecutor: registry.providerEmbeddingExecutor,
+      providerFileStore: registry.providerFileStore,
+      providerBatchExecutor: registry.providerBatchExecutor,
+      providerSkillRegistry: registry.providerSkillRegistry,
+      providerSkillActivator: registry.providerSkillActivator,
+      providerMCPExecutor: registry.providerMCPExecutor,
+      workspaceReader: registry.workspaceReader,
+      workspaceSearcher: registry.workspaceSearcher,
+      workspaceWriter: registry.workspaceWriter,
+      shellExecutor: registry.shellExecutor,
+      browserExecutor: registry.browserExecutor,
+      browserGroundingCollector: registry.browserGroundingCollector,
+      gitAvailabilityProbe: registry.gitAvailabilityProbe,
+      gitExecutor: registry.gitExecutor,
+      processSupervisor: registry.processSupervisor,
+      checkpointStore: registry.checkpointStore,
+      journalStore: registry.journalStore,
+      projectionStore: registry.projectionStore,
+      cmpContextPackageStore: registry.cmpContextPackageStore,
+      cmpControlStore: registry.cmpControlStore,
+      cmpPeerApprovalStore: registry.cmpPeerApprovalStore,
+      tapRuntimeEventStore: nil,
+      messageBus: registry.messageBus,
+      deliveryTruthStore: registry.deliveryTruthStore,
+      embeddingStore: registry.embeddingStore,
+      semanticSearchIndex: registry.semanticSearchIndex,
+      semanticMemoryStore: registry.semanticMemoryStore,
+      lineageStore: registry.lineageStore,
+      userInputDriver: registry.userInputDriver,
+      permissionDriver: registry.permissionDriver,
+      terminalPresenter: registry.terminalPresenter,
+      conversationPresenter: registry.conversationPresenter,
+      audioTranscriptionDriver: registry.audioTranscriptionDriver,
+      speechSynthesisDriver: registry.speechSynthesisDriver,
+      imageGenerationDriver: registry.imageGenerationDriver,
+      providerInferenceSurfaceProvenance: registry.providerInferenceSurfaceProvenance,
+      browserGroundingSurfaceProvenance: registry.browserGroundingSurfaceProvenance,
+      audioTranscriptionSurfaceProvenance: registry.audioTranscriptionSurfaceProvenance,
+      speechSynthesisSurfaceProvenance: registry.speechSynthesisSurfaceProvenance,
+      imageGenerationSurfaceProvenance: registry.imageGenerationSurfaceProvenance
+    )
   }
 
   private func hostAdaptersRemovingCmpReadbackStores(
