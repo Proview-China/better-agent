@@ -6,6 +6,7 @@ private enum PraxisRuntimeKitSmokeSuite: String, CaseIterable {
   case run
   case cmpTap = "cmp-tap"
   case mp
+  case capabilities
   case all
 
   static func parse(_ rawValue: String?) throws -> PraxisRuntimeKitSmokeSuite {
@@ -68,11 +69,14 @@ private struct PraxisRuntimeKitSmokeHarness {
       return [await execute(.cmpTap, body: cmpTapSuite)]
     case .mp:
       return [await execute(.mp, body: mpSuite)]
+    case .capabilities:
+      return [await execute(.capabilities, body: capabilitiesSuite)]
     case .all:
       return [
         await execute(.run, body: runSuite),
         await execute(.cmpTap, body: cmpTapSuite),
         await execute(.mp, body: mpSuite),
+        await execute(.capabilities, body: capabilitiesSuite),
       ]
     }
   }
@@ -177,6 +181,67 @@ private struct PraxisRuntimeKitSmokeHarness {
     return "projectID=\(overview.projectID) smokeChecks=\(smoke.smokeResult.checks.count) hits=\(search.hits.count)"
   }
 
+  private func capabilitiesSuite() async throws -> String {
+    let catalog = client.capabilities.catalog()
+    let openedSession = try await client.capabilities.openSession(
+      .init(
+        sessionID: "runtime.capabilities.smoke",
+        title: "Runtime Capability Smoke"
+      )
+    )
+    let generated = try await client.capabilities.generate(
+      .init(
+        prompt: "Summarize the local thin capability baseline",
+        preferredModel: "local-smoke-model",
+        requiredCapabilities: ["generate.create", "embed.create"]
+      )
+    )
+    let streamed = try await client.capabilities.stream(
+      .init(
+        prompt: "Stream a short capability summary",
+        preferredModel: "local-smoke-model"
+      ),
+      chunkCharacterCount: 32
+    )
+    let embedded = try await client.capabilities.embed(
+      .init(
+        content: "phase three thin capability baseline",
+        preferredModel: "local-embed-smoke"
+      )
+    )
+    let toolCall = try await client.capabilities.callTool(
+      .init(
+        toolName: "web.search",
+        summary: "Find RuntimeKit capability docs",
+        serverName: "local-smoke"
+      )
+    )
+    let uploadedFile = try await client.capabilities.uploadFile(
+      .init(
+        summary: "runtime capability smoke artifact",
+        purpose: "analysis"
+      )
+    )
+    let submittedBatch = try await client.capabilities.submitBatch(
+      .init(
+        summary: "runtime capability smoke batch",
+        itemCount: 2
+      )
+    )
+
+    try require(catalog.capabilityIDs.map(\.rawValue).contains("generate.create"), "Capability smoke expected generate.create in the thin capability catalog.")
+    try require(catalog.capabilityIDs.map(\.rawValue).contains("session.open"), "Capability smoke expected session.open in the thin capability catalog.")
+    try require(openedSession.sessionID.rawValue == "runtime.capabilities.smoke", "Capability smoke expected the opened session ID to round-trip unchanged.")
+    try require(generated.outputText.isEmpty == false, "Capability smoke expected generate.create to produce output.")
+    try require(streamed.chunks.isEmpty == false, "Capability smoke expected generate.stream to project at least one chunk.")
+    try require(embedded.vectorLength > 0, "Capability smoke expected embed.create to return a positive vector length.")
+    try require(toolCall.toolName == "web.search", "Capability smoke expected tool.call to round-trip the tool name.")
+    try require(uploadedFile.fileID.isEmpty == false, "Capability smoke expected file.upload to return a stable file ID.")
+    try require(submittedBatch.batchID.isEmpty == false, "Capability smoke expected batch.submit to return a stable batch ID.")
+
+    return "catalogEntries=\(catalog.entries.count) session=\(openedSession.sessionID.rawValue) streamChunks=\(streamed.chunks.count) batchID=\(submittedBatch.batchID)"
+  }
+
   private func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
     guard condition() else {
       throw PraxisRuntimeKitSmokeFailure.assertion(message)
@@ -206,7 +271,7 @@ private enum PraxisRuntimeKitSmokeArguments {
         rootDirectoryPath = arguments[index]
       case "--help", "-h":
         throw PraxisRuntimeKitSmokeFailure.invalidArguments(
-          "Usage: swift run PraxisRuntimeKitSmoke [--suite run|cmp-tap|mp|all] [--root /tmp/praxis-runtime-kit-smoke]"
+          "Usage: swift run PraxisRuntimeKitSmoke [--suite run|cmp-tap|mp|capabilities|all] [--root /tmp/praxis-runtime-kit-smoke]"
         )
       default:
         throw PraxisRuntimeKitSmokeFailure.invalidArguments("Unknown argument '\(arguments[index])'.")

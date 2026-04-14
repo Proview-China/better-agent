@@ -88,6 +88,7 @@ private func mapRerankComposition(_ composition: PraxisMpRerankComposition) -> P
 public final class PraxisRuntimeFacade: Sendable {
   public let runFacade: PraxisRunFacade
   public let inspectionFacade: PraxisInspectionFacade
+  public let capabilityFacade: PraxisCapabilityFacade
   public let mpFacade: PraxisMpFacade
   public let cmpSessionFacade: PraxisCmpSessionFacade
   public let cmpProjectFacade: PraxisCmpProjectFacade
@@ -100,6 +101,7 @@ public final class PraxisRuntimeFacade: Sendable {
   public init(
     runFacade: PraxisRunFacade,
     inspectionFacade: PraxisInspectionFacade,
+    capabilityFacade: PraxisCapabilityFacade = .unsupported(),
     mpFacade: PraxisMpFacade,
     cmpSessionFacade: PraxisCmpSessionFacade,
     cmpProjectFacade: PraxisCmpProjectFacade,
@@ -110,6 +112,7 @@ public final class PraxisRuntimeFacade: Sendable {
   ) {
     self.runFacade = runFacade
     self.inspectionFacade = inspectionFacade
+    self.capabilityFacade = capabilityFacade
     self.mpFacade = mpFacade
     self.cmpSessionFacade = cmpSessionFacade
     self.cmpProjectFacade = cmpProjectFacade
@@ -135,6 +138,7 @@ public final class PraxisRuntimeFacade: Sendable {
     self.init(
       runFacade: runFacade,
       inspectionFacade: inspectionFacade,
+      capabilityFacade: .unsupported(),
       mpFacade: .init(
         inspectMpUseCase: inspectionFacade.inspectMpUseCase,
         searchMpUseCase: PraxisUnsupportedSearchMpUseCase(),
@@ -183,6 +187,7 @@ public final class PraxisRuntimeFacade: Sendable {
         inspectMpUseCase: inspectMpUseCase,
         buildCapabilityCatalogUseCase: PraxisBuildCapabilityCatalogUseCase(dependencies: dependencies)
       ),
+      capabilityFacade: .init(dependencies: dependencies),
       mpFacade: .init(
         inspectMpUseCase: inspectMpUseCase,
         searchMpUseCase: searchMpUseCase,

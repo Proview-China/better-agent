@@ -37,4 +37,16 @@ struct PraxisCapabilityCatalogBuilderTests {
     #expect(snapshot.families.map(\.name) == ["code", "mp", "search"])
     #expect(snapshot.entries.first(where: { $0.manifest.id.rawValue == "search.web" })?.latestSelection == selection)
   }
+
+  @Test
+  func buildThinCapabilityBaselinePublishesPhaseThreeManifestSet() {
+    let baseline = PraxisCapabilityCatalogBuilder().buildThinCapabilityBaseline()
+    let snapshot = PraxisCapabilityCatalogBuilder().buildSnapshot(manifests: baseline.manifests)
+
+    #expect(baseline.manifests.count == 7)
+    #expect(snapshot.families.map(\.name) == ["batch", "embed", "file", "generate", "session", "tool"])
+    #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("generate.create"))
+    #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("generate.stream"))
+    #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("session.open"))
+  }
 }

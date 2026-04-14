@@ -242,4 +242,75 @@ struct PraxisRuntimeKitTests {
     #expect(invariantViolation.category == .invariantViolation)
     #expect(invariantViolation.remediation.contains("runtime bug"))
   }
+
+  @Test
+  func capabilityClientExposesThinCapabilityBaselineWithoutLeakingProviderContracts() async throws {
+    let rootDirectory = try makeRuntimeKitTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let client = try PraxisRuntimeClient.makeDefault(rootDirectory: rootDirectory)
+    let catalog = client.capabilities.catalog()
+    let openedSession = try await client.capabilities.openSession(
+      .init(
+        sessionID: "runtime.capabilities.test",
+        title: "Runtime Capability Test"
+      )
+    )
+    let generated = try await client.capabilities.generate(
+      .init(
+        prompt: "Summarize the thin capability baseline",
+        preferredModel: "local-test-model",
+        requiredCapabilities: ["generate.create", "embed.create"]
+      )
+    )
+    let streamed = try await client.capabilities.stream(
+      .init(
+        prompt: "Stream one short capability summary",
+        preferredModel: "local-test-model"
+      ),
+      chunkCharacterCount: 24
+    )
+    let embedded = try await client.capabilities.embed(
+      .init(
+        content: "runtime capability baseline test",
+        preferredModel: "local-embed-test"
+      )
+    )
+    let toolCall = try await client.capabilities.callTool(
+      .init(
+        toolName: "web.search",
+        summary: "Find RuntimeKit docs",
+        serverName: "local-test"
+      )
+    )
+    let fileUpload = try await client.capabilities.uploadFile(
+      .init(
+        summary: "runtime capability test artifact",
+        purpose: "analysis"
+      )
+    )
+    let batchSubmit = try await client.capabilities.submitBatch(
+      .init(
+        summary: "runtime capability test batch",
+        itemCount: 4
+      )
+    )
+
+    #expect(catalog.capabilityIDs.map(\.rawValue).contains("generate.create"))
+    #expect(catalog.capabilityIDs.map(\.rawValue).contains("session.open"))
+    #expect(openedSession.sessionID.rawValue == "runtime.capabilities.test")
+    #expect(openedSession.title == "Runtime Capability Test")
+    #expect(generated.capabilityID.rawValue == "generate.create")
+    #expect(generated.outputText.isEmpty == false)
+    #expect(streamed.capabilityID.rawValue == "generate.stream")
+    #expect(streamed.chunks.isEmpty == false)
+    #expect(embedded.capabilityID.rawValue == "embed.create")
+    #expect(embedded.vectorLength > 0)
+    #expect(toolCall.capabilityID.rawValue == "tool.call")
+    #expect(toolCall.toolName == "web.search")
+    #expect(fileUpload.capabilityID.rawValue == "file.upload")
+    #expect(fileUpload.fileID.isEmpty == false)
+    #expect(batchSubmit.capabilityID.rawValue == "batch.submit")
+    #expect(batchSubmit.batchID.isEmpty == false)
+  }
 }

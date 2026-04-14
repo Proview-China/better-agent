@@ -134,6 +134,7 @@ let package = Package(
     .executable(name: "PraxisRuntimeKitRunExample", targets: ["PraxisRuntimeKitRunExample"]),
     .executable(name: "PraxisRuntimeKitCmpTapExample", targets: ["PraxisRuntimeKitCmpTapExample"]),
     .executable(name: "PraxisRuntimeKitMpExample", targets: ["PraxisRuntimeKitMpExample"]),
+    .executable(name: "PraxisRuntimeKitCapabilitiesExample", targets: ["PraxisRuntimeKitCapabilitiesExample"]),
   ],
   targets: sqliteSystemLibraryTargets + [
     .target(
@@ -513,8 +514,14 @@ let package = Package(
     .target(
       name: "PraxisRuntimeFacades",
       dependencies: [
+        "PraxisCapabilityCatalog",
+        "PraxisCapabilityContracts",
+        "PraxisCapabilityResults",
         "PraxisCoreTypes",
+        "PraxisProviderContracts",
+        "PraxisRuntimeComposition",
         "PraxisRuntimeUseCases",
+        "PraxisSession",
       ],
       path: "Sources/PraxisRuntimeFacades",
     ),
@@ -588,17 +595,26 @@ let package = Package(
     .target(
       name: "PraxisRuntimeKit",
       dependencies: [
+        "PraxisCapabilityCatalog",
         "PraxisCapabilityContracts",
         "PraxisCmpTypes",
         "PraxisCoreTypes",
         "PraxisGoal",
         "PraxisMpTypes",
+        "PraxisProviderContracts",
         "PraxisSession",
         "PraxisTapTypes",
         "PraxisRuntimeFacades",
         "PraxisRuntimeGateway",
       ],
       path: "Sources/PraxisRuntimeKit",
+    ),
+    .executableTarget(
+      name: "PraxisRuntimeKitCapabilitiesExample",
+      dependencies: [
+        "PraxisRuntimeKit",
+      ],
+      path: "Examples/PraxisRuntimeKitCapabilitiesExample",
     ),
     .executableTarget(
       name: "PraxisRuntimeKitSmoke",

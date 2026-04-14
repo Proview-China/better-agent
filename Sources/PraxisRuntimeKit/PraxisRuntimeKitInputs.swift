@@ -260,6 +260,105 @@ public struct PraxisRuntimeMpMemoryPromotionInput: Sendable, Equatable {
   }
 }
 
+/// Caller-friendly request for one thin generation call.
+public struct PraxisRuntimeGenerateRequest: Sendable, Equatable {
+  public let prompt: String
+  public let systemPrompt: String?
+  public let contextSummary: String?
+  public let preferredModel: String?
+  public let temperature: Double?
+  public let requiredCapabilities: [PraxisRuntimeCapabilityRef]
+
+  public init(
+    prompt: String,
+    systemPrompt: String? = nil,
+    contextSummary: String? = nil,
+    preferredModel: String? = nil,
+    temperature: Double? = nil,
+    requiredCapabilities: [PraxisRuntimeCapabilityRef] = []
+  ) {
+    self.prompt = prompt
+    self.systemPrompt = systemPrompt
+    self.contextSummary = contextSummary
+    self.preferredModel = preferredModel
+    self.temperature = temperature
+    self.requiredCapabilities = requiredCapabilities
+  }
+}
+
+/// Caller-friendly request for one thin embedding call.
+public struct PraxisRuntimeEmbeddingRequest: Sendable, Equatable {
+  public let content: String
+  public let preferredModel: String?
+
+  public init(
+    content: String,
+    preferredModel: String? = nil
+  ) {
+    self.content = content
+    self.preferredModel = preferredModel
+  }
+}
+
+/// Caller-friendly request for one thin tool call.
+public struct PraxisRuntimeToolCallRequest: Sendable, Equatable {
+  public let toolName: String
+  public let summary: String
+  public let serverName: String?
+
+  public init(
+    toolName: String,
+    summary: String,
+    serverName: String? = nil
+  ) {
+    self.toolName = toolName
+    self.summary = summary
+    self.serverName = serverName
+  }
+}
+
+/// Caller-friendly request for one thin file-upload call.
+public struct PraxisRuntimeFileUploadRequest: Sendable, Equatable {
+  public let summary: String
+  public let purpose: String?
+
+  public init(
+    summary: String,
+    purpose: String? = nil
+  ) {
+    self.summary = summary
+    self.purpose = purpose
+  }
+}
+
+/// Caller-friendly request for one thin batch-submit call.
+public struct PraxisRuntimeBatchSubmitRequest: Sendable, Equatable {
+  public let summary: String
+  public let itemCount: Int
+
+  public init(
+    summary: String,
+    itemCount: Int
+  ) {
+    self.summary = summary
+    self.itemCount = itemCount
+  }
+}
+
+/// Caller-friendly request for one thin runtime-session open call.
+public struct PraxisRuntimeSessionOpenRequest: Sendable, Equatable {
+  public let sessionID: PraxisRuntimeSessionRef?
+  public let title: String?
+
+  public init(
+    sessionID: PraxisRuntimeSessionRef? = nil,
+    title: String? = nil
+  ) {
+    self.sessionID = sessionID
+    self.title = title
+  }
+}
+
 /// Archive input for one scoped MP memory mutation.
 public struct PraxisRuntimeMpMemoryArchiveInput: Sendable, Equatable {
   public let archivedAt: String?
