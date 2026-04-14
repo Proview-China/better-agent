@@ -180,6 +180,53 @@ struct PraxisRuntimeKitTests {
   }
 
   @Test
+  func projectScopedTapWorkbenchDoesNotReuseDefaultInspectionProject() async throws {
+    let rootDirectory = try makeRuntimeKitTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let client = try PraxisRuntimeClient.makeDefault(rootDirectory: rootDirectory)
+    let defaultCmpProject = client.cmp.project("cmp.local-runtime")
+    let otherCmpProject = client.cmp.project("other-project")
+    let otherTapProject = client.tap.project("other-project")
+
+    _ = try await defaultCmpProject.openSession("cmp.runtime-kit-default")
+    _ = try await otherCmpProject.openSession("cmp.runtime-kit-other")
+    _ = try await defaultCmpProject.approvals.request(
+      .init(
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityID: "tool.git",
+        requestedTier: .b1,
+        summary: "Default project approval should stay scoped"
+      )
+    )
+    _ = try await defaultCmpProject.approvals.decide(
+      .init(
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityID: "tool.git",
+        decision: .approve,
+        reviewerAgentID: "reviewer.local",
+        decisionSummary: "Approved only for default project"
+      )
+    )
+
+    let otherInspection = try await otherTapProject.inspect()
+    let otherWorkbench = try await otherTapProject.reviewWorkbench(for: "checker.local", limit: 10)
+
+    #expect(otherInspection.projectSummary.contains("other-project"))
+    #expect(otherInspection.projectSummary.contains("cmp.local-runtime") == false)
+    #expect(otherInspection.runSummary.contains("tap.session.snapshot.other-project"))
+    #expect(otherInspection.runSummary.contains("available for inspection and recovery") == false)
+    #expect(otherInspection.latestDecisionSummary?.contains("Approved only for default project") == false)
+    #expect(otherWorkbench.projectID == "other-project")
+    #expect(otherWorkbench.inspection.projectSummary.contains("other-project"))
+    #expect(otherWorkbench.inspection.runSummary.contains("tap.session.snapshot.other-project"))
+    #expect(otherWorkbench.latestDecisionSummary?.contains("Approved only for default project") == false)
+    #expect(otherWorkbench.pendingItems.isEmpty)
+  }
+
+  @Test
   func scopedMpClientExposesProjectSearchResolveAndMemoryLifecycle() async throws {
     let rootDirectory = try makeRuntimeKitTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: rootDirectory) }
@@ -368,7 +415,8 @@ struct PraxisRuntimeKitTests {
     let fetched = try await client.capabilities.fetchSearchResult(
       .init(
         url: webSearch.results.first?.url ?? "https://example.com/search/swift-runtime-capability-baseline",
-        preferredTitle: "Capability Search Result"
+        preferredTitle: "Capability Search Result",
+        waitPolicy: .networkIdle
       )
     )
     let grounded = try await client.capabilities.groundSearchResult(
@@ -404,6 +452,9 @@ struct PraxisRuntimeKitTests {
     #expect(webSearch.results.isEmpty == false)
     #expect(fetched.capabilityID.rawValue == "search.fetch")
     #expect(fetched.finalURL.isEmpty == false)
+    let snapshotPath = try #require(fetched.snapshotPath)
+    let snapshotContents = try String(contentsOfFile: snapshotPath, encoding: .utf8)
+    #expect(snapshotContents.contains("Wait policy: networkIdle"))
     #expect(grounded.capabilityID.rawValue == "search.ground")
     #expect(grounded.pages.isEmpty == false)
     #expect(grounded.facts.count == 3)

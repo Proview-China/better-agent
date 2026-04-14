@@ -26,7 +26,8 @@ struct PraxisRuntimeKitSearchExampleMain {
     let fetched = try await client.capabilities.fetchSearchResult(
       .init(
         url: firstResult.url,
-        preferredTitle: firstResult.title
+        preferredTitle: firstResult.title,
+        waitPolicy: .networkIdle
       )
     )
     let grounded = try await client.capabilities.groundSearchResult(

@@ -173,6 +173,7 @@ public struct PraxisRuntimeCapabilityClient: Sendable {
         url: request.url,
         preferredTitle: request.preferredTitle,
         captureSnapshot: request.captureSnapshot,
+        waitPolicy: request.waitPolicy,
         timeoutSeconds: request.timeoutSeconds
       )
     )

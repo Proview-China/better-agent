@@ -134,10 +134,10 @@ private struct StubResumeRunUseCase: PraxisResumeRunUseCaseProtocol {
 }
 
 private struct StubInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
-  let executeBody: @Sendable () async throws -> PraxisTapInspection
+  let executeBody: @Sendable (PraxisInspectTapCommand) async throws -> PraxisTapInspection
 
-  func execute() async throws -> PraxisTapInspection {
-    try await executeBody()
+  func execute(_ command: PraxisInspectTapCommand) async throws -> PraxisTapInspection {
+    try await executeBody(command)
   }
 }
 
@@ -448,7 +448,7 @@ private func makeThrowingRuntimeInterface(
     }
   )
   let inspectionFacade = PraxisInspectionFacade(
-    inspectTapUseCase: StubInspectTapUseCase {
+    inspectTapUseCase: StubInspectTapUseCase { _ in
       if let inspectTapError {
         throw inspectTapError
       }
@@ -615,7 +615,7 @@ private func makeUnexpectedRunFacade() -> PraxisRunFacade {
 
 private func makeUnexpectedInspectionFacade() -> PraxisInspectionFacade {
   PraxisInspectionFacade(
-    inspectTapUseCase: StubInspectTapUseCase {
+    inspectTapUseCase: StubInspectTapUseCase { _ in
       throw RuntimeInterfaceUnexpectedInvocationError(operation: "inspectTap")
     },
     readbackTapStatusUseCase: StubReadbackTapStatusUseCase { _ in

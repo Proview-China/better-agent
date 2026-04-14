@@ -89,6 +89,17 @@ public struct PraxisRuntimeTapProjectClient: Sendable {
     try await overview(.init(agentID: agent, limit: limit))
   }
 
+  /// Reads one TAP inspection snapshot scoped to the selected project.
+  ///
+  /// - Parameter historyLimit: Maximum number of TAP history entries to load into the inspection context.
+  /// - Returns: A TAP inspection snapshot projected by the runtime facade for the scoped project.
+  /// - Throws: Any inspection error raised by the underlying runtime use cases.
+  public func inspect(historyLimit: Int = 5) async throws -> PraxisTapInspectionSnapshot {
+    try await inspectionFacade.inspectTap(
+      .init(projectID: project.rawValue, historyLimit: historyLimit)
+    )
+  }
+
   /// Reads one reviewer-facing workbench for the scoped project.
   ///
   /// - Parameter options: Structured workbench options for one project read.
@@ -97,7 +108,7 @@ public struct PraxisRuntimeTapProjectClient: Sendable {
   public func reviewWorkbench(
     _ options: PraxisRuntimeTapReviewWorkbenchOptions = .init()
   ) async throws -> PraxisRuntimeTapReviewWorkbench {
-    async let inspection = inspectionFacade.inspectTap()
+    async let inspection = inspect(historyLimit: options.limit)
     async let tapOverview = overview(.init(agentID: options.agentID, limit: options.limit))
     async let cmpReadback = cmpFacade.readbackProject(.init(projectID: project.rawValue))
     async let cmpSmoke = cmpFacade.smokeProject(.init(projectID: project.rawValue))

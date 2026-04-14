@@ -110,6 +110,19 @@ public struct PraxisTapInspection: Sendable, Equatable, Codable {
   }
 }
 
+public struct PraxisInspectTapCommand: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let historyLimit: Int
+
+  public init(
+    projectID: String = "cmp.local-runtime",
+    historyLimit: Int = 5
+  ) {
+    self.projectID = projectID
+    self.historyLimit = historyLimit
+  }
+}
+
 public struct PraxisReadbackTapStatusCommand: Sendable, Equatable, Codable {
   public let projectID: String
   public let agentID: String?

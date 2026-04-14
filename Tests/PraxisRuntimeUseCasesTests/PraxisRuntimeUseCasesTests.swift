@@ -1882,8 +1882,8 @@ struct PraxisRuntimeUseCasesTests {
     let requestApprovalUseCase = PraxisRequestCmpPeerApprovalUseCase(dependencies: dependencies)
     let decideApprovalUseCase = PraxisDecideCmpPeerApprovalUseCase(dependencies: dependencies)
     let checkpointPointer = PraxisCheckpointPointer(
-      checkpointID: .init(rawValue: "tap.checkpoint.snapshot"),
-      sessionID: .init(rawValue: "tap.session.snapshot")
+      checkpointID: .init(rawValue: "tap.checkpoint.snapshot.cmp.local-runtime"),
+      sessionID: .init(rawValue: "tap.session.snapshot.cmp.local-runtime")
     )
 
     _ = try await requestApprovalUseCase.execute(
@@ -1923,6 +1923,48 @@ struct PraxisRuntimeUseCasesTests {
     #expect(resolvedCheckpoint?.snapshot.payload?["humanGateState"]?.stringValue == "approved")
     #expect(resolvedCheckpoint?.snapshot.payload?["pendingApprovalCount"]?.numberValue == 0)
     #expect(resolvedCheckpoint?.snapshot.payload?["approvedApprovalCount"]?.numberValue == 1)
+  }
+
+  @Test
+  func tapInspectionCheckpointPersistenceStaysScopedPerProject() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-tap-checkpoint-scoped-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let dependencies = try makeDependencies(rootDirectory: rootDirectory)
+    let requestApprovalUseCase = PraxisRequestCmpPeerApprovalUseCase(dependencies: dependencies)
+    let inspectTapUseCase = PraxisInspectTapUseCase(dependencies: dependencies)
+
+    _ = try await requestApprovalUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityKey: .init(rawValue: "tool.git"),
+        requestedTier: .b1,
+        summary: "Persist checkpoint only for default project"
+      )
+    )
+
+    let defaultCheckpoint = try await dependencies.hostAdapters.checkpointStore?.load(
+      pointer: .init(
+        checkpointID: .init(rawValue: "tap.checkpoint.snapshot.cmp.local-runtime"),
+        sessionID: .init(rawValue: "tap.session.snapshot.cmp.local-runtime")
+      )
+    )
+    let otherCheckpoint = try await dependencies.hostAdapters.checkpointStore?.load(
+      pointer: .init(
+        checkpointID: .init(rawValue: "tap.checkpoint.snapshot.other-project"),
+        sessionID: .init(rawValue: "tap.session.snapshot.other-project")
+      )
+    )
+    let otherInspection = try await inspectTapUseCase.execute(.init(projectID: "other-project"))
+
+    #expect(defaultCheckpoint?.snapshot.payload?["projectID"]?.stringValue == "cmp.local-runtime")
+    #expect(otherCheckpoint == nil)
+    #expect(otherInspection.summary.contains("other-project"))
+    #expect(otherInspection.reviewContext.runSummary.summary.contains("tap.session.snapshot.other-project"))
+    #expect(otherInspection.reviewContext.runSummary.summary.contains("available for inspection and recovery") == false)
   }
 
   @Test
@@ -2274,6 +2316,38 @@ struct PraxisRuntimeUseCasesTests {
     #expect(inspection.reviewContext.projectSummary.summary.contains("cmp.local-runtime"))
     #expect(inspection.reviewContext.sections.contains { $0.sectionID == "approval-backlog" })
     #expect(inspection.toolReviewReport.advisories.isEmpty == false)
+  }
+
+  @Test
+  func inspectTapUseCaseHonorsScopedProjectIdentifiers() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-tap-inspect-scoped-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let openSessionUseCase = PraxisOpenCmpSessionUseCase(dependencies: dependencies)
+    let requestApprovalUseCase = PraxisRequestCmpPeerApprovalUseCase(dependencies: dependencies)
+    let useCase = PraxisInspectTapUseCase(dependencies: dependencies)
+
+    _ = try await openSessionUseCase.execute(.init(projectID: "other-project", sessionID: "cmp.other-project"))
+    _ = try await requestApprovalUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityKey: capabilityID("tool.git"),
+        requestedTier: .b1,
+        summary: "Approval only for default project"
+      )
+    )
+
+    let inspection = try await useCase.execute(.init(projectID: "other-project"))
+
+    #expect(inspection.summary.contains("other-project"))
+    #expect(inspection.summary.contains("cmp.local-runtime") == false)
+    #expect(inspection.reviewContext.projectSummary.summary.contains("other-project"))
+    #expect(inspection.reviewContext.projectSummary.summary.contains("Approval only for default project") == false)
   }
 
   @Test

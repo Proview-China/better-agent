@@ -1,6 +1,7 @@
 import PraxisCmpTypes
 import PraxisMpTypes
 import PraxisTapTypes
+import PraxisToolingContracts
 
 /// Caller-friendly execution request for one runtime goal.
 public struct PraxisRuntimeRunRequest: Sendable, Equatable {
@@ -384,17 +385,20 @@ public struct PraxisRuntimeSearchFetchRequest: Sendable, Equatable {
   public let url: String
   public let preferredTitle: String?
   public let captureSnapshot: Bool
+  public let waitPolicy: PraxisBrowserWaitPolicy
   public let timeoutSeconds: Double?
 
   public init(
     url: String,
     preferredTitle: String? = nil,
     captureSnapshot: Bool = true,
+    waitPolicy: PraxisBrowserWaitPolicy = .domReady,
     timeoutSeconds: Double? = 2
   ) {
     self.url = url
     self.preferredTitle = preferredTitle
     self.captureSnapshot = captureSnapshot
+    self.waitPolicy = waitPolicy
     self.timeoutSeconds = timeoutSeconds
   }
 }

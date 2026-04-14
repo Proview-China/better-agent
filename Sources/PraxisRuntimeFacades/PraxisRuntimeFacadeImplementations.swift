@@ -582,7 +582,11 @@ public final class PraxisInspectionFacade: Sendable {
   }
 
   public func inspectTap() async throws -> PraxisTapInspectionSnapshot {
-    let inspection = try await inspectTapUseCase.execute()
+    try await inspectTap(.init())
+  }
+
+  public func inspectTap(_ command: PraxisInspectTapCommand) async throws -> PraxisTapInspectionSnapshot {
+    let inspection = try await inspectTapUseCase.execute(command)
     let latestDecisionSummary = inspection.toolReviewReport.latestDecision?.summary
       ?? inspection.toolReviewReport.session.actions.first?.summary
     let reviewSummary = latestDecisionSummary

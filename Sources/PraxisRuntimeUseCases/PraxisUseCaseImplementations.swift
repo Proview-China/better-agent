@@ -24,11 +24,6 @@ import PraxisTapTypes
 import PraxisTransition
 import Foundation
 
-private let tapInspectionSessionID = PraxisSessionID(rawValue: "tap.session.snapshot")
-private let tapInspectionCheckpointPointer = PraxisCheckpointPointer(
-  checkpointID: PraxisCheckpointID(rawValue: "tap.checkpoint.snapshot"),
-  sessionID: tapInspectionSessionID
-)
 private let checkpointReplayPageSize = 50
 private let runIdentityCodec = PraxisRunIdentityCodec()
 private let cmpLocalRuntimeProjectID = "cmp.local-runtime"
@@ -98,6 +93,31 @@ private struct PraxisContractBackedJournalReader: PraxisJournalReading {
 
 private func runtimeNow() -> String {
   ISO8601DateFormatter().string(from: Date())
+}
+
+private func tapInspectionStorageComponent(for projectID: String) -> String {
+  let mappedScalars = projectID.unicodeScalars.map { scalar -> Character in
+    switch scalar {
+    case "a"..."z", "A"..."Z", "0"..."9", "-", "_", ".":
+      return Character(scalar)
+    default:
+      return "-"
+    }
+  }
+  let component = String(mappedScalars).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+  return component.isEmpty ? "project" : component
+}
+
+private func tapInspectionSessionID(for projectID: String) -> PraxisSessionID {
+  .init(rawValue: "tap.session.snapshot.\(tapInspectionStorageComponent(for: projectID))")
+}
+
+private func tapInspectionCheckpointPointer(for projectID: String) -> PraxisCheckpointPointer {
+  let sessionID = tapInspectionSessionID(for: projectID)
+  return .init(
+    checkpointID: .init(rawValue: "tap.checkpoint.snapshot.\(tapInspectionStorageComponent(for: projectID))"),
+    sessionID: sessionID
+  )
 }
 
 private func defaultSessionID(for goalID: String) -> PraxisSessionID {
@@ -3130,6 +3150,8 @@ private func persistTapInspectionCheckpoint(
     command: .init(projectID: projectID, limit: 1),
     dependencies: dependencies
   )
+  let sessionID = tapInspectionSessionID(for: projectID)
+  let checkpointPointer = tapInspectionCheckpointPointer(for: projectID)
   let storedAt = runtimeNow()
   let payload: [String: PraxisValue] = [
     "projectID": .string(projectID),
@@ -3145,14 +3167,14 @@ private func persistTapInspectionCheckpoint(
   ]
 
   let snapshot = PraxisCheckpointSnapshot(
-    id: tapInspectionCheckpointPointer.checkpointID,
-    sessionID: tapInspectionSessionID,
+    id: checkpointPointer.checkpointID,
+    sessionID: sessionID,
     tier: .durable,
     createdAt: storedAt,
     payload: payload
   )
   _ = try await checkpointStore.save(
-    .init(pointer: tapInspectionCheckpointPointer, snapshot: snapshot)
+    .init(pointer: checkpointPointer, snapshot: snapshot)
   )
 }
 
@@ -4328,13 +4350,21 @@ public final class PraxisInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
 
   /// Builds the current Swift TAP domain inspection snapshot for facades and exported runtime surfaces.
   ///
+  /// - Parameter command: Structured inspection scope for one TAP inspection read.
   /// - Returns: A TAP inspection that aggregates governance, context, tool-review, and runtime layers.
   /// - Throws: This implementation does not actively throw, but it propagates underlying errors from the call chain.
-  public func execute() async throws -> PraxisTapInspection {
+  public func execute(_ command: PraxisInspectTapCommand) async throws -> PraxisTapInspection {
+    let projectID = command.projectID.trimmingCharacters(in: .whitespacesAndNewlines)
+    if projectID.isEmpty {
+      throw PraxisError.invalidInput("TAP inspection requires a non-empty projectID.")
+    }
+
     let capabilityIDs = hostCapabilityIDs(from: dependencies)
-    let checkpointRecord = try await dependencies.hostAdapters.checkpointStore?.load(pointer: tapInspectionCheckpointPointer)
+    let inspectionSessionID = tapInspectionSessionID(for: projectID)
+    let checkpointPointer = tapInspectionCheckpointPointer(for: projectID)
+    let checkpointRecord = try await dependencies.hostAdapters.checkpointStore?.load(pointer: checkpointPointer)
     let replaySlice = try await dependencies.hostAdapters.journalStore?.read(
-      .init(sessionID: tapInspectionSessionID.rawValue, limit: 5)
+      .init(sessionID: inspectionSessionID.rawValue, limit: 5)
     )
     let replayedEventCount = replaySlice?.events.count ?? 0
     let replaySummary = replayedEventCount > 0
@@ -4342,13 +4372,13 @@ public final class PraxisInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
       : "No TAP replay events are currently stored for the inspection session."
     let persistenceSummary = checkpointRecord != nil
       ? "A TAP checkpoint snapshot is available for inspection and recovery."
-      : "No TAP checkpoint snapshot has been persisted for the inspection session yet."
+      : "No TAP checkpoint snapshot has been persisted for the inspection session \(inspectionSessionID.rawValue) yet."
     let status = try await readbackTapStatus(
-      command: .init(projectID: cmpLocalRuntimeProjectID),
+      command: .init(projectID: projectID),
       dependencies: dependencies
     )
     let history = try await readbackTapHistory(
-      command: .init(projectID: cmpLocalRuntimeProjectID, limit: 5),
+      command: .init(projectID: projectID, limit: command.historyLimit),
       dependencies: dependencies
     )
     let latestHistoryEntry = history.entries.first
@@ -4374,6 +4404,7 @@ public final class PraxisInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
       ),
       runSummary: .init(
         summary: tapInspectionRunSummary(
+          projectID: projectID,
           replaySummary: replaySummary,
           persistenceSummary: persistenceSummary,
           history: history
@@ -4412,7 +4443,7 @@ public final class PraxisInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
     )
     let toolReviewReport = PraxisToolReviewReport(
       session: .init(
-        sessionID: "tap-tool-review.\(cmpLocalRuntimeProjectID)",
+        sessionID: "tap-tool-review.\(projectID)",
         status: tapInspectionToolReviewSessionStatus(status: status),
         actions: tapInspectionToolReviewActions(
           history: history,
@@ -4437,19 +4468,23 @@ public final class PraxisInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
     )
     let runtimeSnapshot = PraxisTapRuntimeSnapshot(
       controlPlaneState: .init(
-        sessionID: tapInspectionSessionID,
+        sessionID: inspectionSessionID,
         governance: governance,
         humanGateState: status.humanGateState
       ),
       checkpointPointer: checkpointRecord?.pointer
     )
     return PraxisTapInspection(
-      summary: "TAP inspection exposes governance, reviewer context, tool-review pressure, and runtime recovery state for \(cmpLocalRuntimeProjectID).",
+      summary: "TAP inspection exposes governance, reviewer context, tool-review pressure, and runtime recovery state for \(projectID).",
       governanceSnapshot: governanceSnapshot,
       reviewContext: reviewContext,
       toolReviewReport: toolReviewReport,
       runtimeSnapshot: runtimeSnapshot
     )
+  }
+
+  public func execute() async throws -> PraxisTapInspection {
+    try await execute(.init())
   }
 }
 
@@ -4494,6 +4529,7 @@ private func tapInspectionProjectSummary(
 }
 
 private func tapInspectionRunSummary(
+  projectID: String,
   replaySummary: String,
   persistenceSummary: String,
   history: PraxisTapHistoryReadback
@@ -4502,7 +4538,7 @@ private func tapInspectionRunSummary(
   if history.totalCount > 0 {
     historySummary = "Recent reviewer activity contains \(history.totalCount) persisted TAP event(s) or approval descriptor(s)."
   } else {
-    historySummary = "No persisted reviewer activity is currently available for the default inspection project."
+    historySummary = "No persisted reviewer activity is currently available for the scoped inspection project \(projectID)."
   }
   return "\(persistenceSummary) \(replaySummary) \(historySummary)"
 }
