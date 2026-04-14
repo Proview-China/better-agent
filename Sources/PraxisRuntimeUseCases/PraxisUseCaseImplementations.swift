@@ -528,8 +528,8 @@ private func cmpGitStatusSummary(_ report: PraxisGitAvailabilityReport?) -> (sta
   case .installPromptExpected:
     return (
       "install_prompt_expected",
-      "System git is expected to prompt for Command Line Tools on first use.",
-      report.remediationHint ?? "System git may still need Command Line Tools installation."
+      PraxisLocalHostPlatformSupport.gitInstallPromptSummary,
+      report.remediationHint ?? PraxisLocalHostPlatformSupport.gitInstallPromptFallbackIssue
     )
   case .unavailable:
     return (
@@ -978,7 +978,7 @@ private func buildCmpProjectReadback(
     .embeddingStore: embeddingStoreAvailable ? .ready : .missing,
   ])
 
-  let hostSummary = "macOS local runtime / workspace (\(workspaceStatus.statusWord)) / sqlite persistence (\(projectionDescriptors.count) projections, \(packageDescriptors.count) packages) / lineage store (\(lineageStatus.statusWord)) / sqlite delivery truth (\(deliveryTruthRecords.count) records) / actor message bus (\(messageBusAvailable ? "ready" : "missing")) / system git probe (\(gitStatus.statusWord)) / system git executor (\(gitExecutorStatus.statusWord)) / accelerate-like semantic index (\(semanticSearchAvailable ? "ready" : "missing"))"
+  let hostSummary = "\(PraxisLocalHostPlatformSupport.localRuntimeLabel) / workspace (\(workspaceStatus.statusWord)) / sqlite persistence (\(projectionDescriptors.count) projections, \(packageDescriptors.count) packages) / lineage store (\(lineageStatus.statusWord)) / sqlite delivery truth (\(deliveryTruthRecords.count) records) / actor message bus (\(messageBusAvailable ? "ready" : "missing")) / system git probe (\(gitStatus.statusWord)) / system git executor (\(gitExecutorStatus.statusWord)) / \(PraxisLocalHostPlatformSupport.semanticIndexLabel) (\(semanticSearchAvailable ? "ready" : "missing"))"
   return PraxisCmpProjectReadback(
     projectID: projectID,
     summary: "CMP project readback now reads the current HostRuntime local profile, workspace, git, and lineage state through a host-neutral project surface.",

@@ -174,6 +174,20 @@ struct HostRuntimeCompositionGuardTests {
   }
 
   @Test
+  func hostAdapterFactoryScaffoldDefaultsExposePlatformAwareGitProbeProfile() async {
+    let factory = PraxisHostAdapterFactory()
+
+    let registry = factory.makeScaffoldAdapters()
+    let report = await registry.gitAvailabilityProbe?.probeGitReadiness()
+
+    #expect(report?.status == PraxisLocalHostPlatformSupport.scaffoldGitAvailabilityStatus)
+    #expect(report?.executablePath == PraxisLocalHostPlatformSupport.scaffoldGitExecutablePath)
+    #expect(report?.supportsWorktree == PraxisLocalHostPlatformSupport.scaffoldGitSupportsWorktree)
+    #expect(report?.remediationHint == PraxisLocalHostPlatformSupport.scaffoldGitRemediationHint)
+    #expect(report?.notes == PraxisLocalHostPlatformSupport.scaffoldGitNotes)
+  }
+
+  @Test
   func hostAdapterFactoryLocalDefaultsPreserveExplicitRootAndProvisionCoreAdapters() throws {
     let factory = PraxisHostAdapterFactory()
     let rootDirectory = Self.temporaryRootDirectory()

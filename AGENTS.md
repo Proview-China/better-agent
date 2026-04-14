@@ -14,8 +14,8 @@
 ## Working Defaults
 
 - 旧 TypeScript / Node.js 实现已经从仓库移除；当前活代码主语言和主工具链是 Swift + SwiftPM。
-- 根目录下与 Swift 重构相关的主计划文档，统一以 `SWIFT_REFACTOR_PLAN.md` 为唯一入口；不要重新恢复并行的 `SWIFT_ARCHITECTURE.md`、`SWIFT_OBJECT_ARCHITECTURE_PLAN.md`、`SWIFT_TARGET_EXECUTION_PLAN.md`、`REFACTOR_SWIFT_WORKORDER.md`。
-- 如果任务涉及 Swift 重构范围、target 职责、执行顺序或阶段边界，优先先回读 `SWIFT_REFACTOR_PLAN.md`，再按需补读 `memory/architecture/` 和 `memory/decisions/`。
+- 根目录下与 Swift 重构相关的执行入口，统一以 `TAKEOVER_EXECUTION_WORKFLOW.md` 为唯一准绳；不要重新恢复并行的 `SWIFT_REFACTOR_PLAN.md`、`SWIFT_ARCHITECTURE.md`、`SWIFT_OBJECT_ARCHITECTURE_PLAN.md`、`SWIFT_TARGET_EXECUTION_PLAN.md`、`REFACTOR_SWIFT_WORKORDER.md`。
+- 如果任务涉及 Swift 重构范围、target 职责、执行顺序或阶段边界，优先先回读 `TAKEOVER_EXECUTION_WORKFLOW.md`，再按需补读 `memory/architecture/` 和 `memory/decisions/`。
 - `docs/` 可能会被另一个 Codex 实例持续更新；不要回滚或覆盖与你当前任务无关的文档改动。
 - `memory/` 是项目级记忆层，不要只依赖这个 `AGENTS.md`；做完重要架构决策、约束调整或阶段性结论后，要把可复用的信息写回 `memory/`。
 - 保持仓库干净、最小化，除非用户明确要求，否则不要提前铺大型目录树或旧时代兼容层。
@@ -25,10 +25,11 @@
 
 - macOS 不默认走 Electron，Apple 端优先保留原生应用方向。
 - Windows 和 Linux 后续可以考虑 Electron，但在明确需求前不要提前搭 UI 壳子。
+- 在 macOS 本地 baseline host adapters 完备前，Linux 相关宿主实现统一保持 compile-safe placeholder，不作为当前阶段并行交付目标。
 
 ## Swift Conventions
 
-- Swift 重构的唯一根目录主计划是 `SWIFT_REFACTOR_PLAN.md`；写 Swift 代码前，先确认当前改动属于哪个 target、处于哪个 wave、是否越过既定顺序。
+- Swift 重构的唯一根目录执行计划是 `TAKEOVER_EXECUTION_WORKFLOW.md`；写 Swift 代码前，先确认当前改动属于哪个 target、处于哪个 phase、是否越过既定顺序。
 - `Core` 只是逻辑层概念，不是兜底模块名；不要新建“大 Core” 文件或 target 来收容暂时不知道放哪的代码。
 - phase-1 已拆开的 target 不要回并成粗模块；如果一个文件同时出现纯规则和宿主副作用实现，默认继续拆，而不是接受混合状态。
 

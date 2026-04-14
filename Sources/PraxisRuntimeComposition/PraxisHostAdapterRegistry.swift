@@ -211,11 +211,11 @@ public struct PraxisHostAdapterRegistry: Sendable {
       },
       gitAvailabilityProbe: PraxisStubGitAvailabilityProbe(
         report: PraxisGitAvailabilityReport(
-          status: .installPromptExpected,
-          executablePath: "/usr/bin/git",
-          supportsWorktree: true,
-          remediationHint: "Command Line Tools may still need first-run installation.",
-          notes: "Scaffold local-runtime git profile."
+          status: PraxisLocalHostPlatformSupport.scaffoldGitAvailabilityStatus,
+          executablePath: PraxisLocalHostPlatformSupport.scaffoldGitExecutablePath,
+          supportsWorktree: PraxisLocalHostPlatformSupport.scaffoldGitSupportsWorktree,
+          remediationHint: PraxisLocalHostPlatformSupport.scaffoldGitRemediationHint,
+          notes: PraxisLocalHostPlatformSupport.scaffoldGitNotes
         )
       ),
       gitExecutor: PraxisFakeGitExecutor(),

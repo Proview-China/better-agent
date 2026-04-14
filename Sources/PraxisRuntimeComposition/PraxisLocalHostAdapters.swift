@@ -2184,15 +2184,13 @@ private final class PraxisProcessResumeGate: @unchecked Sendable {
 private enum PraxisSystemGitExecutableResolver {
   static func resolve() -> String? {
     let fileManager = FileManager.default
-    let candidatePaths = [
-      "/usr/bin/git",
-      "/opt/homebrew/bin/git",
-      "/usr/local/bin/git",
-    ]
-    return candidatePaths.first(where: { fileManager.isExecutableFile(atPath: $0) })
+    return PraxisLocalHostPlatformSupport.nativeGitExecutablePaths.first {
+      fileManager.isExecutableFile(atPath: $0)
+    }
   }
 }
 
+#if os(macOS)
 private enum PraxisLocalProcessRunner {
   static func run(
     executableURL: URL,
@@ -2335,6 +2333,7 @@ private enum PraxisLocalProcessHandleParser {
     )
   }
 }
+#endif
 
 private enum PraxisLocalInferenceBaseline {
   static func condensedText(from text: String, limit: Int = 160) -> String {
@@ -2874,6 +2873,7 @@ public struct PraxisLocalImageGenerationDriver: PraxisImageGenerationDriver, Sen
   }
 }
 
+#if os(macOS)
 public struct PraxisLocalProcessSupervisor: PraxisProcessSupervisor, Sendable {
   public init() {}
 
@@ -2926,9 +2926,13 @@ public struct PraxisLocalProcessSupervisor: PraxisProcessSupervisor, Sendable {
   }
 
   private func commandSummary(for processID: Int32) async -> String? {
+    guard let processInspectionExecutablePath = PraxisLocalHostPlatformSupport.nativeProcessInspectionExecutablePath else {
+      return nil
+    }
+
     do {
       let result = try await PraxisLocalProcessRunner.run(
-        executableURL: URL(fileURLWithPath: "/bin/ps", isDirectory: false),
+        executableURL: URL(fileURLWithPath: processInspectionExecutablePath, isDirectory: false),
         arguments: ["-o", "command=", "-p", String(processID)],
         timeoutSeconds: 2
       )
@@ -2950,8 +2954,12 @@ public struct PraxisSystemShellExecutor: PraxisShellExecutor, Sendable {
   public init() {}
 
   public func run(_ command: PraxisShellCommand) async throws -> PraxisShellResult {
-    try await PraxisLocalProcessRunner.run(
-      executableURL: URL(fileURLWithPath: "/bin/zsh", isDirectory: false),
+    guard let shellExecutablePath = PraxisLocalHostPlatformSupport.nativeShellExecutablePath else {
+      throw PraxisError.unsupportedOperation(PraxisLocalHostPlatformSupport.unsupportedShellMessage)
+    }
+
+    return try await PraxisLocalProcessRunner.run(
+      executableURL: URL(fileURLWithPath: shellExecutablePath, isDirectory: false),
       arguments: ["-lc", command.command],
       currentDirectoryURL: command.workingDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) },
       environment: command.environment,
@@ -3078,7 +3086,7 @@ public struct PraxisSystemGitAvailabilityProbe: PraxisGitAvailabilityProbe, Send
         executablePath: nil,
         versionString: nil,
         supportsWorktree: false,
-        remediationHint: "Install Xcode Command Line Tools or Git before using local runtime git features.",
+        remediationHint: PraxisLocalHostPlatformSupport.gitMissingRemediationHint,
         notes: "System git executable was not found in standard locations."
       )
     }
@@ -3110,8 +3118,8 @@ public struct PraxisSystemGitAvailabilityProbe: PraxisGitAvailabilityProbe, Send
           executablePath: executablePath,
           versionString: combinedOutput.isEmpty ? nil : combinedOutput,
           supportsWorktree: false,
-          remediationHint: "Launch `git --version` once in Terminal or install Xcode Command Line Tools to finish enabling system git.",
-          notes: "System git exists but appears to still require Command Line Tools activation."
+          remediationHint: PraxisLocalHostPlatformSupport.gitActivationRemediationHint,
+          notes: PraxisLocalHostPlatformSupport.gitActivationNotes
         )
       }
 
@@ -3149,11 +3157,66 @@ public struct PraxisSystemGitAvailabilityProbe: PraxisGitAvailabilityProbe, Send
 
   private func looksLikeCommandLineToolsPrompt(_ output: String) -> Bool {
     let normalized = output.lowercased()
-    return normalized.contains("xcode-select")
-      || normalized.contains("command line tools")
-      || normalized.contains("developer tools")
+    return PraxisLocalHostPlatformSupport.gitActivationSignalPhrases.contains {
+      normalized.contains($0)
+    }
   }
 }
+#else
+public struct PraxisLocalProcessSupervisor: PraxisProcessSupervisor, Sendable {
+  public init() {}
+
+  public func poll(handle: PraxisLongRunningTaskHandle) async throws -> PraxisLongRunningTaskUpdate {
+    PraxisLongRunningTaskUpdate(
+      handle: handle,
+      status: .failed,
+      stderrTail: PraxisLocalHostPlatformSupport.unsupportedProcessSupervisorMessage,
+      finishedAt: localRuntimeNow()
+    )
+  }
+}
+
+public struct PraxisSystemShellExecutor: PraxisShellExecutor, Sendable {
+  public init() {}
+
+  public func run(_ command: PraxisShellCommand) async throws -> PraxisShellResult {
+    PraxisShellResult(
+      stdout: "",
+      stderr: "\(PraxisLocalHostPlatformSupport.unsupportedShellMessage) Command: \(command.command)",
+      exitCode: 127,
+      terminationReason: .failedToLaunch
+    )
+  }
+}
+
+public struct PraxisSystemGitExecutor: PraxisGitExecutor, Sendable {
+  public init() {}
+
+  public func apply(_ plan: PraxisGitPlan) async throws -> PraxisGitExecutionReceipt {
+    PraxisGitExecutionReceipt(
+      operationID: plan.operationID,
+      status: .rejected,
+      outputSummary: PraxisLocalHostPlatformSupport.unsupportedGitExecutionMessage,
+      completedAt: localRuntimeNow()
+    )
+  }
+}
+
+public struct PraxisSystemGitAvailabilityProbe: PraxisGitAvailabilityProbe, Sendable {
+  public init() {}
+
+  public func probeGitReadiness() async -> PraxisGitAvailabilityReport {
+    PraxisGitAvailabilityReport(
+      status: .unavailable,
+      executablePath: nil,
+      versionString: nil,
+      supportsWorktree: false,
+      remediationHint: PraxisLocalHostPlatformSupport.gitMissingRemediationHint,
+      notes: PraxisLocalHostPlatformSupport.unsupportedGitExecutionMessage
+    )
+  }
+}
+#endif
 
 public extension PraxisHostAdapterRegistry {
   static func localDefaults(rootDirectory: URL? = nil) -> PraxisHostAdapterRegistry {

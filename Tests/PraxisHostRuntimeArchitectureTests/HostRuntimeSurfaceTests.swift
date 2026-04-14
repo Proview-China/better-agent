@@ -2444,7 +2444,7 @@ struct HostRuntimeSurfaceTests {
           ),
           .init(
             kind: .createFile,
-            path: "SWIFT_REFACTOR_PLAN.md",
+            path: "TAKEOVER_EXECUTION_WORKFLOW.md",
             content: "# Local Test Plan\n"
           ),
           .init(
@@ -2670,12 +2670,15 @@ struct HostRuntimeSurfaceTests {
     defer { try? FileManager.default.removeItem(at: rootDirectory) }
     try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
 
-    let gitInit = try runHostTestProcess(
-      executablePath: "/usr/bin/git",
-      arguments: ["init", "-q"],
-      currentDirectoryURL: rootDirectory
-    )
-    #expect(gitInit.exitCode == 0)
+    if PraxisLocalHostPlatformSupport.supportsNativeCommandExecution {
+      let gitExecutablePath = try #require(PraxisLocalHostPlatformSupport.nativeGitExecutablePaths.first)
+      let gitInit = try runHostTestProcess(
+        executablePath: gitExecutablePath,
+        arguments: ["init", "-q"],
+        currentDirectoryURL: rootDirectory
+      )
+      #expect(gitInit.exitCode == 0)
+    }
 
     let registry = PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
     _ = try await registry.projectionStore?.save(
@@ -2712,16 +2715,37 @@ struct HostRuntimeSurfaceTests {
     let runtimeFacade = try PraxisRuntimeGatewayFactory.makeRuntimeFacade(hostAdapters: registry)
     let cmpSnapshot = try await runtimeFacade.inspectionFacade.inspectCmp()
 
-    #expect(gitReceipt?.status == .applied)
+    #expect(gitReceipt?.status == (PraxisLocalHostPlatformSupport.supportsNativeCommandExecution ? .applied : .rejected))
     #expect(cmpSnapshot.summary.contains("workspace, git, and lineage state"))
     #expect(cmpSnapshot.hostRuntimeSummary.contains("workspace (ready)"))
     #expect(cmpSnapshot.hostRuntimeSummary.contains("lineage store (ready)"))
-    #expect(cmpSnapshot.hostRuntimeSummary.contains("system git executor (ready)"))
+    #expect(
+      cmpSnapshot.hostRuntimeSummary.contains(
+        PraxisLocalHostPlatformSupport.supportsNativeCommandExecution
+          ? "system git executor (ready)"
+          : "system git executor (degraded)"
+      )
+    )
     #expect(cmpSnapshot.persistenceSummary.contains("Lineage persistence resolved 1 of 1 projected lineages"))
   }
 
   @Test
   func localProcessSupervisorPreservesEncodedTerminalStatusForExitedProcesses() async throws {
+    let supervisor = PraxisLocalProcessSupervisor()
+
+    guard PraxisLocalHostPlatformSupport.supportsNativeCommandExecution else {
+      let placeholderUpdate = try await supervisor.poll(
+        handle: .init(
+          identifier: "pid:42:status=failed:exit=7",
+          origin: .shell,
+          startedAt: "2026-04-11T03:00:00Z"
+        )
+      )
+      #expect(placeholderUpdate.status == .failed)
+      #expect(placeholderUpdate.stderrTail?.contains(PraxisLocalHostPlatformSupport.unsupportedProcessSupervisorMessage) == true)
+      return
+    }
+
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh", isDirectory: false)
     process.arguments = ["-c", "exit 7"]
@@ -2729,7 +2753,6 @@ struct HostRuntimeSurfaceTests {
     let processID = process.processIdentifier
     process.waitUntilExit()
 
-    let supervisor = PraxisLocalProcessSupervisor()
     let failedHandle = PraxisLongRunningTaskHandle(
       identifier: "pid:\(processID):status=failed:exit=7",
       origin: .shell,

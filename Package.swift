@@ -73,23 +73,27 @@ let architectureTestTargets = [
   "PraxisHostRuntimeArchitectureTests",
 ]
 
-let sqliteSystemLibraryTarget: Target
+let sqliteSystemLibraryTargets: [Target]
+let sqliteRuntimeDependencies: [Target.Dependency]
 
 #if os(macOS)
-sqliteSystemLibraryTarget = .systemLibrary(
-  name: "SQLite3",
-  path: "Sources/SQLite3",
-)
+sqliteSystemLibraryTargets = []
+sqliteRuntimeDependencies = []
 #else
-sqliteSystemLibraryTarget = .systemLibrary(
-  name: "SQLite3",
-  path: "Sources/SQLite3",
-  pkgConfig: "sqlite3",
-  providers: [
-    .apt(["libsqlite3-dev"]),
-    .brew(["sqlite3"]),
-  ],
-)
+sqliteSystemLibraryTargets = [
+  .systemLibrary(
+    name: "SQLite3",
+    path: "Sources/SQLite3",
+    pkgConfig: "sqlite3",
+    providers: [
+      .apt(["libsqlite3-dev"]),
+      .brew(["sqlite3"]),
+    ],
+  )
+]
+sqliteRuntimeDependencies = [
+  "SQLite3",
+]
 #endif
 
 let hostRuntimeArchitectureTestsTarget: Target
@@ -126,9 +130,11 @@ let package = Package(
     .library(name: "PraxisHostRuntime", targets: hostRuntimeTargets),
     .library(name: "PraxisRuntimeKit", targets: ["PraxisRuntimeKit"]),
     .library(name: "PraxisArchitectureTests", targets: architectureTestTargets),
+    .executable(name: "PraxisRuntimeKitRunExample", targets: ["PraxisRuntimeKitRunExample"]),
+    .executable(name: "PraxisRuntimeKitCmpTapExample", targets: ["PraxisRuntimeKitCmpTapExample"]),
+    .executable(name: "PraxisRuntimeKitMpExample", targets: ["PraxisRuntimeKitMpExample"]),
   ],
-  targets: [
-    sqliteSystemLibraryTarget,
+  targets: sqliteSystemLibraryTargets + [
     .target(
       name: "PraxisCoreTypes",
       path: "Sources/PraxisCoreTypes",
@@ -440,8 +446,7 @@ let package = Package(
     ),
     .target(
       name: "PraxisRuntimeComposition",
-      dependencies: [
-        "SQLite3",
+      dependencies: sqliteRuntimeDependencies + [
         "PraxisGoal",
         "PraxisState",
         "PraxisTransition",
@@ -593,6 +598,27 @@ let package = Package(
         "PraxisRuntimeGateway",
       ],
       path: "Sources/PraxisRuntimeKit",
+    ),
+    .executableTarget(
+      name: "PraxisRuntimeKitRunExample",
+      dependencies: [
+        "PraxisRuntimeKit",
+      ],
+      path: "Examples/PraxisRuntimeKitRunExample",
+    ),
+    .executableTarget(
+      name: "PraxisRuntimeKitCmpTapExample",
+      dependencies: [
+        "PraxisRuntimeKit",
+      ],
+      path: "Examples/PraxisRuntimeKitCmpTapExample",
+    ),
+    .executableTarget(
+      name: "PraxisRuntimeKitMpExample",
+      dependencies: [
+        "PraxisRuntimeKit",
+      ],
+      path: "Examples/PraxisRuntimeKitMpExample",
     ),
     .testTarget(
       name: "PraxisFoundationArchitectureTests",

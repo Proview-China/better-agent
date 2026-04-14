@@ -3,6 +3,29 @@
 Praxis 是一个基于 Swift + SwiftPM 的本地 agent runtime framework。仓库当前主线不是 CLI、TUI 或 GUI，而是一组可嵌入、可测试、可导出的 runtime products，用来承载 run lifecycle、capability governance、project context、memory retrieval 和 host export boundary。
 
 对大多数 Swift 调用方，默认公开入口是 `PraxisRuntimeKit`。
+当前仓库推进节奏与阶段顺序，统一以 [TAKEOVER_EXECUTION_WORKFLOW.md](/Users/shiyu/Documents/Project/Praxis/TAKEOVER_EXECUTION_WORKFLOW.md) 为准。
+
+## Quick Start
+
+先编译并运行 RuntimeKit 示例：
+
+```bash
+swift run PraxisRuntimeKitRunExample
+swift run PraxisRuntimeKitCmpTapExample
+swift run PraxisRuntimeKitMpExample
+```
+
+这三条示例直接提炼自 `PraxisRuntimeKitTests` 中已验证的真实路径：
+
+- `PraxisRuntimeKitRunExample`
+  展示 `runs.run(...)` 与 `runs.resumeRun(...)`。
+- `PraxisRuntimeKitCmpTapExample`
+  展示 project-scoped CMP approval 与 TAP overview。
+- `PraxisRuntimeKitMpExample`
+  展示 MP overview、search、resolve、history。
+
+当前这些 examples 依赖本地 baseline host adapters，默认按 macOS 本地运行验证。
+Linux 路径当前只保留 compile-safe placeholder 和条件编译接缝，待 macOS 实现完备后再推进兼容实现。
 
 ## Technical Overview
 
@@ -152,6 +175,11 @@ print(run.phaseSummary)
 - Xcode 16 或更新版本
 - Swift 6.x
 - macOS 本地开发环境
+
+说明：
+
+- 当前 `PraxisRuntimeKit` examples 和 local baseline host adapters 主要按 macOS 验证。
+- 针对非 macOS 平台，仓库已经把系统进程 / system git 相关执行面切成条件编译占位，便于后续补 Linux 实现。
 
 查看本机 Swift 版本：
 

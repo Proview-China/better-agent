@@ -1,10 +1,10 @@
 # Praxis 12 周接手开发流程
 
-> 状态：执行工作流补充文档
+> 状态：当前执行手册
 >
 > 本文负责把 12 周接手路线拆成可执行的推进流程、阶段出口、工件清单和验证顺序。
-> 本文不是新的总计划文档，不替代 `SWIFT_REFACTOR_PLAN.md`。
-> 截至 2026-04-14，`README.md` 与 `AGENTS.md` 都引用了 `SWIFT_REFACTOR_PLAN.md`，但当前工作树里并不存在该文件；因此本文暂时只承担“执行补充”的角色，等 canonical 计划入口恢复后，应回挂到主计划之下。
+> 截至 2026-04-14，旧的 `SWIFT_REFACTOR_PLAN.md` 已视为过时，不再作为执行依据。
+> 当前仓库涉及 Swift 重构范围、target 职责、执行顺序和阶段边界时，统一以本文为唯一执行入口。
 
 ## 1. 文档定位
 
@@ -26,6 +26,7 @@
 - `PraxisRuntimeKit` 是默认推荐的调用入口。
 - `PraxisHostRuntime` 与 `PraxisFFI` 属于导出/runtime 层，不应成为新接入方的第一入口。
 - 旧 TS/Node runtime 不应回流到当前主线。
+- 在 macOS 本地 baseline host adapters 完备前，Linux 相关宿主实现只保留占位与条件编译接缝，不进入并行实装。
 - `shell.*`、`code.*`、MCP、Skill、`computer.use` 这类高副作用能力，必须排在 durable state、reviewer 上下文和 recovery 之后。
 
 ## 3. 三条硬约束
@@ -33,7 +34,7 @@
 ### 3.1 仓库方向约束
 
 - 不恢复 `src/`、`dist/`、`package.json`、`npm`、旧 TS runtime 工作流。
-- 不新建与 `SWIFT_REFACTOR_PLAN.md` 并行竞争的总计划文档。
+- 不新建与本文并行竞争的总计划文档。
 - 不把 CLI 或 GUI 壳重新当成主产品面。
 
 ### 3.2 Runtime 边界约束
@@ -98,8 +99,8 @@
    - 重写根 README，让仓库首页直接呈现当前 Swift runtime/framework 方向。
 3. 确认计划入口。
    - 不另起 roadmap 文档家族。
-   - 等 canonical 计划入口恢复后，把接手里程碑折回主计划。
-   - 在那之前，本文明确保持“执行补充”定位。
+   - 统一以本文作为执行入口，不再等待旧计划恢复。
+   - 后续新增计划约束，直接回写本文或沉淀到 `memory/`。
 4. 产出构建/测试 baseline。
    - 运行 `swift test`。
    - 记录失败测试、慢测试、本地目录或数据库前提、SQLite/系统依赖前提、平台差异。
@@ -467,7 +468,7 @@
 
 1. 对齐默认分支与当前 Swift 主线。
 2. 替换仓库首页的过时入口。
-3. 把接手计划挂回 canonical Swift 计划路径，而不是扩散第二套 roadmap。
+3. 统一仓库根目录入口，明确本文是唯一执行手册。
 4. 跑并记录一次完整 `swift test` baseline。
 5. 以四个主执行轨重组 milestones 与 labels。
 6. 从 `PraxisRuntimeKitTests` 提炼三条 examples。
@@ -478,6 +479,6 @@
 
 ## 13. 维护说明
 
-- 如果 `SWIFT_REFACTOR_PLAN.md` 恢复，应从主计划链接到本文，并把长期有效的决策总结回写到 `memory/`。
-- 如果本文和 canonical plan 出现冲突，以 canonical plan 为准；本文只保留执行细节，不继续扩张成第二份总路线图。
+- 如果后续出现新的计划文档，必须由本文演进而来，而不是并行生长出第二套路线图。
+- 如果仓库长期约束或阶段结论稳定下来，应把可复用部分总结回写到 `memory/`。
 - 如果仓库现实发生变化，应先更新 baseline 事实，再调整执行流程，不要为了叙事完整保留过时描述。

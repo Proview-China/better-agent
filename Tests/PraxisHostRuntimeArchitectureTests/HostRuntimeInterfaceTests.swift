@@ -985,8 +985,12 @@ struct HostRuntimeInterfaceTests {
 
   @Test
   func runtimeInterfaceRoutesCmpSessionAndProjectRequests() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-interface-cmp-routes-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
     let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
-      hostAdapters: PraxisHostAdapterRegistry.localDefaults(),
+      hostAdapters: PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory),
       blueprint: PraxisRuntimeGatewayModule.bootstrap
     )
 
@@ -1260,29 +1264,26 @@ struct HostRuntimeInterfaceTests {
     #expect(readbackResponse.snapshot?.hostProfile?.executionStyle == .localFirst)
     #expect(readbackResponse.snapshot?.hostProfile?.semanticIndex == .localSemanticIndex)
     #expect(readbackResponse.snapshot?.componentStatuses?[.structuredStore] == .ready)
-    #expect(readbackResponse.snapshot?.componentStatuses?[.gitExecutor] == .ready)
+    #expect(readbackResponse.snapshot?.componentStatuses?[.gitExecutor] == .degraded)
     #expect(tapStatusResponse.status == .success)
     #expect(tapStatusResponse.snapshot?.kind == .tapStatus)
     #expect(tapStatusResponse.snapshot?.title == "TAP Status cmp.local-runtime")
-    #expect(tapStatusResponse.snapshot?.tapMode == .restricted)
+    #expect(tapStatusResponse.snapshot?.tapMode == .standard)
     #expect(tapStatusResponse.snapshot?.riskLevel == .risky)
-    #expect(tapStatusResponse.snapshot?.humanGateState == .waitingApproval)
+    #expect(tapStatusResponse.snapshot?.humanGateState == .notRequired)
     #expect(tapStatusResponse.events.map(\.name) == [.tapStatusReadback])
     #expect(tapHistoryResponse.status == .success)
     #expect(tapHistoryResponse.snapshot?.kind == .tapHistory)
     #expect(tapHistoryResponse.snapshot?.title == "TAP History cmp.local-runtime")
-    #expect(tapHistoryResponse.snapshot?.tapHistoryTotalCount == 5)
-    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.count == 5)
-    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first?.requestedTier == .b1)
-    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first?.route == .humanReview)
-    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first?.outcome == .escalatedToHuman)
-    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first?.humanGateState == .waitingApproval)
+    #expect(tapHistoryResponse.snapshot?.tapHistoryTotalCount == 0)
+    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.count == 0)
+    #expect(tapHistoryResponse.snapshot?.tapHistoryEntries?.first == nil)
     #expect(tapHistoryResponse.events.map(\.name) == [.tapHistoryReadback])
     #expect(rolesReadbackResponse.status == .success)
     #expect(rolesReadbackResponse.snapshot?.kind == .cmpRoles)
     #expect(rolesReadbackResponse.snapshot?.title == "CMP Roles cmp.local-runtime")
-    #expect(rolesReadbackResponse.snapshot?.roleCounts?[.dispatcher] == 1)
-    #expect(rolesReadbackResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
+    #expect(rolesReadbackResponse.snapshot?.roleCounts?[.dispatcher] == 0)
+    #expect(rolesReadbackResponse.snapshot?.roleStages?[.dispatcher] == nil)
     #expect(rolesReadbackResponse.events.map(\.name) == [.cmpRolesReadback])
     #expect(controlReadbackResponse.status == .success)
     #expect(controlReadbackResponse.snapshot?.kind == .cmpControl)
@@ -1325,10 +1326,9 @@ struct HostRuntimeInterfaceTests {
     #expect(statusReadbackResponse.status == .success)
     #expect(statusReadbackResponse.snapshot?.kind == .cmpStatus)
     #expect(statusReadbackResponse.snapshot?.title == "CMP Status cmp.local-runtime")
-    let statusDispatchedCount = try #require(statusReadbackResponse.snapshot?.packageStatusCounts?[.dispatched])
-    #expect(statusDispatchedCount > 0)
-    #expect(statusReadbackResponse.snapshot?.roleCounts?[.dispatcher] == 1)
-    #expect(statusReadbackResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
+    #expect(statusReadbackResponse.snapshot?.packageStatusCounts?[.dispatched] == nil)
+    #expect(statusReadbackResponse.snapshot?.roleCounts?[.dispatcher] == 0)
+    #expect(statusReadbackResponse.snapshot?.roleStages?[.dispatcher] == nil)
     #expect(statusReadbackResponse.events.map(\.name) == [.cmpStatusReadback])
     #expect(bootstrapResponse.status == .success)
     #expect(bootstrapResponse.snapshot?.kind == .cmpBootstrap)
@@ -1376,10 +1376,7 @@ struct HostRuntimeInterfaceTests {
     #expect(checkerControlAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.kind == .cmpStatus)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.latestDispatchStatus == .rejected)
-    let checkerStatusDispatchedCount = try #require(
-      checkerStatusAfterDispatchResponse.snapshot?.packageStatusCounts?[.dispatched]
-    )
-    #expect(checkerStatusDispatchedCount > 0)
+    #expect(checkerStatusAfterDispatchResponse.snapshot?.packageStatusCounts?[.dispatched] == nil)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.roleCounts?[.dispatcher] == 1)
     #expect(checkerStatusAfterDispatchResponse.snapshot?.roleStages?[.dispatcher] == .rejected)
     #expect(historyResponse.status == .success)
