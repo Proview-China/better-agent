@@ -5,7 +5,7 @@
 > 本文负责把 12 周接手路线拆成可执行的推进流程、阶段出口、工件清单和验证顺序。
 > 截至 2026-04-14，旧的 `SWIFT_REFACTOR_PLAN.md` 已视为过时，不再作为执行依据。
 > 当前仓库涉及 Swift 重构范围、target 职责、执行顺序和阶段边界时，统一以本文为唯一执行入口。
-> 截至 2026-04-14，Phase 1 的 RuntimeKit examples / README 入口、Phase 2 的 support matrix / error matrix / smoke harness skeleton，以及 Phase 3 的第一批 thin capability baseline 已落地到主线代码。
+> 截至 2026-04-14，Phase 1 的 RuntimeKit examples / README 入口、Phase 2 的 support matrix / error matrix / smoke harness skeleton，以及 Phase 3 的 thin capability baseline + search chain 已落地到主线代码。
 
 ## 1. 文档定位
 

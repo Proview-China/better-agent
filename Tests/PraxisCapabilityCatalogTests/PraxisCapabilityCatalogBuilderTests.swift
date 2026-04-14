@@ -43,10 +43,13 @@ struct PraxisCapabilityCatalogBuilderTests {
     let baseline = PraxisCapabilityCatalogBuilder().buildThinCapabilityBaseline()
     let snapshot = PraxisCapabilityCatalogBuilder().buildSnapshot(manifests: baseline.manifests)
 
-    #expect(baseline.manifests.count == 7)
-    #expect(snapshot.families.map(\.name) == ["batch", "embed", "file", "generate", "session", "tool"])
+    #expect(baseline.manifests.count == 10)
+    #expect(snapshot.families.map(\.name) == ["batch", "embed", "file", "generate", "search", "session", "tool"])
     #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("generate.create"))
     #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("generate.stream"))
     #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("session.open"))
+    #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("search.web"))
+    #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("search.fetch"))
+    #expect(snapshot.entries.map(\.manifest.id.rawValue).contains("search.ground"))
   }
 }

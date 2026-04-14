@@ -2508,6 +2508,47 @@ public struct PraxisLocalProviderEmbeddingExecutor: PraxisProviderEmbeddingExecu
   }
 }
 
+public struct PraxisLocalProviderWebSearchExecutor: PraxisProviderWebSearchExecutor, Sendable {
+  public init() {}
+
+  public func search(_ request: PraxisProviderWebSearchRequest) async throws -> PraxisProviderWebSearchResponse {
+    let query = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else {
+      throw PraxisError.invalidInput("Local web search baseline requires a non-empty query.")
+    }
+
+    let slug = PraxisLocalHostBaseline.slug(from: query)
+    let preferredDomain = request.preferredDomains.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let primaryDomain = (preferredDomain?.isEmpty == false ? preferredDomain : "example.com")!
+    let secondaryDomain = request.preferredDomains.dropFirst().first?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let localeLabel = request.locale?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    let results: [PraxisProviderWebSearchResult] = [
+      .init(
+        title: "\(query) overview",
+        snippet: "Local search baseline synthesized an overview result for \(query).",
+        url: "https://\(primaryDomain)/search/\(slug)",
+        source: primaryDomain
+      ),
+      .init(
+        title: "\(query) docs",
+        snippet: "Local search baseline synthesized a documentation candidate for \(query).",
+        url: "https://\((secondaryDomain?.isEmpty == false ? secondaryDomain! : "docs.example.com"))/\(slug)",
+        source: secondaryDomain?.isEmpty == false ? secondaryDomain : "docs.example.com"
+      ),
+    ]
+
+    let limitedResults = Array(results.prefix(max(request.limit, 1)))
+    let localeSummary = localeLabel?.isEmpty == false ? " locale \(localeLabel!)." : "."
+    return PraxisProviderWebSearchResponse(
+      query: query,
+      results: limitedResults,
+      provider: "local-runtime",
+      summary: "Local web search baseline returned \(limitedResults.count) candidate result(s) for \(query).\(localeSummary)"
+    )
+  }
+}
+
 public actor PraxisLocalProviderFileStore: PraxisProviderFileStore {
   private let rootDirectory: URL
   private var requests: [PraxisProviderFileUploadRequest] = []
@@ -3229,6 +3270,7 @@ public extension PraxisHostAdapterRegistry {
       workspaceRootDirectory: workspaceRootDirectory,
       capabilityExecutor: PraxisLocalCapabilityExecutor(),
       providerInferenceExecutor: PraxisLocalProviderInferenceExecutor(),
+      providerWebSearchExecutor: PraxisLocalProviderWebSearchExecutor(),
       providerEmbeddingExecutor: PraxisLocalProviderEmbeddingExecutor(),
       providerFileStore: PraxisLocalProviderFileStore(rootDirectory: resolvedRootDirectory),
       providerBatchExecutor: PraxisLocalProviderBatchExecutor(),

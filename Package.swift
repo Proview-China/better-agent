@@ -135,6 +135,7 @@ let package = Package(
     .executable(name: "PraxisRuntimeKitCmpTapExample", targets: ["PraxisRuntimeKitCmpTapExample"]),
     .executable(name: "PraxisRuntimeKitMpExample", targets: ["PraxisRuntimeKitMpExample"]),
     .executable(name: "PraxisRuntimeKitCapabilitiesExample", targets: ["PraxisRuntimeKitCapabilitiesExample"]),
+    .executable(name: "PraxisRuntimeKitSearchExample", targets: ["PraxisRuntimeKitSearchExample"]),
   ],
   targets: sqliteSystemLibraryTargets + [
     .target(
@@ -615,6 +616,13 @@ let package = Package(
         "PraxisRuntimeKit",
       ],
       path: "Examples/PraxisRuntimeKitCapabilitiesExample",
+    ),
+    .executableTarget(
+      name: "PraxisRuntimeKitSearchExample",
+      dependencies: [
+        "PraxisRuntimeKit",
+      ],
+      path: "Examples/PraxisRuntimeKitSearchExample",
     ),
     .executableTarget(
       name: "PraxisRuntimeKitSmoke",

@@ -10,6 +10,9 @@ public enum PraxisThinCapabilityKey: String, Sendable, Codable, CaseIterable {
   case fileUpload = "file.upload"
   case batchSubmit = "batch.submit"
   case sessionOpen = "session.open"
+  case searchWeb = "search.web"
+  case searchFetch = "search.fetch"
+  case searchGround = "search.ground"
 
   /// Returns the typed capability identifier for the baseline key.
   public var capabilityID: PraxisCapabilityID {
@@ -122,10 +125,43 @@ public extension PraxisCapabilityCatalogBuilder {
         ],
         tags: ["phase3", "thin-baseline", "session"]
       ),
+      .init(
+        id: PraxisThinCapabilityKey.searchWeb.capabilityID,
+        name: "Search Web",
+        summary: "Search the web through the current provider web-search lane.",
+        kind: .tool,
+        supportsPrepare: false,
+        routeHints: [
+          .init(key: "backend", value: "provider.web-search")
+        ],
+        tags: ["phase3", "search-chain", "web-search"]
+      ),
+      .init(
+        id: PraxisThinCapabilityKey.searchFetch.capabilityID,
+        name: "Search Fetch",
+        summary: "Fetch one candidate page through the current browser navigation lane.",
+        kind: .tool,
+        supportsPrepare: false,
+        routeHints: [
+          .init(key: "backend", value: "browser.fetch")
+        ],
+        tags: ["phase3", "search-chain", "fetch"]
+      ),
+      .init(
+        id: PraxisThinCapabilityKey.searchGround.capabilityID,
+        name: "Search Ground",
+        summary: "Collect grounded evidence for one candidate page through the current browser grounding lane.",
+        kind: .tool,
+        supportsPrepare: false,
+        routeHints: [
+          .init(key: "backend", value: "browser.grounding")
+        ],
+        tags: ["phase3", "search-chain", "grounding"]
+      ),
     ]
 
     return PraxisThinCapabilityBaseline(
-      summary: "Phase 3 thin capability baseline covers generation, embeddings, tool calls, file upload, batch submission, and runtime session opening.",
+      summary: "Phase 3 thin capability baseline covers generation, embeddings, tool calls, file upload, batch submission, runtime session opening, and the first search chain.",
       manifests: manifests
     )
   }

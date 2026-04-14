@@ -6,6 +6,7 @@ import PraxisCoreTypes
 import PraxisProviderContracts
 import PraxisRuntimeComposition
 import PraxisSession
+import PraxisToolingContracts
 
 /// Structured generation command for the thin capability surface.
 public struct PraxisCapabilityGenerateCommand: Sendable, Equatable, Codable {
@@ -103,6 +104,72 @@ public struct PraxisOpenRuntimeSessionCommand: Sendable, Equatable, Codable {
   ) {
     self.sessionID = sessionID
     self.title = title
+  }
+}
+
+/// Structured web-search command for the search capability chain.
+public struct PraxisCapabilitySearchWebCommand: Sendable, Equatable, Codable {
+  public let query: String
+  public let locale: String?
+  public let preferredDomains: [String]
+  public let limit: Int
+
+  public init(
+    query: String,
+    locale: String? = nil,
+    preferredDomains: [String] = [],
+    limit: Int = 5
+  ) {
+    self.query = query
+    self.locale = locale
+    self.preferredDomains = preferredDomains
+    self.limit = limit
+  }
+}
+
+/// Structured fetch command for the search capability chain.
+public struct PraxisCapabilitySearchFetchCommand: Sendable, Equatable, Codable {
+  public let url: String
+  public let preferredTitle: String?
+  public let captureSnapshot: Bool
+  public let waitPolicy: PraxisBrowserWaitPolicy
+  public let timeoutSeconds: Double?
+
+  public init(
+    url: String,
+    preferredTitle: String? = nil,
+    captureSnapshot: Bool = true,
+    waitPolicy: PraxisBrowserWaitPolicy = .domReady,
+    timeoutSeconds: Double? = 2
+  ) {
+    self.url = url
+    self.preferredTitle = preferredTitle
+    self.captureSnapshot = captureSnapshot
+    self.waitPolicy = waitPolicy
+    self.timeoutSeconds = timeoutSeconds
+  }
+}
+
+/// Structured grounding command for the search capability chain.
+public struct PraxisCapabilitySearchGroundCommand: Sendable, Equatable, Codable {
+  public let taskSummary: String
+  public let exampleURL: String?
+  public let requestedFacts: [String]
+  public let locale: String?
+  public let maxPages: Int
+
+  public init(
+    taskSummary: String,
+    exampleURL: String? = nil,
+    requestedFacts: [String] = [],
+    locale: String? = nil,
+    maxPages: Int = 5
+  ) {
+    self.taskSummary = taskSummary
+    self.exampleURL = exampleURL
+    self.requestedFacts = requestedFacts
+    self.locale = locale
+    self.maxPages = maxPages
   }
 }
 
@@ -290,6 +357,147 @@ public struct PraxisRuntimeSessionSnapshot: Sendable, Equatable, Codable {
   }
 }
 
+/// One projected web-search result snapshot.
+public struct PraxisCapabilitySearchWebResultSnapshot: Sendable, Equatable, Codable {
+  public let title: String
+  public let snippet: String
+  public let url: String
+  public let source: String?
+
+  public init(
+    title: String,
+    snippet: String,
+    url: String,
+    source: String? = nil
+  ) {
+    self.title = title
+    self.snippet = snippet
+    self.url = url
+    self.source = source
+  }
+}
+
+/// Result snapshot for one web-search capability call.
+public struct PraxisCapabilitySearchWebSnapshot: Sendable, Equatable, Codable {
+  public let capabilityID: PraxisCapabilityID
+  public let query: String
+  public let summary: String
+  public let provider: String?
+  public let results: [PraxisCapabilitySearchWebResultSnapshot]
+
+  public init(
+    capabilityID: PraxisCapabilityID,
+    query: String,
+    summary: String,
+    provider: String? = nil,
+    results: [PraxisCapabilitySearchWebResultSnapshot]
+  ) {
+    self.capabilityID = capabilityID
+    self.query = query
+    self.summary = summary
+    self.provider = provider
+    self.results = results
+  }
+}
+
+/// Result snapshot for one fetch capability call.
+public struct PraxisCapabilitySearchFetchSnapshot: Sendable, Equatable, Codable {
+  public let capabilityID: PraxisCapabilityID
+  public let requestedURL: String
+  public let finalURL: String
+  public let title: String?
+  public let snapshotPath: String?
+  public let summary: String
+
+  public init(
+    capabilityID: PraxisCapabilityID,
+    requestedURL: String,
+    finalURL: String,
+    title: String? = nil,
+    snapshotPath: String? = nil,
+    summary: String
+  ) {
+    self.capabilityID = capabilityID
+    self.requestedURL = requestedURL
+    self.finalURL = finalURL
+    self.title = title
+    self.snapshotPath = snapshotPath
+    self.summary = summary
+  }
+}
+
+/// One projected page record for grounded search evidence.
+public struct PraxisCapabilityGroundedPageSnapshot: Sendable, Equatable, Codable {
+  public let role: PraxisBrowserGroundingSourceRole
+  public let url: String
+  public let title: String?
+  public let snapshotPath: String?
+  public let screenshotPath: String?
+  public let capturedAt: String?
+
+  public init(page: PraxisBrowserGroundingPageEvidence) {
+    role = page.role
+    url = page.url
+    title = page.title
+    snapshotPath = page.snapshotPath
+    screenshotPath = page.screenshotPath
+    capturedAt = page.capturedAt
+  }
+}
+
+/// One projected fact record for grounded search evidence.
+public struct PraxisCapabilityGroundedFactSnapshot: Sendable, Equatable, Codable {
+  public let name: String
+  public let status: PraxisBrowserGroundingFactStatus
+  public let value: String?
+  public let unit: String?
+  public let detail: String?
+  public let sourceRole: PraxisBrowserGroundingSourceRole?
+  public let sourceURL: String?
+  public let sourceTitle: String?
+  public let citationSnippet: String?
+  public let observedAt: String?
+
+  public init(fact: PraxisBrowserGroundingFactEvidence) {
+    name = fact.name
+    status = fact.status
+    value = fact.value
+    unit = fact.unit
+    detail = fact.detail
+    sourceRole = fact.sourceRole
+    sourceURL = fact.sourceURL
+    sourceTitle = fact.sourceTitle
+    citationSnippet = fact.citationSnippet
+    observedAt = fact.observedAt
+  }
+}
+
+/// Result snapshot for one grounding capability call.
+public struct PraxisCapabilitySearchGroundSnapshot: Sendable, Equatable, Codable {
+  public let capabilityID: PraxisCapabilityID
+  public let summary: String
+  public let pages: [PraxisCapabilityGroundedPageSnapshot]
+  public let facts: [PraxisCapabilityGroundedFactSnapshot]
+  public let generatedAt: String?
+  public let blockedReason: String?
+
+  public init(
+    capabilityID: PraxisCapabilityID,
+    summary: String,
+    pages: [PraxisCapabilityGroundedPageSnapshot],
+    facts: [PraxisCapabilityGroundedFactSnapshot],
+    generatedAt: String? = nil,
+    blockedReason: String? = nil
+  ) {
+    self.capabilityID = capabilityID
+    self.summary = summary
+    self.pages = pages
+    self.facts = facts
+    self.generatedAt = generatedAt
+    self.blockedReason = blockedReason
+  }
+}
+
 private func normalizedCapabilityText(_ rawValue: String?, fieldName: String) throws -> String {
   guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
     throw PraxisError.invalidInput("Thin capability \(fieldName) must not be empty.")
@@ -339,6 +547,15 @@ private func thinCapabilityManifestIDs(for adapters: PraxisHostAdapterRegistry) 
   }
   if adapters.providerBatchExecutor != nil {
     capabilityIDs.insert(PraxisThinCapabilityKey.batchSubmit.capabilityID)
+  }
+  if adapters.providerWebSearchExecutor != nil {
+    capabilityIDs.insert(PraxisThinCapabilityKey.searchWeb.capabilityID)
+  }
+  if adapters.browserExecutor != nil {
+    capabilityIDs.insert(PraxisThinCapabilityKey.searchFetch.capabilityID)
+  }
+  if adapters.browserGroundingCollector != nil {
+    capabilityIDs.insert(PraxisThinCapabilityKey.searchGround.capabilityID)
   }
 
   return capabilityIDs
@@ -578,6 +795,104 @@ public final class PraxisCapabilityFacade: Sendable {
     )
   }
 
+  /// Executes one web search request.
+  ///
+  /// - Parameter command: The caller-friendly web-search command.
+  /// - Returns: The normalized web-search snapshot.
+  /// - Throws: Propagates provider or validation failures.
+  public func searchWeb(_ command: PraxisCapabilitySearchWebCommand) async throws -> PraxisCapabilitySearchWebSnapshot {
+    let query = try normalizedCapabilityText(command.query, fieldName: "query")
+    guard command.limit > 0 else {
+      throw PraxisError.invalidInput("Thin capability search.web requires limit > 0.")
+    }
+    let executor = try requireWebSearchExecutor()
+    let response = try await executor.search(
+      .init(
+        query: query,
+        locale: command.locale?.trimmingCharacters(in: .whitespacesAndNewlines),
+        preferredDomains: command.preferredDomains.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty },
+        limit: command.limit
+      )
+    )
+    return PraxisCapabilitySearchWebSnapshot(
+      capabilityID: PraxisThinCapabilityKey.searchWeb.capabilityID,
+      query: response.query,
+      summary: response.summary ?? "Thin capability \(PraxisThinCapabilityKey.searchWeb.rawValue) returned \(response.results.count) result(s).",
+      provider: response.provider,
+      results: response.results.map {
+        .init(
+          title: $0.title,
+          snippet: $0.snippet,
+          url: $0.url,
+          source: $0.source
+        )
+      }
+    )
+  }
+
+  /// Executes one fetch request for a candidate URL.
+  ///
+  /// - Parameter command: The caller-friendly fetch command.
+  /// - Returns: The normalized fetch snapshot.
+  /// - Throws: Propagates browser or validation failures.
+  public func fetchSearchResult(_ command: PraxisCapabilitySearchFetchCommand) async throws -> PraxisCapabilitySearchFetchSnapshot {
+    let url = try normalizedCapabilityText(command.url, fieldName: "url")
+    let executor = try requireBrowserExecutor()
+    let receipt = try await executor.navigate(
+      .init(
+        url: url,
+        waitPolicy: command.waitPolicy,
+        timeoutSeconds: command.timeoutSeconds,
+        preferredTitle: command.preferredTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+        captureSnapshot: command.captureSnapshot
+      )
+    )
+    return PraxisCapabilitySearchFetchSnapshot(
+      capabilityID: PraxisThinCapabilityKey.searchFetch.capabilityID,
+      requestedURL: receipt.requestedURL,
+      finalURL: receipt.finalURL,
+      title: receipt.title,
+      snapshotPath: receipt.snapshotPath,
+      summary: "Thin capability \(PraxisThinCapabilityKey.searchFetch.rawValue) fetched candidate page \(receipt.finalURL)."
+    )
+  }
+
+  /// Collects grounded evidence for one candidate URL.
+  ///
+  /// - Parameter command: The caller-friendly grounding command.
+  /// - Returns: The normalized grounded evidence snapshot.
+  /// - Throws: Propagates collector or validation failures.
+  public func groundSearchResult(_ command: PraxisCapabilitySearchGroundCommand) async throws -> PraxisCapabilitySearchGroundSnapshot {
+    let taskSummary = try normalizedCapabilityText(command.taskSummary, fieldName: "taskSummary")
+    guard command.maxPages > 0 else {
+      throw PraxisError.invalidInput("Thin capability search.ground requires maxPages > 0.")
+    }
+    let collector = try requireBrowserGroundingCollector()
+    let bundle = try await collector.collectEvidence(
+      .init(
+        taskSummary: taskSummary,
+        exampleURL: command.exampleURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+        requestedFacts: command.requestedFacts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty },
+        locale: command.locale?.trimmingCharacters(in: .whitespacesAndNewlines),
+        maxPages: command.maxPages
+      )
+    )
+    let summary: String
+    if let blockedReason = bundle.blockedReason {
+      summary = "Thin capability \(PraxisThinCapabilityKey.searchGround.rawValue) returned blocked grounding evidence: \(blockedReason)"
+    } else {
+      summary = "Thin capability \(PraxisThinCapabilityKey.searchGround.rawValue) collected \(bundle.pages.count) page(s) and \(bundle.facts.count) fact(s)."
+    }
+    return PraxisCapabilitySearchGroundSnapshot(
+      capabilityID: PraxisThinCapabilityKey.searchGround.capabilityID,
+      summary: summary,
+      pages: bundle.pages.map(PraxisCapabilityGroundedPageSnapshot.init(page:)),
+      facts: bundle.facts.map(PraxisCapabilityGroundedFactSnapshot.init(fact:)),
+      generatedAt: bundle.generatedAt,
+      blockedReason: bundle.blockedReason
+    )
+  }
+
   private func requireInferenceExecutor(capability: String) throws -> any PraxisProviderInferenceExecutor {
     guard let executor = dependencies?.hostAdapters.providerInferenceExecutor else {
       throw PraxisError.dependencyMissing("Thin capability \(capability) requires a provider inference executor.")
@@ -611,5 +926,26 @@ public final class PraxisCapabilityFacade: Sendable {
       throw PraxisError.dependencyMissing("Thin capability tool.call requires a provider MCP executor.")
     }
     return executor
+  }
+
+  private func requireWebSearchExecutor() throws -> any PraxisProviderWebSearchExecutor {
+    guard let executor = dependencies?.hostAdapters.providerWebSearchExecutor else {
+      throw PraxisError.dependencyMissing("Thin capability search.web requires a provider web search executor.")
+    }
+    return executor
+  }
+
+  private func requireBrowserExecutor() throws -> any PraxisBrowserExecutor {
+    guard let executor = dependencies?.hostAdapters.browserExecutor else {
+      throw PraxisError.dependencyMissing("Thin capability search.fetch requires a browser executor.")
+    }
+    return executor
+  }
+
+  private func requireBrowserGroundingCollector() throws -> any PraxisBrowserGroundingCollector {
+    guard let collector = dependencies?.hostAdapters.browserGroundingCollector else {
+      throw PraxisError.dependencyMissing("Thin capability search.ground requires a browser grounding collector.")
+    }
+    return collector
   }
 }

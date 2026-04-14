@@ -45,6 +45,21 @@ public struct PraxisStubProviderEmbeddingExecutor: PraxisProviderEmbeddingExecut
   }
 }
 
+/// Stub web-search executor with deterministic responses.
+public struct PraxisStubProviderWebSearchExecutor: PraxisProviderWebSearchExecutor, Sendable {
+  public let responseFactory: @Sendable (PraxisProviderWebSearchRequest) -> PraxisProviderWebSearchResponse
+
+  public init(
+    responseFactory: @escaping @Sendable (PraxisProviderWebSearchRequest) -> PraxisProviderWebSearchResponse
+  ) {
+    self.responseFactory = responseFactory
+  }
+
+  public func search(_ request: PraxisProviderWebSearchRequest) async throws -> PraxisProviderWebSearchResponse {
+    responseFactory(request)
+  }
+}
+
 /// In-memory fake file store that records uploads.
 public actor PraxisFakeProviderFileStore: PraxisProviderFileStore {
   private var requests: [PraxisProviderFileUploadRequest] = []

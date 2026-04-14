@@ -7,6 +7,7 @@ private enum PraxisRuntimeKitSmokeSuite: String, CaseIterable {
   case cmpTap = "cmp-tap"
   case mp
   case capabilities
+  case search
   case all
 
   static func parse(_ rawValue: String?) throws -> PraxisRuntimeKitSmokeSuite {
@@ -71,12 +72,15 @@ private struct PraxisRuntimeKitSmokeHarness {
       return [await execute(.mp, body: mpSuite)]
     case .capabilities:
       return [await execute(.capabilities, body: capabilitiesSuite)]
+    case .search:
+      return [await execute(.search, body: searchSuite)]
     case .all:
       return [
         await execute(.run, body: runSuite),
         await execute(.cmpTap, body: cmpTapSuite),
         await execute(.mp, body: mpSuite),
         await execute(.capabilities, body: capabilitiesSuite),
+        await execute(.search, body: searchSuite),
       ]
     }
   }
@@ -242,10 +246,52 @@ private struct PraxisRuntimeKitSmokeHarness {
     return "catalogEntries=\(catalog.entries.count) session=\(openedSession.sessionID.rawValue) streamChunks=\(streamed.chunks.count) batchID=\(submittedBatch.batchID)"
   }
 
+  private func searchSuite() async throws -> String {
+    let webSearch = try await client.capabilities.searchWeb(
+      .init(
+        query: "Swift runtime capability search chain",
+        locale: "en-US",
+        preferredDomains: ["example.com", "docs.example.com"],
+        limit: 2
+      )
+    )
+    let firstResult = try requireValue(webSearch.results.first, "Search smoke expected at least one web result.")
+    let fetched = try await client.capabilities.fetchSearchResult(
+      .init(
+        url: firstResult.url,
+        preferredTitle: firstResult.title
+      )
+    )
+    let grounded = try await client.capabilities.groundSearchResult(
+      .init(
+        taskSummary: "Verify one runtime capability search result",
+        exampleURL: fetched.finalURL,
+        requestedFacts: ["final_url", "host", "page_title"],
+        locale: "en-US",
+        maxPages: 2
+      )
+    )
+
+    try require(webSearch.capabilityID.rawValue == "search.web", "Search smoke expected search.web capability ID.")
+    try require(fetched.capabilityID.rawValue == "search.fetch", "Search smoke expected search.fetch capability ID.")
+    try require(grounded.capabilityID.rawValue == "search.ground", "Search smoke expected search.ground capability ID.")
+    try require(grounded.pages.isEmpty == false, "Search smoke expected grounded pages.")
+    try require(grounded.facts.count == 3, "Search smoke expected three grounded facts.")
+
+    return "results=\(webSearch.results.count) finalURL=\(fetched.finalURL) groundedFacts=\(grounded.facts.count)"
+  }
+
   private func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
     guard condition() else {
       throw PraxisRuntimeKitSmokeFailure.assertion(message)
     }
+  }
+
+  private func requireValue<T>(_ value: T?, _ message: String) throws -> T {
+    guard let value else {
+      throw PraxisRuntimeKitSmokeFailure.assertion(message)
+    }
+    return value
   }
 }
 
@@ -271,7 +317,7 @@ private enum PraxisRuntimeKitSmokeArguments {
         rootDirectoryPath = arguments[index]
       case "--help", "-h":
         throw PraxisRuntimeKitSmokeFailure.invalidArguments(
-          "Usage: swift run PraxisRuntimeKitSmoke [--suite run|cmp-tap|mp|capabilities|all] [--root /tmp/praxis-runtime-kit-smoke]"
+          "Usage: swift run PraxisRuntimeKitSmoke [--suite run|cmp-tap|mp|capabilities|search|all] [--root /tmp/praxis-runtime-kit-smoke]"
         )
       default:
         throw PraxisRuntimeKitSmokeFailure.invalidArguments("Unknown argument '\(arguments[index])'.")

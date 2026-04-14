@@ -17,6 +17,10 @@ public final class PraxisDependencyGraph: PraxisDependencyResolving, @unchecked 
     hostAdapters.providerInferenceExecutor
   }
 
+  public var providerWebSearchExecutor: (any PraxisProviderWebSearchExecutor)? {
+    hostAdapters.providerWebSearchExecutor
+  }
+
   public var workspaceReader: (any PraxisWorkspaceReader)? {
     hostAdapters.workspaceReader
   }
@@ -49,6 +53,7 @@ public final class PraxisDependencyGraph: PraxisDependencyResolving, @unchecked 
       workspaceRootDirectory: hostAdapters.workspaceRootDirectory,
       capabilityExecutor: hostAdapters.capabilityExecutor,
       providerInferenceExecutor: providerInferenceExecutor ?? hostAdapters.providerInferenceExecutor,
+      providerWebSearchExecutor: hostAdapters.providerWebSearchExecutor,
       providerEmbeddingExecutor: hostAdapters.providerEmbeddingExecutor,
       providerFileStore: hostAdapters.providerFileStore,
       providerBatchExecutor: hostAdapters.providerBatchExecutor,

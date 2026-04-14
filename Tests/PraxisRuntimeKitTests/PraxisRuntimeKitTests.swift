@@ -295,9 +295,35 @@ struct PraxisRuntimeKitTests {
         itemCount: 4
       )
     )
+    let webSearch = try await client.capabilities.searchWeb(
+      .init(
+        query: "Swift runtime capability baseline",
+        locale: "en-US",
+        preferredDomains: ["example.com", "docs.example.com"],
+        limit: 2
+      )
+    )
+    let fetched = try await client.capabilities.fetchSearchResult(
+      .init(
+        url: webSearch.results.first?.url ?? "https://example.com/search/swift-runtime-capability-baseline",
+        preferredTitle: "Capability Search Result"
+      )
+    )
+    let grounded = try await client.capabilities.groundSearchResult(
+      .init(
+        taskSummary: "Verify capability baseline docs page",
+        exampleURL: fetched.finalURL,
+        requestedFacts: ["final_url", "host", "page_title"],
+        locale: "en-US",
+        maxPages: 2
+      )
+    )
 
     #expect(catalog.capabilityIDs.map(\.rawValue).contains("generate.create"))
     #expect(catalog.capabilityIDs.map(\.rawValue).contains("session.open"))
+    #expect(catalog.capabilityIDs.map(\.rawValue).contains("search.web"))
+    #expect(catalog.capabilityIDs.map(\.rawValue).contains("search.fetch"))
+    #expect(catalog.capabilityIDs.map(\.rawValue).contains("search.ground"))
     #expect(openedSession.sessionID.rawValue == "runtime.capabilities.test")
     #expect(openedSession.title == "Runtime Capability Test")
     #expect(generated.capabilityID.rawValue == "generate.create")
@@ -312,5 +338,12 @@ struct PraxisRuntimeKitTests {
     #expect(fileUpload.fileID.isEmpty == false)
     #expect(batchSubmit.capabilityID.rawValue == "batch.submit")
     #expect(batchSubmit.batchID.isEmpty == false)
+    #expect(webSearch.capabilityID.rawValue == "search.web")
+    #expect(webSearch.results.isEmpty == false)
+    #expect(fetched.capabilityID.rawValue == "search.fetch")
+    #expect(fetched.finalURL.isEmpty == false)
+    #expect(grounded.capabilityID.rawValue == "search.ground")
+    #expect(grounded.pages.isEmpty == false)
+    #expect(grounded.facts.count == 3)
   }
 }

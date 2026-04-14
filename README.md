@@ -14,6 +14,7 @@ swift run PraxisRuntimeKitRunExample
 swift run PraxisRuntimeKitCmpTapExample
 swift run PraxisRuntimeKitMpExample
 swift run PraxisRuntimeKitCapabilitiesExample
+swift run PraxisRuntimeKitSearchExample
 swift run PraxisRuntimeKitSmoke --suite all
 ```
 
@@ -27,6 +28,8 @@ swift run PraxisRuntimeKitSmoke --suite all
   展示 MP overview、search、resolve、history。
 - `PraxisRuntimeKitCapabilitiesExample`
   展示 Phase 3 thin capability baseline：catalog、generate、stream、embed、tool、file、batch、session。
+- `PraxisRuntimeKitSearchExample`
+  展示 Phase 3 search chain：`search.web`、`search.fetch`、`search.ground`。
 
 当前这些 examples 依赖本地 baseline host adapters，默认按 macOS 本地运行验证。
 Linux 路径当前只保留 compile-safe placeholder 和条件编译接缝，待 macOS 实现完备后再推进兼容实现。
@@ -168,10 +171,11 @@ print(run.phaseSummary)
 - `capabilities.catalog()` / `generate(...)` / `stream(...)`
 - `capabilities.embed(...)` / `callTool(...)` / `uploadFile(...)`
 - `capabilities.submitBatch(...)` / `openSession(...)`
+- `capabilities.searchWeb(...)` / `fetchSearchResult(...)` / `groundSearchResult(...)`
 
 ## Phase 3 Thin Capability Baseline
 
-Phase 3 当前先落的是第一刀 thin capability baseline，不碰 search 链和高副作用执行面：
+Phase 3 当前已经落地两部分：thin capability baseline 和第一条 search chain；高副作用执行面仍然继续后置：
 
 - `client.capabilities.catalog()`
 - `client.capabilities.generate(...)`
@@ -181,6 +185,9 @@ Phase 3 当前先落的是第一刀 thin capability baseline，不碰 search 链
 - `client.capabilities.uploadFile(...)`
 - `client.capabilities.submitBatch(...)`
 - `client.capabilities.openSession(...)`
+- `client.capabilities.searchWeb(...)`
+- `client.capabilities.fetchSearchResult(...)`
+- `client.capabilities.groundSearchResult(...)`
 
 这组能力的目标不是把 RuntimeKit 做厚，而是把现有本地 substrate 提升成 SDK 可调用面：
 
@@ -188,6 +195,7 @@ Phase 3 当前先落的是第一刀 thin capability baseline，不碰 search 链
 - generate / stream 复用当前 provider inference lane
 - embed / tool / file / batch 分别复用现有本地 baseline adapter
 - session.open 先给出 caller-scoped runtime session header，durable runtime 再接更深恢复链
+- search.web / fetch / ground 先接本地 deterministic baseline，验证 SDK surface、evidence handoff 和 smoke 链路
 
 最小示例：
 
@@ -248,11 +256,12 @@ print(generated.outputText)
 | --- | --- | --- | --- |
 | `PraxisRuntimeClient.makeDefault(...)` | ready | compile-safe placeholder baseline | 两端都能装配 RuntimeKit；Linux 继续保持占位宿主面 |
 | `runs.run(...)` / `runs.resume(...)` | ready | ready | run lifecycle 主要依赖本地 SQLite / in-process runtime truth |
-| `capabilities.catalog()` | ready | ready | 当前返回的是 Phase 3 thin capability baseline registry，不含 search 链与高副作用能力 |
+| `capabilities.catalog()` | ready | ready | 当前返回的是 Phase 3 thin capability baseline registry，已包含 search 链，不含高副作用能力 |
 | `capabilities.generate(...)` / `stream(...)` | ready | ready | 当前复用本地 provider inference lane；`stream` 是 bounded projected stream，不宣称 token transport |
 | `capabilities.embed(...)` | ready | ready | 当前复用本地 embedding baseline |
 | `capabilities.callTool(...)` / `uploadFile(...)` / `submitBatch(...)` | ready | ready | 当前复用本地 MCP / file store / batch baseline |
 | `capabilities.openSession(...)` | ready | ready | 当前先提供 caller-scoped runtime session header，durable 恢复链后续再继续接深 |
+| `capabilities.searchWeb(...)` / `fetchSearchResult(...)` / `groundSearchResult(...)` | ready | placeholder-backed SDK seam | 当前 search 链先接 deterministic local baseline；Linux 仍未接真实 browser / search substrate |
 | `tap.project(...).overview(...)` | ready | ready | TAP 读取面可用，但其 capability 可见性仍受宿主 wiring 影响 |
 | `cmp.project(...).overview(...)` / `approvalOverview(...)` | ready | ready with degraded host summaries | Linux 下 git / shell / process 仍会退化为占位语义 |
 | `cmp.project(...).smoke()` | ready | degraded | smoke 会诚实反映 git executor / host runtime 退化状态 |
@@ -352,6 +361,7 @@ swift test --filter PraxisRuntimeKitTests
 swift test --filter PraxisHostRuntimeArchitectureTests
 swift test --filter PraxisTapArchitectureTests
 swift run PraxisRuntimeKitCapabilitiesExample
+swift run PraxisRuntimeKitSearchExample
 swift run PraxisRuntimeKitSmoke --suite all
 ```
 

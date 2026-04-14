@@ -359,6 +359,69 @@ public struct PraxisRuntimeSessionOpenRequest: Sendable, Equatable {
   }
 }
 
+/// Caller-friendly request for one web-search call.
+public struct PraxisRuntimeWebSearchRequest: Sendable, Equatable {
+  public let query: String
+  public let locale: String?
+  public let preferredDomains: [String]
+  public let limit: Int
+
+  public init(
+    query: String,
+    locale: String? = nil,
+    preferredDomains: [String] = [],
+    limit: Int = 5
+  ) {
+    self.query = query
+    self.locale = locale
+    self.preferredDomains = preferredDomains
+    self.limit = limit
+  }
+}
+
+/// Caller-friendly request for one fetched search candidate.
+public struct PraxisRuntimeSearchFetchRequest: Sendable, Equatable {
+  public let url: String
+  public let preferredTitle: String?
+  public let captureSnapshot: Bool
+  public let timeoutSeconds: Double?
+
+  public init(
+    url: String,
+    preferredTitle: String? = nil,
+    captureSnapshot: Bool = true,
+    timeoutSeconds: Double? = 2
+  ) {
+    self.url = url
+    self.preferredTitle = preferredTitle
+    self.captureSnapshot = captureSnapshot
+    self.timeoutSeconds = timeoutSeconds
+  }
+}
+
+/// Caller-friendly request for one grounded search candidate.
+public struct PraxisRuntimeSearchGroundRequest: Sendable, Equatable {
+  public let taskSummary: String
+  public let exampleURL: String?
+  public let requestedFacts: [String]
+  public let locale: String?
+  public let maxPages: Int
+
+  public init(
+    taskSummary: String,
+    exampleURL: String? = nil,
+    requestedFacts: [String] = [],
+    locale: String? = nil,
+    maxPages: Int = 5
+  ) {
+    self.taskSummary = taskSummary
+    self.exampleURL = exampleURL
+    self.requestedFacts = requestedFacts
+    self.locale = locale
+    self.maxPages = maxPages
+  }
+}
+
 /// Archive input for one scoped MP memory mutation.
 public struct PraxisRuntimeMpMemoryArchiveInput: Sendable, Equatable {
   public let archivedAt: String?

@@ -14,6 +14,7 @@ public struct PraxisHostAdapterRegistry: Sendable {
   public let workspaceRootDirectory: URL?
   public let capabilityExecutor: (any PraxisCapabilityExecutor)?
   public let providerInferenceExecutor: (any PraxisProviderInferenceExecutor)?
+  public let providerWebSearchExecutor: (any PraxisProviderWebSearchExecutor)?
   public let providerEmbeddingExecutor: (any PraxisProviderEmbeddingExecutor)?
   public let providerFileStore: (any PraxisProviderFileStore)?
   public let providerBatchExecutor: (any PraxisProviderBatchExecutor)?
@@ -64,6 +65,7 @@ public struct PraxisHostAdapterRegistry: Sendable {
     workspaceRootDirectory: URL? = nil,
     capabilityExecutor: (any PraxisCapabilityExecutor)? = nil,
     providerInferenceExecutor: (any PraxisProviderInferenceExecutor)? = nil,
+    providerWebSearchExecutor: (any PraxisProviderWebSearchExecutor)? = nil,
     providerEmbeddingExecutor: (any PraxisProviderEmbeddingExecutor)? = nil,
     providerFileStore: (any PraxisProviderFileStore)? = nil,
     providerBatchExecutor: (any PraxisProviderBatchExecutor)? = nil,
@@ -109,6 +111,7 @@ public struct PraxisHostAdapterRegistry: Sendable {
     self.workspaceRootDirectory = workspaceRootDirectory
     self.capabilityExecutor = capabilityExecutor
     self.providerInferenceExecutor = providerInferenceExecutor
+    self.providerWebSearchExecutor = providerWebSearchExecutor
     self.providerEmbeddingExecutor = providerEmbeddingExecutor
     self.providerFileStore = providerFileStore
     self.providerBatchExecutor = providerBatchExecutor
@@ -177,6 +180,21 @@ public struct PraxisHostAdapterRegistry: Sendable {
             status: .succeeded,
             summary: "Scaffold inference executed for HostRuntime assembly."
           )
+        )
+      },
+      providerWebSearchExecutor: PraxisStubProviderWebSearchExecutor { request in
+        PraxisProviderWebSearchResponse(
+          query: request.query,
+          results: [
+            .init(
+              title: "Scaffold result for \(request.query)",
+              snippet: "Scaffold web search placeholder for HostRuntime assembly.",
+              url: "https://example.com/search?q=\(request.query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? request.query)",
+              source: "scaffold-provider"
+            )
+          ],
+          provider: "scaffold-provider",
+          summary: "Scaffold web search placeholder returned 1 candidate result."
         )
       },
       providerEmbeddingExecutor: PraxisStubProviderEmbeddingExecutor { request in
