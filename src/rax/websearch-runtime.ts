@@ -1,6 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -12,7 +11,13 @@ import {
   RaxRoutingError,
   UnsupportedCapabilityError
 } from "./errors.js";
-import { loadLiveProviderConfig } from "./live-config.js";
+import {
+  createOpenAIClient,
+  loadLiveProviderConfig,
+  loadOpenAILiveConfig,
+  prepareResponsesParamsForOpenAIAuth,
+} from "./live-config.js";
+import { refreshOpenAIOAuthIfNeeded } from "../raxcode-openai-auth.js";
 import {
   toWebSearchCapabilityResult,
   toWebSearchFailureResult
@@ -21,6 +26,42 @@ import type { CapabilityResult, ProviderId } from "./types.js";
 import type { WebSearchOutput } from "./websearch-types.js";
 
 const execFileAsync = promisify(execFile);
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && Symbol.asyncIterator in (value as Record<PropertyKey, unknown>),
+  );
+}
+
+async function collectOpenAIWebsearchResponse(stream: AsyncIterable<unknown>): Promise<Record<string, unknown>> {
+  let text = "";
+  let completedResponse: Record<string, unknown> | undefined;
+
+  for await (const event of stream) {
+    if (!event || typeof event !== "object") {
+      continue;
+    }
+    const record = event as Record<string, unknown>;
+    if (record.type === "response.output_text.delta" && typeof record.delta === "string") {
+      text += record.delta;
+      continue;
+    }
+    if (record.type === "response.output_text.done" && typeof record.text === "string") {
+      text = record.text;
+      continue;
+    }
+    if (record.type === "response.completed" && record.response && typeof record.response === "object") {
+      completedResponse = record.response as Record<string, unknown>;
+    }
+  }
+
+  return {
+    ...(completedResponse ?? {}),
+    output_text: text || (typeof completedResponse?.output_text === "string" ? completedResponse.output_text : ""),
+  };
+}
 
 function extractErrorCode(error: unknown, fallback = "websearch_failed"): string {
   if (!error || typeof error !== "object" || Array.isArray(error)) {
@@ -180,16 +221,23 @@ export class WebSearchRuntime implements WebSearchRuntimeLike {
   }
 
   async #executeOpenAI(invocation: PreparedInvocation): Promise<unknown> {
-    const config = loadLiveProviderConfig().openai;
-    const client = new OpenAI({
-      apiKey: config.apiKey,
-      baseURL: config.baseURL
-    });
+    await refreshOpenAIOAuthIfNeeded();
+    const config = loadOpenAILiveConfig("core.main");
+    const client = createOpenAIClient(config);
     const payload = invocation.payload as OpenAIInvocationPayload<Record<string, unknown>>;
 
     switch (payload.surface) {
-      case "responses":
-        return client.responses.create(payload.params as never);
+      case "responses": {
+        const params = prepareResponsesParamsForOpenAIAuth(
+          config,
+          payload.params as Record<string, unknown>,
+          typeof payload.params?.input === "string" ? payload.params.input : undefined,
+        );
+        const response = await client.responses.create(params as never);
+        return isAsyncIterable(response)
+          ? collectOpenAIWebsearchResponse(response)
+          : response;
+      }
       case "chat_completions":
         return client.chat.completions.create(payload.params as never);
       case "embeddings":

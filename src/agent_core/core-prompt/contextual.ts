@@ -3,6 +3,7 @@ import type {
   CoreMpRoutedPackageV1,
   CoreContextualTextBlock,
   CoreContextualUserV1,
+  CoreWorkspaceInitContextV1,
 } from "./types.js";
 
 function createBlock(heading: string, body?: string): CoreContextualTextBlock | undefined {
@@ -82,11 +83,33 @@ export function renderCoreMpRoutedPackageV1(input: CoreMpRoutedPackageV1): strin
   return sections.join("\n");
 }
 
+export function renderCoreWorkspaceInitContextV1(input: CoreWorkspaceInitContextV1): string {
+  const sections = [
+    `schema_version: ${input.schemaVersion}`,
+    `source_path: ${input.sourcePath}`,
+    input.bodyRef ? `body_ref: ${input.bodyRef}` : undefined,
+    `updated_at: ${input.updatedAt}`,
+    `freshness: ${input.freshness}`,
+    `summary: ${input.summary}`,
+    `excerpt: ${input.excerpt}`,
+  ].filter((section): section is string => Boolean(section));
+
+  return sections.join("\n");
+}
+
 export function createCoreContextualBlocks(input: CoreContextualUserV1): CoreContextualTextBlock[] {
   return [
     createBlock("current_objective", input.currentObjective),
     createBlock("recent_transcript", input.recentTranscript),
     createBlock("workspace_context", input.workspaceContext),
+    createBlock(
+      "workspace_init_context",
+      typeof input.workspaceInitContext === "string"
+        ? input.workspaceInitContext
+        : input.workspaceInitContext
+          ? renderCoreWorkspaceInitContextV1(input.workspaceInitContext)
+          : undefined,
+    ),
     createBlock(
       "cmp_context_package",
       typeof input.cmpContextPackage === "string"

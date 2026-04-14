@@ -248,6 +248,113 @@ test("workspace read adapter blocks docs.read from escaping into code scope", as
   assert.equal(envelope.error?.code, "workspace_read_path_not_allowed");
 });
 
+test("workspace read adapter honors grantedScope path patterns for repo-root reads", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "code.read",
+    allowedPathPatterns: ["src", "src/**"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-code-read-root-1",
+      sessionId: "session-code-read-root-1",
+      runId: "run-code-read-root-1",
+      capabilityKey: "code.read",
+      input: {
+        path: "README.md",
+        operation: "read_file",
+      },
+      priority: "normal",
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["**"],
+        },
+      },
+    },
+    {
+      idFactory: () => "plan-code-read-root-1",
+    },
+  );
+  const lease = createCapabilityLease(
+    {
+      capabilityId: "cap-code-read-root-1",
+      bindingId: "binding-code-read-root-1",
+      generation: 1,
+      plan,
+    },
+    {
+      idFactory: () => "lease-code-read-root-1",
+      clock: {
+        now: () => new Date("2026-04-14T10:10:00.000Z"),
+      },
+    },
+  );
+
+  const prepared = await adapter.prepare(plan, lease);
+  const envelope = await adapter.execute(prepared);
+
+  assert.equal(envelope.status, "success");
+  assert.equal((envelope.output as { path: string }).path, "README.md");
+});
+
+test("workspace read adapter allows external files when grantedScope carries explicit host prefixes", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const outsideDir = await mkdtemp(path.join(tmpdir(), "praxis-workspace-read-external-"));
+  const outsideFile = path.join(outsideDir, "external-note.txt");
+  await writeFile(outsideFile, "external fixture\n", "utf8");
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "code.read",
+    allowedPathPatterns: ["src", "src/**"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-code-read-external-1",
+      sessionId: "session-code-read-external-1",
+      runId: "run-code-read-external-1",
+      capabilityKey: "code.read",
+      input: {
+        path: outsideFile,
+        operation: "read_file",
+      },
+      priority: "normal",
+      metadata: {
+        grantedScope: {
+          pathPatterns: ["**"],
+          metadata: {
+            externalPathPrefixes: [outsideDir],
+          },
+        },
+      },
+    },
+    {
+      idFactory: () => "plan-code-read-external-1",
+    },
+  );
+  const lease = createCapabilityLease(
+    {
+      capabilityId: "cap-code-read-external-1",
+      bindingId: "binding-code-read-external-1",
+      generation: 1,
+      plan,
+    },
+    {
+      idFactory: () => "lease-code-read-external-1",
+      clock: {
+        now: () => new Date("2026-04-14T10:12:00.000Z"),
+      },
+    },
+  );
+
+  const prepared = await adapter.prepare(plan, lease);
+  const envelope = await adapter.execute(prepared);
+
+  assert.equal(envelope.status, "success");
+  assert.equal((envelope.output as { path: string }).path, path.resolve(outsideFile));
+  assert.match((envelope.output as { content: string }).content, /external fixture/u);
+});
+
 test("workspace read adapter truncates multibyte content by byte budget and clears prepared state after execution", async () => {
   const workspaceRoot = await createWorkspaceFixture();
   const adapter = createWorkspaceReadCapabilityAdapter({
@@ -346,6 +453,82 @@ test("workspace read adapter supports code.ls for bounded directory listing", as
     (envelope.output as { entries?: Array<{ name: string }> }).entries?.some((entry) => entry.name === "sample.ts"),
     true,
   );
+});
+
+test("workspace read adapter supports code.ls for workspace root directory listing", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "code.ls",
+    allowedPathPatterns: ["src", "src/**"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-code-ls-root-1",
+      sessionId: "session-code-ls-root-1",
+      runId: "run-code-ls-root-1",
+      capabilityKey: "code.ls",
+      input: {
+        path: ".",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-code-ls-root-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-code-ls-root-1",
+    bindingId: "binding-code-ls-root-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-code-ls-root-1",
+    clock: { now: () => new Date("2026-04-09T00:00:00.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "success");
+  assert.equal((envelope.output as { operation?: string }).operation, "list_dir");
+  assert.equal(
+    (envelope.output as { entries?: Array<{ name: string }> }).entries?.some((entry) => entry.name === "src"),
+    true,
+  );
+});
+
+test("workspace read adapter returns an explicit directory error when code.ls receives a file path", async () => {
+  const workspaceRoot = await createWorkspaceFixture();
+  const adapter = createWorkspaceReadCapabilityAdapter({
+    workspaceRoot,
+    capabilityKey: "code.ls",
+    allowedPathPatterns: ["src", "src/**"],
+  });
+  const plan = createCapabilityInvocationPlan(
+    {
+      intentId: "intent-code-ls-file-1",
+      sessionId: "session-code-ls-file-1",
+      runId: "run-code-ls-file-1",
+      capabilityKey: "code.ls",
+      input: {
+        path: "src/sample.ts",
+      },
+      priority: "normal",
+    },
+    {
+      idFactory: () => "plan-code-ls-file-1",
+    },
+  );
+  const prepared = await adapter.prepare(plan, createCapabilityLease({
+    capabilityId: "cap-code-ls-file-1",
+    bindingId: "binding-code-ls-file-1",
+    generation: 1,
+    plan,
+  }, {
+    idFactory: () => "lease-code-ls-file-1",
+    clock: { now: () => new Date("2026-04-09T00:00:00.000Z") },
+  }));
+  const envelope = await adapter.execute(prepared);
+  assert.equal(envelope.status, "failed");
+  assert.equal(envelope.error?.code, "workspace_read_expected_directory");
 });
 
 test("workspace read adapter supports code.glob pattern discovery", async () => {

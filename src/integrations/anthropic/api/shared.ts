@@ -5,6 +5,8 @@ import type {
   CapabilityResult
 } from "../../../rax/types.js";
 
+export type AnthropicThinkingConfig = Anthropic.MessageCreateParams["thinking"];
+
 export interface AnthropicGenerateInputBase {
   maxTokens: number;
   messages: Anthropic.MessageParam[];
@@ -14,6 +16,7 @@ export interface AnthropicGenerateInputBase {
   temperature?: number;
   topK?: number;
   topP?: number;
+  thinking?: AnthropicThinkingConfig;
   tools?: Anthropic.ToolUnion[];
   toolChoice?: Anthropic.ToolChoice;
 }
@@ -52,6 +55,24 @@ export function createAnthropicRequest<TInput>(
   request: CapabilityRequest<TInput>
 ): CapabilityRequest<TInput> {
   return request;
+}
+
+export function mapAnthropicReasoningEffortToThinking(
+  reasoningEffort?: string,
+): AnthropicThinkingConfig | undefined {
+  switch (reasoningEffort) {
+    case "low":
+      return { type: "enabled", budget_tokens: 1024 };
+    case "medium":
+      return { type: "enabled", budget_tokens: 4096 };
+    case "high":
+      return { type: "enabled", budget_tokens: 8192 };
+    case "max":
+    case "xhigh":
+      return { type: "enabled", budget_tokens: 16384 };
+    default:
+      return undefined;
+  }
 }
 
 export function createUnsupportedResult(

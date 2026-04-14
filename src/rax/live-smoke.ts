@@ -6,7 +6,6 @@ import { pathToFileURL } from "node:url";
 
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
 
 import {
   LOCAL_GATEWAY_COMPATIBILITY_PROFILES,
@@ -15,8 +14,9 @@ import {
 import type { OpenAIInvocationPayload } from "../integrations/openai/api/index.js";
 import type { PreparedInvocation } from "./contracts.js";
 import { UnsupportedCapabilityError } from "./errors.js";
-import { loadLiveProviderConfig } from "./live-config.js";
+import { createOpenAIClient, loadLiveProviderConfig } from "./live-config.js";
 import { rax } from "./runtime.js";
+import { refreshOpenAIOAuthIfNeeded } from "../raxcode-openai-auth.js";
 
 interface SmokeResult {
   name: string;
@@ -45,11 +45,9 @@ async function executeOpenAI(
   invocation: PreparedInvocation,
   override?: { apiKey: string; baseURL: string }
 ): Promise<unknown> {
+  await refreshOpenAIOAuthIfNeeded();
   const config = override ?? loadLiveProviderConfig().openai;
-  const client = new OpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL
-  });
+  const client = createOpenAIClient(config);
   const payload = invocation.payload as OpenAIInvocationPayload<Record<string, unknown>>;
 
   switch (payload.surface) {

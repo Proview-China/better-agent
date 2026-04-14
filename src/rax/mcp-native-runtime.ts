@@ -8,7 +8,6 @@ import {
   MCPToolset,
   stringifyContent
 } from "@google/adk";
-import OpenAI from "openai";
 import { query as anthropicAgentQuery } from "@anthropic-ai/claude-agent-sdk";
 import {
   Agent as OpenAIAgent,
@@ -19,7 +18,8 @@ import {
 
 import type { PreparedInvocation } from "./contracts.js";
 import { RaxRoutingError } from "./errors.js";
-import { loadLiveProviderConfig } from "./live-config.js";
+import { createOpenAIClient, loadLiveProviderConfig } from "./live-config.js";
+import { refreshOpenAIOAuthIfNeeded } from "../raxcode-openai-auth.js";
 
 async function consumeAnthropicAgentQuery(
   session: ReturnType<typeof anthropicAgentQuery>
@@ -218,11 +218,9 @@ export class McpNativeRuntime implements McpNativeRuntimeLike {
         );
       }
 
+      await refreshOpenAIOAuthIfNeeded();
       const config = loadLiveProviderConfig().openai;
-      const client = new OpenAI({
-        apiKey: config.apiKey,
-        baseURL: config.baseURL
-      });
+      const client = createOpenAIClient(config);
       const provider = new OpenAIProvider({
         openAIClient: client as any,
         useResponses: true
@@ -270,11 +268,9 @@ export class McpNativeRuntime implements McpNativeRuntimeLike {
       );
     }
 
+    await refreshOpenAIOAuthIfNeeded();
     const config = loadLiveProviderConfig().openai;
-    const client = new OpenAI({
-      apiKey: config.apiKey,
-      baseURL: config.baseURL
-    });
+    const client = createOpenAIClient(config);
 
     return client.responses.create(payload.params as never);
   }

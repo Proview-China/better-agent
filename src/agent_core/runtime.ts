@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 
 import {
   CheckpointStore,
@@ -56,6 +57,7 @@ import {
 } from "./cmp-git/index.js";
 import {
   createCmpDbPostgresAdapter,
+  createCmpDbSqliteAdapter,
   createCmpDbAgentRuntimeSyncState,
   createCmpDbContextPackageBackfillRecord,
   createCmpProjectionRecordFromCheckedSnapshot,
@@ -63,9 +65,11 @@ import {
   syncCmpDbDeliveryFromDispatchReceipt,
   syncCmpDbPackageFromContextPackage,
   syncCmpDbProjectionFromCheckedSnapshot,
+  type CmpDbAdapterLike,
   type CmpDbAgentRuntimeSyncState,
   type CmpDbContextPackageRecord,
   type CmpDbDeliveryRegistryRecord,
+  type CmpDbStorageEngine,
 } from "./cmp-db/index.js";
 import {
   assertNoSkippingNeighborhoodBroadcast,
@@ -357,6 +361,18 @@ export interface AgentCoreRuntimeOptions {
     provisioner?: Partial<import("./integrations/tap-agent-model.js").TapAgentModelRoute>;
   };
   registerDefaultMpCapabilityFamily?: boolean;
+  workspaceRoot?: string;
+  persistedReadAllowRules?: TaPersistedReadAllowRule[];
+  persistReadAllowRule?: (rule: TaPersistedReadAllowRule) => void;
+}
+
+export interface TaPersistedReadAllowRule {
+  ruleId: string;
+  agentId: string;
+  capabilityFamily: "read";
+  pathPrefix: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateTapTaskGovernanceInput {
@@ -422,6 +438,7 @@ export interface BootstrapCmpProjectInfraInput {
   defaultAgentId?: string;
   defaultBranchName?: string;
   worktreeRootPath?: string;
+  storageEngine?: CmpDbStorageEngine;
   databaseName?: string;
   dbSchemaName?: string;
   redisNamespaceRoot?: string;
@@ -437,6 +454,15 @@ export interface CmpRuntimeProjectRecoverySummary {
     | "hydrate_from_infra"
     | "reconcile_snapshot_and_infra";
   issues: string[];
+}
+
+function createCmpDbAdapterForContract(input: {
+  topology: Parameters<typeof createCmpDbPostgresAdapter>[0]["topology"];
+  localTableSets: Parameters<typeof createCmpDbPostgresAdapter>[0]["localTableSets"];
+}): CmpDbAdapterLike {
+  return input.topology.storageEngine === "sqlite"
+    ? createCmpDbSqliteAdapter(input)
+    : createCmpDbPostgresAdapter(input);
 }
 
 export interface CmpRuntimeRecoverySummary {
@@ -743,7 +769,7 @@ function createCmpRuntimeDefaultSectionRulePack(): CmpRulePack {
 
 export interface SubmitTaHumanGateDecisionInput {
   gateId: string;
-  action: "approve" | "reject";
+  action: "approve" | "approve_always" | "reject";
   actorId?: string;
   note?: string;
 }
@@ -860,10 +886,90 @@ export interface ResolveTaCapabilityAccessInput {
   reason: string;
   requestedTier?: TaCapabilityTier;
   mode?: TaPoolMode;
+  riskLevel?: TaPoolRiskLevel;
   taskContext?: Record<string, unknown>;
+  requestInput?: Record<string, unknown>;
   requestedScope?: AccessRequestScope;
   requestedDurationMs?: number;
   metadata?: Record<string, unknown>;
+}
+
+interface DerivedReadAccessScope {
+  requestedScope?: AccessRequestScope;
+  riskLevel?: TaPoolRiskLevel;
+  modeOverride?: TaPoolMode;
+  matchedPersistedRule?: TaPersistedReadAllowRule;
+}
+
+const TAP_WORKSPACE_READ_CAPABILITY_KEYS = new Set([
+  "code.read",
+  "code.ls",
+  "code.glob",
+  "code.grep",
+  "code.read_many",
+  "code.symbol_search",
+  "code.lsp",
+  "docs.read",
+  "spreadsheet.read",
+  "doc.read",
+  "read_pdf",
+  "read_notebook",
+  "view_image",
+]);
+
+function isRecordLike(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function normalizeAbsolutePrefix(candidatePath: string): string {
+  return path.resolve(candidatePath);
+}
+
+function absolutePathMatchesPrefix(candidatePath: string, prefix: string): boolean {
+  const normalizedCandidate = normalizeAbsolutePrefix(candidatePath);
+  const normalizedPrefix = normalizeAbsolutePrefix(prefix);
+  return normalizedCandidate === normalizedPrefix
+    || normalizedCandidate.startsWith(`${normalizedPrefix}${path.sep}`);
+}
+
+function isWorkspaceReadCapability(capabilityKey: string): boolean {
+  return TAP_WORKSPACE_READ_CAPABILITY_KEYS.has(capabilityKey);
+}
+
+function collectReadPathCandidates(
+  capabilityKey: string,
+  input: Record<string, unknown> | undefined,
+): string[] {
+  if (!input || !isWorkspaceReadCapability(capabilityKey)) {
+    return [];
+  }
+
+  const collected: string[] = [];
+  for (const key of ["path", "file_path", "filePath", "target", "basePath", "cwd", "workdir", "dir_path"]) {
+    const value = readStringField(input, key);
+    if (value) {
+      collected.push(value);
+    }
+  }
+
+  for (const key of ["paths", "filePaths"]) {
+    const value = input[key];
+    if (!Array.isArray(value)) {
+      continue;
+    }
+    for (const entry of value) {
+      if (typeof entry === "string" && entry.trim().length > 0) {
+        collected.push(entry.trim());
+      }
+    }
+  }
+
+  return [...new Set(collected)];
 }
 
 export interface DispatchCmpFiveAgentCapabilityInput
@@ -909,6 +1015,9 @@ export class AgentCoreRuntime {
   readonly cmpInfraBackends: CmpInfraBackends;
   readonly cmp: AgentCoreCmpApi;
   readonly #taSafetyConfig?: TaSafetyInterceptorConfig;
+  readonly #workspaceRoot?: string;
+  readonly #persistReadAllowRule?: (rule: TaPersistedReadAllowRule) => void;
+  readonly #persistedReadAllowRules: TaPersistedReadAllowRule[];
   readonly #modelInferenceExecutor: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
   readonly #capabilityExecutionContext = new Map<string, DispatchCapabilityPlanInput>();
   readonly #capabilityPreparedContext = new Map<string, DispatchCapabilityPlanInput>();
@@ -964,6 +1073,12 @@ export class AgentCoreRuntime {
     this.capabilityGateway = options.capabilityGateway ?? createKernelCapabilityGateway({
       pool: this.capabilityPool,
     });
+    this.#workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : undefined;
+    this.#persistReadAllowRule = options.persistReadAllowRule;
+    this.#persistedReadAllowRules = (options.persistedReadAllowRules ?? []).map((rule) => ({
+      ...rule,
+      pathPrefix: path.resolve(rule.pathPrefix),
+    }));
     this.#modelInferenceExecutor = options.modelInferenceExecutor ?? executeModelInference;
     this.#cmpFiveAgentRuntime = options.cmpFiveAgentRuntime ?? createCmpFiveAgentRuntime();
     this.taControlPlaneGateway = options.taControlPlaneGateway
@@ -1088,12 +1203,121 @@ export class AgentCoreRuntime {
     });
   }
 
+  #findPersistedReadAllowRule(agentId: string, absolutePath: string): TaPersistedReadAllowRule | undefined {
+    return this.#persistedReadAllowRules.find((rule) =>
+      rule.capabilityFamily === "read"
+      && rule.agentId === agentId
+      && absolutePathMatchesPrefix(absolutePath, rule.pathPrefix)
+    );
+  }
+
+  #recordPersistedReadAllowRule(params: {
+    agentId: string;
+    pathPrefix: string;
+    createdAt: string;
+  }): TaPersistedReadAllowRule {
+    const normalizedPrefix = normalizeAbsolutePrefix(params.pathPrefix);
+    const existing = this.#persistedReadAllowRules.find((rule) =>
+      rule.capabilityFamily === "read"
+      && rule.agentId === params.agentId
+      && normalizeAbsolutePrefix(rule.pathPrefix) === normalizedPrefix
+    );
+    if (existing) {
+      existing.updatedAt = params.createdAt;
+      return existing;
+    }
+
+    const nextRule: TaPersistedReadAllowRule = {
+      ruleId: randomUUID(),
+      agentId: params.agentId,
+      capabilityFamily: "read",
+      pathPrefix: normalizedPrefix,
+      createdAt: params.createdAt,
+      updatedAt: params.createdAt,
+    };
+    this.#persistedReadAllowRules.push(nextRule);
+    this.#persistReadAllowRule?.(nextRule);
+    return nextRule;
+  }
+
+  #deriveWorkspaceReadScope(params: {
+    agentId: string;
+    capabilityKey: string;
+    requestInput?: Record<string, unknown>;
+  }): DerivedReadAccessScope | undefined {
+    if (!this.#workspaceRoot || !isWorkspaceReadCapability(params.capabilityKey) || !params.requestInput) {
+      return undefined;
+    }
+
+    const requestedPaths = collectReadPathCandidates(params.capabilityKey, params.requestInput);
+    const externalPrefixes: string[] = [];
+    let matchedPersistedRule: TaPersistedReadAllowRule | undefined;
+
+    for (const requestedPath of requestedPaths) {
+      const absoluteCandidate = path.isAbsolute(requestedPath)
+        ? path.resolve(requestedPath)
+        : path.resolve(this.#workspaceRoot, requestedPath);
+      const relativeToWorkspace = path.relative(this.#workspaceRoot, absoluteCandidate);
+      const insideWorkspace = relativeToWorkspace === ""
+        || (!relativeToWorkspace.startsWith("..") && !path.isAbsolute(relativeToWorkspace));
+      if (insideWorkspace) {
+        continue;
+      }
+
+      const persistedRule = this.#findPersistedReadAllowRule(params.agentId, absoluteCandidate);
+      if (persistedRule) {
+        matchedPersistedRule = persistedRule;
+        externalPrefixes.push(persistedRule.pathPrefix);
+        continue;
+      }
+      externalPrefixes.push(absoluteCandidate);
+    }
+
+    const scopeMetadata: Record<string, unknown> = {
+      filesystemScopeKind: externalPrefixes.length > 0 ? "host" : "workspace",
+    };
+    if (externalPrefixes.length > 0) {
+      scopeMetadata.externalPathPrefixes = [...new Set(externalPrefixes)];
+    }
+    if (matchedPersistedRule) {
+      scopeMetadata.persistedReadAllowRuleId = matchedPersistedRule.ruleId;
+      scopeMetadata.persistedReadAllowRuleMatched = true;
+    }
+
+    return {
+      requestedScope: {
+        pathPatterns: ["**"],
+        metadata: scopeMetadata,
+      },
+      riskLevel: externalPrefixes.length > 0 ? "risky" : "normal",
+      modeOverride: matchedPersistedRule ? "bapr" : undefined,
+      matchedPersistedRule,
+    };
+  }
+
   resolveTaCapabilityAccess(input: ResolveTaCapabilityAccessInput) {
     if (!this.taControlPlaneGateway) {
       throw new Error("T/A control-plane gateway is not configured on this runtime.");
     }
 
-    return this.taControlPlaneGateway.resolveCapabilityAccess(input);
+    const derivedScope = this.#deriveWorkspaceReadScope({
+      agentId: input.agentId,
+      capabilityKey: input.capabilityKey,
+      requestInput: input.requestInput,
+    });
+
+    return this.taControlPlaneGateway.resolveCapabilityAccess({
+      ...input,
+      mode: derivedScope?.modeOverride ?? input.mode,
+      riskLevel: derivedScope?.riskLevel ?? input.riskLevel,
+      requestedScope: derivedScope?.requestedScope ?? input.requestedScope,
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(isRecordLike(derivedScope?.requestedScope?.metadata)
+          ? derivedScope?.requestedScope?.metadata
+          : {}),
+      },
+    });
   }
 
   async dispatchTaCapabilityGrant(input: DispatchTaCapabilityGrantInput): Promise<DispatchCapabilityPlanResult> {
@@ -3931,7 +4155,7 @@ export class AgentCoreRuntime {
 
     const projectReceipt = this.getCmpProjectInfraBootstrapReceipt(snapshot.metadata?.projectId as string);
     if (projectReceipt?.db && this.cmpInfraBackends.dbExecutor) {
-      const adapter = createCmpDbPostgresAdapter({
+      const adapter = createCmpDbAdapterForContract({
         topology: projectReceipt.db.topology,
         localTableSets: projectReceipt.db.localTableSets,
       });
@@ -4091,7 +4315,7 @@ export class AgentCoreRuntime {
     const sourceLineage = this.#requireCmpLineage(normalized.sourceAgentId);
     const projectReceipt = this.getCmpProjectInfraBootstrapReceipt(sourceLineage.projectId);
     if (projectReceipt?.db && this.cmpInfraBackends.dbExecutor) {
-      const adapter = createCmpDbPostgresAdapter({
+      const adapter = createCmpDbAdapterForContract({
         topology: projectReceipt.db.topology,
         localTableSets: projectReceipt.db.localTableSets,
       });
@@ -4586,7 +4810,7 @@ export class AgentCoreRuntime {
       }));
     }
     if (projectReceipt?.db && this.cmpInfraBackends.dbExecutor) {
-      const adapter = createCmpDbPostgresAdapter({
+      const adapter = createCmpDbAdapterForContract({
         topology: projectReceipt.db.topology,
         localTableSets: projectReceipt.db.localTableSets,
       });
@@ -4680,18 +4904,20 @@ export class AgentCoreRuntime {
     }
 
     const createdAt = new Date().toISOString();
+    const isPersistentApproval = input.action === "approve_always";
     const humanGateEvent = this.#recordHumanGateEvent(
       createTaHumanGateEvent({
         eventId: randomUUID(),
         gateId: gate.gateId,
         requestId: gate.requestId,
-        type: input.action === "approve" ? "human_gate.approved" : "human_gate.rejected",
+        type: input.action === "reject" ? "human_gate.rejected" : "human_gate.approved",
         createdAt,
         actorId: input.actorId,
         note: input.note,
         metadata: {
           capabilityKey: gate.capabilityKey,
           mode: context.accessRequest.mode,
+          persistentApproval: isPersistentApproval,
         },
       }),
     );
@@ -4703,9 +4929,11 @@ export class AgentCoreRuntime {
       latestEvent: humanGateEvent,
       accessRequest: context.accessRequest,
       reviewDecision: context.reviewDecision,
-      reason: input.action === "approve"
-        ? `Human gate ${updatedGate.gateId} approved for ${updatedGate.capabilityKey}.`
-        : `Human gate ${updatedGate.gateId} rejected for ${updatedGate.capabilityKey}.`,
+      reason: input.action === "reject"
+        ? `Human gate ${updatedGate.gateId} rejected for ${updatedGate.capabilityKey}.`
+        : isPersistentApproval
+          ? `Human gate ${updatedGate.gateId} approved persistent allow for ${updatedGate.capabilityKey}.`
+          : `Human gate ${updatedGate.gateId} approved for ${updatedGate.capabilityKey}.`,
     });
 
     if (input.action === "reject") {
@@ -4753,6 +4981,21 @@ export class AgentCoreRuntime {
       };
     }
 
+    if (isPersistentApproval) {
+      const externalPrefixes = Array.isArray(context.accessRequest.requestedScope?.metadata?.externalPathPrefixes)
+        ? context.accessRequest.requestedScope?.metadata?.externalPathPrefixes.filter(
+            (value): value is string => typeof value === "string" && value.trim().length > 0,
+          )
+        : [];
+      for (const pathPrefix of externalPrefixes) {
+        this.#recordPersistedReadAllowRule({
+          agentId: context.accessRequest.agentId,
+          pathPrefix,
+          createdAt,
+        });
+      }
+    }
+
     const approvalDecision = createReviewDecision({
       decisionId: randomUUID(),
       requestId: context.accessRequest.requestId,
@@ -4766,7 +5009,7 @@ export class AgentCoreRuntime {
         grantedTier: context.accessRequest.requestedTier,
         grantedScope: context.accessRequest.requestedScope,
         constraints: {
-          source: "human-gate-approval",
+          source: isPersistentApproval ? "human-gate-persistent-approval" : "human-gate-approval",
           humanGateId: updatedGate.gateId,
           humanGateEventId: humanGateEvent.eventId,
         },
@@ -4818,7 +5061,7 @@ export class AgentCoreRuntime {
         metadata: {
           sourceOperation: "human-gate-decision",
           gateId: updatedGate.gateId,
-          decision: "approve",
+          decision: isPersistentApproval ? "approve_always" : "approve",
           eventId: humanGateEvent.eventId,
           capabilityTracked,
           reusedProvisionAsset: existingProvisionAsset?.provisionId,
@@ -4914,14 +5157,14 @@ export class AgentCoreRuntime {
             sessionId: context.accessRequest.sessionId,
             runId: context.accessRequest.runId,
             reason: "manual",
-            metadata: {
-              sourceOperation: "human-gate-decision",
-              gateId: updatedGate.gateId,
-              decision: "approve",
-              eventId: humanGateEvent.eventId,
-              provisionStatus: provisionBundle.status,
-              provisionId: provisionRequest.provisionId,
-              dispatchStatus: continueResult.dispatchResult.status,
+        metadata: {
+          sourceOperation: "human-gate-decision",
+          gateId: updatedGate.gateId,
+          decision: isPersistentApproval ? "approve_always" : "approve",
+          eventId: humanGateEvent.eventId,
+          provisionStatus: provisionBundle.status,
+          provisionId: provisionRequest.provisionId,
+          dispatchStatus: continueResult.dispatchResult.status,
             },
           });
           return {
@@ -4944,7 +5187,7 @@ export class AgentCoreRuntime {
         metadata: {
           sourceOperation: "human-gate-decision",
           gateId: updatedGate.gateId,
-          decision: "approve",
+          decision: isPersistentApproval ? "approve_always" : "approve",
           eventId: humanGateEvent.eventId,
           provisionStatus: provisionBundle.status,
           provisionId: provisionRequest.provisionId,
@@ -5034,8 +5277,26 @@ export class AgentCoreRuntime {
       options.requestedTier ?? "B1",
       governanceDirective.matchedToolPolicy === "human_gate" ? "B3" : "B1",
     );
-    const mode = options.mode ?? governanceDirective.effectiveMode ?? profile.defaultMode;
+    const baseMode = options.mode ?? governanceDirective.effectiveMode ?? profile.defaultMode;
+    const derivedScope = this.#deriveWorkspaceReadScope({
+      agentId: options.agentId,
+      capabilityKey: intent.request.capabilityKey,
+      requestInput: isRecordLike(intent.request.input) ? intent.request.input : undefined,
+    });
+    const mode = derivedScope?.modeOverride ?? baseMode;
     const reason = options.reason ?? `Capability ${intent.request.capabilityKey} requested by runtime.`;
+    const requestedScope = derivedScope?.requestedScope ?? options.requestedScope;
+    const effectiveRiskLevel = derivedScope?.riskLevel;
+    const dispatchMetadata = {
+      correlationId: intent.correlationId,
+      ...(intent.metadata ?? {}),
+      ...(intent.request.metadata ?? {}),
+      ...(options.metadata ?? {}),
+      ...(isRecordLike(derivedScope?.requestedScope?.metadata)
+        ? derivedScope?.requestedScope?.metadata
+        : {}),
+      tapGovernanceDirective: governanceDirective,
+    };
     const safety = evaluateSafetyInterception({
       mode,
       requestedTier,
@@ -5065,15 +5326,12 @@ export class AgentCoreRuntime {
         reason,
         requestedTier,
         mode,
+        riskLevel: effectiveRiskLevel ?? safety.riskLevel,
         taskContext: options.taskContext,
-        requestedScope: options.requestedScope,
+        requestedScope,
         requestedDurationMs: options.requestedDurationMs,
         metadata: {
-          correlationId: intent.correlationId,
-          ...(intent.metadata ?? {}),
-          ...(intent.request.metadata ?? {}),
-          ...(options.metadata ?? {}),
-          tapGovernanceDirective: governanceDirective,
+          ...dispatchMetadata,
           safetyEscalation: true,
         },
       });
@@ -5133,16 +5391,11 @@ export class AgentCoreRuntime {
       reason,
       requestedTier: effectiveTier,
       mode,
+      riskLevel: effectiveRiskLevel ?? safety.riskLevel,
       taskContext: options.taskContext,
-      requestedScope: options.requestedScope,
+      requestedScope,
       requestedDurationMs: options.requestedDurationMs,
-      metadata: {
-        correlationId: intent.correlationId,
-        ...(intent.metadata ?? {}),
-        ...(intent.request.metadata ?? {}),
-        ...(options.metadata ?? {}),
-        tapGovernanceDirective: governanceDirective,
-      },
+      metadata: dispatchMetadata,
     });
 
     if (resolved.status === "baseline_granted") {
@@ -5180,9 +5433,9 @@ export class AgentCoreRuntime {
         ...options,
         mode,
         requestedTier: effectiveTier,
+        requestedScope,
         metadata: {
-          ...(options.metadata ?? {}),
-          tapGovernanceDirective: governanceDirective,
+          ...dispatchMetadata,
         },
       },
       safety,
@@ -5950,10 +6203,22 @@ export class AgentCoreRuntime {
         description: "允许这次请求继续进入后续 activation/replay/dispatch 链路。",
       },
       {
+        actionId: "approve-always",
+        label: "批准并持续允许",
+        kind: "approve",
+        description: "为当前 agent 在当前 workspace 记住这条读权限前缀，后续命中时不再重复询问。",
+      },
+      {
         actionId: "deny",
         label: "拒绝这次执行",
         kind: "deny",
         description: "保持当前状态，不继续推进这个能力请求。",
+      },
+      {
+        actionId: "deny-with-instruction",
+        label: "拒绝并告诉 Raxode",
+        kind: "ask_for_safer_alternative",
+        description: "拒绝这次请求，并要求 Raxode 改走更安全或更合适的下一步。",
       },
       {
         actionId: "view-details",
@@ -6006,13 +6271,23 @@ export class AgentCoreRuntime {
         riskLevel: params.reviewDecision.riskLevel ?? params.accessRequest.riskLevel ?? "risky",
         availableUserActions: [
           {
-            actionId: `${params.gateId}:approve`,
-            label: "批准并继续",
+            actionId: `${params.gateId}:approve-once`,
+            label: "批准这次执行",
             kind: "approve",
-            description: "允许这次请求继续进入 TAP 下一步。",
+            description: "只允许这一次，继续进入 TAP 下一步。",
             metadata: {
               gateId: params.gateId,
-              action: "approve",
+              action: "approve_once",
+            },
+          },
+          {
+            actionId: `${params.gateId}:approve-always`,
+            label: "批准并持续允许",
+            kind: "approve",
+            description: "为当前 agent 在当前 workspace 记住这条读权限前缀，后续命中时不再重复询问。",
+            metadata: {
+              gateId: params.gateId,
+              action: "approve_always",
             },
           },
           {
@@ -6023,6 +6298,16 @@ export class AgentCoreRuntime {
             metadata: {
               gateId: params.gateId,
               action: "reject",
+            },
+          },
+          {
+            actionId: `${params.gateId}:reject-with-instruction`,
+            label: "拒绝并告诉 Raxode",
+            kind: "ask_for_safer_alternative",
+            description: "拒绝这次请求，并让 Raxode 改走更安全或更合适的方案。",
+            metadata: {
+              gateId: params.gateId,
+              action: "reject_with_instruction",
             },
           },
           {

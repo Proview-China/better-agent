@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  type CmpDbAdapterLike,
   type CmpAgentLocalTableSet,
   type CmpDbContextPackageRecord,
   type CmpDbDeliveryRegistryRecord,
+  type CmpDbQueryPrimitive,
   type CmpDbSqlStatement,
   type CmpProjectDbTopology,
   type CmpProjectionRecord,
@@ -12,20 +14,10 @@ import {
 import { getCmpAgentLocalTableByKind } from "./agent-local-hot-tables.js";
 import { getCmpSharedTableByKind } from "./project-db-topology.js";
 
-export interface CmpDbPostgresQueryPrimitive extends CmpDbSqlStatement {
-  phase: "read" | "write";
-}
+export interface CmpDbPostgresQueryPrimitive extends CmpDbQueryPrimitive {}
 
-export interface CmpDbPostgresAdapter {
+export interface CmpDbPostgresAdapter extends CmpDbAdapterLike {
   readonly driver: "postgresql";
-  readonly topology: CmpProjectDbTopology;
-  readonly localTableSets: Map<string, CmpAgentLocalTableSet>;
-  buildProjectionUpsert(record: CmpProjectionRecord): CmpDbPostgresQueryPrimitive;
-  buildProjectionSelect(params: { agentId: string; snapshotId: string }): CmpDbPostgresQueryPrimitive;
-  buildContextPackageUpsert(record: CmpDbContextPackageRecord): CmpDbPostgresQueryPrimitive;
-  buildContextPackageSelect(params: { agentId: string; packageId: string }): CmpDbPostgresQueryPrimitive;
-  buildDeliveryUpsert(record: CmpDbDeliveryRegistryRecord): CmpDbPostgresQueryPrimitive;
-  buildDeliverySelect(params: { deliveryId: string }): CmpDbPostgresQueryPrimitive;
 }
 
 export interface CreateCmpDbPostgresAdapterInput {

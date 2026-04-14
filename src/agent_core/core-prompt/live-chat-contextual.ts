@@ -7,6 +7,7 @@ import type {
   CoreContextualUserV1,
   CoreMpRoutedPackageV1,
   CoreOverlayIndexEntryV1,
+  CoreWorkspaceInitContextV1,
 } from "./types.js";
 
 function inferCmpDeliveryStatus(input: CmpTurnArtifacts): CoreCmpContextPackageV1["deliveryStatus"] {
@@ -114,6 +115,7 @@ export function createLiveChatCoreContextualInput(input: {
   transcript: DialogueTurn[];
   cmp?: CmpTurnArtifacts;
   mpRoutedPackage?: CoreMpRoutedPackageV1;
+  workspaceInitContext?: CoreWorkspaceInitContextV1;
   availableCapabilitiesText: string;
   capabilityUsageIndexText?: string;
   skillEntries?: CoreOverlayIndexEntryV1[];
@@ -127,6 +129,7 @@ export function createLiveChatCoreContextualInput(input: {
   return {
     currentObjective: input.userMessage,
     recentTranscript: formatTranscript(recentTurns),
+    workspaceInitContext: input.workspaceInitContext,
     cmpContextPackage: createCmpContextPackage(input.cmp),
     mpRoutedPackage: input.mpRoutedPackage,
     overlayIndex: createLiveChatOverlayIndex({
@@ -147,6 +150,7 @@ export function buildLiveChatCoreContextualPrompt(input: {
   transcript: DialogueTurn[];
   cmp?: CmpTurnArtifacts;
   mpRoutedPackage?: CoreMpRoutedPackageV1;
+  workspaceInitContext?: CoreWorkspaceInitContextV1;
   availableCapabilitiesText: string;
   capabilityUsageIndexText?: string;
   skillEntries?: CoreOverlayIndexEntryV1[];

@@ -1,4 +1,6 @@
 import {
+  CMP_DB_STORAGE_ENGINES,
+  type CmpDbStorageEngine,
   CMP_DB_SHARED_TABLE_KINDS,
   type CmpDbColumnDefinition,
   type CmpDbSharedTableDefinition,
@@ -7,7 +9,7 @@ import {
   validateCmpProjectDbTopology,
 } from "./cmp-db-types.js";
 
-function createBaseColumns(): {
+function createBaseColumns(storageEngine: CmpDbStorageEngine): {
   projectId: CmpDbColumnDefinition;
   agentId: CmpDbColumnDefinition;
   metadata: CmpDbColumnDefinition;
@@ -26,9 +28,9 @@ function createBaseColumns(): {
     },
     metadata: {
       name: "metadata",
-      sqlType: "jsonb",
+      sqlType: storageEngine === "sqlite" ? "text" : "jsonb",
       nullable: true,
-      defaultExpression: "'{}'::jsonb",
+      defaultExpression: storageEngine === "sqlite" ? "'{}'" : "'{}'::jsonb",
       description: "Structured projection metadata only; never canonical git truth.",
     },
     updatedAt: {
@@ -40,8 +42,11 @@ function createBaseColumns(): {
   };
 }
 
-function createSharedTableColumns(kind: CmpDbSharedTableDefinition["kind"]): CmpDbColumnDefinition[] {
-  const base = createBaseColumns();
+function createSharedTableColumns(
+  kind: CmpDbSharedTableDefinition["kind"],
+  storageEngine: CmpDbStorageEngine,
+): CmpDbColumnDefinition[] {
+  const base = createBaseColumns(storageEngine);
   switch (kind) {
     case "agent_registry":
       return [
@@ -110,6 +115,7 @@ function createSharedTableColumns(kind: CmpDbSharedTableDefinition["kind"]): Cmp
 function createSharedTableDefinition(params: {
   projectId: string;
   schemaName: string;
+  storageEngine: CmpDbStorageEngine;
   kind: CmpDbSharedTableDefinition["kind"];
 }): CmpDbSharedTableDefinition {
   const projectSegment = sanitizeSqlIdentifier(params.projectId);
@@ -117,10 +123,10 @@ function createSharedTableDefinition(params: {
     schemaName: params.schemaName,
     tableName: `cmp_${projectSegment}_${params.kind}`,
     kind: params.kind,
-    storageEngine: "postgresql",
+    storageEngine: params.storageEngine,
     ownership: "project_shared",
     primaryKey: `${params.kind}_id`,
-    columns: createSharedTableColumns(params.kind),
+    columns: createSharedTableColumns(params.kind, params.storageEngine),
     description: `CMP shared table for ${params.kind} in project ${params.projectId}.`,
     indexes: [
       {
@@ -136,19 +142,27 @@ function createSharedTableDefinition(params: {
 
 export function createCmpProjectDbTopology(input: {
   projectId: string;
+  storageEngine?: CmpDbStorageEngine;
   databaseName?: string;
   schemaName?: string;
   metadata?: Record<string, unknown>;
 }): CmpProjectDbTopology {
+  const storageEngine = input.storageEngine ?? "postgresql";
+  if (!CMP_DB_STORAGE_ENGINES.includes(storageEngine)) {
+    throw new Error(`Unsupported CMP DB storage engine: ${storageEngine}.`);
+  }
   const projectSegment = sanitizeSqlIdentifier(input.projectId);
-  const schemaName = input.schemaName?.trim() || "cmp";
+  const schemaName = input.schemaName?.trim() || (storageEngine === "sqlite" ? "main" : "cmp");
   const topology: CmpProjectDbTopology = {
     projectId: input.projectId.trim(),
-    databaseName: input.databaseName?.trim() || `cmp_${projectSegment}`,
+    databaseName: input.databaseName?.trim()
+      || (storageEngine === "sqlite" ? `${projectSegment || "cmp"}.sqlite` : `cmp_${projectSegment}`),
     schemaName,
+    storageEngine,
     sharedTables: CMP_DB_SHARED_TABLE_KINDS.map((kind) => createSharedTableDefinition({
       projectId: input.projectId,
       schemaName,
+      storageEngine,
       kind,
     })),
     metadata: input.metadata,

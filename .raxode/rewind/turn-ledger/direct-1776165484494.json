@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "workspaceRoot": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp",
+  "sessionId": "direct-1776165484494",
+  "checkpoints": [
+    {
+      "turnId": "turn-2",
+      "messageId": "user:turn-2",
+      "transcriptCutMessageId": "assistant:turn-2:2",
+      "createdAt": "2026-04-14T11:22:29.606Z",
+      "userText": "我感觉很不开心.",
+      "workspaceRoot": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp/src",
+      "workspaceCheckpointError": "Cannot read properties of undefined (reading 'trim')"
+    }
+  ]
+}

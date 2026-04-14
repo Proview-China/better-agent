@@ -13,10 +13,13 @@ import {
   createMpMemoryRecord,
   createMpPromoteMemoryInput,
   createMpScopeDescriptor,
+  type MpEmbeddingPayload,
 } from "../mp-types/index.js";
 import { createMpMemoryRecordsFromStoredSection } from "../mp-lancedb/lancedb-lowering.js";
 import { assertMpPromotionAllowed } from "./scope-enforcement.js";
 import type { MpLineageNode } from "./runtime-types.js";
+import { loadResolvedEmbeddingConfig } from "../../raxcode-config.js";
+import { createOpenAIClient } from "../../rax/live-config.js";
 
 export interface MaterializeMpStoredSectionInput {
   input: MpLowerStoredSectionInput;
@@ -73,10 +76,70 @@ async function awaitMaybe<T>(value: Promise<T> | T): Promise<T> {
   return value;
 }
 
+function buildMpEmbeddingSourceText(input: MpLowerStoredSectionInput, record: MpMemoryRecord): string {
+  const metadata = input.storedSection.metadata ?? {};
+  const summaryParts = [
+    typeof metadata.taskSummary === "string" ? metadata.taskSummary : "",
+    typeof metadata.bodyRef === "string" ? metadata.bodyRef : "",
+    typeof metadata.sectionKind === "string" ? metadata.sectionKind : "",
+    typeof metadata.sectionSource === "string" ? metadata.sectionSource : "",
+    record.semanticGroupId ?? "",
+    ...(record.tags ?? []),
+    input.storedSection.storageRef,
+  ].map((value) => value.trim()).filter((value) => value.length > 0);
+  return [...new Set(summaryParts)].join("\n");
+}
+
+async function createMpEmbeddingPayloads(
+  input: MpLowerStoredSectionInput,
+  records: MpMemoryRecord[],
+): Promise<MpEmbeddingPayload[] | null> {
+  const embeddingConfig = loadResolvedEmbeddingConfig(process.env.PRAXIS_APP_ROOT ?? process.cwd());
+  if (!embeddingConfig) {
+    return null;
+  }
+  const client = createOpenAIClient({
+    apiKey: embeddingConfig.apiKey,
+    baseURL: embeddingConfig.baseURL,
+  });
+  const payloads: MpEmbeddingPayload[] = [];
+  for (const record of records) {
+    const sourceText = buildMpEmbeddingSourceText(input, record);
+    if (!sourceText) {
+      payloads.push({
+        provider: embeddingConfig.provider,
+        model: embeddingConfig.model,
+      });
+      continue;
+    }
+    const response = await client.embeddings.create({
+      input: sourceText,
+      model: embeddingConfig.model,
+      dimensions: embeddingConfig.dimensions,
+    } as never);
+    const vector = response.data?.[0]?.embedding;
+    payloads.push({
+      provider: embeddingConfig.provider,
+      model: embeddingConfig.model,
+      dimensions: Array.isArray(vector) ? vector.length : undefined,
+      values: Array.isArray(vector) ? vector : undefined,
+      vectorRef: sourceText ? `summary:${record.memoryId}` : undefined,
+    });
+  }
+  return payloads;
+}
+
 export async function materializeMpStoredSection(
   params: MaterializeMpStoredSectionInput,
 ): Promise<MpMemoryRecord[]> {
   const records = createMpMemoryRecordsFromStoredSection(params.input);
+  const embeddings = await createMpEmbeddingPayloads(params.input, records);
+  const recordsWithEmbeddings = embeddings
+    ? records.map((record, index) => createMpMemoryRecord({
+      ...record,
+      embedding: embeddings[index],
+    }))
+    : records;
   const tableName = params.tableName ?? resolveMpTableName({
     projectId: params.input.scope.projectId,
     agentId: params.input.scope.agentId,
@@ -84,9 +147,9 @@ export async function materializeMpStoredSection(
   });
   await awaitMaybe(params.adapter.upsertMemories({
     tableName,
-    records,
+    records: recordsWithEmbeddings,
   }));
-  return records;
+  return recordsWithEmbeddings;
 }
 
 export async function materializeMpStoredSectionBatch(

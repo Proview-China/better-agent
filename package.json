@@ -4,12 +4,17 @@
   "private": true,
   "description": "Blank-slate reboot scaffold for Praxis.",
   "type": "module",
+  "bin": {
+    "raxode": "./dist/index.js",
+    "raxcode": "./dist/index.js"
+  },
   "packageManager": "npm@11.6.4",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:link-cli": "node scripts/install-dev-cli.mjs",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck && npm run build",

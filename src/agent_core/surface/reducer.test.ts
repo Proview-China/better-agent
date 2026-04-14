@@ -288,3 +288,60 @@ test("surface reducer keeps current turn focus when an older turn completes late
   assert.equal(state.currentTurnId, "turn-2");
   assert.equal(state.turns.find((turn) => turn.turnId === "turn-1")?.status, "completed");
 });
+
+test("surface reducer updates existing assistant messages without duplicating transcript ids", () => {
+  const state = reduceSurfaceEvents(createInitialSurfaceState(), [
+    createSurfaceEvent({
+      eventId: "event:turn.started:turn-dup",
+      type: "turn.started",
+      emittedAt: "2026-04-13T08:00:00.000Z",
+      at: "2026-04-13T08:00:00.000Z",
+      source: "core",
+      turn: createSurfaceTurn({
+        turnId: "turn-dup",
+        id: "turn-dup",
+        turnIndex: 0,
+        status: "running",
+        startedAt: "2026-04-13T08:00:00.000Z",
+        updatedAt: "2026-04-13T08:00:00.000Z",
+        outputMessageIds: [],
+        taskIds: [],
+      }),
+    }),
+    createSurfaceEvent({
+      eventId: "event:message.appended:assistant-dup",
+      type: "message.appended",
+      emittedAt: "2026-04-13T08:00:01.000Z",
+      at: "2026-04-13T08:00:01.000Z",
+      source: "ui",
+      message: createSurfaceMessage({
+        messageId: "assistant:turn-dup:1",
+        id: "assistant:turn-dup:1",
+        turnId: "turn-dup",
+        kind: "assistant",
+        text: "第一版",
+        createdAt: "2026-04-13T08:00:01.000Z",
+      }),
+    }),
+    createSurfaceEvent({
+      eventId: "event:message.updated:assistant-dup",
+      type: "message.updated",
+      emittedAt: "2026-04-13T08:00:02.000Z",
+      at: "2026-04-13T08:00:02.000Z",
+      source: "ui",
+      message: createSurfaceMessage({
+        messageId: "assistant:turn-dup:1",
+        id: "assistant:turn-dup:1",
+        turnId: "turn-dup",
+        kind: "assistant",
+        text: "最终版",
+        createdAt: "2026-04-13T08:00:01.000Z",
+        updatedAt: "2026-04-13T08:00:02.000Z",
+      }),
+    }),
+  ]);
+
+  assert.equal(state.messages.length, 1);
+  assert.equal(state.messages[0]?.text, "最终版");
+  assert.deepEqual(state.turns[0]?.outputMessageIds, ["assistant:turn-dup:1"]);
+});

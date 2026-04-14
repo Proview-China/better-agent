@@ -23,7 +23,7 @@ import {
 import { createCapabilityResultEnvelope } from "../capability-result/index.js";
 import type { ReplayPolicy } from "../ta-pool-types/index.js";
 import type { ActivationAdapterFactory } from "../ta-pool-runtime/index.js";
-import { loadOpenAILiveConfig } from "../../rax/live-config.js";
+import { createOpenAIClient, loadOpenAILiveConfig } from "../../rax/live-config.js";
 
 export interface TapVendorUserIoAdapterOptions {
   capabilityKey?: TapVendorUserIoCapabilityKey;
@@ -65,6 +65,17 @@ type AudioTranscriptionResponseFormat =
   | "diarized_json";
 
 type PreparedUserIoState =
+  | {
+      capabilityKey: "question.ask";
+      payload: {
+        requestId?: string;
+        title?: string;
+        instruction?: string;
+        sourceKind?: string;
+        questions: unknown[];
+        submitLabel?: string;
+      };
+    }
   | {
       capabilityKey: "request_user_input";
       payload: {
@@ -183,10 +194,7 @@ function defaultGeneratedPath(params: {
 
 function createDefaultOpenAiClient(): OpenAI {
   const config = loadOpenAILiveConfig();
-  return new OpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL,
-  });
+  return createOpenAIClient(config);
 }
 
 function parsePreparedUserIoState(
@@ -195,6 +203,24 @@ function parsePreparedUserIoState(
   workspaceRoot: string,
 ): PreparedUserIoState {
   const input = plan.input;
+  if (capabilityKey === "question.ask") {
+    const questions = Array.isArray(input.questions) ? input.questions : [];
+    if (questions.length === 0) {
+      throw new Error("question.ask requires a non-empty questions array.");
+    }
+    return {
+      capabilityKey,
+      payload: {
+        requestId: asString(input.requestId),
+        title: asString(input.title),
+        instruction: asString(input.instruction),
+        sourceKind: asString(input.sourceKind),
+        questions,
+        submitLabel: asString(input.submitLabel),
+      },
+    };
+  }
+
   if (capabilityKey === "request_user_input") {
     const questions = Array.isArray(input.questions) ? input.questions : [];
     if (questions.length === 0) {
@@ -370,16 +396,22 @@ export class TapVendorUserIoAdapter implements CapabilityAdapter {
     }
     this.#preparedStates.delete(prepared.preparedId);
 
-    if (state.capabilityKey === "request_user_input" || state.capabilityKey === "request_permissions") {
+    if (state.capabilityKey === "question.ask" || state.capabilityKey === "request_user_input" || state.capabilityKey === "request_permissions") {
       return createCapabilityResultEnvelope({
         executionId: prepared.preparedId,
         status: "blocked",
         error: {
           code:
+            state.capabilityKey === "question.ask"
+              ? "tap_vendor_question_answer_required"
+              :
             state.capabilityKey === "request_user_input"
               ? "tap_vendor_user_input_required"
               : "tap_vendor_permission_request_required",
           message:
+            state.capabilityKey === "question.ask"
+              ? "Structured user answers are required before this workflow can continue."
+              :
             state.capabilityKey === "request_user_input"
               ? "Operator input is required before this workflow can continue."
               : "Additional operator permissions are required before this workflow can continue.",

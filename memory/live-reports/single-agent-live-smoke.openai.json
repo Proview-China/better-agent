@@ -1,23 +1,23 @@
 {
-  "generatedAt": "2026-04-06T12:41:20.089Z",
+  "generatedAt": "2026-04-14T10:32:11.909Z",
   "provider": "openai",
-  "baseURL": "https://gmn.chuangzuoli.com/v1",
+  "baseURL": "https://chatgpt.com/backend-api/codex",
   "rows": [
     {
       "provider": "openai",
-      "lane": "cmp-live",
+      "lane": "cmp-bridge",
       "ok": true,
       "model": "gpt-5.4",
-      "summary": "保留当前任务中的高价值运行时上下文，基于现有输入形成受控的 CMP 片段附着意图，并生成可执行的 operator guide 与 child guide；不改写根系统提示，仅在移交前附着受控片段。",
+      "summary": "dispatch=dispatched capability=docs.read",
       "details": {
-        "icmaLiveStatus": "succeeded",
-        "iteratorLiveStatus": "succeeded",
-        "checkerLiveStatus": "succeeded",
-        "dbagentLiveStatus": "succeeded",
-        "dispatcherLiveStatus": "succeeded",
-        "operatorGuide": "Preserve high-signal input and emit controlled pre-sections only.",
-        "checkerReason": "The checked evidence is already consolidated and does not justify further structural edits.",
-        "dispatcherRouteRationale": "Child seed packages enter only through the child ICMA path."
+        "tapProfileId": "cmp-five-agent/icma-tap-profile/v1",
+        "bridgeMetadata": {
+          "cmpRole": "icma",
+          "cmpAgentId": "cmp-live-smoke-icma",
+          "cmpCapabilityKey": "docs.read",
+          "cmpCapabilityReason": "Single-agent smoke should verify CMP role access can dispatch through TAP.",
+          "cmpTapBridge": {}
+        }
       }
     }
   ]

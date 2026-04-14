@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   type CmpDbBootstrapReadbackRecord,
+  type CmpDbStorageEngine,
   type CmpProjectDbBootstrapReceipt,
   type CmpAgentLocalTableSet,
   type CmpDbAgentLocalTableDefinition,
@@ -18,18 +19,44 @@ import {
 import { createCmpAgentLocalTableSet } from "./agent-local-hot-tables.js";
 import { createCmpProjectDbTopology } from "./project-db-topology.js";
 
-function toQualifiedTableName(schemaName: string, tableName: string): string {
-  return `"${sanitizeSqlIdentifier(schemaName)}"."${sanitizeSqlIdentifier(tableName)}"`;
+function toQualifiedTableName(storageEngine: CmpDbStorageEngine, schemaName: string, tableName: string): string {
+  return storageEngine === "sqlite"
+    ? `"${sanitizeSqlIdentifier(tableName)}"`
+    : `"${sanitizeSqlIdentifier(schemaName)}"."${sanitizeSqlIdentifier(tableName)}"`;
 }
 
-function renderColumnSql(column: CmpDbColumnDefinition, primaryKey: string): string {
+function renderColumnSql(
+  column: CmpDbColumnDefinition,
+  primaryKey: string,
+  storageEngine: CmpDbStorageEngine,
+): string {
   const nullable = column.nullable ? "" : " NOT NULL";
   const primary = column.name === primaryKey ? " PRIMARY KEY" : "";
-  const defaultExpression = column.defaultExpression ? ` DEFAULT ${column.defaultExpression}` : "";
-  return `"${sanitizeSqlIdentifier(column.name)}" ${column.sqlType}${defaultExpression}${nullable}${primary}`;
+  let sqlType = column.sqlType;
+  if (storageEngine === "sqlite") {
+    switch (column.sqlType) {
+      case "uuid":
+      case "text":
+      case "jsonb":
+      case "timestamptz":
+        sqlType = "text";
+        break;
+      case "integer":
+        sqlType = "integer";
+        break;
+      case "boolean":
+        sqlType = "integer";
+        break;
+    }
+  }
+  const defaultExpression = column.defaultExpression
+    ? ` DEFAULT ${storageEngine === "sqlite" ? column.defaultExpression.replace(/::jsonb/gu, "") : column.defaultExpression}`
+    : "";
+  return `"${sanitizeSqlIdentifier(column.name)}" ${sqlType}${defaultExpression}${nullable}${primary}`;
 }
 
 function renderIndexSql(params: {
+  storageEngine: CmpDbStorageEngine;
   schemaName: string;
   tableName: string;
   index: CmpDbIndexDefinition;
@@ -38,11 +65,12 @@ function renderIndexSql(params: {
   const columns = params.index.columns
     .map((column) => `"${sanitizeSqlIdentifier(column)}"`)
     .join(", ");
-  return `CREATE ${unique}INDEX IF NOT EXISTS "${sanitizeSqlIdentifier(params.index.name)}" ON ${toQualifiedTableName(params.schemaName, params.tableName)} (${columns});`;
+  return `CREATE ${unique}INDEX IF NOT EXISTS "${sanitizeSqlIdentifier(params.index.name)}" ON ${toQualifiedTableName(params.storageEngine, params.schemaName, params.tableName)} (${columns});`;
 }
 
 function createCreateTableStatement(params: {
   phase: CmpDbSqlStatement["phase"];
+  storageEngine: CmpDbStorageEngine;
   schemaName: string;
   table: Pick<CmpDbSharedTableDefinition | CmpDbAgentLocalTableDefinition, "tableName" | "primaryKey" | "columns">;
   metadata?: Record<string, unknown>;
@@ -51,25 +79,27 @@ function createCreateTableStatement(params: {
     statementId: randomUUID(),
     phase: params.phase,
     target: `${params.schemaName}.${params.table.tableName}`,
-    text: `CREATE TABLE IF NOT EXISTS ${toQualifiedTableName(params.schemaName, params.table.tableName)} (${params.table.columns.map((column) => renderColumnSql(column, params.table.primaryKey)).join(", ")});`,
+    text: `CREATE TABLE IF NOT EXISTS ${toQualifiedTableName(params.storageEngine, params.schemaName, params.table.tableName)} (${params.table.columns.map((column) => renderColumnSql(column, params.table.primaryKey, params.storageEngine)).join(", ")});`,
     metadata: params.metadata,
   };
 }
 
 function createIndexStatements(params: {
   phase: CmpDbSqlStatement["phase"];
+  storageEngine: CmpDbStorageEngine;
   schemaName: string;
   table: Pick<CmpDbSharedTableDefinition | CmpDbAgentLocalTableDefinition, "tableName" | "indexes">;
   metadata?: Record<string, unknown>;
 }): CmpDbSqlStatement[] {
   return (params.table.indexes ?? []).map((index) => ({
-    statementId: randomUUID(),
-    phase: params.phase,
-    target: `${params.schemaName}.${params.table.tableName}`,
-    text: renderIndexSql({
-      schemaName: params.schemaName,
-      tableName: params.table.tableName,
-      index,
+      statementId: randomUUID(),
+      phase: params.phase,
+      target: `${params.schemaName}.${params.table.tableName}`,
+      text: renderIndexSql({
+        storageEngine: params.storageEngine,
+        schemaName: params.schemaName,
+        tableName: params.table.tableName,
+        index,
     }),
     metadata: params.metadata,
   }));
@@ -77,6 +107,7 @@ function createIndexStatements(params: {
 
 function createReadbackStatement(params: {
   phase: CmpDbSqlStatement["phase"];
+  storageEngine: CmpDbStorageEngine;
   schemaName: string;
   tableName: string;
 }): CmpDbSqlStatement {
@@ -84,13 +115,16 @@ function createReadbackStatement(params: {
     statementId: randomUUID(),
     phase: params.phase,
     target: `${params.schemaName}.${params.tableName}`,
-    text: `SELECT to_regclass('${sanitizeSqlIdentifier(params.schemaName)}.${sanitizeSqlIdentifier(params.tableName)}') AS table_ref;`,
+    text: params.storageEngine === "sqlite"
+      ? `SELECT name AS table_ref FROM sqlite_master WHERE type='table' AND name='${sanitizeSqlIdentifier(params.tableName)}' LIMIT 1;`
+      : `SELECT to_regclass('${sanitizeSqlIdentifier(params.schemaName)}.${sanitizeSqlIdentifier(params.tableName)}') AS table_ref;`,
   };
 }
 
 export interface CreateCmpProjectDbBootstrapContractInput {
   projectId: string;
   agentIds: readonly string[];
+  storageEngine?: CmpDbStorageEngine;
   databaseName?: string;
   schemaName?: string;
   metadata?: Record<string, unknown>;
@@ -107,6 +141,7 @@ export function createCmpProjectDbBootstrapContract(
 ): CmpProjectDbBootstrapContract {
   const topology = createCmpProjectDbTopology({
     projectId: input.projectId,
+    storageEngine: input.storageEngine,
     databaseName: input.databaseName,
     schemaName: input.schemaName,
     metadata: input.metadata,
@@ -115,22 +150,25 @@ export function createCmpProjectDbBootstrapContract(
     .map((agentId) => createCmpAgentLocalTableSet({
       projectId: input.projectId,
       schemaName: topology.schemaName,
+      storageEngine: topology.storageEngine,
       agentId,
     }));
+  const storageEngine = topology.storageEngine ?? "postgresql";
 
-  const bootstrapStatements: CmpDbSqlStatement[] = [
-    {
-      statementId: randomUUID(),
-      phase: "bootstrap",
-      target: topology.databaseName,
-      text: `CREATE SCHEMA IF NOT EXISTS "${sanitizeSqlIdentifier(topology.schemaName)}";`,
-      metadata: input.metadata,
-    },
-  ];
+  const bootstrapStatements: CmpDbSqlStatement[] = storageEngine === "postgresql"
+    ? [{
+        statementId: randomUUID(),
+        phase: "bootstrap",
+        target: topology.databaseName,
+        text: `CREATE SCHEMA IF NOT EXISTS "${sanitizeSqlIdentifier(topology.schemaName)}";`,
+        metadata: input.metadata,
+      }]
+    : [];
 
   for (const table of topology.sharedTables) {
     bootstrapStatements.push(createCreateTableStatement({
-      phase: "bootstrap",
+        phase: "bootstrap",
+      storageEngine,
       schemaName: topology.schemaName,
       table,
       metadata: {
@@ -140,6 +178,7 @@ export function createCmpProjectDbBootstrapContract(
     }));
     bootstrapStatements.push(...createIndexStatements({
       phase: "bootstrap",
+      storageEngine,
       schemaName: topology.schemaName,
       table,
       metadata: {
@@ -153,6 +192,7 @@ export function createCmpProjectDbBootstrapContract(
     for (const table of set.tables) {
       bootstrapStatements.push(createCreateTableStatement({
         phase: "bootstrap",
+        storageEngine,
         schemaName: topology.schemaName,
         table,
         metadata: {
@@ -163,6 +203,7 @@ export function createCmpProjectDbBootstrapContract(
       }));
       bootstrapStatements.push(...createIndexStatements({
         phase: "bootstrap",
+        storageEngine,
         schemaName: topology.schemaName,
         table,
         metadata: {
@@ -177,11 +218,13 @@ export function createCmpProjectDbBootstrapContract(
   const readbackStatements = [
     ...topology.sharedTables.map((table) => createReadbackStatement({
       phase: "read",
+      storageEngine,
       schemaName: topology.schemaName,
       tableName: table.tableName,
     })),
     ...localTableSets.flatMap((set) => set.tables.map((table) => createReadbackStatement({
       phase: "read",
+      storageEngine,
       schemaName: topology.schemaName,
       tableName: table.tableName,
     }))),
@@ -191,6 +234,7 @@ export function createCmpProjectDbBootstrapContract(
     projectId: topology.projectId,
     databaseName: topology.databaseName,
     schemaName: topology.schemaName,
+    storageEngine: topology.storageEngine,
     topology,
     localTableSets,
     bootstrapStatements,
@@ -263,6 +307,7 @@ export function createCmpProjectDbBootstrapReceipt(input: {
     projectId: input.contract.projectId,
     databaseName: input.contract.databaseName,
     schemaName: input.contract.schemaName,
+    storageEngine: input.contract.storageEngine,
     status: presentTargetCount === expectedTargetCount ? "bootstrapped" : "readback_incomplete",
     expectedTargetCount,
     presentTargetCount,

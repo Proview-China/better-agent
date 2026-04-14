@@ -3,6 +3,7 @@ export const SURFACE_MESSAGE_KINDS = [
   "assistant",
   "system",
   "status",
+  "notice",
   "tool_use",
   "tool_result",
   "error",

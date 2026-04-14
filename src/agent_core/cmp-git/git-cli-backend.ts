@@ -260,6 +260,7 @@ export class GitCliCmpGitBackend implements CmpGitBackend {
     if (
       addResult.exitCode !== 0
       && !addResult.stderr.includes("is already checked out")
+      && !addResult.stderr.includes("already used by worktree")
       && !addResult.stderr.includes("already exists")
     ) {
       throw createCmpGitAdapterError({

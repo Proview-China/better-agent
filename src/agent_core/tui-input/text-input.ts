@@ -12,6 +12,7 @@ export interface RenderedTuiCursor {
 }
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter("en", { granularity: "grapheme" });
+const SPECIAL_TOKEN_PATTERN = /\[(?:Image #\d+|Pasted Content #\d+ with \d+ characters)\]/gu;
 
 function estimateTerminalWidth(text: string): number {
   let width = 0;
@@ -58,6 +59,33 @@ function nextGraphemeOffset(value: string, offset: number): number {
     }
   }
   return value.length;
+}
+
+interface TokenRange {
+  start: number;
+  end: number;
+}
+
+function specialTokenRangeForDeletion(
+  value: string,
+  cursorOffset: number,
+  direction: "backward" | "forward",
+): TokenRange | undefined {
+  const normalizedOffset = clampOffset(value, cursorOffset);
+  for (const match of value.matchAll(SPECIAL_TOKEN_PATTERN)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    if (direction === "backward") {
+      if (normalizedOffset > start && normalizedOffset <= end) {
+        return { start, end };
+      }
+      continue;
+    }
+    if (normalizedOffset >= start && normalizedOffset < end) {
+      return { start, end };
+    }
+  }
+  return undefined;
 }
 
 interface LineRange {
@@ -165,6 +193,13 @@ export function deleteBackwardInTuiTextInput(state: TuiTextInputState): TuiTextI
   if (state.cursorOffset <= 0) {
     return state;
   }
+  const tokenRange = specialTokenRangeForDeletion(state.value, state.cursorOffset, "backward");
+  if (tokenRange) {
+    return {
+      value: `${state.value.slice(0, tokenRange.start)}${state.value.slice(tokenRange.end)}`,
+      cursorOffset: tokenRange.start,
+    };
+  }
   const previousOffset = previousGraphemeOffset(state.value, state.cursorOffset);
   return {
     value: `${state.value.slice(0, previousOffset)}${state.value.slice(state.cursorOffset)}`,
@@ -175,6 +210,13 @@ export function deleteBackwardInTuiTextInput(state: TuiTextInputState): TuiTextI
 export function deleteForwardInTuiTextInput(state: TuiTextInputState): TuiTextInputState {
   if (state.cursorOffset >= state.value.length) {
     return state;
+  }
+  const tokenRange = specialTokenRangeForDeletion(state.value, state.cursorOffset, "forward");
+  if (tokenRange) {
+    return {
+      value: `${state.value.slice(0, tokenRange.start)}${state.value.slice(tokenRange.end)}`,
+      cursorOffset: tokenRange.start,
+    };
   }
   const nextOffset = nextGraphemeOffset(state.value, state.cursorOffset);
   return {
@@ -237,6 +279,14 @@ export function renderTuiTextInputCursor(state: TuiTextInputState): RenderedTuiC
   };
 }
 
+export function isBackwardDeleteInput(inputText: string, key: Key): boolean {
+  return key.backspace
+    || key.delete
+    || (key.ctrl && inputText === "h")
+    || inputText.includes("\u007f")
+    || inputText.includes("\b");
+}
+
 export function applyTuiTextInputKey(
   state: TuiTextInputState,
   inputText: string,
@@ -246,6 +296,7 @@ export function applyTuiTextInputKey(
   submit: boolean;
   handled: boolean;
 } {
+  const extendedKey = key as Key & { home?: boolean; end?: boolean };
   if (key.leftArrow || (key.ctrl && inputText === "b")) {
     return { nextState: moveTuiTextInputCursorLeft(state), submit: false, handled: true };
   }
@@ -258,13 +309,13 @@ export function applyTuiTextInputKey(
   if (key.downArrow || (key.ctrl && inputText === "n")) {
     return { nextState: moveTuiTextInputCursorDown(state), submit: false, handled: true };
   }
-  if (key.home || (key.ctrl && inputText === "a")) {
+  if (extendedKey.home || (key.ctrl && inputText === "a")) {
     return { nextState: moveTuiTextInputCursorHome(state), submit: false, handled: true };
   }
-  if (key.end || (key.ctrl && inputText === "e")) {
+  if (extendedKey.end || (key.ctrl && inputText === "e")) {
     return { nextState: moveTuiTextInputCursorEnd(state), submit: false, handled: true };
   }
-  if (key.backspace || key.delete || (key.ctrl && inputText === "h")) {
+  if (isBackwardDeleteInput(inputText, key)) {
     return { nextState: deleteBackwardInTuiTextInput(state), submit: false, handled: true };
   }
   if (key.ctrl && inputText === "d") {
@@ -286,7 +337,7 @@ export function applyTuiTextInputKey(
   // Some terminals/IME paths deliver DEL/BS as raw characters instead of
   // normalized Ink backspace key events. Apply them explicitly so backspace
   // works even when key.backspace is not set.
-  if (inputText.includes("\u007f") || inputText.includes("\b")) {
+  if (isBackwardDeleteInput(inputText, key)) {
     let nextState = state;
     for (const char of [...inputText]) {
       if (char === "\u007f" || char === "\b") {

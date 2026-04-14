@@ -8,3 +8,5 @@ export * from "./integration-hooks.js";
 export * from "./postgresql-bootstrap.js";
 export * from "./postgresql-adapter.js";
 export * from "./postgresql-live-executor.js";
+export * from "./sqlite-adapter.js";
+export * from "./sqlite-live-executor.js";

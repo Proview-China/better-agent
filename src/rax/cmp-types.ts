@@ -216,7 +216,7 @@ export interface RaxCmpGitInfraConfig {
 }
 
 export interface RaxCmpDatabaseConfig {
-  kind: "postgresql";
+  kind: "postgresql" | "sqlite";
   databaseName: string;
   schemaName?: string;
   liveExecutionPreferred: boolean;

@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { open, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Box, render, Text, useApp, useInput } from "ink";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import stringWidth from "string-width";
 
 import { loadOpenAILiveConfig } from "../rax/live-config.js";
@@ -34,6 +34,7 @@ import { resolveCapabilityFamilyDefinition, resolveFamilyOutcomeKind } from "./l
 import { refineWebSearchToolSummary } from "./tui-mini-summary.js";
 import { TUI_THEME } from "./tui-theme.js";
 import {
+  resolveAppRoot,
   resolveConfigRoot,
   resolveStateRoot,
   resolveWorkspaceRoot,
@@ -2110,7 +2111,7 @@ const ComposerPane = memo(function ComposerPane({
 
 function PraxisDirectTuiApp(): JSX.Element {
   const { exit } = useApp();
-  const appRoot = useMemo(() => process.cwd(), []);
+  const appRoot = useMemo(() => resolveAppRoot(process.cwd()), []);
   const config = useMemo(() => loadOpenAILiveConfig(), []);
   const supportsRawInput = Boolean(process.stdin.isTTY && typeof process.stdin.setRawMode === "function");
   const [currentCwd, setCurrentCwd] = useState(() => resolveWorkspaceRoot());

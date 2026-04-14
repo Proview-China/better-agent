@@ -1,5 +1,5 @@
 import { appendFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, extname, resolve } from "node:path";
 
 import type {
   ModelInferenceExecutionParams,
@@ -7,9 +7,20 @@ import type {
 import type { TapAgentModelRoute } from "../integrations/tap-agent-model.js";
 import type { createAgentCoreRuntime } from "../index.js";
 import {
-  loadLiveProviderConfig,
   loadOpenAILiveConfig,
+  resolveOpenAIGenerationVariant,
+  resolveProviderGenerationVariant,
 } from "../../rax/live-config.js";
+import {
+  DEFAULT_RAXCODE_LIVE_CHAT_MODEL_PLAN,
+  DEFAULT_RAXCODE_UI_CONFIG,
+  DEFAULT_RAXCODE_TAP_OVERRIDE,
+  createDefaultRaxcodePermissionsConfig,
+  loadResolvedRoleConfig,
+  type RaxcodeLiveChatModelPlan,
+  type RaxcodePermissionsConfig,
+  type RaxcodeUiConfig,
+} from "../../raxcode-config.js";
 import { resolveLiveReportsDir } from "../../runtime-paths.js";
 import {
   resolveCapabilityFamilyDefinition,
@@ -18,6 +29,11 @@ import {
 import type {
   FamilyOutcomeKind,
 } from "./family-telemetry.js";
+import type { TaUserOverrideContract } from "../ta-pool-model/index.js";
+import {
+  resolveProviderRouteKind,
+  sanitizeProviderRouteFeatureOptions,
+} from "../integrations/model-route-features.js";
 
 export type DialogueRole = "user" | "assistant";
 
@@ -201,10 +217,48 @@ export interface LiveCliState {
   logger: LiveChatLogger;
   skillOverlayEntries?: LiveCliSkillOverlayEntry[];
   memoryOverlayEntries?: LiveCliSkillOverlayEntry[];
-  mpRoutedPackage?: import("./core-prompt/types.js").CoreMpRoutedPackageV1;
+  mpRoutedPackage?: import("../core-prompt/types.js").CoreMpRoutedPackageV1;
+  workspaceInitContext?: import("../core-prompt/types.js").CoreWorkspaceInitContextV1;
   latestCmp?: CmpTurnArtifacts;
   pendingCmpSync?: Promise<void>;
+  cmpInfraReady?: Promise<void>;
+  skillOverlayReady?: Promise<void>;
+  mpOverlayReady?: Promise<void>;
+  startupWarmupReady?: Promise<void>;
   lastTurn?: TurnArtifacts;
+  initFlow?: {
+    status:
+      | "idle"
+      | "validating_workspace"
+      | "awaiting_seed"
+      | "analyzing_repo"
+      | "asking_questions"
+      | "synthesizing_agents"
+      | "registering_git"
+      | "synthesizing"
+      | "completed"
+      | "interrupted"
+      | "ready"
+      | "failed";
+    repoState?: "empty" | "non_empty";
+    initState?: "uninitialized" | "partial" | "initialized";
+    gitState?: "unregistered" | "registering" | "registered" | "failed";
+    seedText?: string;
+    compiledSessionPreamble?: string;
+    completionSummary?: string;
+    artifactPath?: string;
+    updatedAt?: string;
+    summaryLines?: string[];
+    clarificationHistory?: Array<{
+      questionId?: string;
+      answerText: string;
+    }>;
+    errorMessage?: string;
+  };
+  pendingQuestion?: QuestionAskPayload & {
+    sourceKind: "init" | "core";
+    resumeSeedText?: string;
+  };
 }
 
 export interface DirectFallbackReader {
@@ -215,9 +269,242 @@ export interface DirectFallbackReader {
   };
 }
 
+export type DirectInputImageSourceKind = "clipboard" | "local_path" | "remote_url";
+
+export interface DirectInputImageAttachment {
+  id: string;
+  tokenText?: string;
+  sourceKind: DirectInputImageSourceKind;
+  displayName?: string;
+  mimeType?: string;
+  localPath?: string;
+  remoteUrl?: string;
+}
+
+export interface DirectInputPastedContentAttachment {
+  id: string;
+  tokenText: string;
+  text: string;
+  characterCount: number;
+}
+
+export interface DirectInputFileReference {
+  id: string;
+  tokenText: string;
+  relativePath: string;
+  absolutePath: string;
+  displayName?: string;
+}
+
+export interface DirectUserInputEnvelope {
+  type: "direct_user_input";
+  text: string;
+  attachments?: DirectInputImageAttachment[];
+  pastedContents?: DirectInputPastedContentAttachment[];
+  fileRefs?: DirectInputFileReference[];
+}
+
+export interface DirectInitRequestEnvelope {
+  type: "direct_init_request";
+  text: string;
+}
+
+export interface QuestionAskOption {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface QuestionAskQuestion {
+  id: string;
+  prompt: string;
+  options: QuestionAskOption[];
+  notePrompt?: string;
+  allowAnnotation?: boolean;
+  required?: boolean;
+}
+
+export interface QuestionAskPayload {
+  requestId: string;
+  title: string;
+  instruction: string;
+  sourceKind?: "init" | "core";
+  questions: QuestionAskQuestion[];
+  submitLabel?: string;
+}
+
+export interface DirectQuestionAnswer {
+  questionId: string;
+  selectedOptionId: string;
+  selectedOptionLabel: string;
+  annotation?: string;
+}
+
+export interface DirectQuestionAnswerEnvelope {
+  type: "direct_question_answer";
+  requestId: string;
+  answers: DirectQuestionAnswer[];
+  currentIndex?: number;
+  isFinal?: boolean;
+}
+
+export function parseDirectUserInputEnvelope(raw: string): DirectUserInputEnvelope | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("{")) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (parsed.type !== "direct_user_input" || typeof parsed.text !== "string") {
+      return undefined;
+    }
+    const attachments = Array.isArray(parsed.attachments)
+      ? parsed.attachments
+        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object" && !Array.isArray(entry))
+        .map((entry) => {
+          const sourceKind = entry.sourceKind === "clipboard" || entry.sourceKind === "local_path" || entry.sourceKind === "remote_url"
+            ? entry.sourceKind
+            : undefined;
+          const attachment = {
+            id: typeof entry.id === "string" ? entry.id : "",
+            ...(typeof entry.tokenText === "string" ? { tokenText: entry.tokenText } : {}),
+            ...(sourceKind ? { sourceKind } : {}),
+            ...(typeof entry.displayName === "string" ? { displayName: entry.displayName } : {}),
+            ...(typeof entry.mimeType === "string" ? { mimeType: entry.mimeType } : {}),
+            ...(typeof entry.localPath === "string" ? { localPath: entry.localPath } : {}),
+            ...(typeof entry.remoteUrl === "string" ? { remoteUrl: entry.remoteUrl } : {}),
+          };
+          return attachment;
+        })
+        .filter((entry): entry is DirectInputImageAttachment =>
+          entry.id.length > 0
+          && typeof entry.sourceKind === "string"
+          && (
+            (entry.sourceKind === "clipboard" && typeof entry.localPath === "string" && entry.localPath.length > 0)
+            || (entry.sourceKind === "local_path" && typeof entry.localPath === "string" && entry.localPath.length > 0)
+            || (entry.sourceKind === "remote_url" && typeof entry.remoteUrl === "string" && entry.remoteUrl.length > 0)
+          ))
+      : undefined;
+    const pastedContents = Array.isArray(parsed.pastedContents)
+      ? parsed.pastedContents
+        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object" && !Array.isArray(entry))
+        .map((entry) => ({
+          id: typeof entry.id === "string" ? entry.id : "",
+          tokenText: typeof entry.tokenText === "string" ? entry.tokenText : "",
+          text: typeof entry.text === "string" ? entry.text : "",
+          characterCount: typeof entry.characterCount === "number" && Number.isFinite(entry.characterCount)
+            ? entry.characterCount
+            : undefined,
+        }))
+        .filter((entry): entry is DirectInputPastedContentAttachment =>
+          entry.id.length > 0
+          && entry.tokenText.length > 0
+          && entry.text.length > 0
+          && typeof entry.characterCount === "number"
+          && entry.characterCount >= entry.text.length)
+      : undefined;
+    const fileRefs = Array.isArray(parsed.fileRefs)
+      ? parsed.fileRefs
+        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object" && !Array.isArray(entry))
+        .map((entry) => ({
+          id: typeof entry.id === "string" ? entry.id : "",
+          tokenText: typeof entry.tokenText === "string" ? entry.tokenText : "",
+          relativePath: typeof entry.relativePath === "string" ? entry.relativePath : "",
+          absolutePath: typeof entry.absolutePath === "string" ? entry.absolutePath : "",
+          ...(typeof entry.displayName === "string" ? { displayName: entry.displayName } : {}),
+        }))
+        .filter((entry): entry is DirectInputFileReference =>
+          entry.id.length > 0
+          && entry.tokenText.length > 0
+          && entry.relativePath.length > 0
+          && entry.absolutePath.length > 0)
+      : undefined;
+    return {
+      type: "direct_user_input",
+      text: parsed.text,
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      ...(pastedContents && pastedContents.length > 0 ? { pastedContents } : {}),
+      ...(fileRefs && fileRefs.length > 0 ? { fileRefs } : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseDirectInitRequestEnvelope(raw: string): DirectInitRequestEnvelope | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("{")) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (parsed.type !== "direct_init_request" || typeof parsed.text !== "string") {
+      return undefined;
+    }
+    return {
+      type: "direct_init_request",
+      text: parsed.text,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseDirectQuestionAnswerEnvelope(raw: string): DirectQuestionAnswerEnvelope | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("{")) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (parsed.type !== "direct_question_answer" || typeof parsed.requestId !== "string" || !Array.isArray(parsed.answers)) {
+      return undefined;
+    }
+    const answers = parsed.answers.flatMap((entry): DirectQuestionAnswer[] => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return [];
+      }
+      const record = entry as Record<string, unknown>;
+      if (
+        typeof record.questionId !== "string"
+        || typeof record.selectedOptionId !== "string"
+        || typeof record.selectedOptionLabel !== "string"
+      ) {
+        return [];
+      }
+      return [{
+        questionId: record.questionId,
+        selectedOptionId: record.selectedOptionId,
+        selectedOptionLabel: record.selectedOptionLabel,
+        ...(typeof record.annotation === "string" && record.annotation.trim().length > 0
+          ? { annotation: record.annotation }
+          : {}),
+      }];
+    });
+    if (answers.length === 0) {
+      return undefined;
+    }
+    return {
+      type: "direct_question_answer",
+      requestId: parsed.requestId,
+      answers,
+      ...(typeof parsed.currentIndex === "number" && Number.isFinite(parsed.currentIndex)
+        ? { currentIndex: parsed.currentIndex }
+        : {}),
+      ...(typeof parsed.isFinal === "boolean" ? { isFinal: parsed.isFinal } : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export type LiveChatLogEvent =
   | "session_start"
   | "session_end"
+  | "direct_input_loop_ready"
+  | "panel_snapshot"
+  | "rewind_applied"
+  | "rewind_failed"
   | "turn_start"
   | "turn_result"
   | "stage_start"
@@ -227,11 +514,12 @@ export type LiveChatLogEvent =
   | "stream_text"
   | "assistant_delta";
 
-export type AgentReasoningEffort = "low" | "medium" | "high" | "none";
+export type AgentReasoningEffort = "low" | "medium" | "high" | "xhigh" | "none" | "minimal";
 
 export interface AgentRoutePlan {
   model: string;
   reasoning: AgentReasoningEffort;
+  serviceTier?: "fast";
   maxOutputTokens?: number;
   contextWindowTokens?: number;
 }
@@ -261,7 +549,9 @@ export interface CapabilityFamilyTelemetry {
     fallbackApplied?: boolean;
     sourceTitles?: string[];
     sourceCount?: number;
+    sourceKind?: string;
     targetPaths?: string[];
+    targetUrl?: string;
     targetRefs?: string[];
     pathCount?: number;
     matchCount?: number;
@@ -287,6 +577,7 @@ export interface CapabilityFamilyTelemetry {
     durationMs?: number;
     todoCount?: number;
     trackerId?: string;
+    mimeType?: string;
     errorCode?: string;
     errorDetailCode?: string;
   };
@@ -602,8 +893,6 @@ function createDocsFamilyTelemetry(input: {
     familyIntentSummary = "Extracting content from the PDF";
   } else if (normalized === "read_notebook") {
     familyIntentSummary = "Reading notebook content";
-  } else if (normalized === "view_image") {
-    familyIntentSummary = "Reading the requested image";
   } else if (normalized === "doc.write") {
     familyIntentSummary = "Writing the requested document";
   } else if (normalized === "docs.read") {
@@ -674,6 +963,53 @@ function createDocsFamilyTelemetry(input: {
           errorCode?: string;
         }
       : undefined,
+  };
+}
+
+function createViewingPictureTelemetry(input: {
+  capabilityKey: string;
+  requestInput?: Record<string, unknown>;
+  status?: string;
+  output?: unknown;
+  error?: unknown;
+}): CapabilityFamilyTelemetry | undefined {
+  if (input.capabilityKey !== "view_image") {
+    return undefined;
+  }
+  const normalizedOutput = input.output && typeof input.output === "object"
+    ? input.output as Record<string, unknown>
+    : undefined;
+  const normalizedError = input.error && typeof input.error === "object"
+    ? input.error as Record<string, unknown>
+    : undefined;
+  const status = normalizeTelemetryText(input.status ?? "").toLowerCase();
+  const familyIntentSummary = "Viewing the provided image";
+  const familyResultSummary = status
+    ? [status === "failed" || status === "blocked" || status === "timeout"
+      ? "Viewing the provided image failed"
+      : "Viewing the provided image succeeded"]
+    : undefined;
+  const targetPath = readString(input.requestInput?.sourcePath) ?? readString(input.requestInput?.path);
+  const targetUrl = readString(input.requestInput?.sourceUrl) ?? readString(input.requestInput?.url);
+  const sourceKind = readString(input.requestInput?.sourceKind);
+  const resultMetadata = Object.fromEntries(
+    Object.entries({
+      sourceKind,
+      targetPaths: targetPath ? [normalizeTelemetryText(targetPath)] : undefined,
+      targetUrl: targetUrl ? normalizeTelemetryText(targetUrl) : undefined,
+      imageCount: typeof normalizedOutput?.imageUrl === "string" ? 1 : readPositiveInteger(normalizedOutput?.imageCount),
+      mimeType: readString(normalizedOutput?.mimeType),
+      errorCode: readString(normalizedError?.code),
+    }).filter(([, value]) => Array.isArray(value) ? value.length > 0 : value !== undefined),
+  ) as CapabilityFamilyTelemetry["resultMetadata"];
+  return {
+    tapFamilyKey: "foundation",
+    tapFamilyTitle: "Foundation",
+    familyKey: "viewing_picture",
+    familyTitle: "ViewingPicture",
+    familyIntentSummary,
+    familyResultSummary,
+    resultMetadata: resultMetadata && Object.keys(resultMetadata).length > 0 ? resultMetadata : undefined,
   };
 }
 
@@ -1170,9 +1506,12 @@ function createUserActFamilyTelemetry(input: {
   error?: unknown;
 }): CapabilityFamilyTelemetry {
   const normalized = input.capabilityKey;
-  let familyIntentSummary = "Requesting user input";
-  let requestKind = "user_input";
-  if (normalized === "request_permissions") {
+  let familyIntentSummary = "Requesting structured answers";
+  let requestKind = "questionnaire";
+  if (normalized === "request_user_input") {
+    familyIntentSummary = "Requesting user input";
+    requestKind = "user_input";
+  } else if (normalized === "request_permissions") {
     familyIntentSummary = "Requesting additional permissions";
     requestKind = "permissions";
   } else if (normalized === "audio.transcribe") {
@@ -1315,6 +1654,15 @@ export function createCapabilityFamilyTelemetry(input: {
   }
   if (family.familyKey === "docs") {
     return withResolvedFamily(createDocsFamilyTelemetry({
+      capabilityKey,
+      requestInput: input.requestInput,
+      status: input.status,
+      output: input.output,
+      error: input.error,
+    }));
+  }
+  if (family.familyKey === "viewing_picture") {
+    return withResolvedFamily(createViewingPictureTelemetry({
       capabilityKey,
       requestInput: input.requestInput,
       status: input.status,
@@ -1555,11 +1903,15 @@ export function createCoreContextSnapshot(input: {
   };
 }
 
-export const LIVE_CHAT_TAP_OVERRIDE = {
-  requestedMode: "bapr",
-  automationDepth: "prefer_auto",
-  explanationStyle: "plain_language",
-} as const;
+export let LIVE_CHAT_TAP_OVERRIDE: TaUserOverrideContract = {
+  ...DEFAULT_RAXCODE_TAP_OVERRIDE,
+};
+
+export let LIVE_CHAT_UI_CONFIG: RaxcodeUiConfig = {
+  ...DEFAULT_RAXCODE_UI_CONFIG,
+};
+
+export let LIVE_CHAT_PERMISSIONS_CONFIG: RaxcodePermissionsConfig = createDefaultRaxcodePermissionsConfig();
 
 export class LiveChatLogger {
   readonly path: string;
@@ -1627,62 +1979,89 @@ export function shouldStopCoreCapabilityLoop(params: {
     || status === "baseline_missing";
 }
 
-export const LIVE_CHAT_MODEL_PLAN = {
-  core: {
-    model: "gpt-5.4",
-    reasoning: "high",
-    contextWindowTokens: 1_050_000,
-    maxOutputTokens: undefined,
-  },
-  tap: {
-    reviewer: {
-      model: "gpt-5.4",
-      reasoning: "low",
-      maxOutputTokens: 1120000,
-    },
-    toolReviewer: {
-      model: "gpt-5.4-mini",
-      reasoning: "medium",
-      maxOutputTokens: 1120000,
-    },
-    provisioner: {
-      model: "gpt-5.4",
-      reasoning: "low",
-      maxOutputTokens: 1120000,
-    },
-  },
-  cmp: {
-    icma: {
-      model: "gpt-5.4-mini",
-      reasoning: "none",
-      maxOutputTokens: 1280000,
-    },
-    iterator: {
-      model: "gpt-5.4-mini",
-      reasoning: "low",
-      maxOutputTokens: 960000,
-    },
-    checker: {
-      model: "gpt-5.4-mini",
-      reasoning: "medium",
-      maxOutputTokens: 1120000,
-    },
-    dbagent: {
-      model: "gpt-5.4",
-      reasoning: "medium",
-      maxOutputTokens: 1120000,
-    },
-    dispatcher: {
-      model: "gpt-5.4",
-      reasoning: "low",
-      maxOutputTokens: 480000,
-    },
-  },
-} as const satisfies {
+export type LiveChatModelPlan = {
   core: AgentRoutePlan;
   tap: Record<"reviewer" | "toolReviewer" | "provisioner", AgentRoutePlan>;
+  mp: Record<"icma" | "iterator" | "checker" | "dbagent" | "dispatcher", AgentRoutePlan>;
   cmp: Record<"icma" | "iterator" | "checker" | "dbagent" | "dispatcher", AgentRoutePlan>;
+  tui: AgentRoutePlan;
 };
+
+function cloneRoutePlan(plan: {
+  model: string;
+  reasoning: AgentReasoningEffort;
+  maxOutputTokens?: number;
+  contextWindowTokens?: number;
+}): AgentRoutePlan {
+  return {
+    model: plan.model,
+    reasoning: plan.reasoning,
+    maxOutputTokens: plan.maxOutputTokens,
+    contextWindowTokens: plan.contextWindowTokens,
+  };
+}
+
+function cloneLiveChatModelPlan(plan: RaxcodeLiveChatModelPlan): LiveChatModelPlan {
+  return {
+    core: cloneRoutePlan(plan.core.main),
+    tap: {
+      reviewer: cloneRoutePlan(plan.tap.reviewer),
+      toolReviewer: cloneRoutePlan(plan.tap.toolReviewer),
+      provisioner: cloneRoutePlan(plan.tap.provisioner),
+    },
+    mp: {
+      icma: cloneRoutePlan(plan.mp.icma),
+      iterator: cloneRoutePlan(plan.mp.iterator),
+      checker: cloneRoutePlan(plan.mp.checker),
+      dbagent: cloneRoutePlan(plan.mp.dbagent),
+      dispatcher: cloneRoutePlan(plan.mp.dispatcher),
+    },
+    cmp: {
+      icma: cloneRoutePlan(plan.cmp.icma),
+      iterator: cloneRoutePlan(plan.cmp.iterator),
+      checker: cloneRoutePlan(plan.cmp.checker),
+      dbagent: cloneRoutePlan(plan.cmp.dbagent),
+      dispatcher: cloneRoutePlan(plan.cmp.dispatcher),
+    },
+    tui: cloneRoutePlan(plan.tui.main),
+  };
+}
+
+export let LIVE_CHAT_MODEL_PLAN: LiveChatModelPlan = cloneLiveChatModelPlan(
+  DEFAULT_RAXCODE_LIVE_CHAT_MODEL_PLAN,
+);
+
+export function applyLiveChatRuntimeConfig(input: {
+  modelPlan?: RaxcodeLiveChatModelPlan;
+  tapOverride?: TaUserOverrideContract;
+  uiConfig?: RaxcodeUiConfig;
+  permissionsConfig?: RaxcodePermissionsConfig;
+} = {}): void {
+  LIVE_CHAT_MODEL_PLAN = cloneLiveChatModelPlan(input.modelPlan ?? DEFAULT_RAXCODE_LIVE_CHAT_MODEL_PLAN);
+  LIVE_CHAT_TAP_OVERRIDE = {
+    ...DEFAULT_RAXCODE_TAP_OVERRIDE,
+    ...(input.tapOverride ?? {}),
+    toolPolicyOverrides: input.tapOverride?.toolPolicyOverrides
+      ? [...input.tapOverride.toolPolicyOverrides]
+      : [...(DEFAULT_RAXCODE_TAP_OVERRIDE.toolPolicyOverrides ?? [])],
+    requireHumanOnRiskLevels: input.tapOverride?.requireHumanOnRiskLevels
+      ? [...input.tapOverride.requireHumanOnRiskLevels]
+      : [...(DEFAULT_RAXCODE_TAP_OVERRIDE.requireHumanOnRiskLevels ?? [])],
+  };
+  LIVE_CHAT_UI_CONFIG = {
+    ...DEFAULT_RAXCODE_UI_CONFIG,
+    ...(input.uiConfig ?? {}),
+  };
+  LIVE_CHAT_PERMISSIONS_CONFIG = input.permissionsConfig
+    ? {
+        ...input.permissionsConfig,
+        capabilityOverrides: [...input.permissionsConfig.capabilityOverrides],
+        persistedAllowRules: input.permissionsConfig.persistedAllowRules.map((rule) => ({ ...rule })),
+        shared15ViewMatrix: input.permissionsConfig.shared15ViewMatrix.map((cell) => ({ ...cell })),
+        requireHumanOnRiskLevels: [...input.permissionsConfig.requireHumanOnRiskLevels],
+      }
+    : createDefaultRaxcodePermissionsConfig();
+}
 
 export function readArgValue(argv: string[], name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -2203,38 +2582,17 @@ export function resolveCliSearchGroundDefaults(): {
   model: string;
   layer: "api";
 } {
-  const configs = loadLiveProviderConfig();
-  const deepmindModel = configs.deepmind.model;
-  if (deepmindModel) {
-    return {
-      provider: "deepmind",
-      model: deepmindModel === "gemini-3-flash"
-        ? "gemini-2.5-flash"
-        : deepmindModel,
-      layer: "api",
-    };
-  }
-
-  const anthropicModel = configs.anthropic.model;
-  if (anthropicModel) {
-    return {
-      provider: "anthropic",
-      model: anthropicModel
-        .replace("claude-opus-4.6-thinking", "claude-opus-4-6-thinking")
-        .replace("claude-sonnet-4.6", "claude-sonnet-4-6"),
-      layer: "api",
-    };
-  }
+  const resolved = loadResolvedRoleConfig("core.main");
 
   return {
-    provider: "openai",
-    model: configs.openai.model,
+    provider: resolved.profile.provider,
+    model: resolved.profile.model,
     layer: "api",
   };
 }
 
 export function resolveCliDefaultCarrierRoute(
-  config: OpenAILiveConfig,
+  config: Pick<OpenAILiveConfig, "model">,
 ): {
   provider: "openai";
   model: string;
@@ -2249,7 +2607,7 @@ export function resolveCliDefaultCarrierRoute(
 
 export async function applyCliDefaultsToCapabilityRequest(
   request: CoreCapabilityRequest,
-  config: OpenAILiveConfig,
+  config: Pick<OpenAILiveConfig, "model">,
   userMessage: string,
   previousBrowserSession?: {
     headless?: boolean;
@@ -2257,6 +2615,39 @@ export async function applyCliDefaultsToCapabilityRequest(
     isolated?: boolean;
   },
 ): Promise<CoreCapabilityRequest> {
+  const normalizeCodeReadIntent = (nextRequest: CoreCapabilityRequest): CoreCapabilityRequest => {
+    if (nextRequest.capabilityKey !== "code.ls") {
+      return nextRequest;
+    }
+    const requestedPath = readString(nextRequest.input.path)
+      ?? readString(nextRequest.input.file_path)
+      ?? readString(nextRequest.input.filePath);
+    if (!requestedPath) {
+      return nextRequest;
+    }
+    const normalizedPath = requestedPath.trim();
+    if (normalizedPath === "." || normalizedPath === "./" || normalizedPath === "/") {
+      return nextRequest;
+    }
+    const normalizedUserMessage = userMessage.toLowerCase();
+    const asksForFileContent =
+      /code\.read/iu.test(userMessage)
+      || /文件|内容|描述|讲了什么|干了什么|做了什么|主要/u.test(userMessage);
+    const pathLooksLikeFile = extname(normalizedPath).length > 0
+      || /\.[A-Za-z0-9_-]+$/u.test(basename(normalizedPath));
+    if (!asksForFileContent || !pathLooksLikeFile) {
+      return nextRequest;
+    }
+    return {
+      ...nextRequest,
+      capabilityKey: "code.read",
+      input: {
+        ...nextRequest.input,
+        path: normalizedPath,
+      },
+    };
+  };
+
   if (request.capabilityKey !== "search.ground" && request.capabilityKey !== "search.web") {
     if (request.capabilityKey === "browser.playwright") {
       const rewrittenRequest = rewriteBrowserPlaywrightRequest(request, userMessage);
@@ -2330,7 +2721,7 @@ export async function applyCliDefaultsToCapabilityRequest(
       };
     }
 
-    return request;
+    return normalizeCodeReadIntent(request);
   }
 
   const query = readString(request.input.query)
@@ -2618,9 +3009,135 @@ export function stripCodeFences(value: string): string {
   return value.replace(/```[a-zA-Z0-9_-]*\n?/gu, "").replace(/```/gu, "").trim();
 }
 
+const ESCAPED_DISPLAY_SEQUENCE_PATTERN = /\\(?:r\\n|n\\n|r|n|t|u[0-9a-fA-F]{4})/u;
+
+function decodeEscapedDisplayTextSinglePass(text: string): string {
+  return JSON.parse(
+    `"${text
+      .replace(/"/gu, "\\\"")
+      .replace(/\r/gu, "\\r")
+      .replace(/\n/gu, "\\n")
+      .replace(/\u2028/gu, "\\u2028")
+      .replace(/\u2029/gu, "\\u2029")}"`,
+  ) as string;
+}
+
+function shouldDecodeEscapedDisplayText(text: string): boolean {
+  if (!ESCAPED_DISPLAY_SEQUENCE_PATTERN.test(text)) {
+    return false;
+  }
+  if (/\\u[0-9a-fA-F]{4}/u.test(text)) {
+    return true;
+  }
+  if (/\\r\\n|\\n\\n|\\t/u.test(text)) {
+    return true;
+  }
+  const matches = text.match(/\\(?:r\\n|n\\n|r|n|t|u[0-9a-fA-F]{4})/gu) ?? [];
+  return matches.length >= 2;
+}
+
+export function decodeEscapedDisplayTextMaybe(text: string): string {
+  if (!shouldDecodeEscapedDisplayText(text)) {
+    return text;
+  }
+
+  const preservedPaths: string[] = [];
+  let withProtectedPaths = "";
+  let index = 0;
+
+  while (index < text.length) {
+    const current = text[index];
+    const next = text[index + 1];
+    const third = text[index + 2];
+    const startsWindowsPath = (
+      /[A-Za-z]/u.test(current ?? "")
+      && next === ":"
+      && third === "\\"
+    );
+
+    if (!startsWindowsPath) {
+      withProtectedPaths += current;
+      index += 1;
+      continue;
+    }
+
+    let cursor = index + 3;
+    let path = text.slice(index, cursor);
+    let consumedSeparator = false;
+
+    while (cursor < text.length) {
+      const char = text[cursor];
+      if (/\s/u.test(char)) {
+        break;
+      }
+      if (char !== "\\") {
+        path += char;
+        cursor += 1;
+        continue;
+      }
+
+      const escapeLead = text[cursor + 1];
+      const escapeTail = text[cursor + 2];
+      const looksDisplayEscape = (
+        (escapeLead === "n" || escapeLead === "r" || escapeLead === "t")
+        && (
+          escapeTail === "\\"
+          || escapeTail === undefined
+          || /\s/u.test(escapeTail)
+          || /[\u2e80-\u9fff]/u.test(escapeTail)
+          || /[)\]}>,.;!?:"']/u.test(escapeTail)
+        )
+      ) || (
+        escapeLead === "u"
+        && /^[0-9a-fA-F]{4}$/u.test(text.slice(cursor + 2, cursor + 6))
+      );
+
+      if (looksDisplayEscape) {
+        break;
+      }
+
+      consumedSeparator = true;
+      path += "\\";
+      cursor += 1;
+    }
+
+    if (!consumedSeparator) {
+      withProtectedPaths += current;
+      index += 1;
+      continue;
+    }
+
+    const token = `__PRAXIS_ESCAPED_PATH_${preservedPaths.length}__`;
+    preservedPaths.push(path);
+    withProtectedPaths += token;
+    index = cursor;
+  }
+
+  let decoded = withProtectedPaths;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!shouldDecodeEscapedDisplayText(decoded)) {
+      break;
+    }
+    try {
+      const next = decodeEscapedDisplayTextSinglePass(decoded);
+      if (next === decoded) {
+        break;
+      }
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+
+  return preservedPaths.reduce(
+    (value, preserved, index) => value.replace(`__PRAXIS_ESCAPED_PATH_${index}__`, preserved),
+    decoded,
+  );
+}
+
 export function resolveReasoningEffort(
   plan: AgentRoutePlan,
-): "low" | "medium" | "high" | undefined {
+): Exclude<AgentReasoningEffort, "none"> | undefined {
   return plan.reasoning === "none" ? undefined : plan.reasoning;
 }
 
@@ -3045,13 +3562,39 @@ export function extractResponseTextMaybe(text: string): string {
   return cleaned;
 }
 
-export function toTapAgentModelRoute(plan: AgentRoutePlan): Partial<TapAgentModelRoute> {
+export function toTapAgentModelRoute(
+  plan: AgentRoutePlan,
+  roleId?: Parameters<typeof loadResolvedRoleConfig>[0],
+): Partial<TapAgentModelRoute> {
+  const resolved = roleId ? loadResolvedRoleConfig(roleId as Parameters<typeof loadResolvedRoleConfig>[0]) : null;
+  const provider = resolved?.profile.provider ?? "openai";
+  const variant = resolved
+    ? resolveProviderGenerationVariant({
+        provider: resolved.profile.provider,
+        baseURL: resolved.profile.route.baseURL,
+        apiStyle: resolved.profile.route.apiStyle,
+      })
+    : resolveOpenAIGenerationVariant(loadOpenAILiveConfig("core.main"));
+  const routeKind = resolved
+    ? resolveProviderRouteKind({
+      provider: resolved.profile.provider,
+      baseURL: resolved.profile.route.baseURL,
+      apiStyle: resolved.profile.route.apiStyle,
+      variant,
+    })
+    : "openai_responses";
+  const sanitized = sanitizeProviderRouteFeatureOptions(routeKind, {
+    reasoningEffort: resolveReasoningEffort(plan),
+    serviceTier: plan.serviceTier,
+  });
   return {
-    provider: "openai",
+    provider,
     model: plan.model,
     layer: "api",
-    variant: "responses",
-    reasoningEffort: resolveReasoningEffort(plan),
+    variant,
+    roleId,
+    reasoningEffort: sanitized.reasoningEffort,
+    serviceTier: sanitized.serviceTier,
     maxOutputTokens: plan.maxOutputTokens,
   };
 }

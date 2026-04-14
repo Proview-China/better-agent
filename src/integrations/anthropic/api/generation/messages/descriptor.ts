@@ -28,6 +28,7 @@ function createMessagePayload(
     temperature: input.temperature,
     top_k: input.topK,
     top_p: input.topP,
+    thinking: input.thinking,
     tools: input.tools,
     tool_choice: input.toolChoice,
     stream: false
@@ -48,6 +49,7 @@ function createStreamingMessagePayload(
     temperature: input.temperature,
     top_k: input.topK,
     top_p: input.topP,
+    thinking: input.thinking,
     tools: input.tools,
     tool_choice: input.toolChoice,
     stream: true

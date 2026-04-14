@@ -19,6 +19,7 @@ export const SURFACE_EVENT_TYPES = [
   "turn.started",
   "turn.completed",
   "message.appended",
+  "message.updated",
   "message.delta",
   "stage.started",
   "stage.ended",
@@ -71,6 +72,10 @@ export interface SurfaceMessageDeltaEvent extends SurfaceEventBase<"message.delt
   messageId: string;
   textDelta: string;
   done?: boolean;
+}
+
+export interface SurfaceMessageUpdatedEvent extends SurfaceEventBase<"message.updated"> {
+  message: SurfaceMessage;
 }
 
 export interface SurfaceTurnUpdatedEvent extends SurfaceEventBase<"turn.updated"> {
@@ -155,6 +160,7 @@ export type SurfaceEvent =
   | SurfaceTurnEvent
   | SurfaceTurnUpdatedEvent
   | SurfaceMessageAppendedEvent
+  | SurfaceMessageUpdatedEvent
   | SurfaceMessageDeltaEvent
   | SurfaceStageStartedEvent
   | SurfaceStageEndedEvent

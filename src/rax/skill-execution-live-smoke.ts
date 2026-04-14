@@ -5,12 +5,12 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
 
 import type { OpenAIInvocationPayload } from "../integrations/openai/api/index.js";
 import type { PreparedInvocation } from "./contracts.js";
-import { loadLiveProviderConfig } from "./live-config.js";
+import { createOpenAIClient, loadLiveProviderConfig } from "./live-config.js";
 import { rax } from "./runtime.js";
+import { refreshOpenAIOAuthIfNeeded } from "../raxcode-openai-auth.js";
 
 const execFileAsync = promisify(execFile);
 const OPENAI_INLINE_SECRET = "PRAXIS_SKILL_INLINE_OK";
@@ -70,11 +70,9 @@ function formatError(error: unknown): { summary: string; details: Record<string,
 }
 
 async function executeOpenAI(invocation: PreparedInvocation<Record<string, unknown>>): Promise<unknown> {
+  await refreshOpenAIOAuthIfNeeded();
   const config = loadLiveProviderConfig().openai;
-  const client = new OpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL
-  });
+  const client = createOpenAIClient(config);
   const payload = invocation.payload as unknown as OpenAIInvocationPayload<Record<string, unknown>>;
 
   if (payload.surface !== "responses") {

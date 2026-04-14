@@ -363,6 +363,27 @@ function createCmpRuntimeSnapshotFixture(projectId: string, agentId: string): Cm
   };
 }
 
+function createEmptyCmpRuntimeSnapshotFixture(projectId: string): CmpRuntimeSnapshot {
+  return {
+    projectRepos: [],
+    lineages: [],
+    events: [],
+    deltas: [],
+    activeLines: [],
+    snapshotCandidates: [],
+    checkedSnapshots: [],
+    requests: [],
+    sectionRecords: [],
+    snapshotRecords: [],
+    promotedProjections: [],
+    packageRecords: [],
+    contextPackages: [],
+    dispatchReceipts: [],
+    syncEvents: [],
+    infraState: undefined,
+  };
+}
+
 test("createRaxCmpFacade creates a session and delegates bootstrap/readback/recover/smoke", async () => {
   const bootstrapCalls: unknown[] = [];
   const runtime = {
@@ -971,6 +992,131 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
   assert.equal(smoke.checks.find((check) => check.id === "cmp.final_acceptance")?.status, "ready");
 });
 
+test("createRaxCmpFacade forwards sqlite storageEngine from session config during bootstrap", async () => {
+  let bootstrapCall: unknown;
+  const runtime = {
+    async bootstrapCmpProjectInfra(input: unknown) {
+      bootstrapCall = input;
+      return {
+        git: {
+          projectRepo: {
+            projectId: "proj-sqlite",
+            repoId: "repo-sqlite",
+            repoName: "proj-sqlite",
+            repoStrategy: "single_project_repo",
+            defaultAgentId: "main",
+          },
+          repoRootPath: "/tmp/praxis/proj-sqlite",
+          defaultBranchName: "main",
+          createdBranchNames: ["work/main", "cmp/main", "mp/main", "tap/main"],
+          status: "bootstrapped" as const,
+        },
+        gitBranchBootstraps: [],
+        db: {
+          projectId: "proj-sqlite",
+          databaseName: "/tmp/praxis/proj-sqlite/cmp.sqlite",
+          schemaName: "main",
+          storageEngine: "sqlite" as const,
+          topology: {
+            projectId: "proj-sqlite",
+            databaseName: "/tmp/praxis/proj-sqlite/cmp.sqlite",
+            schemaName: "main",
+            storageEngine: "sqlite" as const,
+            sharedTables: [],
+          },
+          localTableSets: [],
+          bootstrapStatements: [],
+          readbackStatements: [],
+        },
+        dbReceipt: {
+          projectId: "proj-sqlite",
+          databaseName: "/tmp/praxis/proj-sqlite/cmp.sqlite",
+          schemaName: "main",
+          storageEngine: "sqlite" as const,
+          status: "bootstrapped" as const,
+          expectedTargetCount: 0,
+          presentTargetCount: 0,
+          readbackRecords: [],
+        },
+        mqBootstraps: [],
+        lineages: [createCmpLineageFixture("proj-sqlite", "main")],
+        branchRuntimes: [createCmpBranchRuntimeFixture("proj-sqlite", "main")],
+      } satisfies CmpProjectInfraBootstrapReceipt;
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return undefined;
+    },
+    getCmpRuntimeInfraProjectState() {
+      return undefined;
+    },
+    getCmpRuntimeRecoverySummary() {
+      return undefined;
+    },
+    getCmpRuntimeProjectRecoverySummary() {
+      return undefined;
+    },
+    getCmpRuntimeDeliveryTruthSummary() {
+      return undefined;
+    },
+    getCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() { throw new Error("not used"); },
+    async commitContextDelta() { throw new Error("not used"); },
+    async resolveCheckedSnapshot() { throw new Error("not used"); },
+    async materializeContextPackage() { throw new Error("not used"); },
+    async dispatchContextPackage() { throw new Error("not used"); },
+    async requestHistoricalContext() { throw new Error("not used"); },
+  };
+
+  const cmp = createRaxCmpFacade();
+  const session = cmp.session.open({
+    config: {
+      projectId: "proj-sqlite",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-sqlite",
+        repoRootPath: "/tmp/praxis/proj-sqlite",
+        defaultBranchName: "main",
+      },
+      db: {
+        kind: "sqlite" as const,
+        databaseName: "/tmp/praxis/proj-sqlite/cmp.sqlite",
+        schemaName: "main",
+        liveExecutionPreferred: true,
+      },
+    },
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
+  });
+
+  await cmp.project.bootstrap({
+    session,
+    payload: {
+      agents: [{ agentId: "main", depth: 0 }],
+    },
+  });
+
+  assert.deepEqual(bootstrapCall, {
+    projectId: "proj-sqlite",
+    repoName: "proj-sqlite",
+    repoRootPath: "/tmp/praxis/proj-sqlite",
+    agents: [{ agentId: "main", depth: 0 }],
+    defaultAgentId: "main",
+    defaultBranchName: "main",
+    worktreeRootPath: "/tmp/praxis/proj-sqlite/.cmp-worktrees",
+    storageEngine: "sqlite",
+    databaseName: "/tmp/praxis/proj-sqlite/cmp.sqlite",
+    dbSchemaName: "main",
+    redisNamespaceRoot: "cmp",
+    metadata: {
+      sessionId: session.sessionId,
+    },
+  });
+});
+
 test("createRaxCmpFacade delegates ingest commit and requestHistory to runtime", async () => {
   const calls: string[] = [];
   const runtime = {
@@ -1553,6 +1699,189 @@ test("createRaxCmpFacade readback and smoke degrade when DB readback or lineage 
   assert.equal(smoke.checks.find((check) => check.id === "cmp.db.readback")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.truth.redis")?.status, "degraded");
   assert.equal(smoke.checks.find((check) => check.id === "cmp.lineage.coverage")?.status, "degraded");
+});
+
+test("createRaxCmpFacade treats sqlite-backed quiescent projects as healthy empty readbacks", async () => {
+  const runtime = {
+    async bootstrapCmpProjectInfra() {
+      throw new Error("not used");
+    },
+    getCmpProjectInfraBootstrapReceipt() {
+      return {
+        git: {
+          projectRepo: {
+            projectId: "proj-sqlite-empty",
+            repoId: "repo-sqlite-empty",
+            repoName: "proj-sqlite-empty",
+            repoStrategy: "single_project_repo",
+            defaultAgentId: "main",
+          },
+          repoRootPath: "/tmp/praxis/proj-sqlite-empty",
+          defaultBranchName: "main",
+          createdBranchNames: ["work/main", "cmp/main", "mp/main", "tap/main"],
+          status: "bootstrapped" as const,
+        },
+        gitBranchBootstraps: [
+          {
+            agentId: "main",
+            createdBranchNames: ["work/main", "cmp/main", "mp/main", "tap/main"],
+          },
+        ],
+        db: {
+          projectId: "proj-sqlite-empty",
+          databaseName: "/tmp/praxis/proj-sqlite-empty/cmp.sqlite",
+          schemaName: "main",
+          storageEngine: "sqlite" as const,
+          topology: {
+            projectId: "proj-sqlite-empty",
+            databaseName: "/tmp/praxis/proj-sqlite-empty/cmp.sqlite",
+            schemaName: "main",
+            storageEngine: "sqlite" as const,
+            sharedTables: [],
+          },
+          localTableSets: [],
+          bootstrapStatements: [],
+          readbackStatements: [],
+        },
+        dbReceipt: {
+          projectId: "proj-sqlite-empty",
+          databaseName: "/tmp/praxis/proj-sqlite-empty/cmp.sqlite",
+          schemaName: "main",
+          storageEngine: "sqlite" as const,
+          status: "bootstrapped" as const,
+          expectedTargetCount: 10,
+          presentTargetCount: 10,
+          readbackRecords: [],
+        },
+        mqBootstraps: [
+          createCmpRedisProjectBootstrap({
+            projectId: "proj-sqlite-empty",
+            agentId: "main",
+          }),
+        ],
+        lineages: [createCmpLineageFixture("proj-sqlite-empty", "main")],
+        branchRuntimes: [createCmpBranchRuntimeFixture("proj-sqlite-empty", "main")],
+      } satisfies CmpProjectInfraBootstrapReceipt;
+    },
+    getCmpRuntimeInfraProjectState() {
+      return {
+        projectId: "proj-sqlite-empty",
+        git: {
+          repoId: "repo-sqlite-empty",
+          repoRootPath: "/tmp/praxis/proj-sqlite-empty",
+          defaultBranchName: "main",
+          status: "bootstrapped" as const,
+        },
+        gitBranchBootstraps: [
+          {
+            agentId: "main",
+            createdBranchNames: ["work/main", "cmp/main", "mp/main", "tap/main"],
+          },
+        ],
+        dbReceipt: {
+          projectId: "proj-sqlite-empty",
+          databaseName: "/tmp/praxis/proj-sqlite-empty/cmp.sqlite",
+          schemaName: "main",
+          storageEngine: "sqlite" as const,
+          status: "bootstrapped" as const,
+          expectedTargetCount: 10,
+          presentTargetCount: 10,
+          readbackRecords: [],
+        },
+        mqBootstraps: [
+          createCmpRedisProjectBootstrap({
+            projectId: "proj-sqlite-empty",
+            agentId: "main",
+          }),
+        ],
+        lineages: [createCmpLineageFixture("proj-sqlite-empty", "main")],
+        branchRuntimes: [createCmpBranchRuntimeFixture("proj-sqlite-empty", "main")],
+        updatedAt: "2026-04-14T00:00:00.000Z",
+      } satisfies CmpRuntimeInfraProjectState;
+    },
+    getCmpRuntimeRecoverySummary() {
+      return {
+        totalProjects: 1,
+        alignedProjectIds: ["proj-sqlite-empty"],
+        degradedProjectIds: [],
+        snapshotOnlyProjectIds: [],
+        infraOnlyProjectIds: [],
+        recommendedHydrateFromSnapshot: [],
+        recommendedWriteSnapshotFromInfra: [],
+      };
+    },
+    getCmpRuntimeProjectRecoverySummary() {
+      return {
+        projectId: "proj-sqlite-empty",
+        status: "aligned" as const,
+        issues: [],
+        recommendedAction: "none" as const,
+      };
+    },
+    getCmpRuntimeDeliveryTruthSummary() {
+      return {
+        projectId: "proj-sqlite-empty",
+        totalCount: 0,
+        publishedCount: 0,
+        acknowledgedCount: 0,
+        retryScheduledCount: 0,
+        expiredCount: 0,
+        driftCount: 0,
+      };
+    },
+    getCmpRuntimeSnapshot() {
+      return createEmptyCmpRuntimeSnapshotFixture("proj-sqlite-empty");
+    },
+    getCmpFiveAgentRuntimeSummary() {
+      return undefined;
+    },
+    async recoverCmpRuntimeSnapshot() {
+      return undefined;
+    },
+    async ingestRuntimeContext() { throw new Error("not used"); },
+    async commitContextDelta() { throw new Error("not used"); },
+    async resolveCheckedSnapshot() { throw new Error("not used"); },
+    async materializeContextPackage() { throw new Error("not used"); },
+    async dispatchContextPackage() { throw new Error("not used"); },
+    async requestHistoricalContext() { throw new Error("not used"); },
+  };
+
+  const cmp = createRaxCmpFacade();
+  const session = cmp.session.open({
+    config: {
+      projectId: "proj-sqlite-empty",
+      git: {
+        provider: "shared_git_infra" as const,
+        repoName: "proj-sqlite-empty",
+        repoRootPath: "/tmp/praxis/proj-sqlite-empty",
+        defaultBranchName: "main",
+      },
+      db: {
+        kind: "sqlite" as const,
+        databaseName: "/tmp/praxis/proj-sqlite-empty/cmp.sqlite",
+        schemaName: "main",
+        liveExecutionPreferred: true,
+      },
+      mq: {
+        kind: "redis" as const,
+        namespaceRoot: "cmp",
+        liveExecutionPreferred: true,
+      },
+    },
+    runtime: adaptLegacyCmpRuntimeStub(runtime),
+  });
+
+  const readback = await cmp.project.readback({ session });
+  const smoke = await cmp.project.smoke({ session });
+
+  assert.equal(readback.summary?.status, "ready");
+  assert.equal(readback.summary?.statusPanel?.health.readbackStatus, "ready");
+  assert.equal(readback.summary?.acceptance.objectModel.status, "ready");
+  assert.equal(readback.summary?.acceptance.fiveAgentLoop.status, "ready");
+  assert.equal(readback.summary?.acceptance.liveLlm.status, "ready");
+  assert.equal(readback.summary?.acceptance.bundleSchema.status, "ready");
+  assert.equal(readback.summary?.acceptance.recovery.status, "ready");
+  assert.equal(smoke.status, "ready");
 });
 
 test("createRaxCmpFacade seeds default manual control surface and guided mode disables auto-return and auto-seed", () => {

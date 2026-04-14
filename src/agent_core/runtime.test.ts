@@ -1282,9 +1282,9 @@ test("AgentCoreRuntime can assemble review -> dispatch through T/A pool for avai
     runId: created.run.runId,
     agentId: "agent-main",
     capabilityKey: "search.ground",
-    reason: "Pattern-allowed capability should stay on the reviewer path in balanced mode.",
+    reason: "Pattern-allowed capability should stay on the reviewer path in standard mode.",
     requestedTier: "B1",
-    mode: "balanced",
+    mode: "standard",
   });
 
   assert.equal(resolved.status, "review_required");
@@ -1313,7 +1313,7 @@ test("AgentCoreRuntime can assemble review -> dispatch through T/A pool for avai
   const result = await runtime.dispatchCapabilityIntentViaTaPool(intent, {
     agentId: "agent-main",
     requestedTier: "B1",
-    mode: "balanced",
+    mode: "standard",
     reason: "Capability is available but should still go through review path.",
   });
 
@@ -1337,6 +1337,7 @@ test("AgentCoreRuntime dispatchIntent uses TAP reviewer worker bridge by default
     taProfile: createAgentCapabilityProfile({
       profileId: "profile.runtime.tap-reviewer-default",
       agentClass: "main-agent",
+      defaultMode: "standard",
       baselineCapabilities: ["docs.read"],
       allowedCapabilityPatterns: ["search.*"],
     }),
@@ -2078,11 +2079,75 @@ test("AgentCoreRuntime lets bapr mode dispatch straight through TAP for availabl
   });
 
   assert.equal(result.status, "dispatched");
-  assert.equal(result.reviewDecision?.decision, "approved");
-  assert.equal(result.reviewDecision?.vote, "allow");
+  assert.equal(result.reviewDecision, undefined);
   assert.equal(result.safety, undefined);
-  assert.equal(result.grant?.reviewVote, "allow");
+  assert.equal(result.grant?.reviewVote, undefined);
   assert.equal(result.dispatch?.prepared.capabilityKey, "shell.exec");
+});
+
+test("AgentCoreRuntime widens workspace read scope for repo-root files under TAP", () => {
+  const runtime = createAgentCoreRuntime({
+    workspaceRoot: "/tmp/praxis-runtime-scope",
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.read-scope",
+      agentClass: "main-agent",
+      baselineCapabilities: ["code.read"],
+      defaultMode: "bapr",
+    }),
+  });
+
+  const access = runtime.resolveTaCapabilityAccess({
+    sessionId: "session-read-scope-1",
+    runId: "run-read-scope-1",
+    agentId: "agent-read-scope-1",
+    capabilityKey: "code.read",
+    reason: "Read a repo-root file under TAP.",
+    mode: "bapr",
+    requestInput: {
+      path: "README.md",
+    },
+  });
+
+  assert.equal(access.status, "baseline_granted");
+  assert.deepEqual(access.grant.grantedScope?.pathPatterns, ["**"]);
+});
+
+test("AgentCoreRuntime can auto-apply persisted external read approvals for the same agent", () => {
+  const runtime = createAgentCoreRuntime({
+    workspaceRoot: "/tmp/praxis-runtime-external-scope",
+    persistedReadAllowRules: [
+      {
+        ruleId: "rule-read-allow-1",
+        agentId: "agent-read-scope-2",
+        capabilityFamily: "read",
+        pathPrefix: "/etc",
+        createdAt: "2026-04-14T10:00:00.000Z",
+        updatedAt: "2026-04-14T10:00:00.000Z",
+      },
+    ],
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.read-external",
+      agentClass: "main-agent",
+      baselineCapabilities: ["code.read"],
+      defaultMode: "permissive",
+    }),
+  });
+
+  const access = runtime.resolveTaCapabilityAccess({
+    sessionId: "session-read-scope-2",
+    runId: "run-read-scope-2",
+    agentId: "agent-read-scope-2",
+    capabilityKey: "code.read",
+    reason: "Reuse a persisted external read approval.",
+    mode: "permissive",
+    requestInput: {
+      path: "/etc/hosts",
+    },
+  });
+
+  assert.equal(access.status, "baseline_granted");
+  assert.equal(access.grant.mode, "bapr");
+  assert.deepEqual(access.grant.grantedScope?.metadata?.externalPathPrefixes, ["/etc"]);
 });
 
 test("AgentCoreRuntime can assemble safety interruption through T/A pool", async () => {

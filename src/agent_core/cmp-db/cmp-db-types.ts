@@ -45,7 +45,7 @@ export const CMP_DB_DELIVERY_RECORD_STATES = [
 export type CmpDbDeliveryRecordState =
   (typeof CMP_DB_DELIVERY_RECORD_STATES)[number];
 
-export const CMP_DB_STORAGE_ENGINES = ["postgresql"] as const;
+export const CMP_DB_STORAGE_ENGINES = ["postgresql", "sqlite"] as const;
 export type CmpDbStorageEngine = (typeof CMP_DB_STORAGE_ENGINES)[number];
 
 export const CMP_DB_SQL_COLUMN_TYPES = [
@@ -103,6 +103,7 @@ export interface CmpProjectDbTopology {
   projectId: string;
   databaseName: string;
   schemaName: string;
+  storageEngine?: CmpDbStorageEngine;
   sharedTables: CmpDbSharedTableDefinition[];
   metadata?: Record<string, unknown>;
 }
@@ -127,6 +128,7 @@ export interface CmpProjectDbBootstrapContract {
   projectId: string;
   databaseName: string;
   schemaName: string;
+  storageEngine?: CmpDbStorageEngine;
   topology: CmpProjectDbTopology;
   localTableSets: CmpAgentLocalTableSet[];
   bootstrapStatements: CmpDbSqlStatement[];
@@ -161,6 +163,7 @@ export interface CmpProjectDbBootstrapReceipt {
   projectId: string;
   databaseName: string;
   schemaName: string;
+  storageEngine?: CmpDbStorageEngine;
   status: CmpDbBootstrapReceiptStatus;
   expectedTargetCount: number;
   presentTargetCount: number;
@@ -217,6 +220,45 @@ export interface CmpDbDeliveryRegistryRecord {
   metadata?: Record<string, unknown>;
 }
 
+export interface CmpDbQueryPrimitive extends CmpDbSqlStatement {
+  phase: "read" | "write";
+}
+
+export interface CmpDbStatementExecutionReceipt {
+  statementId: string;
+  target: string;
+  phase: CmpDbSqlStatement["phase"];
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export interface CmpDbLiveExecutor {
+  readonly driver: CmpDbStorageEngine;
+  executeStatement(
+    statement: CmpDbSqlStatement,
+  ): Promise<CmpDbStatementExecutionReceipt>;
+  executeBootstrapContract(
+    contract: CmpProjectDbBootstrapContract,
+  ): Promise<{
+    receipt: CmpProjectDbBootstrapReceipt;
+    bootstrapExecutions: CmpDbStatementExecutionReceipt[];
+    readbackExecutions: CmpDbStatementExecutionReceipt[];
+  }>;
+}
+
+export interface CmpDbAdapterLike {
+  readonly driver: CmpDbStorageEngine;
+  readonly topology: CmpProjectDbTopology;
+  readonly localTableSets: Map<string, CmpAgentLocalTableSet>;
+  buildProjectionUpsert(record: CmpProjectionRecord): CmpDbQueryPrimitive;
+  buildProjectionSelect(params: { agentId: string; snapshotId: string }): CmpDbQueryPrimitive;
+  buildContextPackageUpsert(record: CmpDbContextPackageRecord): CmpDbQueryPrimitive;
+  buildContextPackageSelect(params: { agentId: string; packageId: string }): CmpDbQueryPrimitive;
+  buildDeliveryUpsert(record: CmpDbDeliveryRegistryRecord): CmpDbQueryPrimitive;
+  buildDeliverySelect(params: { deliveryId: string }): CmpDbQueryPrimitive;
+}
+
 export function assertNonEmptyString(value: string, label: string): string {
   const normalized = value.trim();
   if (!normalized) {
@@ -258,6 +300,9 @@ export function validateCmpProjectDbTopology(topology: CmpProjectDbTopology): vo
   assertNonEmptyString(topology.projectId, "CMP DB projectId");
   assertNonEmptyString(topology.databaseName, "CMP DB databaseName");
   assertNonEmptyString(topology.schemaName, "CMP DB schemaName");
+  if (topology.storageEngine && !CMP_DB_STORAGE_ENGINES.includes(topology.storageEngine)) {
+    throw new Error(`Unsupported CMP DB storage engine: ${topology.storageEngine}.`);
+  }
   for (const table of topology.sharedTables) {
     validateCmpDbSharedTableDefinition(table);
   }
@@ -292,6 +337,9 @@ export function validateCmpProjectDbBootstrapContract(
   assertNonEmptyString(contract.projectId, "CMP DB bootstrap projectId");
   assertNonEmptyString(contract.databaseName, "CMP DB bootstrap databaseName");
   assertNonEmptyString(contract.schemaName, "CMP DB bootstrap schemaName");
+  if (contract.storageEngine && !CMP_DB_STORAGE_ENGINES.includes(contract.storageEngine)) {
+    throw new Error(`Unsupported CMP DB bootstrap storage engine: ${contract.storageEngine}.`);
+  }
   validateCmpProjectDbTopology(contract.topology);
   for (const set of contract.localTableSets) {
     validateCmpAgentLocalTableSet(set);
@@ -321,6 +369,9 @@ export function validateCmpProjectDbBootstrapReceipt(
   assertNonEmptyString(receipt.projectId, "CMP DB bootstrap receipt projectId");
   assertNonEmptyString(receipt.databaseName, "CMP DB bootstrap receipt databaseName");
   assertNonEmptyString(receipt.schemaName, "CMP DB bootstrap receipt schemaName");
+  if (receipt.storageEngine && !CMP_DB_STORAGE_ENGINES.includes(receipt.storageEngine)) {
+    throw new Error(`Unsupported CMP DB bootstrap receipt storage engine: ${receipt.storageEngine}.`);
+  }
   if (!CMP_DB_BOOTSTRAP_RECEIPT_STATUSES.includes(receipt.status)) {
     throw new Error(`Unsupported CMP DB bootstrap receipt status: ${receipt.status}.`);
   }

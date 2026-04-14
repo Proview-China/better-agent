@@ -37,6 +37,7 @@ import type {
 import { createPreparedCapabilityCall } from "../capability-invocation/index.js";
 import { createCapabilityResultEnvelope } from "../capability-result/index.js";
 import type { ActivationAdapterFactory } from "../ta-pool-runtime/index.js";
+import type { AccessRequestScope } from "../ta-pool-types/index.js";
 
 const require = createRequire(import.meta.url);
 const ts: typeof import("typescript") = require("typescript");
@@ -110,6 +111,7 @@ interface PreparedWorkspaceReadInput {
 interface ResolvedWorkspaceTarget {
   absolutePath: string;
   relativePath: string;
+  withinWorkspace: boolean;
 }
 
 interface WorkspaceReadResultMetadata extends Record<string, unknown> {
@@ -132,7 +134,9 @@ function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  const normalized = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  const normalized = value
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim());
   return normalized.length > 0 ? normalized : undefined;
 }
 
@@ -192,6 +196,36 @@ function matchesPathPattern(
   return patterns.some((pattern) =>
     pathPatternToRegex(pattern).test(relativePath),
   );
+}
+
+function readGrantedScope(metadata: Record<string, unknown> | undefined): AccessRequestScope | undefined {
+  const scope = metadata?.grantedScope;
+  return isRecord(scope) ? scope as AccessRequestScope : undefined;
+}
+
+function readExternalPathPrefixes(scope: AccessRequestScope | undefined): string[] {
+  const metadata = isRecord(scope?.metadata) ? scope.metadata : undefined;
+  return asStringArray(metadata?.externalPathPrefixes) ?? [];
+}
+
+function resolveEffectiveAllowedPathPatterns(params: {
+  grantedScope: AccessRequestScope | undefined;
+  fallbackPathPatterns: readonly string[];
+}): string[] {
+  const granted = asStringArray(params.grantedScope?.pathPatterns);
+  return granted && granted.length > 0 ? granted : [...params.fallbackPathPatterns];
+}
+
+function isExternalPathAllowed(absolutePath: string, prefixes: readonly string[]): boolean {
+  if (prefixes.length === 0) {
+    return false;
+  }
+  const normalizedCandidate = path.resolve(absolutePath);
+  return prefixes.some((prefix) => {
+    const normalizedPrefix = path.resolve(prefix);
+    return normalizedCandidate === normalizedPrefix
+      || normalizedCandidate.startsWith(`${normalizedPrefix}${path.sep}`);
+  });
 }
 
 function normalizeAllowedOperations(
@@ -323,20 +357,31 @@ function parsePreparedWorkspaceReadInput(
 async function resolveWorkspaceTarget(
   workspaceRoot: string,
   requestedPath: string,
+  options: {
+    allowedExternalPathPrefixes?: readonly string[];
+  } = {},
 ): Promise<ResolvedWorkspaceTarget> {
   const absoluteCandidate = path.isAbsolute(requestedPath)
     ? path.resolve(requestedPath)
     : path.resolve(workspaceRoot, requestedPath);
   const workspaceReal = await realpath(workspaceRoot);
   const targetReal = await realpath(absoluteCandidate);
+  const allowedExternalPathPrefixes = options.allowedExternalPathPrefixes ?? [];
 
   if (
     targetReal !== workspaceReal &&
     !targetReal.startsWith(`${workspaceReal}${path.sep}`)
   ) {
-    throw new Error(
-      `Requested path ${requestedPath} escapes the configured workspace root.`,
-    );
+    if (!isExternalPathAllowed(targetReal, allowedExternalPathPrefixes)) {
+      throw new Error(
+        `Requested path ${requestedPath} escapes the configured workspace root.`,
+      );
+    }
+    return {
+      absolutePath: targetReal,
+      relativePath: normalizePathForMatch(targetReal),
+      withinWorkspace: false,
+    };
   }
 
   const relativePath = normalizePathForMatch(
@@ -345,6 +390,7 @@ async function resolveWorkspaceTarget(
   return {
     absolutePath: targetReal,
     relativePath,
+    withinWorkspace: true,
   };
 }
 
@@ -1303,6 +1349,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
       preparedPayloadRef: `workspace-read:${plan.planId}`,
       cacheKey: lease.preparedCacheKey ?? plan.idempotencyKey,
       metadata: {
+        ...(plan.metadata ?? {}),
         workspaceRoot: this.#workspaceRoot,
       },
     });
@@ -1329,6 +1376,13 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
     }
 
     try {
+      const grantedScope = readGrantedScope(prepared.metadata);
+      const effectiveAllowedPathPatterns = resolveEffectiveAllowedPathPatterns({
+        grantedScope,
+        fallbackPathPatterns: this.#allowedPathPatterns,
+      });
+      const allowedExternalPathPrefixes = readExternalPathPrefixes(grantedScope);
+
       if (parsed.invalidReason) {
         return createFailureEnvelope({
           prepared,
@@ -1358,19 +1412,26 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
         ? await resolveWorkspaceTarget(
           this.#workspaceRoot,
           parsed.path,
+          {
+            allowedExternalPathPrefixes,
+          },
         )
         : undefined;
-      const allowRootScopedDiscovery = target?.relativePath === ""
+      const allowRootScopedDiscovery = target?.withinWorkspace
+        && target.relativePath === ""
         && (
-          parsed.operation === "glob"
+          parsed.operation === "list_dir"
+          || parsed.operation === "stat_path"
+          || parsed.operation === "glob"
           || parsed.operation === "grep"
           || parsed.operation === "read_many"
           || parsed.operation === "workspace_symbol"
         );
       if (
         target
+        && target.withinWorkspace
         && !allowRootScopedDiscovery
-        && !matchesPathPattern(target.relativePath, this.#allowedPathPatterns)
+        && !matchesPathPattern(target.relativePath, effectiveAllowedPathPatterns)
       ) {
         return createFailureEnvelope({
           prepared,
@@ -1378,13 +1439,26 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
           code: "workspace_read_path_not_allowed",
           message: `Path ${target.relativePath} is outside the allowed scope for ${this.#capabilityKey}.`,
           details: {
-            allowedPathPatterns: this.#allowedPathPatterns,
+            allowedPathPatterns: effectiveAllowedPathPatterns,
+            allowedExternalPathPrefixes,
           },
         });
       }
 
       switch (parsed.operation) {
         case "list_dir": {
+          const stats = await stat(target!.absolutePath);
+          if (!stats.isDirectory()) {
+            return createFailureEnvelope({
+              prepared,
+              status: "failed",
+              code: "workspace_read_expected_directory",
+              message: `${this.#capabilityKey} requires a directory path for list_dir, but received a file path.`,
+              details: {
+                path: target!.relativePath,
+              },
+            });
+          }
           const directory = await readdir(target!.absolutePath, {
             withFileTypes: true,
           });
@@ -1448,7 +1522,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
           const files = await collectScopedFiles({
             workspaceRoot: this.#workspaceRoot,
             basePath: parsed.path!,
-            allowedPathPatterns: this.#allowedPathPatterns,
+            allowedPathPatterns: effectiveAllowedPathPatterns,
           });
           const matches = files
             .filter((entry) => matchesGlobLikePattern(entry.relativePath, parsed.pattern!))
@@ -1484,7 +1558,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
             files: await collectScopedFiles({
               workspaceRoot: this.#workspaceRoot,
               basePath: parsed.path!,
-              allowedPathPatterns: this.#allowedPathPatterns,
+              allowedPathPatterns: effectiveAllowedPathPatterns,
             }),
             include: parsed.include,
             exclude: parsed.exclude,
@@ -1539,17 +1613,20 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
           const explicitPaths = parsed.paths;
           const scopedFiles = explicitPaths && explicitPaths.length > 0
             ? await Promise.all(explicitPaths.map(async (item) => {
-              const resolved = await resolveWorkspaceTarget(this.#workspaceRoot, item);
+              const resolved = await resolveWorkspaceTarget(this.#workspaceRoot, item, {
+                allowedExternalPathPrefixes,
+              });
               return {
                 absolutePath: resolved.absolutePath,
                 relativePath: resolved.relativePath,
+                withinWorkspace: resolved.withinWorkspace,
               };
             }))
             : buildReadManyFileSelection({
               files: await collectScopedFiles({
                 workspaceRoot: this.#workspaceRoot,
                 basePath: parsed.path!,
-                allowedPathPatterns: this.#allowedPathPatterns,
+                allowedPathPatterns: effectiveAllowedPathPatterns,
               }),
               include: parsed.include,
               exclude: parsed.exclude,
@@ -1557,7 +1634,10 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
             });
           const documents = [];
           for (const file of scopedFiles.slice(0, parsed.maxEntries)) {
-            if (!matchesPathPattern(file.relativePath, this.#allowedPathPatterns)) {
+            if (
+              file.withinWorkspace !== false
+              && !matchesPathPattern(file.relativePath, effectiveAllowedPathPatterns)
+            ) {
               continue;
             }
             const raw = await readFile(file.absolutePath, "utf8");
@@ -1706,7 +1786,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
           const scopedFiles = await collectScopedFiles({
             workspaceRoot: this.#workspaceRoot,
             basePath: parsed.path ?? ".",
-            allowedPathPatterns: this.#allowedPathPatterns,
+            allowedPathPatterns: effectiveAllowedPathPatterns,
           });
           const typeScriptContext = createTypeScriptWorkspaceContext({
             workspaceRoot: this.#workspaceRoot,
@@ -1741,7 +1821,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
               })
               .filter((entry) =>
                 typeof entry.path === "string"
-                && matchesPathPattern(entry.path, this.#allowedPathPatterns))
+                && matchesPathPattern(entry.path, effectiveAllowedPathPatterns))
               .slice(0, parsed.maxEntries);
             if (matches.length > 0) {
               backend = "typescript-language-service";
@@ -1786,7 +1866,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
           const scopedFiles = await collectScopedFiles({
             workspaceRoot: this.#workspaceRoot,
             basePath: ".",
-            allowedPathPatterns: this.#allowedPathPatterns,
+            allowedPathPatterns: effectiveAllowedPathPatterns,
           });
           const typeScriptContext = createTypeScriptWorkspaceContext({
             workspaceRoot: this.#workspaceRoot,
@@ -1871,7 +1951,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
                   containerName: entry.containerName,
                 };
               })
-              .filter((entry) => matchesPathPattern(entry.path, this.#allowedPathPatterns))
+              .filter((entry) => matchesPathPattern(entry.path, effectiveAllowedPathPatterns))
               .slice(0, parsed.maxEntries);
             return createCapabilityResultEnvelope({
               executionId: prepared.preparedId,
@@ -1910,7 +1990,7 @@ export class WorkspaceReadCapabilityAdapter implements CapabilityAdapter {
                   isWriteAccess: entry.isWriteAccess,
                 };
               })
-              .filter((entry) => matchesPathPattern(entry.path, this.#allowedPathPatterns))
+              .filter((entry) => matchesPathPattern(entry.path, effectiveAllowedPathPatterns))
               .slice(0, parsed.maxEntries);
             return createCapabilityResultEnvelope({
               executionId: prepared.preparedId,

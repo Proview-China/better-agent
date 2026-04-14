@@ -8,7 +8,6 @@ import type {
   DirectFallbackReader,
   LiveCliState,
   LiveCliRuntime,
-  OpenAILiveConfig,
 } from "./shared.js";
 import {
   formatDisplayValue,
@@ -17,14 +16,16 @@ import {
   formatTapMatrixRows,
   formatTranscript,
   LIVE_CHAT_MODEL_PLAN,
+  LIVE_CHAT_PERMISSIONS_CONFIG,
   LIVE_CHAT_TAP_OVERRIDE,
+  LIVE_CHAT_UI_CONFIG,
   truncate,
 } from "./shared.js";
 import {
   DEFAULT_PRAXIS_SLASH_COMMANDS,
   formatSlashDisplayText,
 } from "../tui-input/slash-engine.js";
-import { resolveWorkspaceRoot } from "../../runtime-paths.js";
+import { resolveConfiguredWorkspaceRoot } from "../../raxcode-config.js";
 
 function printDivider(label?: string): void {
   const prefix = "\n============================================================";
@@ -103,8 +104,12 @@ function formatSlashCommandHelpLines(): string[] {
     (max, command) => Math.max(max, formatSlashDisplayText(command).length),
     0,
   );
-  return DEFAULT_PRAXIS_SLASH_COMMANDS.map((command, index) =>
+  const builtInLines = DEFAULT_PRAXIS_SLASH_COMMANDS.map((command, index) =>
     `${String(index + 1).padStart(2, "0")} ${formatSlashDisplayText(command).padEnd(maxLabelWidth, " ")}  ${command.description ?? ""}`.trimEnd());
+  return [
+    ...builtInLines,
+    `${String(builtInLines.length + 1).padStart(2, "0")} /rewind <turn>`.padEnd(maxLabelWidth + 5, " ") + "  rewind the in-memory conversation to a prior turn",
+  ];
 }
 
 export function printDirectBullet(text: string): void {
@@ -211,7 +216,7 @@ export async function readDirectFallbackLine(
   return reader.read();
 }
 
-export function printStartup(config: OpenAILiveConfig): void {
+export function printStartup(config: { baseURL: string }): void {
   printDivider("Praxis Live CLI");
   console.log("当前这不是假 mock，而是 CMP + TAP + core 的真实运行 harness。");
   console.log(`OpenAI-compatible route: ${config.baseURL}`);
@@ -232,11 +237,11 @@ export function printStartup(config: OpenAILiveConfig): void {
   }
 }
 
-export function printStartupDirect(config: OpenAILiveConfig): void {
+export function printStartupDirect(config: { baseURL: string }): void {
   printDirectBox(">_ Praxis Direct CLI", [
     `model:     ${LIVE_CHAT_MODEL_PLAN.core.model} ${LIVE_CHAT_MODEL_PLAN.core.reasoning}`,
     `tap mode:  ${LIVE_CHAT_TAP_OVERRIDE.requestedMode} / ${LIVE_CHAT_TAP_OVERRIDE.automationDepth}`,
-    `workspace: ${resolveWorkspaceRoot().split("/").slice(-1)[0] || resolveWorkspaceRoot()}`,
+    `workspace: ${resolveConfiguredWorkspaceRoot().split("/").slice(-1)[0] || resolveConfiguredWorkspaceRoot()}`,
     `route:     ${config.baseURL}`,
   ]);
   console.log("Commands:");
@@ -259,7 +264,7 @@ export function printHelp(uiMode: "full" | "direct"): void {
   }
 }
 
-export function printModelView(config: OpenAILiveConfig): void {
+export function printModelView(config: { baseURL: string }): void {
   console.log("");
   printDirectBox("Model View", [
     `core:       ${LIVE_CHAT_MODEL_PLAN.core.model} ${LIVE_CHAT_MODEL_PLAN.core.reasoning}`,
@@ -271,6 +276,12 @@ export function printModelView(config: OpenAILiveConfig): void {
     `cmp/checker:${LIVE_CHAT_MODEL_PLAN.cmp.checker.model} ${LIVE_CHAT_MODEL_PLAN.cmp.checker.reasoning}`,
     `cmp/dbagent:${LIVE_CHAT_MODEL_PLAN.cmp.dbagent.model} ${LIVE_CHAT_MODEL_PLAN.cmp.dbagent.reasoning}`,
     `cmp/dispatch:${LIVE_CHAT_MODEL_PLAN.cmp.dispatcher.model} ${LIVE_CHAT_MODEL_PLAN.cmp.dispatcher.reasoning}`,
+    `mp/icma:    ${LIVE_CHAT_MODEL_PLAN.mp.icma.model} ${LIVE_CHAT_MODEL_PLAN.mp.icma.reasoning}`,
+    `mp/iter:    ${LIVE_CHAT_MODEL_PLAN.mp.iterator.model} ${LIVE_CHAT_MODEL_PLAN.mp.iterator.reasoning}`,
+    `mp/checker: ${LIVE_CHAT_MODEL_PLAN.mp.checker.model} ${LIVE_CHAT_MODEL_PLAN.mp.checker.reasoning}`,
+    `mp/dbagent: ${LIVE_CHAT_MODEL_PLAN.mp.dbagent.model} ${LIVE_CHAT_MODEL_PLAN.mp.dbagent.reasoning}`,
+    `mp/dispatch:${LIVE_CHAT_MODEL_PLAN.mp.dispatcher.model} ${LIVE_CHAT_MODEL_PLAN.mp.dispatcher.reasoning}`,
+    `tui/main:   ${LIVE_CHAT_MODEL_PLAN.tui.model} ${LIVE_CHAT_MODEL_PLAN.tui.reasoning}`,
     `route:      ${config.baseURL}`,
   ]);
 }
@@ -320,6 +331,7 @@ export function printPermissionsView(runtime: LiveCliRuntime): void {
   printDirectBox("Permissions", [
     `effectiveMode: ${governance.taskPolicy.effectiveMode}`,
     `workspaceMode: ${governance.workspacePolicy.workspaceMode}`,
+    `capabilityOverrides: ${LIVE_CHAT_PERMISSIONS_CONFIG.capabilityOverrides.length}`,
     `pendingHumanGateCount: ${userSurface.pendingHumanGateCount}`,
     `blockingCapabilityKeys: ${snapshot.blockingCapabilityKeys.join(", ") || "(none)"}`,
   ]);
@@ -328,12 +340,12 @@ export function printPermissionsView(runtime: LiveCliRuntime): void {
 export function printLanguageViewPlaceholder(): void {
   console.log("");
   printDirectBox("Language", [
-    "default shell copy is currently zh-CN with English command ids",
-    "dedicated language switching is reserved for a later TUI pass",
+    `current language: ${LIVE_CHAT_UI_CONFIG.language}`,
+    "language ids remain English while shell copy follows the configured locale",
   ]);
 }
 
-export function printWorkspaceView(currentWorkspace = resolveWorkspaceRoot()): void {
+export function printWorkspaceView(currentWorkspace = resolveConfiguredWorkspaceRoot()): void {
   console.log("");
   printDirectBox("Workspace", [
     `current: ${currentWorkspace}`,
@@ -394,7 +406,7 @@ export function printTapArtifacts(runtime: LiveCliRuntime, sessionId: string, ru
   console.log(`registeredCapabilities(${capabilityKeys.length}): ${capabilityKeys.join(", ") || "(none)"}`);
   console.log(`bindings(${bindingKeys.length}): ${bindingKeys.join(", ") || "(none)"}`);
   console.log("shared15ViewMatrix:");
-  for (const line of formatTapMatrixRows(governance.shared15ViewMatrix)) {
+  for (const line of formatTapMatrixRows(LIVE_CHAT_PERMISSIONS_CONFIG.shared15ViewMatrix)) {
     console.log(`  ${line}`);
   }
 }

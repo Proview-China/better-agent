@@ -12,6 +12,7 @@ import {
 } from "./capability-package.js";
 
 export const TAP_VENDOR_USER_IO_CAPABILITY_KEYS = [
+  "question.ask",
   "request_user_input",
   "request_permissions",
   "audio.transcribe",
@@ -25,6 +26,7 @@ export type TapVendorUserIoCapabilityKey =
 export const TAP_VENDOR_USER_IO_ACTIVATION_FACTORY_REFS: Readonly<
   Record<TapVendorUserIoCapabilityKey, string>
 > = {
+  "question.ask": "factory:tap.vendor-user-io:question.ask",
   request_user_input: "factory:tap.vendor-user-io:request_user_input",
   request_permissions: "factory:tap.vendor-user-io:request_permissions",
   "audio.transcribe": "factory:tap.vendor-user-io:audio.transcribe",
@@ -68,6 +70,57 @@ const USER_IO_CAPABILITY_DEFAULTS: Record<
   TapVendorUserIoCapabilityKey,
   UserIoCapabilityDefaults
 > = {
+  "question.ask": {
+    description:
+      "Raise a structured multi-choice question set back to the operator so the model can continue with explicit user requirements instead of guessing.",
+    tags: ["tap", "user-io", "questionnaire", "human-input"],
+    tier: "B0",
+    routeHints: [
+      { key: "family", value: "tap-vendor-user-io" },
+      { key: "backendKind", value: "portable" },
+      { key: "selectionPolicy", value: "operator-questionnaire" },
+    ],
+    successCriteria: [
+      "Structured question payload is preserved for the TUI questionnaire surface.",
+      "Capability result clearly marks that execution is blocked on explicit user answers.",
+    ],
+    failureSignals: [
+      "questions input is missing or empty",
+      "question payload misses option labels or descriptions",
+    ],
+    evidenceOutput: ["questionnaire-payload", "waiting-for-answer-metadata"],
+    bestPractices: [
+      "Ask only high-impact questions that materially change the implementation path.",
+      "Prefer 2 to 4 mutually exclusive options plus one escape hatch when special requirements are likely.",
+      "Do not prefix question prompt text with manual numbering because the TUI renders the ordinal itself.",
+      "If numbering must appear in surrounding copy, use two-digit ordinals such as 01, 02, 03.",
+    ],
+    knownLimits: [
+      "This capability only raises a structured questionnaire. The TUI is responsible for collecting answers and sending them back.",
+      "The first version is optimized for direct TUI rather than generic non-interactive shells.",
+    ],
+    exampleInput: {
+      title: "/init",
+      instruction: "Please answer Raxode's questions based on your requirements.",
+      questions: [
+        {
+          id: "language",
+          prompt: "请问本仓库的主要编写语言使用什么?",
+          options: [
+            { id: "rust", label: "Rust", description: "高性能,高安全性,但书写限制多,非跨平台" },
+            { id: "go", label: "Golang", description: "高性能,网络能力强,跨平台困难,适合网络" },
+          ],
+          allowAnnotation: true,
+          notePrompt: "Please type the special annotations for this option.",
+        },
+      ],
+    },
+    exampleNotes:
+      "Use when the model has already inspected the repo but still needs a few concrete user choices before continuing.",
+    reviewRequirements: ["allow"],
+    safetyFlags: ["human_input_required"],
+    riskLevel: "normal",
+  },
   request_user_input: {
     description:
       "Raise a structured question set back to the human operator when the current task cannot continue safely without new user input.",
@@ -504,7 +557,7 @@ export function createTapVendorUserIoCapabilityPackage(
     },
     lifecycle: {
       installStrategy:
-        input.capabilityKey === "request_user_input" || input.capabilityKey === "request_permissions"
+        input.capabilityKey === "question.ask" || input.capabilityKey === "request_user_input" || input.capabilityKey === "request_permissions"
           ? "register the TAP user-io adapter family and let later runtime bridges connect blocked requests to operator surfaces"
           : "register the TAP user-io multimodal adapter family and let provider-native backends create local media artifacts",
       replaceStrategy: "register_or_replace active binding generation",

@@ -67,6 +67,7 @@ function resolveBootstrapPayload(input: RaxCmpBootstrapInput): BootstrapCmpProje
     defaultAgentId: input.payload.defaultAgentId ?? input.session.config.defaultAgentId,
     defaultBranchName: input.payload.defaultBranchName ?? input.session.config.git.defaultBranchName,
     worktreeRootPath: input.payload.worktreeRootPath ?? input.session.config.git.worktreeRootPath,
+    storageEngine: input.payload.storageEngine ?? input.session.config.db.kind,
     databaseName: input.payload.databaseName ?? input.session.config.db.databaseName,
     dbSchemaName: input.payload.dbSchemaName ?? input.session.config.db.schemaName,
     redisNamespaceRoot: input.payload.redisNamespaceRoot ?? input.session.config.mq.namespaceRoot,
@@ -127,6 +128,31 @@ function createAcceptanceReadiness(input: {
   fallbacks: RaxCmpReadbackSummary["fallbacks"];
   roleCapabilityExecutionBridgeAvailable: boolean;
 }): RaxCmpAcceptanceReadiness {
+  const objectModelIsQuiescent = Boolean(
+    input.objectModel
+    && input.objectModel.requestCount === 0
+    && input.objectModel.sectionCount === 0
+    && input.objectModel.snapshotCount === 0
+    && input.objectModel.packageCount === 0,
+  );
+  const fiveAgentIsQuiescent = !input.fiveAgentSummary
+    || Object.values(input.fiveAgentSummary.roleCounts).every((count) => count === 0);
+  const truthLayersReady = input.receiptAvailable
+    && input.infraStateAvailable
+    && input.truthLayers.every((layer) => layer.status === "ready");
+  const recoveryAligned = !input.projectRecovery || input.projectRecovery.status === "aligned";
+  const deliveryHealthy = (input.projectRecovery?.issues?.length ?? 0) === 0
+    && (input.fallbacks.redisDeliveryRecovery === "available" || input.fallbacks.redisDeliveryRecovery === "not_needed")
+    && ((input.recoverySummary?.driftedProjectionCount ?? 0) === 0)
+    && ((input.deliverySummary?.driftCount ?? 0) === 0)
+    && ((input.deliverySummary?.expiredCount ?? 0) === 0);
+  const quiescentHealthyProject = objectModelIsQuiescent
+    && fiveAgentIsQuiescent
+    && truthLayersReady
+    && recoveryAligned
+    && deliveryHealthy
+    && input.roleCapabilityExecutionBridgeAvailable !== false;
+
   const objectModel = (() => {
     if (!input.objectModel) {
       return createReadinessCheck(
@@ -158,6 +184,21 @@ function createAcceptanceReadiness(input: {
         || (input.objectModel.requestStatuses.served ?? 0) > 0
       );
 
+    if (objectModelIsQuiescent) {
+      return createReadinessCheck(
+        quiescentHealthyProject ? "ready" : "degraded",
+        quiescentHealthyProject
+          ? "CMP object model is healthy but still empty because no requests or sections have been materialized yet."
+          : "CMP object model is currently empty and waiting for the first materialized request flow.",
+        {
+          requestStatuses: input.objectModel.requestStatuses,
+          sectionLifecycleCounts: input.objectModel.sectionLifecycleCounts,
+          snapshotStageCounts: input.objectModel.snapshotStageCounts,
+          packageStatusCounts: input.objectModel.packageStatusCounts,
+        },
+      );
+    }
+
     const status = !hasAllObjectFamilies
       ? (input.objectModel.requestCount === 0
         && input.objectModel.sectionCount === 0
@@ -184,8 +225,10 @@ function createAcceptanceReadiness(input: {
   const fiveAgentLoop = (() => {
     if (!input.fiveAgentSummary) {
       return createReadinessCheck(
-        "degraded",
-        "CMP five-agent summary is unavailable, so loop readiness cannot be fully verified.",
+        quiescentHealthyProject ? "ready" : "degraded",
+        quiescentHealthyProject
+          ? "CMP five-agent loop has not observed any role traffic yet, but the shared truth layers are healthy."
+          : "CMP five-agent summary is unavailable, so loop readiness cannot be fully verified.",
       );
     }
 
@@ -269,6 +312,19 @@ function createAcceptanceReadiness(input: {
       && dispatcherSemanticsReady,
     );
 
+    if (Object.values(input.fiveAgentSummary.roleCounts).every((count) => count === 0)) {
+      return createReadinessCheck(
+        quiescentHealthyProject ? "ready" : "degraded",
+        quiescentHealthyProject
+          ? "CMP five-agent loop is healthy and idle; no role executions have been observed yet."
+          : "CMP five-agent loop has not observed any role executions yet.",
+        {
+          latestStages: input.fiveAgentSummary.latestStages,
+          checkpointCoverage: input.fiveAgentSummary.recovery.checkpointCoverage,
+        },
+      );
+    }
+
     const status = roleCountsReady && latestStagesReady && ioReady
       ? "ready"
       : Object.values(input.fiveAgentSummary.roleCounts).every((count) => count === 0)
@@ -295,8 +351,10 @@ function createAcceptanceReadiness(input: {
   const liveLlm = (() => {
     if (!input.fiveAgentSummary) {
       return createReadinessCheck(
-        "degraded",
-        "CMP five-agent live LLM readiness is unavailable because five-agent summary is missing.",
+        quiescentHealthyProject ? "ready" : "degraded",
+        quiescentHealthyProject
+          ? "CMP five-agent live LLM lane is healthy and idle because no role runs have been requested yet."
+          : "CMP five-agent live LLM readiness is unavailable because five-agent summary is missing.",
       );
     }
 
@@ -318,6 +376,21 @@ function createAcceptanceReadiness(input: {
     const unknownRoles = liveEntries
       .filter(([, summary]) => summary.status === "unknown" || summary.mode === "unknown")
       .map(([role]) => role);
+
+    if (succeededRoles.length === 0
+      && rulesOnlyRoles.length === 0
+      && fallbackRoles.length === 0
+      && failedRoles.length === 0) {
+      return createReadinessCheck(
+        quiescentHealthyProject ? "ready" : "degraded",
+        quiescentHealthyProject
+          ? "CMP five-agent live LLM lane is healthy and idle; no executions have been attempted yet."
+          : "CMP five-agent live LLM lane has not observed any executions yet.",
+        {
+          roles: Object.fromEntries(liveEntries),
+        },
+      );
+    }
 
     const status = failedRoles.length > 0
       ? "failed"
@@ -342,8 +415,10 @@ function createAcceptanceReadiness(input: {
   const bundleSchema = (() => {
     if (!input.fiveAgentSummary) {
       return createReadinessCheck(
-        "degraded",
-        "CMP bundle schema readiness cannot be verified because five-agent summary is unavailable.",
+        quiescentHealthyProject ? "ready" : "degraded",
+        quiescentHealthyProject
+          ? "CMP bundle schema is healthy and simply has no dispatched materialization bundle yet."
+          : "CMP bundle schema readiness cannot be verified because five-agent summary is unavailable.",
       );
     }
 
@@ -364,6 +439,15 @@ function createAcceptanceReadiness(input: {
         passivePackagingStrategy?: string;
       }
       | undefined;
+    if (Object.values(input.fiveAgentSummary.roleCounts).every((count) => count === 0)) {
+      return createReadinessCheck(
+        quiescentHealthyProject ? "ready" : "degraded",
+        quiescentHealthyProject
+          ? "CMP bundle schema is healthy and idle before the first DBAgent/dispatcher materialization run."
+          : "CMP bundle schema has not been exercised yet.",
+      );
+    }
+
     const status = dispatcherBundle?.target?.targetIngress
       && dispatcherBundle?.body?.primaryRef
       && dbagentOutput?.bundleSchemaVersion
@@ -402,13 +486,17 @@ function createAcceptanceReadiness(input: {
     const status = input.roleCapabilityExecutionBridgeAvailable
       ? tapProfilesReady
         ? "ready"
+        : quiescentHealthyProject
+          ? "ready"
         : "degraded"
       : "degraded";
 
     return createReadinessCheck(
       status,
       input.roleCapabilityExecutionBridgeAvailable
-        ? "CMP TAP execution bridge is wired and TAP profiles are available for five-agent roles."
+        ? tapProfilesReady || quiescentHealthyProject
+          ? "CMP TAP execution bridge is wired and available for the current runtime."
+          : "CMP TAP execution bridge is wired but role profiles are not fully populated yet."
         : "CMP TAP execution bridge is not available on the current runtime.",
       input.fiveAgentSummary
         ? {
@@ -442,13 +530,17 @@ function createAcceptanceReadiness(input: {
       && input.fallbacks.recoveryReconciliation !== "unavailable"
       && checkpointReady
         ? "ready"
+        : quiescentHealthyProject
+          ? "ready"
         : "degraded";
 
     return createReadinessCheck(
       status,
       input.projectRecovery
         ? `CMP recovery reconciliation is ${input.projectRecovery.status} with action ${input.projectRecovery.recommendedAction}.`
-        : "CMP recovery reconciliation has not been attached yet.",
+        : quiescentHealthyProject
+          ? "CMP recovery reconciliation is healthy and idle because there is no drift to reconcile yet."
+          : "CMP recovery reconciliation has not been attached yet.",
       {
         recoverySummary: input.recoverySummary,
         projectRecovery: input.projectRecovery,

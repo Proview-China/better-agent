@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { execFile as execFileCallback } from "node:child_process";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, extname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import OpenAI from "openai";
+import { promisify } from "node:util";
 
 import {
   buildBrowserGroundingEvidenceText,
@@ -14,10 +16,25 @@ import {
   updateBrowserTurnSummary,
 } from "./live-agent-chat/browser-grounding.js";
 import {
+  buildInitArtifactMarkdownFromResult,
+  buildInitCompilerPrompt,
+  createFallbackInitCompilerResult,
+  loadInitCompilerRepoExcerpts,
+  parseInitArtifact,
+  parseInitCompilerResult,
+  type InitCompilerQuestion,
+} from "./live-agent-chat/init-compiler.js";
+import {
+  parseHumanGateDecisionEnvelope,
+} from "./live-agent-chat/human-gate-envelope.js";
+import {
   createCmpFiveAgentConfiguration,
   createCmpFiveAgentRuntime,
   createCmpRoleLiveLlmModelExecutor,
 } from "./cmp-five-agent/index.js";
+import { createGitCliCmpGitBackend } from "./cmp-git/index.js";
+import { createRedisCliCmpRedisMqAdapter } from "./cmp-mq/index.js";
+import { createCmpDbSqliteLiveExecutor } from "./cmp-db/index.js";
 import {
   executeModelInference,
   type ModelInferenceExecutionParams,
@@ -25,6 +42,7 @@ import {
 } from "./integrations/model-inference.js";
 import { discoverLiveSkillOverlayEntries } from "./integrations/rax-skill-index-source.js";
 import { discoverMpOverlayArtifacts } from "./integrations/rax-mp-overlay-source.js";
+import { loadRepoMemoryOverlaySnapshot } from "./integrations/repo-memory-overlay-source.js";
 import {
   buildChatCompletionMessagesFromPromptParts,
   buildResponsesInputFromPromptParts,
@@ -55,8 +73,13 @@ import {
   createCoreTaskStatusDisciplineLines,
   createCoreUserInputContractLines,
   createCoreValidationLadderLines,
+  createCoreWorkspaceInitDisciplineLines,
   createCoreWorkflowProtocolLines,
 } from "./core-prompt/index.js";
+import type {
+  CoreOverlayIndexEntryV1,
+  CoreWorkspaceInitContextV1,
+} from "./core-prompt/types.js";
 import {
   createGoalSource,
 } from "./goal/index.js";
@@ -66,15 +89,20 @@ import {
 import {
   createAgentCapabilityProfile,
   createAgentCoreRuntime,
+  createMpLanceTableNames,
 } from "./index.js";
 import type { DialogueTurn } from "./live-agent-chat/shared.js";
 import {
   applyCliDefaultsToCapabilityRequest,
+  applyLiveChatRuntimeConfig,
   buildDocReadCompletionAnswer,
   buildSpreadsheetReadCompletionAnswer,
   createCapabilityFamilyTelemetry,
   createCoreContextSnapshot,
   createLiveChatLogPath,
+  type DirectInputFileReference,
+  type DirectInputImageAttachment,
+  type DirectInputPastedContentAttachment,
   type CoreTaskStatus,
   type CoreContextSnapshot,
   estimateContextTokens,
@@ -100,7 +128,11 @@ import {
   type ParsedTapRequest,
   parseCliOptions,
   parseCoreActionEnvelope,
+  parseDirectInitRequestEnvelope,
+  parseDirectQuestionAnswerEnvelope,
+  parseDirectUserInputEnvelope,
   parseTapRequest,
+  type QuestionAskPayload,
   readPositiveInteger,
   readString,
   resolveReasoningEffort,
@@ -140,39 +172,233 @@ import {
   promptDirectInputBox,
   readDirectFallbackLine,
 } from "./live-agent-chat/ui.js";
+import { rewindDialogueTranscript } from "./live-agent-chat/rewind.js";
+import type {
+  HumanGatePanelEntry,
+} from "./tui-input/human-gate-panel.js";
+import {
+  loadDirectTuiSessionSnapshot,
+  resolveDirectTuiSnapshotTurnIndex,
+  restoreDirectTuiDialogueTurnsFromSnapshot,
+} from "./tui-input/direct-session-store.js";
+import { resolveFastServiceTierSupportFromCache } from "./tui-input/model-catalog.js";
 import {
   createAgentLineage,
   createCmpBranchFamily,
 } from "./cmp-types/index.js";
-import { rax } from "../rax/index.js";
-import { loadOpenAILiveConfig } from "../rax/live-config.js";
 import {
+  createRaxCmpConfig,
+  createRaxCmpFacade,
+  rax,
+  type ProviderId,
+  type RaxCmpPort,
+} from "../rax/index.js";
+import {
+  createOpenAIClient,
+  isChatgptCodexBackendBaseURL,
+  loadOpenAILiveConfig,
+  prepareResponsesParamsForOpenAIAuth,
+  resolveProviderGenerationVariant,
+  resolveOpenAIGenerationVariant,
+} from "../rax/live-config.js";
+import {
+  isRaxcodeRoleId,
+  loadRaxcodeConfigFile,
+  loadResolvedRoleConfig,
+  loadRaxcodeRuntimeConfigSnapshot,
+  resolveConfiguredWorkspaceRoot,
+  RaxcodeConfigError,
+  writeRaxcodeConfigFile,
+} from "../raxcode-config.js";
+import { refreshOpenAIOAuthIfNeeded } from "../raxcode-openai-auth.js";
+import {
+  resolveAppRoot,
   resolveLiveReportsDir,
-  resolveWorkspaceRoot,
+  resolveWorkspaceRaxodeAgentsMarkdownPath,
+  resolveWorkspaceRaxodeInitStatePath,
+  resolveWorkspaceRaxodeRoot,
 } from "../runtime-paths.js";
+import {
+  readWorkspaceRaxodeGitReadback,
+} from "./tui-input/workspace-raxode-store.js";
+import {
+  resolveProviderRouteKind,
+  sanitizeProviderRouteFeatureOptions,
+} from "./integrations/model-route-features.js";
 
 let CURRENT_UI_MODE: "full" | "direct" = "full";
+const execFile = promisify(execFileCallback);
+
+interface LiveCliRouteConfig {
+  provider: ProviderId;
+  baseURL: string;
+  model: string;
+  contextWindowTokens?: number;
+  openAIConfig?: ReturnType<typeof loadOpenAILiveConfig>;
+}
+
+interface CmpPanelSnapshotEntry {
+  sectionId: string;
+  lifecycle: string;
+  kind: string;
+  agentId: string;
+  ref: string;
+  updatedAt: string;
+}
+
+interface CmpPanelSnapshotPayload {
+  summaryLines: string[];
+  status: "booting" | "ready" | "empty" | "degraded";
+  sourceKind: "warming_up" | "cmp_readback" | "runtime_fallback";
+  emptyReason?: string;
+  truthStatus?: string;
+  readbackStatus?: string;
+  entries: CmpPanelSnapshotEntry[];
+}
+
+interface MpPanelSnapshotEntry {
+  memoryId: string;
+  label: string;
+  summary: string;
+  agentId?: string;
+  scopeLevel?: string;
+  updatedAt?: string;
+  bodyRef?: string;
+}
+
+interface MpPanelSnapshotPayload {
+  summaryLines: string[];
+  status: "booting" | "ready" | "empty" | "degraded";
+  sourceKind: "warming_up" | "lancedb" | "mp_overlay" | "repo_memory_fallback";
+  emptyReason?: string;
+  sourceClass: string;
+  rootPath?: string;
+  recordCount?: number;
+  entries: MpPanelSnapshotEntry[];
+}
+
+interface CapabilityPanelSnapshotEntry {
+  capabilityKey: string;
+  description: string;
+  bindingState: string;
+}
+
+interface CapabilityPanelSnapshotGroup {
+  groupKey: string;
+  title: string;
+  count: number;
+  entries: CapabilityPanelSnapshotEntry[];
+}
+
+interface CapabilityPanelSnapshotPayload {
+  summaryLines: string[];
+  status: "booting" | "ready" | "empty" | "degraded";
+  registeredCount: number;
+  familyCount: number;
+  blockedCount: number;
+  pendingHumanGateCount?: number;
+  pendingHumanGates?: HumanGatePanelEntry[];
+  groups: CapabilityPanelSnapshotGroup[];
+}
+
+interface InitPanelSnapshotPayload {
+  summaryLines: string[];
+  status:
+    | "idle"
+    | "validating_workspace"
+    | "awaiting_seed"
+    | "analyzing_repo"
+    | "asking_questions"
+    | "synthesizing_agents"
+    | "synthesizing"
+    | "registering_git"
+    | "completed"
+    | "interrupted"
+    | "ready"
+    | "failed"
+    | "degraded";
+  initState?: "uninitialized" | "partial" | "initialized";
+  repoState?: "empty" | "non_empty";
+  gitState?: "unregistered" | "registering" | "registered" | "failed";
+  artifactPath?: string;
+  compiledSessionPreamble?: string;
+  completionSummary?: string;
+  seedText?: string;
+  emptyReason?: string;
+}
+
+interface QuestionPanelSnapshotPayload {
+  status: "idle" | "active";
+  title?: string;
+  instruction?: string;
+  sourceKind?: "init" | "core";
+  requestId?: string;
+  submitLabel?: string;
+  questions?: QuestionAskPayload["questions"];
+  emptyReason?: string;
+}
+
+interface WorkspaceInitStateRecord {
+  status: "partial" | "initialized";
+  initializedAt: string;
+  gitRegistered: boolean;
+  projectId: string;
+  defaultAgentId: string;
+  branchFamily?: {
+    workBranchName: string;
+    cmpBranchName: string;
+    mpBranchName: string;
+    tapBranchName: string;
+  };
+  agentsPath?: string;
+  artifactPath?: string;
+}
 
 async function executeCliModelInference(
   params: ModelInferenceExecutionParams,
 ): Promise<ModelInferenceExecutionResult> {
   const metadata = params.intent.frame.metadata ?? {};
-  const provider = readString(metadata.provider) ?? "openai";
-  const variant = readString(metadata.variant) ?? "responses";
-  const model = readString(metadata.model) ?? loadOpenAILiveConfig().model;
-  const reasoningEffort = readString(metadata.reasoningEffort) as "low" | "medium" | "high" | undefined;
+  const roleId = typeof metadata.roleId === "string" && isRaxcodeRoleId(metadata.roleId)
+    ? metadata.roleId
+    : "core.main";
+  const resolvedRole = loadResolvedRoleConfig(roleId);
+  const provider = readString(metadata.provider) ?? resolvedRole.profile.provider;
+  const variant = readString(metadata.variant) ?? resolveProviderGenerationVariant({
+    provider: resolvedRole.profile.provider,
+    baseURL: resolvedRole.profile.route.baseURL,
+    apiStyle: resolvedRole.profile.route.apiStyle,
+  });
+  const routeKind = resolveProviderRouteKind({
+    provider: resolvedRole.profile.provider,
+    baseURL: resolvedRole.profile.route.baseURL,
+    apiStyle: resolvedRole.profile.route.apiStyle,
+    variant,
+  });
+  const model = readString(metadata.model) ?? resolvedRole.profile.model;
+  const sanitized = sanitizeProviderRouteFeatureOptions(routeKind, {
+    reasoningEffort: readString(metadata.reasoningEffort) as string | undefined,
+    serviceTier: readString(metadata.serviceTier) as "fast" | undefined,
+  });
+  const reasoningEffort = sanitized.reasoningEffort;
+  const requestedServiceTier = sanitized.serviceTier;
   const maxOutputTokens = readPositiveInteger(metadata.maxOutputTokens);
   const promptMessages = readPromptMessagesMetadata(metadata.promptMessages);
+  const inputImageUrls = Array.isArray(metadata.inputImageUrls)
+    ? metadata.inputImageUrls
+      .filter((entry): entry is string => typeof entry === "string" && entry.startsWith("data:image/"))
+    : undefined;
 
   if (provider !== "openai" || (variant !== "responses" && variant !== "chat_completions_compat")) {
     return executeModelInference(params);
   }
 
-  const config = loadOpenAILiveConfig();
-  const client = new OpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL,
-  });
+  await refreshOpenAIOAuthIfNeeded();
+  const config = loadOpenAILiveConfig(roleId);
+  const serviceTier = requestedServiceTier === "fast"
+    && resolveFastServiceTierSupportFromCache(config, model, resolveAppRoot())
+    ? "fast"
+    : undefined;
+  const client = createOpenAIClient(config);
   const label = inferStreamLabel(params);
   const logger = metadata.cliLogger instanceof LiveChatLogger
     ? metadata.cliLogger
@@ -182,7 +408,10 @@ async function executeCliModelInference(
     ? "direct"
     : CURRENT_UI_MODE;
   const printStream = shouldPrintStreamLabel(uiMode, label);
-  const preferBuffered = label === "core/action" && uiMode !== "direct";
+  const preferBuffered =
+    label === "core/action"
+    && uiMode !== "direct"
+    && !isChatgptCodexBackendBaseURL(config.baseURL);
   const isFinalAssistantStream = label === "core/model.infer";
   const shouldEmitReplyAssistantDelta = uiMode === "direct" && label === "core/action";
   const startedAt = Date.now();
@@ -202,6 +431,7 @@ async function executeCliModelInference(
     model,
     variant,
     reasoningEffort: reasoningEffort ?? "none",
+    serviceTier: serviceTier ?? null,
     maxOutputTokens: maxOutputTokens ?? null,
   });
 
@@ -298,14 +528,22 @@ async function executeCliModelInference(
     let bufferedRaw: Record<string, unknown> | undefined;
     if (variant === "responses") {
       const response = await client.responses.create({
-        model,
-        input: buildResponsesInputFromPromptParts({
-          instructionText: params.intent.frame.instructionText,
-          promptMessages,
-        }),
-        stream: false,
-        max_output_tokens: maxOutputTokens,
-        reasoning: reasoningEffort ? { effort: reasoningEffort } : undefined,
+        ...prepareResponsesParamsForOpenAIAuth(
+          config,
+          {
+            model,
+            input: buildResponsesInputFromPromptParts({
+              instructionText: params.intent.frame.instructionText,
+              promptMessages,
+              inputImageUrls,
+            }),
+            stream: false,
+            max_output_tokens: maxOutputTokens,
+            reasoning: reasoningEffort ? { effort: reasoningEffort } : undefined,
+            service_tier: serviceTier,
+          },
+          params.intent.frame.instructionText,
+        ),
       } as never);
       bufferedRaw = response as unknown as Record<string, unknown>;
       bufferedText = extractTextFromResponseLike(bufferedRaw);
@@ -316,10 +554,12 @@ async function executeCliModelInference(
         messages: buildChatCompletionMessagesFromPromptParts({
           instructionText: params.intent.frame.instructionText,
           promptMessages,
+          inputImageUrls,
         }),
         stream: false,
         max_completion_tokens: maxOutputTokens,
         reasoning_effort: reasoningEffort,
+        service_tier: serviceTier,
       } as never);
       const choice = Array.isArray(completion.choices) ? completion.choices[0] : undefined;
       const message = choice && typeof choice === "object"
@@ -413,14 +653,22 @@ async function executeCliModelInference(
   try {
     if (variant === "responses") {
       const stream = await client.responses.create({
-        model,
-        input: buildResponsesInputFromPromptParts({
-          instructionText: params.intent.frame.instructionText,
-          promptMessages,
-        }),
-        stream: true,
-        max_output_tokens: maxOutputTokens,
-        reasoning: reasoningEffort ? { effort: reasoningEffort } : undefined,
+        ...prepareResponsesParamsForOpenAIAuth(
+          config,
+          {
+            model,
+            input: buildResponsesInputFromPromptParts({
+              instructionText: params.intent.frame.instructionText,
+              promptMessages,
+              inputImageUrls,
+            }),
+            stream: true,
+            max_output_tokens: maxOutputTokens,
+            reasoning: reasoningEffort ? { effort: reasoningEffort } : undefined,
+            service_tier: serviceTier,
+          },
+          params.intent.frame.instructionText,
+        ),
       } as never);
 
       for await (const event of stream as unknown as AsyncIterable<Record<string, unknown>>) {
@@ -452,10 +700,12 @@ async function executeCliModelInference(
         messages: buildChatCompletionMessagesFromPromptParts({
           instructionText: params.intent.frame.instructionText,
           promptMessages,
+          inputImageUrls,
         }),
         stream: true,
         max_completion_tokens: maxOutputTokens,
         reasoning_effort: reasoningEffort,
+        service_tier: serviceTier,
       } as never);
 
       for await (const chunk of stream as unknown as AsyncIterable<Record<string, unknown>>) {
@@ -577,6 +827,7 @@ function createCoreUserInputAssembly(input: {
   skillEntries?: import("./core-prompt/types.js").CoreOverlayIndexEntryV1[];
   memoryEntries?: import("./core-prompt/types.js").CoreOverlayIndexEntryV1[];
   mpRoutedPackage?: import("./core-prompt/types.js").CoreMpRoutedPackageV1;
+  workspaceInitContext?: import("./core-prompt/types.js").CoreWorkspaceInitContextV1;
   toolResultText?: string;
   capabilityHistoryText?: string;
   groundingEvidenceText?: string;
@@ -607,6 +858,7 @@ function createCoreUserInputAssembly(input: {
     transcript: input.transcript,
     cmp: input.cmp,
     mpRoutedPackage: input.mpRoutedPackage,
+    workspaceInitContext: input.workspaceInitContext,
     availableCapabilitiesText: `Currently registered TAP capabilities: ${availableCapabilities || "(none)"}.`,
     capabilityUsageIndexText,
     skillEntries: input.skillEntries,
@@ -616,8 +868,8 @@ function createCoreUserInputAssembly(input: {
     groundingEvidenceText: input.groundingEvidenceText,
   });
   const developmentInput = {
-    tapMode: LIVE_CHAT_TAP_OVERRIDE.requestedMode,
-    automationDepth: LIVE_CHAT_TAP_OVERRIDE.automationDepth,
+    tapMode: LIVE_CHAT_TAP_OVERRIDE.requestedMode ?? "bapr",
+    automationDepth: LIVE_CHAT_TAP_OVERRIDE.automationDepth ?? "default",
     uiMode: "direct" as const,
   };
   const modeInstructions = [
@@ -625,6 +877,9 @@ function createCoreUserInputAssembly(input: {
       "Use the CMP package summary below as the current executable context.",
       "Execution mode is active.",
       "TAP governance is configured in bapr + prefer_auto for this CLI.",
+      ...createCoreWorkspaceInitDisciplineLines({
+        forceFinalAnswer: input.forceFinalAnswer,
+      }),
       ...createCoreCmpHandoffLines({
         cmpContextPackage: contextualInput.cmpContextPackage,
         forceFinalAnswer: input.forceFinalAnswer,
@@ -750,8 +1005,8 @@ function createCoreActionPlannerAssembly(
     }),
   );
   const developmentInput = {
-    tapMode: LIVE_CHAT_TAP_OVERRIDE.requestedMode,
-    automationDepth: LIVE_CHAT_TAP_OVERRIDE.automationDepth,
+    tapMode: LIVE_CHAT_TAP_OVERRIDE.requestedMode ?? "bapr",
+    automationDepth: LIVE_CHAT_TAP_OVERRIDE.automationDepth ?? "default",
     uiMode: "direct" as const,
   };
   const contextualInput = createLiveChatCoreContextualInput({
@@ -759,16 +1014,18 @@ function createCoreActionPlannerAssembly(
     transcript: state.transcript,
     cmp,
     mpRoutedPackage: state.mpRoutedPackage,
+    workspaceInitContext: state.workspaceInitContext,
     availableCapabilitiesText: `Available capabilities: ${availableCapabilities.join(", ") || "(none)"}`,
     capabilityUsageIndexText,
     skillEntries: state.skillOverlayEntries,
-    memoryEntries: state.memoryOverlayEntries,
+    memoryEntries: mergeCoreMemoryOverlayEntries(state),
   });
   const modeInstructions = [
       "Return strict JSON only.",
       "Choose the next action for the frontstage core agent.",
       "Execution mode is active.",
       "TAP governance is bapr + prefer_auto for this CLI.",
+      ...createCoreWorkspaceInitDisciplineLines({}),
       ...createCoreCmpHandoffLines({
         cmpContextPackage: contextualInput.cmpContextPackage,
       }),
@@ -827,13 +1084,13 @@ function createCoreActionPlannerAssembly(
 
 function createCoreContextTelemetry(input: {
   state: LiveCliState;
-  config: ReturnType<typeof loadOpenAILiveConfig>;
+  config: LiveCliRouteConfig;
   promptKind: CoreContextSnapshot["promptKind"];
   promptText: string;
 }): CoreContextSnapshot {
   return createCoreContextSnapshot({
-    provider: "openai",
-    model: LIVE_CHAT_MODEL_PLAN.core.model,
+    provider: input.config.provider,
+    model: input.config.model,
     promptKind: input.promptKind,
     promptText: input.promptText,
     transcriptText: formatTranscript(input.state.transcript.slice(-6)),
@@ -849,9 +1106,9 @@ async function runCoreModelPass(input: {
   promptBlocks?: import("./types/kernel-goal.js").GoalPromptBlock[];
   promptMessages?: Array<{ role: "system" | "developer" | "user"; content: string }>;
   cmp?: CmpTurnArtifacts;
-  config: ReturnType<typeof loadOpenAILiveConfig>;
+  config: LiveCliRouteConfig;
   inputImageUrls?: string[];
-  reasoningEffortOverride?: "low" | "medium" | "high";
+  reasoningEffortOverride?: string;
 }): Promise<{
   runId: string;
   answer: string;
@@ -864,30 +1121,66 @@ async function runCoreModelPass(input: {
   };
   eventTypes: string[];
 }> {
+  const readKernelOutputText = (value: unknown): string | undefined => {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+    if (!value || typeof value !== "object") {
+      return undefined;
+    }
+    const record = value as Record<string, unknown>;
+    if (typeof record.text === "string" && record.text.trim().length > 0) {
+      return record.text.trim();
+    }
+    const raw = "raw" in record ? record.raw : undefined;
+    const extracted = extractTextFromResponseLike(raw);
+    return extracted.trim().length > 0 ? extracted.trim() : undefined;
+  };
+
   const source = createGoalSource({
     goalId: randomUUID(),
     sessionId: input.state.sessionId,
     userInput: input.userInput,
-      metadata: {
-        provider: "openai",
-        model: LIVE_CHAT_MODEL_PLAN.core.model,
-        variant: "responses",
-        ...(input.promptMessages?.length
-          ? { promptMessages: input.promptMessages }
-          : {}),
-        reasoningEffort: input.reasoningEffortOverride ?? resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.core),
-        cliHarness: "praxis-live-cli",
-        cliLogger: input.state.logger,
-        cliTurnIndex: input.state.turnIndex,
-        cliUiMode: input.state.uiMode,
-        ...(input.inputImageUrls?.length
-          ? { inputImageUrls: input.inputImageUrls }
-          : {}),
-        ...(input.cmp ? {
-          cmpPackageId: input.cmp.packageId,
-          cmpPackageRef: input.cmp.packageRef,
-      } : {}),
-    },
+      metadata: (() => {
+        const resolvedCoreRole = loadResolvedRoleConfig("core.main");
+        const variant = resolveProviderGenerationVariant({
+          provider: resolvedCoreRole.profile.provider,
+          baseURL: resolvedCoreRole.profile.route.baseURL,
+          apiStyle: resolvedCoreRole.profile.route.apiStyle,
+        });
+        const routeKind = resolveProviderRouteKind({
+          provider: resolvedCoreRole.profile.provider,
+          baseURL: resolvedCoreRole.profile.route.baseURL,
+          apiStyle: resolvedCoreRole.profile.route.apiStyle,
+          variant,
+        });
+        const sanitized = sanitizeProviderRouteFeatureOptions(routeKind, {
+          reasoningEffort: input.reasoningEffortOverride ?? resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.core),
+          serviceTier: LIVE_CHAT_MODEL_PLAN.core.serviceTier,
+        });
+        return {
+          roleId: "core.main",
+          provider: resolvedCoreRole.profile.provider,
+          model: LIVE_CHAT_MODEL_PLAN.core.model,
+          variant,
+          ...(input.promptMessages?.length
+            ? { promptMessages: input.promptMessages }
+            : {}),
+          reasoningEffort: sanitized.reasoningEffort,
+          serviceTier: sanitized.serviceTier,
+          cliHarness: "praxis-live-cli",
+          cliLogger: input.state.logger,
+          cliTurnIndex: input.state.turnIndex,
+          cliUiMode: input.state.uiMode,
+          ...(input.inputImageUrls?.length
+            ? { inputImageUrls: input.inputImageUrls }
+            : {}),
+          ...(input.cmp ? {
+            cmpPackageId: input.cmp.packageId,
+            cmpPackageRef: input.cmp.packageRef,
+        } : {}),
+        };
+      })(),
   });
 
   if (input.promptBlocks?.length) {
@@ -903,8 +1196,15 @@ async function runCoreModelPass(input: {
     maxSteps: 4,
   });
 
+  const kernelResult = input.state.runtime.readKernelResult(result.outcome.run.runId);
+  const kernelOutputText = readKernelOutputText(kernelResult?.output);
   const answer = result.answer?.trim()
-    || "Core 没有返回正文，但链路已经跑完。";
+    || kernelOutputText
+    || (kernelResult?.error?.message
+      ? `Core 模型调用失败：${kernelResult.error.message}`
+      : kernelResult
+        ? `Core 模型调用没有返回正文（status=${kernelResult.status}）。`
+        : "Core 模型调用没有返回正文。");
   const eventTypes = result.finalEvents.map((entry) => entry.event.type);
   const capabilityResultEvent = result.finalEvents
     .map((entry) => entry.event)
@@ -969,7 +1269,7 @@ async function executeTapRequest(
     },
   }, {
     agentId: `praxis-live-cli:${state.sessionId}`,
-    mode: LIVE_CHAT_TAP_OVERRIDE.requestedMode,
+    mode: LIVE_CHAT_TAP_OVERRIDE.requestedMode ?? "bapr",
     requestedTier: "B1",
     reason: `CLI execution request for ${request.capabilityKey}`,
     metadata: {
@@ -1001,9 +1301,26 @@ async function runCoreActionPlanner(
   state: LiveCliState,
   userMessage: string,
   cmp?: CmpTurnArtifacts,
+  inputImageUrls?: string[],
 ): Promise<CoreActionEnvelope> {
   const assembly = createCoreActionPlannerAssembly(state, userMessage, cmp);
   const instructionText = assembly.promptText;
+  const resolvedCoreRole = loadResolvedRoleConfig("core.main");
+  const variant = resolveProviderGenerationVariant({
+    provider: resolvedCoreRole.profile.provider,
+    baseURL: resolvedCoreRole.profile.route.baseURL,
+    apiStyle: resolvedCoreRole.profile.route.apiStyle,
+  });
+  const routeKind = resolveProviderRouteKind({
+    provider: resolvedCoreRole.profile.provider,
+    baseURL: resolvedCoreRole.profile.route.baseURL,
+    apiStyle: resolvedCoreRole.profile.route.apiStyle,
+    variant,
+  });
+  const sanitized = sanitizeProviderRouteFeatureOptions(routeKind, {
+    reasoningEffort: resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.core),
+    serviceTier: LIVE_CHAT_MODEL_PLAN.core.serviceTier,
+  });
   const intent = {
     intentId: randomUUID(),
     sessionId: state.sessionId,
@@ -1020,16 +1337,19 @@ async function runCoreActionPlanner(
       inputRefs: [],
       cacheKey: `core-action-envelope:${randomUUID()}`,
       metadata: {
-        provider: "openai",
+        roleId: "core.main",
+        provider: resolvedCoreRole.profile.provider,
         model: LIVE_CHAT_MODEL_PLAN.core.model,
-        variant: "responses",
+        variant,
         promptBlocks: assembly.promptBlocks,
         promptMessages: assembly.promptMessages,
-        reasoningEffort: resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.core),
+        reasoningEffort: sanitized.reasoningEffort,
+        serviceTier: sanitized.serviceTier,
         streamLabel: "core/action",
         cliLogger: state.logger,
         cliTurnIndex: state.turnIndex,
         cliUiMode: state.uiMode,
+        ...(inputImageUrls?.length ? { inputImageUrls } : {}),
       },
     },
   };
@@ -1040,6 +1360,7 @@ async function runCoreActionPlanner(
 }
 
 async function runCmpTurn(state: LiveCliState, userMessage: string): Promise<CmpTurnArtifacts> {
+  await state.cmpInfraReady?.catch(() => undefined);
   const turnId = `${state.turnIndex}`;
   const timestamp = new Date().toISOString();
   const agentId = "cmp-live-cli-main";
@@ -1295,6 +1616,1283 @@ async function runCmpTurn(state: LiveCliState, userMessage: string): Promise<Cmp
   };
 }
 
+function createCmpViewerRuntimePort(state: LiveCliState): RaxCmpPort {
+  return {
+    project: {
+      bootstrapProjectInfra(input) {
+        return state.runtime.bootstrapCmpProjectInfra(input);
+      },
+      getBootstrapReceipt(projectId) {
+        return state.runtime.getCmpProjectInfraBootstrapReceipt(projectId);
+      },
+      getInfraProjectState(projectId) {
+        return state.runtime.getCmpRuntimeInfraProjectState(projectId);
+      },
+      getRecoverySummary() {
+        return state.runtime.getCmpRuntimeRecoverySummary();
+      },
+      getProjectRecoverySummary(projectId) {
+        return state.runtime.getCmpRuntimeProjectRecoverySummary(projectId);
+      },
+      getDeliveryTruthSummary(projectId) {
+        return state.runtime.getCmpRuntimeDeliveryTruthSummary(projectId);
+      },
+      createSnapshot() {
+        return state.runtime.createCmpRuntimeSnapshot();
+      },
+      recoverSnapshot(snapshot) {
+        return state.runtime.recoverCmpRuntimeSnapshot(snapshot);
+      },
+      advanceDeliveryTimeouts(input) {
+        return state.runtime.advanceCmpMqDeliveryTimeouts(input);
+      },
+    },
+    flow: {
+      ingest(input) {
+        return state.runtime.ingestRuntimeContext(input);
+      },
+      commit(input) {
+        return state.runtime.commitContextDelta(input);
+      },
+      resolve(input) {
+        return state.runtime.resolveCheckedSnapshot(input);
+      },
+      materialize(input) {
+        return state.runtime.materializeContextPackage(input);
+      },
+      dispatch(input) {
+        return state.runtime.dispatchContextPackage(input);
+      },
+      requestHistory(input) {
+        return state.runtime.requestHistoricalContext(input);
+      },
+    },
+    fiveAgent: {
+      getSummary(agentId) {
+        return state.runtime.getCmpFiveAgentRuntimeSummary(agentId);
+      },
+    },
+    roles: {
+      resolveCapabilityAccess(input) {
+        return state.runtime.resolveCmpFiveAgentCapabilityAccess(input);
+      },
+      dispatchCapability(input) {
+        return state.runtime.dispatchCmpFiveAgentCapability(input);
+      },
+      approvePeerExchange(input) {
+        return state.runtime.reviewCmpPeerExchangeApproval(input);
+      },
+    },
+  };
+}
+
+function createLiveCmpSessionConfig(input: {
+  workspaceRoot: string;
+  defaultBranchName?: string;
+}) {
+  return createRaxCmpConfig({
+    projectId: "praxis-live-cli",
+    git: {
+      repoName: basename(input.workspaceRoot) || "praxis-live-cli",
+      repoRootPath: input.workspaceRoot,
+      defaultBranchName: input.defaultBranchName,
+    },
+    db: {
+      kind: "sqlite",
+      databaseName: resolve(input.workspaceRoot, "memory", "generated", "cmp-db", "cmp.sqlite"),
+      schemaName: "main",
+    },
+    mq: {
+      namespaceRoot: "praxis",
+    },
+  });
+}
+
+async function buildCmpPanelSnapshot(state: LiveCliState): Promise<CmpPanelSnapshotPayload> {
+  const workspaceRoot = process.cwd();
+  const projectId = "praxis-live-cli";
+  const records = state.runtime
+    .listCmpSectionRecords()
+    .filter((record) => record.lifecycle === "persisted" || record.lifecycle === "checked" || record.lifecycle === "pre")
+    .slice()
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const entries = records.map((record) => ({
+    sectionId: record.sectionId,
+    lifecycle: record.lifecycle,
+    kind: record.kind,
+    agentId: record.agentId,
+    ref: readString(record.metadata?.bodyRef)
+      ?? record.payloadRefs[0]
+      ?? record.sourceAnchors[0]
+      ?? record.sectionId,
+    updatedAt: record.updatedAt,
+  }));
+  const cmpFacade = createRaxCmpFacade();
+  const bootstrapReceipt = state.runtime.getCmpProjectInfraBootstrapReceipt(projectId);
+  const cmpSession = cmpFacade.session.open({
+    config: createLiveCmpSessionConfig({
+      workspaceRoot,
+      defaultBranchName: bootstrapReceipt?.git.defaultBranchName,
+    }),
+    runtime: createCmpViewerRuntimePort(state),
+    control: {
+      executionStyle: "manual",
+    },
+  });
+  const readback = await cmpFacade.project.readback({
+    session: cmpSession,
+    metadata: {
+      source: "direct_tui_cmp_viewer",
+    },
+  });
+  const summary = readback.summary;
+  const dbTruth = summary?.truthLayers.find((layer) => layer.layer === "db")?.status ?? "unknown";
+  const readbackStatus = summary?.statusPanel?.health.readbackStatus ?? summary?.status ?? "unknown";
+  const objectModelSectionCount = summary?.objectModel?.sectionCount;
+  const lifecycleSummary = summary?.objectModel?.sectionLifecycleCounts
+    ? Object.entries(summary.objectModel.sectionLifecycleCounts)
+      .map(([lifecycle, count]) => `${lifecycle}:${count}`)
+      .join(", ")
+    : "";
+  const sourceKind = (dbTruth !== "unknown" || readbackStatus !== "unknown")
+    ? "cmp_readback"
+    : "runtime_fallback";
+  const status = entries.length > 0
+    ? "ready"
+    : sourceKind === "cmp_readback" && readbackStatus === "ready"
+      ? "empty"
+      : "degraded";
+  const emptyReason = entries.length > 0
+    ? undefined
+    : sourceKind === "cmp_readback" && readbackStatus === "ready"
+      ? "CMP DB truth is healthy but there are no materialized section records to show yet."
+      : sourceKind === "cmp_readback"
+        ? "CMP DB truth is reachable, but CMP readback is not fully healthy yet."
+      : "CMP DB truth is not available in the current runtime yet.";
+  return {
+    summaryLines: [
+      objectModelSectionCount !== undefined
+        ? `${objectModelSectionCount} DB-backed sections tracked`
+        : `${entries.length} sections tracked`,
+      lifecycleSummary || "No section lifecycle data yet",
+      `db=${dbTruth} readback=${readbackStatus}`,
+    ],
+    status,
+    sourceKind,
+    emptyReason,
+    truthStatus: dbTruth,
+    readbackStatus,
+    entries,
+  };
+}
+
+function createMpViewerProjectId(cwd: string): string {
+  const slug = cwd
+    .replace(/[^a-z0-9]+/giu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .toLowerCase()
+    .slice(-48);
+  return `project.mp-overlay.${slug || "default"}`;
+}
+
+async function loadMpLanceViewerEntries(input: {
+  rootPath: string;
+  projectId: string;
+  agentId: string;
+}): Promise<{ entries: MpPanelSnapshotEntry[]; openedTableCount: number }> {
+  const lancedb = await import("@lancedb/lancedb") as {
+    connect: (uri: string) => Promise<{
+      openTable: (name: string) => Promise<{ query: () => { toArray: () => Promise<unknown[]> } }>;
+    }>;
+  };
+  const connection = await lancedb.connect(input.rootPath);
+  const tableNames = createMpLanceTableNames({
+    projectId: input.projectId,
+    agentId: input.agentId,
+  });
+  const orderedNames = [
+    tableNames.projectMemories,
+    tableNames.agentMemories,
+    tableNames.globalMemories,
+  ].filter((value, index, array): value is string => typeof value === "string" && value.length > 0 && array.indexOf(value) === index);
+  const rows: Array<Record<string, unknown>> = [];
+  let openedTableCount = 0;
+  for (const tableName of orderedNames) {
+    try {
+      const table = await connection.openTable(tableName);
+      openedTableCount += 1;
+      const tableRows = await table.query().toArray();
+      rows.push(...tableRows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object"));
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    openedTableCount,
+    entries: rows
+    .filter((row) => String(row.projectId ?? "") === input.projectId)
+    .sort((left, right) => {
+      const leftArchived = String(left.visibilityState ?? "") === "archived" ? 1 : 0;
+      const rightArchived = String(right.visibilityState ?? "") === "archived" ? 1 : 0;
+      if (leftArchived !== rightArchived) {
+        return leftArchived - rightArchived;
+      }
+      return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+    })
+    .map((row) => {
+      const semanticGroupId = typeof row.semanticGroupId === "string" ? row.semanticGroupId : "";
+      const sourceStoredSectionId = typeof row.sourceStoredSectionId === "string" ? row.sourceStoredSectionId : "";
+      const bodyRef = typeof row.bodyRef === "string" ? row.bodyRef : undefined;
+      const memoryKind = typeof row.memoryKind === "string" ? row.memoryKind : "";
+      return {
+        memoryId: String(row.memoryId ?? ""),
+        label: semanticGroupId || sourceStoredSectionId || bodyRef || String(row.memoryId ?? ""),
+        summary: [semanticGroupId, sourceStoredSectionId, memoryKind].filter(Boolean).join(" / ") || "memory record",
+        agentId: typeof row.agentId === "string" ? row.agentId : undefined,
+        scopeLevel: typeof row.scopeLevel === "string" ? row.scopeLevel : undefined,
+        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : undefined,
+        bodyRef,
+      };
+    }),
+  };
+}
+
+async function buildMpPanelSnapshot(state: LiveCliState): Promise<MpPanelSnapshotPayload> {
+  const cwd = process.cwd();
+  const rootPath = resolve(cwd, "memory", "generated", "mp-overlay-cache");
+  const projectId = createMpViewerProjectId(cwd);
+  const agentId = "main";
+  try {
+    const lancedbSnapshot = await loadMpLanceViewerEntries({
+      rootPath,
+      projectId,
+      agentId,
+    });
+    if (lancedbSnapshot.openedTableCount > 0) {
+      return {
+        summaryLines: [
+          lancedbSnapshot.entries.length > 0
+            ? "LanceDB-backed MP memory records are available."
+            : "LanceDB is reachable but no project memory records were found.",
+          `source=lancedb · ${rootPath}`,
+          `${lancedbSnapshot.entries.length} memory records`,
+        ],
+        status: lancedbSnapshot.entries.length > 0 ? "ready" : "empty",
+        sourceKind: "lancedb",
+        sourceClass: "lancedb",
+        emptyReason: lancedbSnapshot.entries.length > 0
+          ? undefined
+          : "No LanceDB memory records were found for the current project.",
+        rootPath,
+        recordCount: lancedbSnapshot.entries.length,
+        entries: lancedbSnapshot.entries,
+      };
+    }
+  } catch {
+    // fall through to overlay/fallback sources
+  }
+
+  const fallbackSnapshot = loadRepoMemoryOverlaySnapshot({
+    rootDir: resolve(cwd, "memory"),
+  });
+  const fallbackEntries = fallbackSnapshot.entries.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    summary: entry.summary,
+    bodyRef: entry.bodyRef,
+  }));
+  const entries = (state.memoryOverlayEntries && state.memoryOverlayEntries.length > 0)
+    ? state.memoryOverlayEntries
+    : fallbackEntries;
+  const sourceClass = state.mpRoutedPackage?.sourceClass ?? "repo_memory_fallback";
+  const sourceKind = sourceClass === "repo_memory_fallback" ? "repo_memory_fallback" : "mp_overlay";
+  const status = entries.length > 0 ? "ready" : "empty";
+  return {
+    summaryLines: [
+      state.mpRoutedPackage?.summary ?? (entries.length > 0 ? "MP memory overlay is available." : "MP snapshot unavailable"),
+      `source=${sourceClass}${sourceKind === "repo_memory_fallback" ? " (fallback)" : ""}`,
+      `${entries.length} memory records`,
+    ],
+    status,
+    sourceKind,
+    emptyReason: entries.length > 0 ? undefined : "No MP memory records are available in the current LanceDB or fallback snapshot.",
+    sourceClass,
+    rootPath,
+    recordCount: entries.length,
+    entries: entries.map((entry) => ({
+      memoryId: entry.id.replace(/^memory:/u, ""),
+      label: entry.label,
+      summary: entry.summary,
+      agentId: undefined,
+      scopeLevel: undefined,
+      updatedAt: undefined,
+      bodyRef: entry.bodyRef,
+    })),
+  };
+}
+
+function buildCapabilitiesPanelSnapshot(state: LiveCliState): CapabilityPanelSnapshotPayload {
+  const governance = state.runtime.createTapGovernanceSnapshot();
+  const tapRuntime = state.runtime.createTapRuntimeSnapshot();
+  const manifests = state.runtime.capabilityPool.listCapabilities();
+  const bindings = state.runtime.capabilityPool.listBindings();
+  const humanGateContexts = new Map(
+    (tapRuntime.humanGateContexts ?? []).map((context) => [context.gateId, context]),
+  );
+  const groups = new Map<string, CapabilityPanelSnapshotGroup>();
+  for (const manifest of manifests) {
+    const groupKey = manifest.capabilityKey.split(".")[0] ?? "other";
+    const manifestBindings = bindings.filter((binding) => binding.capabilityId === manifest.capabilityId);
+    const bindingState = [...new Set(manifestBindings.map((binding) => binding.state))].join("/") || "unbound";
+    const existing = groups.get(groupKey) ?? {
+      groupKey,
+      title: groupKey,
+      count: 0,
+      entries: [],
+    };
+    existing.entries.push({
+      capabilityKey: manifest.capabilityKey,
+      description: manifest.description,
+      bindingState,
+    });
+    existing.count += 1;
+    groups.set(groupKey, existing);
+  }
+  const orderedGroups = [...groups.values()]
+    .sort((left, right) => left.groupKey.localeCompare(right.groupKey))
+    .map((group) => ({
+      ...group,
+      entries: group.entries.sort((left, right) => left.capabilityKey.localeCompare(right.capabilityKey)),
+    }));
+  const pendingHumanGates: HumanGatePanelEntry[] = tapRuntime.humanGates
+    .filter((gate) => gate.sessionId === state.sessionId && gate.status === "waiting_human")
+    .slice()
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .map((gate) => {
+      const context = humanGateContexts.get(gate.gateId);
+      const requestedScopeMetadata = context?.accessRequest.requestedScope?.metadata;
+      const externalPathPrefixes = Array.isArray(requestedScopeMetadata?.externalPathPrefixes)
+        ? requestedScopeMetadata.externalPathPrefixes
+          .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        : [];
+      return {
+        gateId: gate.gateId,
+        requestId: gate.requestId,
+        capabilityKey: gate.capabilityKey,
+        requestedTier: gate.requestedTier,
+        mode: gate.mode,
+        reason: gate.reason,
+        createdAt: gate.createdAt,
+        updatedAt: gate.updatedAt,
+        externalPathPrefixes,
+        plainLanguageRisk: gate.plainLanguageRisk,
+      };
+    });
+  return {
+    summaryLines: [
+      `${manifests.length} registered`,
+      `${orderedGroups.length} families`,
+      `${governance.blockingCapabilityKeys.length} blocked`,
+      `${pendingHumanGates.length} human gate pending`,
+    ],
+    status: manifests.length > 0 ? "ready" : "empty",
+    registeredCount: manifests.length,
+    familyCount: orderedGroups.length,
+    blockedCount: governance.blockingCapabilityKeys.length,
+    pendingHumanGateCount: pendingHumanGates.length,
+    pendingHumanGates,
+    groups: orderedGroups,
+  };
+}
+
+function createBootingCmpPanelSnapshot(): CmpPanelSnapshotPayload {
+  return {
+    summaryLines: [
+      "CMP viewer is warming up.",
+      "Checking CMP readback truth and section availability.",
+      "db=warming_up readback=warming_up",
+    ],
+    status: "booting",
+    sourceKind: "warming_up",
+    emptyReason: "CMP readback is still warming up.",
+    truthStatus: "warming_up",
+    readbackStatus: "warming_up",
+    entries: [],
+  };
+}
+
+function createBootingMpPanelSnapshot(cwd: string): MpPanelSnapshotPayload {
+  const rootPath = resolve(cwd, "memory", "generated", "mp-overlay-cache");
+  return {
+    summaryLines: [
+      "MP viewer is warming up.",
+      `source=warming_up · ${rootPath}`,
+      "Waiting for LanceDB and overlay bootstrap.",
+    ],
+    status: "booting",
+    sourceKind: "warming_up",
+    emptyReason: "MP LanceDB and memory overlay bootstrap are still warming up.",
+    sourceClass: "warming_up",
+    rootPath,
+    recordCount: 0,
+    entries: [],
+  };
+}
+
+function compactInitLine(value: string, maxChars = 160): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+function resolveLiveInitArtifactPath(workspaceRoot: string): string {
+  return resolveWorkspaceRaxodeAgentsMarkdownPath(workspaceRoot);
+}
+
+function resolveLiveInitStatePath(workspaceRoot: string): string {
+  return resolveWorkspaceRaxodeInitStatePath(workspaceRoot);
+}
+
+function summarizeWorkspaceInitPreamble(parsed: ReturnType<typeof parseInitArtifact>): string {
+  const preambleLines = (parsed.compiledSessionPreamble ?? "")
+    .split(/\r?\n/gu)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^Project initialization context:?$/iu.test(line));
+  const preferredLine = preambleLines[0]
+    ?? parsed.summaryLines.find((line) => !/^Generated at:/iu.test(line));
+  return compactInitLine(preferredLine ?? "Workspace initialization guidance is available.", 220);
+}
+
+function summarizeWorkspaceInitExcerpt(parsed: ReturnType<typeof parseInitArtifact>): string {
+  const preambleLines = (parsed.compiledSessionPreamble ?? "")
+    .split(/\r?\n/gu)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^Project initialization context:?$/iu.test(line));
+  const fallbackLines = parsed.summaryLines.filter((line) => !/^Generated at:/iu.test(line));
+  return compactInitLine((preambleLines.length > 0 ? preambleLines : fallbackLines).join(" | "), 520);
+}
+
+async function refreshWorkspaceInitContext(
+  state: LiveCliState,
+  workspaceRoot: string,
+): Promise<void> {
+  const artifactPath = resolveLiveInitArtifactPath(workspaceRoot);
+  try {
+    const [content, info] = await Promise.all([
+      readFile(artifactPath, "utf8"),
+      stat(artifactPath),
+    ]);
+    if (!info.isFile()) {
+      state.workspaceInitContext = undefined;
+      return;
+    }
+    const parsed = parseInitArtifact(content);
+    const summary = summarizeWorkspaceInitPreamble(parsed);
+    const excerpt = summarizeWorkspaceInitExcerpt(parsed);
+    const updatedAt = info.mtime.toISOString();
+    const previous = state.workspaceInitContext;
+    state.workspaceInitContext = {
+      schemaVersion: "core-workspace-init-context/v1",
+      sourcePath: ".raxode/AGENTS.md",
+      bodyRef: ".raxode/AGENTS.md",
+      summary,
+      excerpt,
+      updatedAt,
+      freshness:
+        previous
+        && (previous.updatedAt !== updatedAt || previous.summary !== summary || previous.excerpt !== excerpt)
+          ? "changed"
+          : "fresh",
+    };
+  } catch {
+    state.workspaceInitContext = undefined;
+  }
+}
+
+function createWorkspaceInitOverlayEntry(
+  workspaceInitContext: CoreWorkspaceInitContextV1 | undefined,
+): CoreOverlayIndexEntryV1[] {
+  if (!workspaceInitContext) {
+    return [];
+  }
+  return [{
+    id: "workspace-init:agents",
+    label: "workspace/.raxode/AGENTS.md",
+    summary: `workspace init context. ${workspaceInitContext.summary}`,
+    bodyRef: workspaceInitContext.bodyRef,
+  }];
+}
+
+function mergeCoreMemoryOverlayEntries(state: LiveCliState): CoreOverlayIndexEntryV1[] | undefined {
+  const merged = [
+    ...createWorkspaceInitOverlayEntry(state.workspaceInitContext),
+    ...(state.memoryOverlayEntries ?? []),
+  ];
+  if (merged.length === 0) {
+    return undefined;
+  }
+  const deduped = new Map<string, CoreOverlayIndexEntryV1>();
+  for (const entry of merged) {
+    if (!deduped.has(entry.id)) {
+      deduped.set(entry.id, entry);
+    }
+  }
+  return [...deduped.values()].slice(0, 6);
+}
+
+function createInitProjectId(workspaceRoot: string): string {
+  const slug = basename(workspaceRoot)
+    .replace(/[^a-z0-9]+/giu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .toLowerCase();
+  return `raxode.${slug || "workspace"}`;
+}
+
+async function inspectWorkspaceInitReality(workspaceRoot: string): Promise<{
+  repoState: "empty" | "non_empty";
+  gitRegistered: boolean;
+  initState: "uninitialized" | "partial" | "initialized";
+  agentsExists: boolean;
+  initStateRecord?: WorkspaceInitStateRecord;
+}> {
+  const agentsPath = resolveLiveInitArtifactPath(workspaceRoot);
+  const initStatePath = resolveLiveInitStatePath(workspaceRoot);
+  let agentsExists = false;
+  try {
+    const info = await stat(agentsPath);
+    agentsExists = info.isFile();
+  } catch {
+    agentsExists = false;
+  }
+  let initStateRecord: WorkspaceInitStateRecord | undefined;
+  try {
+    const raw = await readFile(initStatePath, "utf8");
+    const parsed = JSON.parse(raw) as Partial<WorkspaceInitStateRecord>;
+    if (
+      parsed
+      && typeof parsed.status === "string"
+      && typeof parsed.initializedAt === "string"
+      && typeof parsed.gitRegistered === "boolean"
+      && typeof parsed.projectId === "string"
+      && typeof parsed.defaultAgentId === "string"
+    ) {
+      initStateRecord = parsed as WorkspaceInitStateRecord;
+    }
+  } catch {
+    initStateRecord = undefined;
+  }
+  const visibleEntries = await readdir(workspaceRoot, { withFileTypes: true }).catch(() => []);
+  const repoState = visibleEntries.some((entry) =>
+    entry.name !== ".git"
+    && entry.name !== ".raxode"
+    && entry.name !== ".DS_Store")
+    ? "non_empty"
+    : "empty";
+  const gitRegistered = initStateRecord?.gitRegistered === true;
+  const initState = !agentsExists
+    ? "uninitialized"
+    : gitRegistered
+      ? "initialized"
+      : "partial";
+  return {
+    repoState,
+    gitRegistered,
+    initState,
+    agentsExists,
+    ...(initStateRecord ? { initStateRecord } : {}),
+  };
+}
+
+async function writeWorkspaceInitState(workspaceRoot: string, record: WorkspaceInitStateRecord): Promise<void> {
+  await mkdir(resolveWorkspaceRaxodeRoot(workspaceRoot), { recursive: true });
+  await writeFile(resolveLiveInitStatePath(workspaceRoot), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+}
+
+function buildInitSummaryLines(state: LiveCliState): string[] {
+  const initFlow = state.initFlow;
+  if (!initFlow) {
+    return [];
+  }
+  if (Array.isArray(initFlow.summaryLines) && initFlow.summaryLines.length > 0) {
+    return initFlow.summaryLines;
+  }
+  switch (initFlow.status) {
+    case "validating_workspace":
+      return ["Checking workspace reality before initialization starts."];
+    case "awaiting_seed":
+      return ["The current repository is empty. You need to provide an initialization prompt."];
+    case "analyzing_repo":
+      return [
+        "Raxode is reading repo facts.",
+        "Scanning README, current-context, AGENTS, and manifest files.",
+      ];
+    case "asking_questions":
+      return [
+        "Initialization needs a few structured answers before it can continue.",
+      ];
+    case "synthesizing_agents":
+      return [
+        "Raxode is synthesizing the workspace AGENTS context.",
+        "Preparing the generated project instructions.",
+      ];
+    case "registering_git":
+      return [
+        "Raxode is registering shared git_infra for this workspace.",
+        "Creating or validating the branch family and project readback.",
+      ];
+    case "completed":
+    case "ready":
+      return [];
+    case "interrupted":
+      return [
+        "Initialization was interrupted.",
+        "You can continue later from /init.",
+      ];
+    case "failed":
+      return [
+        "Initialization failed.",
+        initFlow.errorMessage ?? "Check the latest init attempt for details.",
+      ];
+    default:
+      return [];
+  }
+}
+
+function buildInitPanelSnapshot(state: LiveCliState): InitPanelSnapshotPayload {
+  const initFlow = state.initFlow;
+  if (!initFlow) {
+    return {
+      summaryLines: buildInitSummaryLines(state),
+      status: "idle",
+    };
+  }
+  return {
+    summaryLines: buildInitSummaryLines(state),
+    status: initFlow.status,
+    ...(initFlow.initState ? { initState: initFlow.initState } : {}),
+    ...(initFlow.repoState ? { repoState: initFlow.repoState } : {}),
+    ...(initFlow.gitState ? { gitState: initFlow.gitState } : {}),
+    ...(initFlow.artifactPath ? { artifactPath: initFlow.artifactPath } : {}),
+    ...(initFlow.compiledSessionPreamble ? { compiledSessionPreamble: initFlow.compiledSessionPreamble } : {}),
+    ...(initFlow.completionSummary ? { completionSummary: initFlow.completionSummary } : {}),
+    ...(initFlow.seedText ? { seedText: initFlow.seedText } : {}),
+    ...(initFlow.errorMessage ? { emptyReason: initFlow.errorMessage } : {}),
+  };
+}
+
+async function emitInitPanelSnapshot(state: LiveCliState): Promise<void> {
+  await state.logger.log("panel_snapshot", {
+    panel: "init",
+    snapshot: buildInitPanelSnapshot(state),
+  });
+}
+
+function buildQuestionPanelSnapshot(state: LiveCliState): QuestionPanelSnapshotPayload {
+  if (!state.pendingQuestion) {
+    return {
+      status: "idle",
+    };
+  }
+  return {
+    status: "active",
+    requestId: state.pendingQuestion.requestId,
+    title: state.pendingQuestion.title,
+    instruction: state.pendingQuestion.instruction,
+    sourceKind: state.pendingQuestion.sourceKind,
+    submitLabel: state.pendingQuestion.submitLabel,
+    questions: state.pendingQuestion.questions,
+  };
+}
+
+async function emitQuestionPanelSnapshot(state: LiveCliState): Promise<void> {
+  await state.logger.log("panel_snapshot", {
+    panel: "question",
+    snapshot: buildQuestionPanelSnapshot(state),
+  });
+}
+
+async function loadPersistedInitArtifactIntoState(
+  state: LiveCliState,
+  workspaceRoot: string,
+): Promise<void> {
+  const reality = await inspectWorkspaceInitReality(workspaceRoot);
+  const artifactPath = resolveLiveInitArtifactPath(workspaceRoot);
+  try {
+    const content = await readFile(artifactPath, "utf8");
+    const parsed = parseInitArtifact(content);
+    state.initFlow = {
+      status: reality.initState === "initialized" ? "ready" : "idle",
+      repoState: reality.repoState,
+      initState: reality.initState,
+      gitState: reality.gitRegistered ? "registered" : "unregistered",
+      artifactPath,
+      compiledSessionPreamble: parsed.compiledSessionPreamble,
+      completionSummary: undefined,
+      updatedAt: new Date().toISOString(),
+      summaryLines: [],
+      clarificationHistory: [],
+    };
+  } catch {
+    state.initFlow = {
+      status: "idle",
+      repoState: reality.repoState,
+      initState: reality.initState,
+      gitState: reality.gitRegistered ? "registered" : "unregistered",
+      updatedAt: new Date().toISOString(),
+      summaryLines: [],
+      clarificationHistory: [],
+    };
+  }
+  await refreshWorkspaceInitContext(state, workspaceRoot);
+}
+
+function restoreDirectSessionSnapshotIntoState(
+  state: LiveCliState,
+  fallbackDir: string,
+): void {
+  const snapshot = loadDirectTuiSessionSnapshot(state.sessionId, fallbackDir);
+  if (!snapshot) {
+    return;
+  }
+  const restoredTranscript = restoreDirectTuiDialogueTurnsFromSnapshot(snapshot);
+  if (restoredTranscript.length > 0) {
+    state.transcript = restoredTranscript;
+  }
+  const restoredTurnIndex = resolveDirectTuiSnapshotTurnIndex(snapshot);
+  if (restoredTurnIndex > 0) {
+    state.turnIndex = restoredTurnIndex;
+  }
+  if (!state.initFlow && snapshot.compiledInitPreamble) {
+    state.initFlow = {
+      status: "ready",
+      artifactPath: snapshot.initArtifactPath,
+      compiledSessionPreamble: snapshot.compiledInitPreamble,
+      completionSummary: undefined,
+      initState: "initialized",
+      gitState: "registered",
+      updatedAt: snapshot.updatedAt,
+      summaryLines: [],
+      clarificationHistory: [],
+    };
+  }
+}
+
+async function runInitCompilerInference(
+  config: LiveCliRouteConfig,
+  promptText: string,
+): Promise<string> {
+  if (!config.openAIConfig) {
+    throw new Error("Init compiler currently requires an OpenAI-compatible core route.");
+  }
+  await refreshOpenAIOAuthIfNeeded();
+  const client = createOpenAIClient(config.openAIConfig);
+  const response = await client.responses.create({
+    ...prepareResponsesParamsForOpenAIAuth(
+      config.openAIConfig,
+      {
+        model: config.model,
+        input: promptText,
+        stream: false,
+        max_output_tokens: 900,
+        reasoning: { effort: "low" },
+      },
+      promptText,
+    ),
+  } as never);
+  const maybeStream = response as unknown as AsyncIterable<Record<string, unknown>>;
+  if (response && typeof response === "object" && Symbol.asyncIterator in response) {
+    let streamedText = "";
+    let completedResponse: Record<string, unknown> | undefined;
+    for await (const event of maybeStream) {
+      if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+        streamedText += event.delta;
+      } else if (event.type === "response.output_text.done" && typeof event.text === "string" && !streamedText.trim()) {
+        streamedText = event.text;
+      } else if (event.type === "response.completed" && event.response && typeof event.response === "object") {
+        completedResponse = event.response as Record<string, unknown>;
+      }
+    }
+    const completedText = completedResponse ? extractTextFromResponseLike(completedResponse) : "";
+    return completedText.trim() || streamedText.trim();
+  }
+  return extractTextFromResponseLike(response as unknown as Record<string, unknown>);
+}
+
+function buildInitCompilerRetryPrompt(promptText: string): string {
+  return [
+    promptText,
+    "",
+    "IMPORTANT RETRY REQUIREMENTS:",
+    "- The previous attempt did not produce a valid JSON object that matched the required schema.",
+    "- Return exactly one JSON object and nothing else.",
+    "- If you ask questions, make them repo-grounded and specific to the current workspace.",
+    "- Do not use generic onboarding questions.",
+  ].join("\n");
+}
+
+async function handleInitRequest(
+  state: LiveCliState,
+  text: string,
+  config: LiveCliRouteConfig,
+  workspaceRoot: string,
+): Promise<void> {
+  const trimmedText = text.trim();
+  const reality = await inspectWorkspaceInitReality(workspaceRoot);
+  if (reality.repoState === "empty" && !trimmedText) {
+    state.initFlow = {
+      status: "awaiting_seed",
+      repoState: reality.repoState,
+      initState: reality.initState,
+      gitState: reality.gitRegistered ? "registered" : "unregistered",
+      seedText: state.initFlow?.seedText,
+      artifactPath: state.initFlow?.artifactPath,
+      compiledSessionPreamble: state.initFlow?.compiledSessionPreamble,
+      updatedAt: new Date().toISOString(),
+      summaryLines: [
+        "The current repository is empty. You need to provide an initialization prompt.",
+      ],
+      clarificationHistory: state.initFlow?.clarificationHistory ?? [],
+      errorMessage: "Initialization input cannot be empty.",
+    };
+    await emitInitPanelSnapshot(state);
+    return;
+  }
+
+  const previous = state.initFlow;
+  const seedText = previous?.seedText?.trim().length
+    ? previous.seedText
+    : trimmedText;
+  const clarificationHistory = previous?.clarificationHistory ?? [];
+  state.initFlow = {
+    status: "analyzing_repo",
+    repoState: reality.repoState,
+    initState: reality.initState,
+    gitState: reality.gitRegistered ? "registered" : "unregistered",
+    seedText,
+    updatedAt: new Date().toISOString(),
+    summaryLines: [
+      "Raxode is reading repo facts.",
+      "Scanning README, current-context, AGENTS, and manifest files.",
+    ],
+    clarificationHistory,
+  };
+  await emitInitPanelSnapshot(state);
+
+  const repoExcerpts = await loadInitCompilerRepoExcerpts(workspaceRoot);
+  state.initFlow = {
+    ...state.initFlow,
+    status: "synthesizing_agents",
+    summaryLines: [
+      "Raxode is synthesizing the workspace AGENTS context.",
+      "Combining your seed text with repository facts.",
+    ],
+  };
+  await emitInitPanelSnapshot(state);
+
+  const compilerPrompt = buildInitCompilerPrompt({
+    seedText,
+    clarifications: clarificationHistory.map((entry) => entry.answerText),
+    repoExcerpts,
+  });
+
+  let compileResult:
+    | ReturnType<typeof parseInitCompilerResult>
+    | ReturnType<typeof createFallbackInitCompilerResult>
+    | undefined;
+  let initCompilerRaw = "";
+  try {
+    initCompilerRaw = await runInitCompilerInference(config, compilerPrompt);
+    compileResult = parseInitCompilerResult(initCompilerRaw);
+  } catch {
+    compileResult = undefined;
+  }
+
+  if (!compileResult) {
+    try {
+      initCompilerRaw = await runInitCompilerInference(config, buildInitCompilerRetryPrompt(compilerPrompt));
+      compileResult = parseInitCompilerResult(initCompilerRaw);
+    } catch {
+      compileResult = undefined;
+    }
+  }
+
+  if (!compileResult) {
+    state.pendingQuestion = undefined;
+    state.initFlow = {
+      status: "failed",
+      repoState: reality.repoState,
+      initState: reality.initState,
+      gitState: reality.gitRegistered ? "registered" : "unregistered",
+      seedText,
+      updatedAt: new Date().toISOString(),
+      summaryLines: [
+        "Initialization could not continue because the init compiler did not return a valid structured result.",
+        "Please retry /init so Raxode can regenerate a real question set or a real finalized initialization result.",
+      ],
+      clarificationHistory,
+      errorMessage: initCompilerRaw.trim().length > 0
+        ? "Init compiler returned an invalid structured response."
+        : "Init compiler returned no usable response.",
+    };
+    await emitInitPanelSnapshot(state);
+    await emitQuestionPanelSnapshot(state);
+    return;
+  }
+
+  if (compileResult.kind === "questions") {
+    state.pendingQuestion = {
+      requestId: `init-question:${randomUUID()}`,
+      title: "/init",
+      instruction: "Please answer Raxode’s questions based on your requirements.",
+      sourceKind: "init",
+      questions: compileResult.questions,
+      submitLabel: "Submit initialization answers",
+      resumeSeedText: seedText,
+    };
+    state.initFlow = {
+      status: "asking_questions",
+      repoState: reality.repoState,
+      initState: reality.initState,
+      gitState: reality.gitRegistered ? "registered" : "unregistered",
+      seedText,
+      updatedAt: new Date().toISOString(),
+      summaryLines: [compileResult.summary],
+      clarificationHistory,
+    };
+    await emitInitPanelSnapshot(state);
+    await emitQuestionPanelSnapshot(state);
+    return;
+  }
+
+  const artifactPath = resolveLiveInitArtifactPath(workspaceRoot);
+  const artifactMarkdown = buildInitArtifactMarkdownFromResult(compileResult, seedText);
+  await mkdir(resolveWorkspaceRaxodeRoot(workspaceRoot), { recursive: true });
+  await writeFile(artifactPath, artifactMarkdown, "utf8");
+  state.initFlow = {
+    status: "registering_git",
+    repoState: reality.repoState,
+    initState: reality.initState,
+    gitState: "registering",
+    seedText,
+    artifactPath,
+    compiledSessionPreamble: compileResult.compiledSessionPreamble,
+    completionSummary: compileResult.completionSummary,
+    updatedAt: new Date().toISOString(),
+    summaryLines: [
+      "Raxode is registering shared git_infra for this workspace.",
+      "Creating or validating the branch family and project readback.",
+    ],
+    clarificationHistory,
+  };
+  await emitInitPanelSnapshot(state);
+  const defaultAgentId = "main";
+  const projectId = createInitProjectId(workspaceRoot);
+  await state.runtime.bootstrapCmpProjectInfra({
+    projectId,
+    repoName: basename(workspaceRoot) || "raxode-workspace",
+    repoRootPath: workspaceRoot,
+    agents: [{ agentId: defaultAgentId, depth: 0 }],
+    defaultAgentId,
+    defaultBranchName: "main",
+    worktreeRootPath: resolve(workspaceRoot, ".cmp-worktrees"),
+    storageEngine: "sqlite",
+    databaseName: resolve(workspaceRoot, "memory", "generated", "cmp-db", "cmp.sqlite"),
+    dbSchemaName: "main",
+    redisNamespaceRoot: "praxis",
+    metadata: {
+      source: "raxode-init",
+    },
+  });
+  const gitReadback = await readWorkspaceRaxodeGitReadback({
+    workspaceRoot,
+    agentId: defaultAgentId,
+  });
+  await writeWorkspaceInitState(workspaceRoot, {
+    status: "initialized",
+    initializedAt: new Date().toISOString(),
+    gitRegistered: true,
+    projectId,
+    defaultAgentId,
+    branchFamily: {
+      workBranchName: gitReadback.branchFamily.workBranchName,
+      cmpBranchName: gitReadback.branchFamily.cmpBranchName,
+      mpBranchName: gitReadback.branchFamily.mpBranchName,
+      tapBranchName: gitReadback.branchFamily.tapBranchName,
+    },
+    agentsPath: artifactPath,
+    artifactPath,
+  });
+  await refreshWorkspaceInitContext(state, workspaceRoot);
+  state.initFlow = {
+    status: "completed",
+    repoState: reality.repoState,
+    initState: "initialized",
+    gitState: "registered",
+    seedText,
+    artifactPath,
+    compiledSessionPreamble: compileResult.compiledSessionPreamble,
+    completionSummary: compileResult.completionSummary,
+    updatedAt: new Date().toISOString(),
+    summaryLines: [
+    ],
+    clarificationHistory,
+  };
+  state.pendingQuestion = undefined;
+  await emitInitPanelSnapshot(state);
+  await emitQuestionPanelSnapshot(state);
+}
+
+function formatQuestionAnswersAsClarifications(input: {
+  prompt?: QuestionAskPayload;
+  answers: Array<{
+    questionId: string;
+    selectedOptionLabel: string;
+    annotation?: string;
+  }>;
+}): string[] {
+  return input.answers.map((answer) => {
+    const prompt = input.prompt?.questions.find((question) => question.id === answer.questionId);
+    return [
+      prompt?.prompt ?? answer.questionId,
+      `选择: ${answer.selectedOptionLabel}`,
+      answer.annotation ? `备注: ${answer.annotation}` : undefined,
+    ].filter((part): part is string => Boolean(part)).join(" | ");
+  });
+}
+
+function formatQuestionAnswersAsUserMessage(input: {
+  prompt?: QuestionAskPayload;
+  answers: Array<{
+    questionId: string;
+    selectedOptionLabel: string;
+    annotation?: string;
+  }>;
+}): string {
+  const totalCount = input.prompt?.questions.length ?? input.answers.length;
+  return [
+    `Questions ${input.answers.length}/${totalCount} answered`,
+    ...input.answers.flatMap((answer) => {
+      const prompt = input.prompt?.questions.find((question) => question.id === answer.questionId);
+      return [
+        `- ${prompt?.prompt ?? answer.questionId}`,
+        `  answer: ${answer.selectedOptionLabel}`,
+        ...(answer.annotation ? [`  note: ${answer.annotation}`] : []),
+      ];
+    }),
+  ].join("\n");
+}
+
+function normalizeQuestionAskPayload(input: unknown): QuestionAskPayload | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+  const record = input as Record<string, unknown>;
+  if (!Array.isArray(record.questions)) {
+    return undefined;
+  }
+  const questions = record.questions.flatMap((entry): QuestionAskPayload["questions"] => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+    const item = entry as Record<string, unknown>;
+    const prompt = typeof item.prompt === "string"
+      ? item.prompt.trim()
+      : (typeof item.question === "string" ? item.question.trim() : "");
+    const options = Array.isArray(item.options)
+      ? item.options.flatMap((candidate) => {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+          return [];
+        }
+        const option = candidate as Record<string, unknown>;
+        if (
+          typeof option.id !== "string"
+          || typeof option.label !== "string"
+          || typeof option.description !== "string"
+        ) {
+          return [];
+        }
+        return [{
+          id: option.id,
+          label: option.label,
+          description: option.description,
+        }];
+      })
+      : [];
+    if (typeof item.id !== "string" || !prompt || options.length === 0) {
+      return [];
+    }
+    return [{
+      id: item.id,
+      prompt,
+      options,
+      ...(typeof item.notePrompt === "string" && item.notePrompt.trim().length > 0 ? { notePrompt: item.notePrompt } : {}),
+      ...(typeof item.allowAnnotation === "boolean" ? { allowAnnotation: item.allowAnnotation } : {}),
+      ...(typeof item.required === "boolean" ? { required: item.required } : {}),
+    }];
+  });
+  if (questions.length === 0) {
+    return undefined;
+  }
+  return {
+    requestId: typeof record.requestId === "string" && record.requestId.trim().length > 0
+      ? record.requestId
+      : randomUUID(),
+    title: typeof record.title === "string" && record.title.trim().length > 0
+      ? record.title
+      : "Questions",
+    instruction: typeof record.instruction === "string" && record.instruction.trim().length > 0
+      ? record.instruction
+      : "Please answer Raxode’s questions based on your requirements.",
+    sourceKind: record.sourceKind === "init" ? "init" : "core",
+    questions,
+    ...(typeof record.submitLabel === "string" && record.submitLabel.trim().length > 0
+      ? { submitLabel: record.submitLabel }
+      : {}),
+  };
+}
+
+function normalizeRequestUserInputPayload(input: unknown): QuestionAskPayload | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+  const record = input as Record<string, unknown>;
+  if (!Array.isArray(record.questions)) {
+    return undefined;
+  }
+  const questions = record.questions.flatMap((entry, questionIndex): QuestionAskPayload["questions"] => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+    const item = entry as Record<string, unknown>;
+    const prompt = typeof item.question === "string"
+      ? item.question.trim()
+      : (typeof item.prompt === "string" ? item.prompt.trim() : "");
+    const options = Array.isArray(item.options)
+      ? item.options.flatMap((candidate, optionIndex) => {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+          return [];
+        }
+        const option = candidate as Record<string, unknown>;
+        const label = typeof option.label === "string" ? option.label.trim() : "";
+        const description = typeof option.description === "string" ? option.description.trim() : "";
+        if (!label || !description) {
+          return [];
+        }
+        const optionId = typeof option.id === "string" && option.id.trim().length > 0
+          ? option.id
+          : `option_${optionIndex + 1}`;
+        return [{
+          id: optionId,
+          label,
+          description,
+        }];
+      })
+      : [];
+    const questionId = typeof item.id === "string" && item.id.trim().length > 0
+      ? item.id
+      : `request_user_input_${questionIndex + 1}`;
+    if (!prompt || options.length === 0) {
+      return [];
+    }
+    return [{
+      id: questionId,
+      prompt,
+      options,
+      ...(typeof item.notePrompt === "string" && item.notePrompt.trim().length > 0
+        ? { notePrompt: item.notePrompt }
+        : { notePrompt: "Please type the special annotations for this option." }),
+      allowAnnotation: typeof item.allowAnnotation === "boolean" ? item.allowAnnotation : true,
+      ...(typeof item.required === "boolean" ? { required: item.required } : {}),
+    }];
+  });
+  if (questions.length === 0) {
+    return undefined;
+  }
+  return {
+    requestId: typeof record.requestId === "string" && record.requestId.trim().length > 0
+      ? record.requestId
+      : `request-user-input:${randomUUID()}`,
+    title: typeof record.title === "string" && record.title.trim().length > 0
+      ? record.title
+      : "Raxode Questions",
+    instruction: typeof record.instruction === "string" && record.instruction.trim().length > 0
+      ? record.instruction
+      : "Please answer Raxode’s questions so it can continue safely.",
+    sourceKind: "core",
+    questions,
+    ...(typeof record.submitLabel === "string" && record.submitLabel.trim().length > 0
+      ? { submitLabel: record.submitLabel }
+      : { submitLabel: "Submit answers" }),
+  };
+}
+
+async function emitInitialViewerPanelSnapshots(state: LiveCliState): Promise<void> {
+  const cwd = process.cwd();
+  await Promise.all([
+    state.logger.log("panel_snapshot", {
+      panel: "cmp",
+      snapshot: createBootingCmpPanelSnapshot(),
+    }),
+    state.logger.log("panel_snapshot", {
+      panel: "mp",
+      snapshot: createBootingMpPanelSnapshot(cwd),
+    }),
+    state.logger.log("panel_snapshot", {
+      panel: "capabilities",
+      snapshot: buildCapabilitiesPanelSnapshot(state),
+    }),
+    emitInitPanelSnapshot(state),
+    emitQuestionPanelSnapshot(state),
+  ]);
+}
+
+async function emitViewerPanelSnapshots(state: LiveCliState): Promise<void> {
+  const emitOne = async (
+    panel: "cmp" | "mp" | "capabilities" | "init" | "question",
+    build: () => Promise<unknown> | unknown,
+  ) => {
+    try {
+      await state.logger.log("panel_snapshot", {
+        panel,
+        snapshot: await build(),
+      });
+    } catch (error) {
+      await state.logger.log("panel_snapshot", {
+        panel,
+        snapshot: {
+          summaryLines: [
+            `${panel} snapshot unavailable`,
+            error instanceof Error ? error.message : String(error),
+          ],
+          status: "degraded",
+          sourceKind: `${panel}_error`,
+          emptyReason: error instanceof Error ? error.message : String(error),
+          ...(panel === "capabilities"
+            ? { groups: [] }
+            : panel === "question"
+              ? { questions: [] }
+            : panel === "init"
+              ? {}
+              : { entries: [] }),
+        },
+      });
+    }
+  };
+
+  await Promise.all([
+    emitOne("cmp", () => buildCmpPanelSnapshot(state)),
+    emitOne("mp", () => buildMpPanelSnapshot(state)),
+    emitOne("capabilities", () => buildCapabilitiesPanelSnapshot(state)),
+    emitOne("init", () => buildInitPanelSnapshot(state)),
+    emitOne("question", () => buildQuestionPanelSnapshot(state)),
+  ]);
+}
+
 async function executeCoreCapabilityRequest(
   state: LiveCliState,
   request: CoreCapabilityRequest,
@@ -1380,14 +2978,15 @@ async function executeCoreCapabilityRequestFast(
     capabilityKey: request.capabilityKey,
     reason: request.reason,
     requestedTier: request.requestedTier ?? "B0",
-    mode: LIVE_CHAT_TAP_OVERRIDE.requestedMode,
+    mode: LIVE_CHAT_TAP_OVERRIDE.requestedMode ?? "bapr",
+    requestInput: request.input,
     metadata: {
       tapUserOverride: LIVE_CHAT_TAP_OVERRIDE,
       cliBridge: "core-action-envelope",
       cliTurnIndex: state.turnIndex,
     },
   });
-  const canBypassForBapr = LIVE_CHAT_TAP_OVERRIDE.requestedMode === "bapr"
+  const canBypassForBapr = (LIVE_CHAT_TAP_OVERRIDE.requestedMode ?? "bapr") === "bapr"
     && access.status === "review_required";
   if (access.status !== "baseline_granted" && !canBypassForBapr) {
     return {
@@ -1460,6 +3059,179 @@ async function executeCoreCapabilityRequestFast(
 function extractFirstHttpUrl(text: string): string | undefined {
   const match = text.match(/https?:\/\/[^\s)\]}>"'`]+/iu);
   return match?.[0];
+}
+
+const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|bmp|svg)$/iu;
+const MIME_EXTENSION_MAP: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/bmp": ".bmp",
+  "image/svg+xml": ".svg",
+};
+
+function resolveImageExtensionFromMimeType(mimeType?: string): string {
+  if (!mimeType) {
+    return ".png";
+  }
+  return MIME_EXTENSION_MAP[mimeType] ?? ".png";
+}
+
+async function readMimeTypeFromLocalFile(path: string): Promise<string> {
+  const mimeInfo = await execFile("file", ["--mime-type", "-b", path], {
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  const mimeType = mimeInfo.stdout.trim();
+  if (!mimeType.startsWith("image/")) {
+    throw new Error(`Unsupported image MIME type: ${mimeType || "unknown"}.`);
+  }
+  return mimeType;
+}
+
+async function buildLocalImageDataUrl(path: string): Promise<{
+  imageUrl: string;
+  mimeType: string;
+  byteLength: number;
+}> {
+  const [buffer, mimeType] = await Promise.all([
+    readFile(path),
+    readMimeTypeFromLocalFile(path),
+  ]);
+  return {
+    imageUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+    mimeType,
+    byteLength: buffer.length,
+  };
+}
+
+async function ensureDirectImageTempDir(sessionId: string): Promise<string> {
+  const directory = resolve(tmpdir(), "praxis-live-cli", sessionId);
+  await mkdir(directory, { recursive: true });
+  return directory;
+}
+
+async function downloadRemoteImageToTempFile(
+  sessionId: string,
+  remoteUrl: string,
+): Promise<{
+  localPath: string;
+  mimeType: string;
+}> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(remoteUrl, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Image download failed with HTTP ${response.status}.`);
+    }
+    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim();
+    let mimeType = contentType && contentType.startsWith("image/") ? contentType : undefined;
+    let pathname = remoteUrl;
+    try {
+      pathname = new URL(remoteUrl).pathname;
+    } catch {
+      // keep original
+    }
+    if (!mimeType && !IMAGE_EXTENSION_PATTERN.test(pathname)) {
+      throw new Error("Remote URL does not point to a supported image type.");
+    }
+    mimeType ??= "image/png";
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const extension = extname(pathname) || resolveImageExtensionFromMimeType(mimeType);
+    const tempDir = await ensureDirectImageTempDir(sessionId);
+    const localPath = resolve(tempDir, `remote-image-${randomUUID()}${extension}`);
+    await writeFile(localPath, bytes);
+    return { localPath, mimeType };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function resolveDirectInputAttachmentImage(params: {
+  state: LiveCliState;
+  attachment: DirectInputImageAttachment;
+  emitTelemetry: boolean;
+}): Promise<string | undefined> {
+  const { state, attachment, emitTelemetry } = params;
+  const sourcePath = attachment.sourceKind !== "remote_url" ? attachment.localPath : undefined;
+  const sourceUrl = attachment.sourceKind === "remote_url" ? attachment.remoteUrl : undefined;
+  const sourceLabel = sourcePath ?? sourceUrl ?? attachment.displayName ?? attachment.id;
+  const requestInput: Record<string, unknown> = {
+    detail: "original",
+    sourceKind: attachment.sourceKind,
+    ...(sourcePath ? { sourcePath } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+  };
+
+  const logStageStart = async () => {
+    if (!emitTelemetry) {
+      return;
+    }
+    await state.logger.log("stage_start", {
+      turnIndex: state.turnIndex,
+      stage: "core/capability_bridge",
+      capabilityKey: "view_image",
+      reason: "Need to inspect the provided image before the model answers.",
+      inputSummary: sourceLabel ? `view ${sourceLabel}` : "view provided image",
+      ...createCapabilityFamilyTelemetry({
+        capabilityKey: "view_image",
+        requestInput,
+        inputSummary: sourceLabel ? `view ${sourceLabel}` : "view provided image",
+      }),
+    });
+  };
+
+  const logStageEnd = async (status: string, output?: unknown, error?: unknown) => {
+    if (!emitTelemetry) {
+      return;
+    }
+    await state.logger.log("stage_end", {
+      turnIndex: state.turnIndex,
+      stage: "core/capability_bridge",
+      capabilityKey: "view_image",
+      status,
+      output: trimStructuredValue(output, 4_000),
+      error: trimStructuredValue(error, 1_500),
+      ...createCapabilityFamilyTelemetry({
+        capabilityKey: "view_image",
+        requestInput,
+        inputSummary: sourceLabel ? `view ${sourceLabel}` : "view provided image",
+        status,
+        output,
+        error,
+      }),
+    });
+  };
+
+  try {
+    await logStageStart();
+    const resolvedLocalPath = sourceUrl
+      ? (await downloadRemoteImageToTempFile(state.sessionId, sourceUrl)).localPath
+      : sourcePath;
+    if (!resolvedLocalPath) {
+      throw new Error("Image attachment is missing a usable path.");
+    }
+    const summary = await buildLocalImageDataUrl(resolvedLocalPath);
+    const output = {
+      capabilityKey: "view_image",
+      operation: "view_image",
+      path: sourcePath ?? basename(resolvedLocalPath),
+      mimeType: summary.mimeType,
+      imageUrl: summary.imageUrl,
+      byteLength: summary.byteLength,
+    };
+    await logStageEnd("success", output);
+    return summary.imageUrl;
+  } catch (error) {
+    const errorRecord = {
+      code: "direct_view_image_failed",
+      message: error instanceof Error ? error.message : String(error),
+    };
+    await logStageEnd("failed", undefined, errorRecord);
+    return undefined;
+  }
 }
 
 function buildGoogleSearchQueryFromUserMessage(userMessage: string): string | undefined {
@@ -1762,7 +3534,7 @@ function isEmptyCorePlaceholderAnswer(text: string | undefined): boolean {
   if (!text) {
     return true;
   }
-  return text.trim() === "" || /^Core 没有返回正文，但链路已经跑完。?$/u.test(text.trim());
+  return text.trim() === "";
 }
 
 function looksLikeInterimPromise(text: string | undefined): boolean {
@@ -2103,7 +3875,8 @@ async function runCoreTurn(
   state: LiveCliState,
   userMessage: string,
   cmp: CmpTurnArtifacts | undefined,
-  config: ReturnType<typeof loadOpenAILiveConfig>,
+  config: LiveCliRouteConfig,
+  initialInputImageUrls?: string[],
 ): Promise<CoreTurnArtifacts> {
   const maxCapabilityLoops = 4;
   const maxIncompleteReplyRecoveries = 2;
@@ -2120,7 +3893,7 @@ async function runCoreTurn(
   let capabilityLoopHistory: string[] = [];
   let browserGroundingEvidenceText: string | undefined;
   let pendingToolResultText: string | undefined;
-  let pendingInputImageUrls: string[] | undefined;
+  let pendingInputImageUrls: string[] | undefined = initialInputImageUrls;
   let pendingIncompleteReplyText: string | undefined;
   let incompleteReplyRecoveries = 0;
   let latestContext = createCoreContextTelemetry({
@@ -2194,7 +3967,7 @@ async function runCoreTurn(
         promptKind: "core_action",
         promptText: buildCoreActionPlannerInstructionText(state, userMessage),
       });
-      actionEnvelope = await runCoreActionPlanner(state, userMessage, cmp);
+      actionEnvelope = await runCoreActionPlanner(state, userMessage, cmp, pendingInputImageUrls);
       rawAnswer = JSON.stringify(actionEnvelope);
     } catch {
       actionEnvelope = deterministicFirstStep;
@@ -2209,9 +3982,10 @@ async function runCoreTurn(
         transcript: state.transcript,
         cmp,
         mpRoutedPackage: state.mpRoutedPackage,
+        workspaceInitContext: state.workspaceInitContext,
         runtime: state.runtime,
         skillEntries: state.skillOverlayEntries,
-        memoryEntries: state.memoryOverlayEntries,
+        memoryEntries: mergeCoreMemoryOverlayEntries(state),
         toolResultText: pendingToolResultText,
         capabilityHistoryText: capabilityLoopHistory.join("\n\n"),
         groundingEvidenceText: browserGroundingEvidenceText,
@@ -2235,7 +4009,7 @@ async function runCoreTurn(
         cmp,
         config,
         inputImageUrls: pendingInputImageUrls,
-        reasoningEffortOverride: pendingToolResultText ? "low" : undefined,
+        reasoningEffortOverride: undefined,
       });
       latestRunId = fallback.runId;
       latestEventTypes = fallback.eventTypes;
@@ -2355,6 +4129,39 @@ async function runCoreTurn(
     });
 
     const toolResultCapabilityKey = resolvedToolExecution.capabilityKey || capabilityRequest.capabilityKey;
+    if (
+      (toolResultCapabilityKey === "question.ask" || toolResultCapabilityKey === "request_user_input")
+      && resolvedToolExecution.status === "blocked"
+    ) {
+      const blockedDetails =
+        resolvedToolExecution.error
+        && typeof resolvedToolExecution.error === "object"
+          ? (resolvedToolExecution.error as Record<string, unknown>).details
+          : undefined;
+      const questionPayload = toolResultCapabilityKey === "request_user_input"
+        ? normalizeRequestUserInputPayload(blockedDetails)
+        : normalizeQuestionAskPayload(blockedDetails);
+      if (questionPayload) {
+        state.pendingQuestion = {
+          ...questionPayload,
+          sourceKind: questionPayload.sourceKind ?? "core",
+        };
+        await emitQuestionPanelSnapshot(state);
+        return {
+          runId: latestRunId,
+          answer: questionPayload.instruction,
+          dispatchStatus: "capability_executed",
+          taskStatus: "blocked",
+          capabilityKey: capabilityRequest.capabilityKey,
+          capabilityResultStatus: resolvedToolExecution.status,
+          context: latestContext,
+          usage: latestUsage,
+          plannerRawAnswer: rawAnswer,
+          toolExecution: resolvedToolExecution,
+          eventTypes: latestEventTypes.length > 0 ? latestEventTypes : ["core.capability_bridge.executed"],
+        };
+      }
+    }
     const summarizedToolOutput =
       (toolResultCapabilityKey === "search.web" || toolResultCapabilityKey === "search.ground")
       && resolvedToolExecution.output
@@ -2456,9 +4263,10 @@ async function runCoreTurn(
       transcript: state.transcript,
       cmp,
       mpRoutedPackage: state.mpRoutedPackage,
+      workspaceInitContext: state.workspaceInitContext,
       runtime: state.runtime,
       skillEntries: state.skillOverlayEntries,
-      memoryEntries: state.memoryOverlayEntries,
+      memoryEntries: mergeCoreMemoryOverlayEntries(state),
       toolResultText,
       capabilityHistoryText: capabilityLoopHistory.join("\n\n"),
       groundingEvidenceText: browserGroundingEvidenceText,
@@ -2481,7 +4289,7 @@ async function runCoreTurn(
       cmp,
       config,
       inputImageUrls,
-      reasoningEffortOverride: "low",
+      reasoningEffortOverride: undefined,
     });
       latestRunId = followup.runId;
       latestUsage = followup.usage;
@@ -2638,12 +4446,22 @@ async function runCoreTurn(
 
 async function handleUserTurn(
   state: LiveCliState,
-  userMessage: string,
-  config: ReturnType<typeof loadOpenAILiveConfig>,
+  inputPayload: {
+    text: string;
+    attachments?: DirectInputImageAttachment[];
+    pastedContents?: DirectInputPastedContentAttachment[];
+    fileRefs?: DirectInputFileReference[];
+  },
+  config: LiveCliRouteConfig,
   options: {
     enableCmpSync?: boolean;
   } = {},
 ): Promise<void> {
+  await refreshWorkspaceInitContext(state, resolveConfiguredWorkspaceRoot());
+  const userMessage = (inputPayload.pastedContents ?? []).reduce((value, entry) =>
+    value.replaceAll(entry.tokenText, entry.text),
+  inputPayload.text);
+  const attachments = inputPayload.attachments ?? [];
   state.turnIndex += 1;
   await state.logger.log("turn_start", {
     turnIndex: state.turnIndex,
@@ -2669,6 +4487,24 @@ async function handleUserTurn(
         : "CMP sidecar 后台启动，不阻塞当前回合",
     );
   }
+
+  let initialInputImageUrls: string[] | undefined;
+  if (attachments.length > 0) {
+    const resolvedImageUrls = await Promise.all(
+      attachments.map((attachment) =>
+        resolveDirectInputAttachmentImage({
+          state,
+          attachment,
+          emitTelemetry: attachment.sourceKind !== "clipboard",
+        })),
+    );
+    const normalizedImageUrls = resolvedImageUrls
+      .filter((entry): entry is string => typeof entry === "string" && entry.startsWith("data:image/"));
+    if (normalizedImageUrls.length > 0) {
+      initialInputImageUrls = [...new Set(normalizedImageUrls)];
+    }
+  }
+
   if (options.enableCmpSync === false) {
     state.pendingCmpSync = undefined;
   } else {
@@ -2680,6 +4516,7 @@ async function handleUserTurn(
       state.lastTurn = state.lastTurn
         ? { ...state.lastTurn, cmp }
         : state.lastTurn;
+      await emitViewerPanelSnapshots(state);
       console.log(state.uiMode === "direct"
         ? `  ↳ CMP sidecar 已同步 (${formatElapsed(Date.now() - cmpStartedAt)})`
         : `[turn ${state.turnIndex}] CMP sidecar synced.`);
@@ -2694,7 +4531,7 @@ async function handleUserTurn(
   if (state.uiMode === "direct") {
     printDirectSub("core 正在规划下一步");
   }
-  const core = await withStopwatch(coreLabel, () => runCoreTurn(state, userMessage, previousCmp, config), {
+  const core = await withStopwatch(coreLabel, () => runCoreTurn(state, userMessage, previousCmp, config, initialInputImageUrls), {
     quiet: state.uiMode === "direct",
   });
   await state.logger.log("stage_end", {
@@ -2752,6 +4589,7 @@ async function handleUserTurn(
     core: turnResultCoreLog,
     transcriptTail: trimStructuredValue(state.transcript.slice(-8), 2_000),
   });
+  await emitViewerPanelSnapshots(state);
 
   if (state.uiMode === "direct") {
     printDirectStatus(state);
@@ -2763,11 +4601,89 @@ async function handleUserTurn(
   }
 }
 
+async function applyTranscriptRewind(
+  state: LiveCliState,
+  targetTurnIndex: number,
+): Promise<{
+  ok: boolean;
+  removedTurns?: number;
+  error?: string;
+}> {
+  if (!Number.isFinite(targetTurnIndex) || targetTurnIndex <= 0) {
+    const error = "rewind target must be a positive turn index";
+    await state.logger.log("rewind_failed", {
+      sessionId: state.sessionId,
+      targetTurnId: String(targetTurnIndex),
+      error,
+    });
+    return {
+      ok: false,
+      error,
+    };
+  }
+  if (targetTurnIndex > state.turnIndex) {
+    const error = `cannot rewind to turn ${targetTurnIndex}; current turn is ${state.turnIndex}`;
+    await state.logger.log("rewind_failed", {
+      sessionId: state.sessionId,
+      targetTurnId: String(targetTurnIndex),
+      error,
+    });
+    return {
+      ok: false,
+      error,
+    };
+  }
+
+  const removedTurns = state.turnIndex - targetTurnIndex;
+  if (removedTurns === 0) {
+    await state.logger.log("rewind_applied", {
+      sessionId: state.sessionId,
+      targetTurnId: String(targetTurnIndex),
+      removedTurns: 0,
+      transcriptTail: trimStructuredValue(state.transcript.slice(-8), 2_000),
+    });
+    return {
+      ok: true,
+      removedTurns: 0,
+    };
+  }
+
+  const rewound = rewindDialogueTranscript(
+    state.transcript,
+    state.turnIndex,
+    targetTurnIndex,
+  );
+  state.transcript = rewound.transcript;
+  state.turnIndex = rewound.nextTurnIndex;
+  state.pendingCmpSync = undefined;
+  state.latestCmp = undefined;
+  state.lastTurn = undefined;
+  await emitViewerPanelSnapshots(state);
+  await state.logger.log("rewind_applied", {
+    sessionId: state.sessionId,
+    targetTurnId: String(targetTurnIndex),
+    removedTurns: rewound.removedTurns,
+    transcriptTail: trimStructuredValue(state.transcript.slice(-8), 2_000),
+  });
+  return {
+    ok: true,
+    removedTurns: rewound.removedTurns,
+  };
+}
+
 function createRuntime() {
-  const workspaceRoot = resolveWorkspaceRoot();
-  const reviewerRoute = toTapAgentModelRoute(LIVE_CHAT_MODEL_PLAN.tap.reviewer);
-  const toolReviewerRoute = toTapAgentModelRoute(LIVE_CHAT_MODEL_PLAN.tap.toolReviewer);
-  const provisionerRoute = toTapAgentModelRoute(LIVE_CHAT_MODEL_PLAN.tap.provisioner);
+  const workspaceRoot = resolveConfiguredWorkspaceRoot();
+  const cmpSqlitePath = resolve(workspaceRoot, "memory", "generated", "cmp-db", "cmp.sqlite");
+  const reviewerRoute = toTapAgentModelRoute(LIVE_CHAT_MODEL_PLAN.tap.reviewer, "tap.reviewer");
+  const toolReviewerRoute = toTapAgentModelRoute(LIVE_CHAT_MODEL_PLAN.tap.toolReviewer, "tap.toolReviewer");
+  const provisionerRoute = toTapAgentModelRoute(LIVE_CHAT_MODEL_PLAN.tap.provisioner, "tap.provisioner");
+  const persistedReadAllowRules = (() => {
+    try {
+      return loadRaxcodeConfigFile().permissions.persistedAllowRules.map((rule) => ({ ...rule }));
+    } catch {
+      return [];
+    }
+  })();
 
   const runtime = createAgentCoreRuntime({
     taProfile: createAgentCapabilityProfile({
@@ -2790,6 +4706,7 @@ function createRuntime() {
         "read_notebook",
         "view_image",
         "browser.playwright",
+        "question.ask",
         "request_user_input",
         "request_permissions",
         "audio.transcribe",
@@ -2824,13 +4741,40 @@ function createRuntime() {
         "mcp.native.execute",
       ],
       allowedCapabilityPatterns: ["*"],
-      defaultMode: "bapr",
+      defaultMode: LIVE_CHAT_TAP_OVERRIDE.requestedMode ?? "bapr",
     }),
+    workspaceRoot,
+    persistedReadAllowRules,
+    persistReadAllowRule: (rule) => {
+      const configFile = loadRaxcodeConfigFile();
+      const existing = configFile.permissions.persistedAllowRules.find((entry) =>
+        entry.capabilityFamily === rule.capabilityFamily
+        && entry.agentId === rule.agentId
+        && entry.pathPrefix === rule.pathPrefix
+      );
+      if (existing) {
+        existing.updatedAt = rule.updatedAt;
+      } else {
+        configFile.permissions.persistedAllowRules.push({
+          ...rule,
+        });
+      }
+      writeRaxcodeConfigFile(configFile);
+    },
     modelInferenceExecutor: executeCliModelInference,
     tapAgentModelRoutes: {
       reviewer: reviewerRoute,
       toolReviewer: toolReviewerRoute,
       provisioner: provisionerRoute,
+    },
+    cmpInfraBackends: {
+      git: createGitCliCmpGitBackend(),
+      dbExecutor: createCmpDbSqliteLiveExecutor({
+        connection: {
+          databaseName: cmpSqlitePath,
+        },
+      }),
+      mq: createRedisCliCmpRedisMqAdapter(),
     },
     cmpFiveAgentRuntime: createCmpFiveAgentRuntime({
       configuration: createCmpFiveAgentConfiguration({
@@ -2846,47 +4790,47 @@ function createRuntime() {
       },
       executors: {
         icma: createCmpRoleLiveLlmModelExecutor({
-          provider: "openai",
           model: LIVE_CHAT_MODEL_PLAN.cmp.icma.model,
           layer: "api",
-          variant: "responses",
+          roleId: "cmp.icma",
           reasoningEffort: resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.cmp.icma),
+          serviceTier: LIVE_CHAT_MODEL_PLAN.cmp.icma.serviceTier,
           maxOutputTokens: LIVE_CHAT_MODEL_PLAN.cmp.icma.maxOutputTokens,
           executor: executeCliModelInference,
         }),
         iterator: createCmpRoleLiveLlmModelExecutor({
-          provider: "openai",
           model: LIVE_CHAT_MODEL_PLAN.cmp.iterator.model,
           layer: "api",
-          variant: "responses",
+          roleId: "cmp.iterator",
           reasoningEffort: resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.cmp.iterator),
+          serviceTier: LIVE_CHAT_MODEL_PLAN.cmp.iterator.serviceTier,
           maxOutputTokens: LIVE_CHAT_MODEL_PLAN.cmp.iterator.maxOutputTokens,
           executor: executeCliModelInference,
         }),
         checker: createCmpRoleLiveLlmModelExecutor({
-          provider: "openai",
           model: LIVE_CHAT_MODEL_PLAN.cmp.checker.model,
           layer: "api",
-          variant: "responses",
+          roleId: "cmp.checker",
           reasoningEffort: resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.cmp.checker),
+          serviceTier: LIVE_CHAT_MODEL_PLAN.cmp.checker.serviceTier,
           maxOutputTokens: LIVE_CHAT_MODEL_PLAN.cmp.checker.maxOutputTokens,
           executor: executeCliModelInference,
         }),
         dbagent: createCmpRoleLiveLlmModelExecutor({
-          provider: "openai",
           model: LIVE_CHAT_MODEL_PLAN.cmp.dbagent.model,
           layer: "api",
-          variant: "responses",
+          roleId: "cmp.dbagent",
           reasoningEffort: resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.cmp.dbagent),
+          serviceTier: LIVE_CHAT_MODEL_PLAN.cmp.dbagent.serviceTier,
           maxOutputTokens: LIVE_CHAT_MODEL_PLAN.cmp.dbagent.maxOutputTokens,
           executor: executeCliModelInference,
         }),
         dispatcher: createCmpRoleLiveLlmModelExecutor({
-          provider: "openai",
           model: LIVE_CHAT_MODEL_PLAN.cmp.dispatcher.model,
           layer: "api",
-          variant: "responses",
+          roleId: "cmp.dispatcher",
           reasoningEffort: resolveReasoningEffort(LIVE_CHAT_MODEL_PLAN.cmp.dispatcher),
+          serviceTier: LIVE_CHAT_MODEL_PLAN.cmp.dispatcher.serviceTier,
           maxOutputTokens: LIVE_CHAT_MODEL_PLAN.cmp.dispatcher.maxOutputTokens,
           executor: executeCliModelInference,
         }),
@@ -2912,16 +4856,160 @@ function createRuntime() {
   return runtime;
 }
 
+async function bootstrapLiveCmpInfra(state: LiveCliState, workspaceRoot: string): Promise<void> {
+  const projectId = "praxis-live-cli";
+  if (state.runtime.getCmpProjectInfraBootstrapReceipt(projectId)) {
+    return;
+  }
+  const repoRootPath = process.cwd();
+  let defaultBranchName = "main";
+  try {
+    const { stdout } = await execFile("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: repoRootPath,
+      encoding: "utf8",
+      timeout: 5_000,
+    });
+    const candidate = stdout.trim();
+    if (candidate.length > 0 && candidate !== "HEAD") {
+      defaultBranchName = candidate;
+    }
+  } catch {
+    // keep fallback main
+  }
+  const defaultAgentId = "cmp-live-cli-main";
+  const sqlitePath = resolve(workspaceRoot, "memory", "generated", "cmp-db", "cmp.sqlite");
+  await state.runtime.bootstrapCmpProjectInfra({
+    projectId,
+    repoName: basename(repoRootPath) || "praxis-live-cli",
+    repoRootPath,
+    agents: [
+      { agentId: defaultAgentId, depth: 0 },
+      { agentId: "core-live-cli", parentAgentId: defaultAgentId, depth: 1 },
+    ],
+    defaultAgentId,
+    defaultBranchName,
+    worktreeRootPath: resolve(workspaceRoot, ".cmp-worktrees"),
+    storageEngine: "sqlite",
+    databaseName: sqlitePath,
+    dbSchemaName: "main",
+    redisNamespaceRoot: "praxis",
+    metadata: {
+      source: "praxis-live-cli",
+      dbEngine: "sqlite",
+    },
+  });
+}
+
+async function runStartupWarmupStage<T>(params: {
+  state: LiveCliState;
+  stage: "cmp/infra_bootstrap" | "core/skill_overlay_bootstrap" | "core/memory_overlay_bootstrap";
+  run: () => Promise<T>;
+  onSuccess?: (value: T) => void | Promise<void>;
+}): Promise<T | undefined> {
+  await params.state.logger.log("stage_start", {
+    turnIndex: params.state.turnIndex,
+    stage: params.stage,
+  });
+  try {
+    const value = await params.run();
+    await params.onSuccess?.(value);
+    await params.state.logger.log("stage_end", {
+      turnIndex: params.state.turnIndex,
+      stage: params.stage,
+      status: "success",
+    });
+    return value;
+  } catch (error) {
+    await params.state.logger.log("stage_end", {
+      turnIndex: params.state.turnIndex,
+      stage: params.stage,
+      status: "failed",
+      error: String(error),
+    });
+    return undefined;
+  }
+}
+
+function startLiveCliStartupWarmup(
+  state: LiveCliState,
+  workspaceRoot: string,
+): Promise<void> {
+  state.cmpInfraReady = runStartupWarmupStage({
+    state,
+    stage: "cmp/infra_bootstrap",
+    run: () => bootstrapLiveCmpInfra(state, workspaceRoot),
+  }).then(() => undefined);
+
+  state.skillOverlayReady = runStartupWarmupStage({
+    state,
+    stage: "core/skill_overlay_bootstrap",
+    run: () => discoverLiveSkillOverlayEntries({
+      cwd: workspaceRoot,
+      objective: "general live chat skill overlay bootstrap",
+    }),
+    onSuccess: (entries) => {
+      state.skillOverlayEntries = entries;
+    },
+  }).then(() => undefined);
+
+  state.mpOverlayReady = runStartupWarmupStage({
+    state,
+    stage: "core/memory_overlay_bootstrap",
+    run: () => discoverMpOverlayArtifacts({
+      cwd: workspaceRoot,
+      userMessage: "general live chat memory overlay bootstrap",
+    }),
+    onSuccess: (mpOverlay) => {
+      state.memoryOverlayEntries = mpOverlay.entries;
+      state.mpRoutedPackage = mpOverlay.routedPackage;
+    },
+  }).then(() => undefined);
+
+  const warmup = Promise.allSettled([
+    state.cmpInfraReady,
+    state.skillOverlayReady,
+    state.mpOverlayReady,
+  ]).then(async () => {
+    try {
+      await emitViewerPanelSnapshots(state);
+    } catch {
+      // background viewer refresh should never block direct input readiness
+    }
+  });
+  state.startupWarmupReady = warmup;
+  return warmup;
+}
+
 async function main(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
   CURRENT_UI_MODE = options.uiMode;
-  const workspaceRoot = resolveWorkspaceRoot();
-  const config = loadOpenAILiveConfig();
+  const runtimeConfig = loadRaxcodeRuntimeConfigSnapshot();
+  applyLiveChatRuntimeConfig({
+    modelPlan: runtimeConfig.modelPlan,
+    tapOverride: runtimeConfig.tapOverride,
+    uiConfig: runtimeConfig.ui,
+    permissionsConfig: runtimeConfig.permissions,
+  });
+  const workspaceRoot = resolveConfiguredWorkspaceRoot();
+  await refreshOpenAIOAuthIfNeeded();
+  const resolvedCoreRole = loadResolvedRoleConfig("core.main");
+  const config: LiveCliRouteConfig = {
+    provider: resolvedCoreRole.profile.provider,
+    baseURL: resolvedCoreRole.profile.route.baseURL,
+    model: resolvedCoreRole.profile.model,
+    contextWindowTokens: resolvedCoreRole.profile.contextWindowTokens,
+    openAIConfig: resolvedCoreRole.profile.provider === "openai"
+      ? loadOpenAILiveConfig("core.main")
+      : undefined,
+  };
   const logPath = createLiveChatLogPath();
   await mkdir(resolveLiveReportsDir(), { recursive: true });
   const logger = new LiveChatLogger(logPath);
   const runtime = createRuntime();
   const session = runtime.createSession({
+    sessionId: typeof process.env.PRAXIS_DIRECT_SESSION_ID === "string" && process.env.PRAXIS_DIRECT_SESSION_ID.trim().length > 0
+      ? process.env.PRAXIS_DIRECT_SESSION_ID.trim()
+      : undefined,
     metadata: {
       harness: "praxis-live-cli",
     },
@@ -2934,41 +5022,13 @@ async function main(): Promise<void> {
     logger,
     turnIndex: 0,
   };
-
-  try {
-    state.skillOverlayEntries = await discoverLiveSkillOverlayEntries({
-      cwd: workspaceRoot,
-      objective: "general live chat skill overlay bootstrap",
-    });
-  } catch (error) {
-    await logger.log("stage_end", {
-      turnIndex: state.turnIndex,
-      stage: "core/skill_overlay_bootstrap",
-      status: "failed",
-      error: String(error),
-    });
-  }
-
-  try {
-    const mpOverlay = await discoverMpOverlayArtifacts({
-      cwd: workspaceRoot,
-      userMessage: "general live chat memory overlay bootstrap",
-    });
-    state.memoryOverlayEntries = mpOverlay.entries;
-    state.mpRoutedPackage = mpOverlay.routedPackage;
-  } catch (error) {
-    await logger.log("stage_end", {
-      turnIndex: state.turnIndex,
-      stage: "core/memory_overlay_bootstrap",
-      status: "failed",
-      error: String(error),
-    });
-  }
+  restoreDirectSessionSnapshotIntoState(state, workspaceRoot);
+  await loadPersistedInitArtifactIntoState(state, workspaceRoot);
 
   if (options.uiMode === "direct") {
-    printStartupDirect(config);
+    printStartupDirect({ baseURL: config.baseURL });
   } else {
-    printStartup(config);
+    printStartup({ baseURL: config.baseURL });
   }
   console.log(`log file: ${logPath}`);
   await logger.log("session_start", {
@@ -2983,10 +5043,15 @@ async function main(): Promise<void> {
       promptText: buildCoreActionPlannerInstructionText(state, ""),
     }),
   });
+  await emitInitialViewerPanelSnapshots(state);
+  const startupWarmup = startLiveCliStartupWarmup(state, workspaceRoot);
 
   try {
     if (options.once) {
-      await handleUserTurn(state, options.once, config, {
+      await startupWarmup;
+      await handleUserTurn(state, {
+        text: options.once,
+      }, config, {
         enableCmpSync: false,
       });
       await executeCoreCapabilityRequest(state, {
@@ -3012,6 +5077,15 @@ async function main(): Promise<void> {
       ? createDirectFallbackReader()
       : undefined;
 
+    if (options.uiMode === "direct") {
+      console.log(`direct ready: ${state.sessionId}`);
+      await logger.log("direct_input_loop_ready", {
+        sessionId: state.sessionId,
+      });
+    } else {
+      await startupWarmup;
+    }
+
     try {
       while (true) {
         const raw = options.uiMode === "direct"
@@ -3022,7 +5096,79 @@ async function main(): Promise<void> {
         if (raw === null) {
           break;
         }
-        const line = raw.trim();
+        const parsedInput = options.uiMode === "direct"
+          ? parseDirectUserInputEnvelope(raw)
+          : undefined;
+        const initRequest = options.uiMode === "direct"
+          ? parseDirectInitRequestEnvelope(raw)
+          : undefined;
+        const questionAnswer = options.uiMode === "direct"
+          ? parseDirectQuestionAnswerEnvelope(raw)
+          : undefined;
+        const humanGateDecision = options.uiMode === "direct"
+          ? parseHumanGateDecisionEnvelope(raw)
+          : undefined;
+        if (humanGateDecision) {
+          const result = await state.runtime.submitTaHumanGateDecision({
+            gateId: humanGateDecision.gateId,
+            action: humanGateDecision.action,
+            actorId: `direct-tui:${state.sessionId}`,
+            note: humanGateDecision.note,
+          });
+          await emitViewerPanelSnapshots(state);
+          if (state.uiMode !== "direct") {
+            console.log(`Human gate ${humanGateDecision.gateId} -> ${result.status}`);
+          }
+          continue;
+        }
+        if (initRequest) {
+          await handleInitRequest(state, initRequest.text, config, workspaceRoot);
+          continue;
+        }
+        if (questionAnswer) {
+          const pendingQuestion = state.pendingQuestion;
+          if (!pendingQuestion || pendingQuestion.requestId !== questionAnswer.requestId) {
+            if (state.uiMode !== "direct") {
+              console.log("Question answer ignored because no matching prompt is pending.");
+            }
+            continue;
+          }
+          const clarifications = formatQuestionAnswersAsClarifications({
+            prompt: pendingQuestion,
+            answers: questionAnswer.answers,
+          });
+          state.pendingQuestion = undefined;
+          await emitQuestionPanelSnapshot(state);
+          if (pendingQuestion.sourceKind === "init") {
+            state.initFlow = {
+              ...(state.initFlow ?? {
+                status: "asking_questions",
+              }),
+              status: "analyzing_repo",
+              seedText: pendingQuestion.resumeSeedText ?? state.initFlow?.seedText,
+              clarificationHistory: [
+                ...(state.initFlow?.clarificationHistory ?? []),
+                ...clarifications.map((answerText, index) => ({
+                  questionId: questionAnswer.answers[index]?.questionId,
+                  answerText,
+                })),
+              ],
+            };
+            await handleInitRequest(state, pendingQuestion.resumeSeedText ?? state.initFlow?.seedText ?? "", config, workspaceRoot);
+            continue;
+          }
+          await handleUserTurn(state, {
+            text: formatQuestionAnswersAsUserMessage({
+              prompt: pendingQuestion,
+              answers: questionAnswer.answers,
+            }),
+          }, config, {
+            enableCmpSync: options.once === undefined,
+          });
+          continue;
+        }
+        const messageText = parsedInput?.text ?? raw;
+        const line = messageText.trim();
 
         if (!line) {
           continue;
@@ -3044,10 +5190,12 @@ async function main(): Promise<void> {
           continue;
         }
         if (line === "/mp") {
+          await emitViewerPanelSnapshots(state);
           printMpViewPlaceholder();
           continue;
         }
         if (line === "/capabilities") {
+          await emitViewerPanelSnapshots(state);
           printDirectCapabilities(state.runtime);
           continue;
         }
@@ -3100,6 +5248,7 @@ async function main(): Promise<void> {
           continue;
         }
         if (line === "/cmp") {
+          await emitViewerPanelSnapshots(state);
           if (!state.lastTurn) {
             console.log("还没有 CMP 结果。");
             continue;
@@ -3119,8 +5268,26 @@ async function main(): Promise<void> {
           printHistory(state, options.historyTurns);
           continue;
         }
+        if (line.startsWith("/rewind")) {
+          const parts = line.split(/\s+/u).filter((entry) => entry.length > 0);
+          const targetTurnIndex = Number.parseInt(parts[1] ?? "", 10);
+          const result = await applyTranscriptRewind(state, targetTurnIndex);
+          if (state.uiMode !== "direct") {
+            console.log(
+              result.ok
+                ? `Rewound conversation to turn ${targetTurnIndex}.`
+                : `Rewind failed: ${result.error ?? "unknown error"}`,
+            );
+          }
+          continue;
+        }
 
-        await handleUserTurn(state, line, config);
+        await handleUserTurn(state, {
+          text: messageText,
+          attachments: parsedInput?.attachments,
+          pastedContents: parsedInput?.pastedContents,
+          fileRefs: parsedInput?.fileRefs,
+        }, config);
       }
     } finally {
       directFallbackReader?.close();
@@ -3136,6 +5303,11 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
+  if (error instanceof RaxcodeConfigError) {
+    console.error(error.message);
+    process.exitCode = 1;
+    return;
+  }
   console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
   process.exitCode = 1;
 });

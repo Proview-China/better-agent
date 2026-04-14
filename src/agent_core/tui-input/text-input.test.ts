@@ -5,6 +5,8 @@ import {
   applyTuiTextInputKey,
   createTuiTextInputState,
   deleteBackwardInTuiTextInput,
+  deleteForwardInTuiTextInput,
+  isBackwardDeleteInput,
   insertIntoTuiTextInput,
   moveTuiTextInputCursorDown,
   moveTuiTextInputCursorLeft,
@@ -31,6 +33,24 @@ test("deleteBackwardInTuiTextInput removes previous grapheme", () => {
   const next = deleteBackwardInTuiTextInput(seeded);
   assert.equal(next.value, "你a");
   assert.equal(next.cursorOffset, 1);
+});
+
+test("deleteBackwardInTuiTextInput removes special tokens as a whole", () => {
+  const value = "hello [Image #1] world";
+  const seeded = setTuiTextInputValue(createTuiTextInputState(value), value, "hello [Image #1]".length);
+  const next = deleteBackwardInTuiTextInput(seeded);
+
+  assert.equal(next.value, "hello  world");
+  assert.equal(next.cursorOffset, "hello ".length);
+});
+
+test("deleteForwardInTuiTextInput removes pasted content token as a whole", () => {
+  const value = "[Pasted Content #1 with 2600 characters] tail";
+  const state = setTuiTextInputValue(createTuiTextInputState(value), value, 0);
+  const next = deleteForwardInTuiTextInput(state);
+
+  assert.equal(next.value, " tail");
+  assert.equal(next.cursorOffset, 0);
 });
 
 test("renderTuiTextInputCursor returns cursor block at end of line", () => {
@@ -73,6 +93,15 @@ test("applyTuiTextInputKey treats ctrl+d as forward delete", () => {
   state = applyTuiTextInputKey(state, "d", { ctrl: true } as never).nextState;
   assert.equal(state.value, "helo");
   assert.equal(state.cursorOffset, 2);
+});
+
+test("isBackwardDeleteInput recognizes backspace-style input paths", () => {
+  assert.equal(isBackwardDeleteInput("", { backspace: true } as never), true);
+  assert.equal(isBackwardDeleteInput("", { delete: true } as never), true);
+  assert.equal(isBackwardDeleteInput("h", { ctrl: true } as never), true);
+  assert.equal(isBackwardDeleteInput("\u007f", {} as never), true);
+  assert.equal(isBackwardDeleteInput("\b", {} as never), true);
+  assert.equal(isBackwardDeleteInput("x", {} as never), false);
 });
 
 test("vertical cursor movement preserves approximate visual column across lines", () => {

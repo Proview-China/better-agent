@@ -2,11 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
 
 import { RaxRoutingError } from "./errors.js";
-import { loadLiveProviderConfig } from "./live-config.js";
+import { createOpenAIClient, loadLiveProviderConfig } from "./live-config.js";
 import { rax } from "./runtime.js";
+import { refreshOpenAIOAuthIfNeeded } from "../raxcode-openai-auth.js";
 
 type ProviderTarget = "openai" | "anthropic" | "deepmind" | "all";
 
@@ -63,11 +63,9 @@ function formatError(error: unknown): { summary: string; details: Record<string,
 
 async function smokeOpenAI(): Promise<SmokeRow[]> {
   const rows: SmokeRow[] = [];
+  await refreshOpenAIOAuthIfNeeded();
   const config = loadLiveProviderConfig().openai;
-  const client = new OpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL
-  });
+  const client = createOpenAIClient(config);
 
   const listInvocation = rax.skill.list({
     provider: "openai",

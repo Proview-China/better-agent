@@ -105,6 +105,98 @@ test("routeAccessRequest redirects to provisioning when capability is missing bu
   assert.equal(routed.decision.decision, "redirected_to_provisioning");
 });
 
+test("routeAccessRequest auto-grants unmatched normal capability in bapr mode", () => {
+  counter = 0;
+  const profile = createAgentCapabilityProfile({
+    profileId: "profile-bapr",
+    agentClass: "main-agent",
+  });
+  const request = createAccessRequest({
+    requestId: "req-bapr-1",
+    sessionId: "session-1",
+    runId: "run-1",
+    agentId: "agent-1",
+    requestedCapabilityKey: "search.fetch",
+    requestedTier: "B1",
+    reason: "Need to fetch a page.",
+    mode: "bapr",
+    createdAt: clock().toISOString(),
+  });
+
+  const routed = routeAccessRequest({
+    profile,
+    request,
+    capabilityAvailable: true,
+    idFactory,
+    clock,
+  });
+
+  assert.equal(routed.outcome, "baseline_approved");
+  assert.equal(routed.decision.decision, "approved");
+});
+
+test("routeAccessRequest keeps restricted normal baseline capability on the fast path", () => {
+  counter = 0;
+  const profile = createAgentCapabilityProfile({
+    profileId: "profile-restricted-baseline",
+    agentClass: "main-agent",
+    baselineCapabilities: ["docs.read"],
+  });
+  const request = createAccessRequest({
+    requestId: "req-restricted-1",
+    sessionId: "session-1",
+    runId: "run-1",
+    agentId: "agent-1",
+    requestedCapabilityKey: "docs.read",
+    requestedTier: "B0",
+    reason: "Need to read docs.",
+    mode: "restricted",
+    createdAt: clock().toISOString(),
+  });
+
+  const routed = routeAccessRequest({
+    profile,
+    request,
+    capabilityAvailable: true,
+    idFactory,
+    clock,
+  });
+
+  assert.equal(routed.outcome, "baseline_approved");
+  assert.equal(routed.decision.decision, "approved");
+});
+
+test("routeAccessRequest escalates restricted normal unmatched capability to human", () => {
+  counter = 0;
+  const profile = createAgentCapabilityProfile({
+    profileId: "profile-restricted-human",
+    agentClass: "main-agent",
+    baselineCapabilities: ["docs.read"],
+  });
+  const request = createAccessRequest({
+    requestId: "req-restricted-2",
+    sessionId: "session-1",
+    runId: "run-1",
+    agentId: "agent-1",
+    requestedCapabilityKey: "search.fetch",
+    requestedTier: "B1",
+    reason: "Need to fetch a page.",
+    mode: "restricted",
+    createdAt: clock().toISOString(),
+  });
+
+  const routed = routeAccessRequest({
+    profile,
+    request,
+    capabilityAvailable: true,
+    idFactory,
+    clock,
+  });
+
+  assert.equal(routed.outcome, "escalated_to_human");
+  assert.equal(routed.decision.decision, "escalated_to_human");
+});
+
 test("routeAccessRequest escalates human gate when tier requires it", () => {
   counter = 0;
   const profile = createAgentCapabilityProfile({

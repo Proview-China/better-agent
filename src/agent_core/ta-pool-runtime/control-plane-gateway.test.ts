@@ -46,6 +46,70 @@ test("control-plane gateway passes baseline-approved requests into execution", (
   assert.equal(gateway.toExecutionGrant(result)?.capabilityKey, "docs.read");
 });
 
+test("ta control-plane gateway baseline-grants unmatched normal capability in bapr mode", () => {
+  counter = 0;
+  const profile = createAgentCapabilityProfile({
+    profileId: "profile-bapr-gateway",
+    agentClass: "main-agent",
+  });
+  const gateway = new TaControlPlaneGateway({
+    profile,
+    clock,
+    idFactory,
+  });
+
+  const resolved = gateway.resolveCapabilityAccess({
+    sessionId: "session-bapr-1",
+    runId: "run-bapr-1",
+    agentId: "agent-bapr-1",
+    capabilityKey: "search.fetch",
+    requestedTier: "B1",
+    reason: "Need to fetch a page.",
+    mode: "bapr",
+  });
+
+  assert.equal(resolved.status, "baseline_granted");
+  assert.equal(resolved.grant.capabilityKey, "search.fetch");
+});
+
+test("ta control-plane gateway keeps restricted normal baseline capability on the fast path", () => {
+  counter = 0;
+  const profile = createAgentCapabilityProfile({
+    profileId: "profile-restricted-gateway",
+    agentClass: "main-agent",
+    baselineCapabilities: ["docs.read"],
+  });
+  const gateway = new TaControlPlaneGateway({
+    profile,
+    clock,
+    idFactory,
+  });
+
+  const baselineResolved = gateway.resolveCapabilityAccess({
+    sessionId: "session-restricted-1",
+    runId: "run-restricted-1",
+    agentId: "agent-restricted-1",
+    capabilityKey: "docs.read",
+    requestedTier: "B0",
+    reason: "Need docs.",
+    mode: "restricted",
+  });
+
+  const unmatchedResolved = gateway.resolveCapabilityAccess({
+    sessionId: "session-restricted-2",
+    runId: "run-restricted-2",
+    agentId: "agent-restricted-2",
+    capabilityKey: "search.fetch",
+    requestedTier: "B1",
+    reason: "Need to fetch a page.",
+    mode: "restricted",
+  });
+
+  assert.equal(baselineResolved.status, "baseline_granted");
+  assert.equal(unmatchedResolved.status, "review_required");
+  assert.equal(unmatchedResolved.request.riskLevel, "normal");
+});
+
 test("control-plane gateway exposes provisioning and human-gate branches", () => {
   counter = 0;
   const gateway = createTaControlPlaneGateway();

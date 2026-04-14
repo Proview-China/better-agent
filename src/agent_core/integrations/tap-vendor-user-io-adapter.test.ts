@@ -259,16 +259,18 @@ test("registerTapVendorUserIoFamily registers the multimodal user-io baseline ca
   });
 
   assert.deepEqual(registration.capabilityKeys, [
+    "question.ask",
     "request_user_input",
     "request_permissions",
     "audio.transcribe",
     "speech.synthesize",
     "image.generate",
   ]);
-  assert.equal(registration.packages.length, 5);
-  assert.equal(registration.bindings.length, 5);
+  assert.equal(registration.packages.length, 6);
+  assert.equal(registration.bindings.length, 6);
   assert.equal(registration.activationFactoryRefs.length, activationFactoryRefs.size);
   assert.deepEqual(capabilityKeys, [
+    "question.ask",
     "request_user_input",
     "request_permissions",
     "audio.transcribe",

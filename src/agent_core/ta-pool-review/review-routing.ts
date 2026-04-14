@@ -10,12 +10,14 @@ import type {
 import {
   createCapabilityGrant,
   createReviewDecision,
-  isCapabilityAllowedByProfile,
   isCapabilityDeniedByProfile,
 } from "../ta-pool-types/index.js";
 import {
+  classifyCapabilityRisk,
+  resolveBaselineCapability,
   getTaModePolicy,
-} from "../ta-pool-model/mode-policy.js";
+  getModeRiskPolicyEntry,
+} from "../ta-pool-model/index.js";
 
 export const REVIEW_ROUTING_OUTCOMES = [
   "baseline_approved",
@@ -97,45 +99,39 @@ export function routeAccessRequest(params: RouteAccessRequestOptions): ReviewRou
     mode: request.mode,
     tier: request.requestedTier,
   });
-  const baselineAllowed = isCapabilityAllowedByProfile({
+  const effectiveRiskLevel = request.riskLevel ?? classifyCapabilityRisk({
+    capabilityKey: request.requestedCapabilityKey,
+    requestedTier: request.requestedTier,
+  }).riskLevel;
+  const riskPolicy = getModeRiskPolicyEntry(request.mode, effectiveRiskLevel);
+  const baselineResolution = resolveBaselineCapability({
     profile,
     capabilityKey: request.requestedCapabilityKey,
+    requestedTier: request.requestedTier,
   });
+  const baselineAllowed = baselineResolution.status === "baseline_allowed";
+  const shouldAutoGrant =
+    riskPolicy.decision === "allow"
+    || (riskPolicy.baselineFastPath && baselineAllowed);
 
-  if (baselineAllowed && modePolicy.allowsAutoGrant) {
-    const createdAt = clock().toISOString();
-    const grant = createCapabilityGrant({
-      grantId: idFactory(),
-      requestId: request.requestId,
-      capabilityKey: request.requestedCapabilityKey,
-      grantedTier: request.requestedTier,
-      grantedScope: request.requestedScope,
-      mode: request.mode,
-      issuedAt: createdAt,
-    });
-    const decision = createReviewDecision({
-      decisionId: idFactory(),
-      requestId: request.requestId,
-      vote: "allow",
-      mode: request.mode,
-      reason: `Capability ${request.requestedCapabilityKey} is baseline-allowed for profile ${profile.profileId}.`,
-      grantCompilerDirective: {
-        grantedTier: request.requestedTier,
-        grantedScope: request.requestedScope,
-      },
-      createdAt,
+  if (riskPolicy.decision === "deny") {
+    const decision = createDeniedDecision({
+      request,
+      reason: `Capability ${request.requestedCapabilityKey} is denied for ${effectiveRiskLevel} risk in ${request.mode} mode.`,
+      decision: "denied",
+      idFactory,
+      clock,
     });
     return {
-      outcome: "baseline_approved",
+      outcome: "denied",
       decision,
-      grant,
     };
   }
 
-  if (modePolicy.escalatesToHuman) {
+  if (riskPolicy.decision === "human_gate" && !shouldAutoGrant) {
     const decision = createDeniedDecision({
       request,
-      reason: `Capability ${request.requestedCapabilityKey} requires human approval in ${request.mode} mode.`,
+      reason: `Capability ${request.requestedCapabilityKey} requires human approval for ${effectiveRiskLevel} risk in ${request.mode} mode.`,
       decision: "escalated_to_human",
       idFactory,
       clock,
@@ -161,11 +157,45 @@ export function routeAccessRequest(params: RouteAccessRequestOptions): ReviewRou
     };
   }
 
+  if (shouldAutoGrant) {
+    const createdAt = clock().toISOString();
+    const grant = createCapabilityGrant({
+      grantId: idFactory(),
+      requestId: request.requestId,
+      capabilityKey: request.requestedCapabilityKey,
+      grantedTier: request.requestedTier,
+      grantedScope: request.requestedScope,
+      mode: request.mode,
+      issuedAt: createdAt,
+    });
+    const decision = createReviewDecision({
+      decisionId: idFactory(),
+      requestId: request.requestId,
+      vote: "allow",
+      mode: request.mode,
+      riskLevel: effectiveRiskLevel,
+      reason: baselineAllowed
+        ? `Capability ${request.requestedCapabilityKey} is baseline-allowed for profile ${profile.profileId}.`
+        : `Capability ${request.requestedCapabilityKey} is auto-granted by the ${request.mode}/${effectiveRiskLevel} governance matrix.`,
+      grantCompilerDirective: {
+        grantedTier: request.requestedTier,
+        grantedScope: request.requestedScope,
+      },
+      createdAt,
+    });
+    return {
+      outcome: "baseline_approved",
+      decision,
+      grant,
+    };
+  }
+
   const decision = createReviewDecision({
     decisionId: idFactory(),
     requestId: request.requestId,
     decision: "deferred",
     mode: request.mode,
+    riskLevel: effectiveRiskLevel,
     reason: `Capability ${request.requestedCapabilityKey} requires reviewer handling.`,
     deferredReason: `Route through reviewer strategy before execution in ${request.mode} mode.`,
     createdAt: clock().toISOString(),

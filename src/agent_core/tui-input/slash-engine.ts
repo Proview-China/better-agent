@@ -134,5 +134,5 @@ export const DEFAULT_PRAXIS_SLASH_COMMANDS: PraxisSlashCommand[] = [
   { id: "agents", name: "agents", description: "Switch to agents view" },
   { id: "permissions", name: "permissions", description: "View current permissions and approvals" },
   { id: "workspace", name: "workspace", description: "Switch current workspace directory" },
-  { id: "language", name: "language", description: "Switch current language mode" },
+  { id: "language", name: "language", description: "Switch current language mode", hidden: true },
 ];

@@ -3,10 +3,10 @@ import { dirname, resolve } from "node:path";
 
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
 
-import { loadLiveProviderConfig } from "./live-config.js";
+import { createOpenAIClient, loadLiveProviderConfig } from "./live-config.js";
 import { rax } from "./runtime.js";
+import { refreshOpenAIOAuthIfNeeded } from "../raxcode-openai-auth.js";
 
 type ProviderTarget = "openai" | "anthropic" | "deepmind" | "all";
 
@@ -63,11 +63,9 @@ function formatError(error: unknown): { summary: string; details: Record<string,
 
 async function smokeOpenAI(): Promise<SmokeRow[]> {
   const rows: SmokeRow[] = [];
+  await refreshOpenAIOAuthIfNeeded();
   const config = loadLiveProviderConfig().openai;
-  const client = new OpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL
-  });
+  const client = createOpenAIClient(config);
   const models = Array.from(new Set([config.model, "gpt-5.4", "gpt-5"]));
 
   for (const model of models) {

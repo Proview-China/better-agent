@@ -46,6 +46,7 @@ export const TAP_HARDENED_CORE_INDEX_CAPABILITY_KEYS = [
   "doc.read",
   "doc.write",
   "browser.playwright",
+  "question.ask",
   "request_user_input",
   "request_permissions",
 ] as const;
@@ -287,6 +288,11 @@ const CORE_HINTS: Record<string, { coreHint: string; defaultNextAction?: string 
     coreHint:
       "Use for reviewed browser actions one step at a time. Treat visible page facts as stronger than external search, and keep blocked when security verification hides the target content.",
     defaultNextAction: "advance_one_browser_step",
+  },
+  "question.ask": {
+    coreHint:
+      "Use when the task cannot continue safely without a few concrete user choices. Ask a compact structured question set with short, precise option descriptions instead of open-ended freeform prompts.",
+    defaultNextAction: "wait_for_structured_question_answers",
   },
   "request_user_input": {
     coreHint:

@@ -30,6 +30,25 @@ test("createRaxCmpConfig fills stable defaults for shared git infra and live db/
   assert.equal(config.mq.liveExecutionPreferred, true);
 });
 
+test("createRaxCmpConfig preserves explicit sqlite database settings", () => {
+  const config = createRaxCmpConfig({
+    projectId: "proj-sqlite",
+    git: {
+      repoName: "proj-sqlite",
+      repoRootPath: "/tmp/praxis/proj-sqlite",
+    },
+    db: {
+      kind: "sqlite",
+      databaseName: "/tmp/praxis/proj-sqlite/cmp.sqlite",
+      schemaName: "main",
+    },
+  });
+
+  assert.equal(config.db.kind, "sqlite");
+  assert.equal(config.db.databaseName, "/tmp/praxis/proj-sqlite/cmp.sqlite");
+  assert.equal(config.db.schemaName, "main");
+});
+
 test("loadRaxCmpConfigFromEnv reads explicit environment overrides", () => {
   const config = loadRaxCmpConfigFromEnv({
     PRAXIS_CMP_PROJECT_ID: "proj-env",
@@ -43,6 +62,7 @@ test("loadRaxCmpConfigFromEnv reads explicit environment overrides", () => {
     PRAXIS_CMP_RECOVERY_PREFERENCE: "infra_first",
     PRAXIS_CMP_DISPATCH_SCOPE: "manual_targets",
     PRAXIS_CMP_GIT_DEFAULT_BRANCH: "trunk",
+    PRAXIS_CMP_DB_KIND: "sqlite",
     PRAXIS_CMP_DB_NAME: "cmp_proj_env",
     PRAXIS_CMP_DB_SCHEMA: "cmp_proj_env",
     PRAXIS_CMP_DB_LIVE: "0",
@@ -64,6 +84,7 @@ test("loadRaxCmpConfigFromEnv reads explicit environment overrides", () => {
   assert.equal(config.controlDefaults.automation.autoSeedChildren, false);
   assert.equal(config.git.repoName, "proj-env-repo");
   assert.equal(config.git.defaultBranchName, "trunk");
+  assert.equal(config.db.kind, "sqlite");
   assert.equal(config.db.databaseName, "cmp_proj_env");
   assert.equal(config.db.schemaName, "cmp_proj_env");
   assert.equal(config.db.liveExecutionPreferred, false);

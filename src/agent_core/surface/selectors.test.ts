@@ -78,6 +78,96 @@ test("surface selectors expose transcript windows and current turn", () => {
   assert.equal(selectLatestAssistantMessage(state)?.id, "m2");
 });
 
+test("surface selectors preserve insertion order within the same turn", () => {
+  const state = reduceSurfaceEvents(createInitialSurfaceState(), [
+    createSurfaceEvent({
+      eventId: "event:turn.started:turn-2",
+      type: "turn.started",
+      emittedAt: "2026-04-11T09:20:00.000Z",
+      at: "2026-04-11T09:20:00.000Z",
+      source: "core",
+      turn: createSurfaceTurn({
+        turnId: "turn-2",
+        id: "turn-2",
+        turnIndex: 1,
+        status: "running",
+        startedAt: "2026-04-11T09:20:00.000Z",
+        updatedAt: "2026-04-11T09:20:00.000Z",
+        outputMessageIds: [],
+        taskIds: [],
+      }),
+    }),
+    createSurfaceEvent({
+      eventId: "event:message.appended:user-2",
+      type: "message.appended",
+      emittedAt: "2026-04-11T09:20:01.000Z",
+      at: "2026-04-11T09:20:01.000Z",
+      source: "ui",
+      message: createSurfaceMessage({
+        messageId: "user-2",
+        id: "user-2",
+        kind: "user",
+        createdAt: "2026-04-11T09:20:01.000Z",
+        turnId: "turn-2",
+        text: "帮我搜索",
+      }),
+    }),
+    createSurfaceEvent({
+      eventId: "event:message.appended:assistant-2a",
+      type: "message.appended",
+      emittedAt: "2026-04-11T09:20:02.000Z",
+      at: "2026-04-11T09:20:02.000Z",
+      source: "ui",
+      message: createSurfaceMessage({
+        messageId: "assistant-2a",
+        id: "assistant-2a",
+        kind: "assistant",
+        createdAt: "2026-04-11T09:20:02.000Z",
+        turnId: "turn-2",
+        text: "我先查一下。",
+      }),
+    }),
+    createSurfaceEvent({
+      eventId: "event:message.appended:tool-2",
+      type: "message.appended",
+      emittedAt: "2026-04-11T09:20:03.000Z",
+      at: "2026-04-11T09:20:03.000Z",
+      source: "ui",
+      message: createSurfaceMessage({
+        messageId: "tool-2",
+        id: "tool-2",
+        kind: "status",
+        createdAt: "2026-04-11T09:20:03.000Z",
+        turnId: "turn-2",
+        text: "WebSearch\nSearching and grounding query",
+        metadata: {
+          source: "tool_summary",
+        },
+      }),
+    }),
+    createSurfaceEvent({
+      eventId: "event:message.appended:assistant-2b",
+      type: "message.appended",
+      emittedAt: "2026-04-11T09:20:04.000Z",
+      at: "2026-04-11T09:20:04.000Z",
+      source: "ui",
+      message: createSurfaceMessage({
+        messageId: "assistant-2b",
+        id: "assistant-2b",
+        kind: "assistant",
+        createdAt: "2026-04-11T09:20:04.000Z",
+        turnId: "turn-2",
+        text: "这是后半段回答。",
+      }),
+    }),
+  ]);
+
+  assert.deepEqual(
+    selectTranscriptMessages(state, { turnId: "turn-2" }).map((message) => message.id),
+    ["user-2", "assistant-2a", "tool-2", "assistant-2b"],
+  );
+});
+
 test("surface selectors expose active tasks overlays panels and status messages", () => {
   const state = reduceSurfaceEvents(createInitialSurfaceState(), [
     createSurfaceEvent({

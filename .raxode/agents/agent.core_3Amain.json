@@ -1,0 +1,24 @@
+{
+  "agentId": "agent.core:main",
+  "workspaceRoot": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp",
+  "currentSessionId": "direct-1776195429754",
+  "depth": 0,
+  "createdAt": "2026-04-14T11:22:36.774Z",
+  "updatedAt": "2026-04-14T19:37:09.883Z",
+  "git": {
+    "repoRootPath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp",
+    "currentBranchName": "integrate/dev-master-cmp",
+    "headCommitSha": "9e473286847eafafab9a7f97d7d3c8d9641a1444",
+    "worktreeRootPath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp/.cmp-worktrees",
+    "cmpWorktreePath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp/.cmp-worktrees/cmp__agent.core-main",
+    "checkedRefName": "refs/praxis/cmp/checked/agent.core-main",
+    "promotedRefName": "refs/praxis/cmp/promoted/agent.core-main",
+    "branchFamily": {
+      "agentId": "agent.core-main",
+      "workBranchName": "work/agent.core-main",
+      "cmpBranchName": "cmp/agent.core-main",
+      "mpBranchName": "mp/agent.core-main",
+      "tapBranchName": "tap/agent.core-main"
+    }
+  }
+}

@@ -12,8 +12,11 @@ import {
   type ReviewDecisionKind,
   type TaCapabilityTier,
   type TaPoolMode,
+  type TaPoolRiskLevel,
 } from "../ta-pool-types/index.js";
 import {
+  classifyCapabilityRisk,
+  getModeRiskPolicyEntry,
   resolveBaselineCapability,
   toCapabilityAccessAssignment,
 } from "../ta-pool-model/index.js";
@@ -35,6 +38,7 @@ export interface ResolveCapabilityAccessInput {
   reason: string;
   requestedTier?: TaCapabilityTier;
   mode?: TaPoolMode;
+  riskLevel?: TaPoolRiskLevel;
   taskContext?: Record<string, unknown>;
   requestedScope?: AccessRequestScope;
   requestedDurationMs?: number;
@@ -130,12 +134,23 @@ export class TaControlPlaneGateway {
   }
 
   resolveCapabilityAccess(input: ResolveCapabilityAccessInput): ResolveCapabilityAccessResult {
+    const effectiveMode = input.mode ?? this.profile.defaultMode;
+    const effectiveRiskLevel = input.riskLevel ?? classifyCapabilityRisk({
+      capabilityKey: input.capabilityKey,
+      requestedTier: input.requestedTier,
+    }).riskLevel;
+    const riskPolicy = getModeRiskPolicyEntry(effectiveMode, effectiveRiskLevel);
     const baseline = resolveBaselineCapability({
       profile: this.profile,
       capabilityKey: input.capabilityKey,
       requestedTier: input.requestedTier,
     });
-    if (baseline.status === "baseline_allowed") {
+    const baselineEligible = baseline.status === "baseline_allowed";
+    const matrixAllowsAutoGrant =
+      riskPolicy.decision === "allow"
+      || (riskPolicy.baselineFastPath && baselineEligible);
+
+    if (matrixAllowsAutoGrant) {
       return {
         status: "baseline_granted",
         grant: this.#createBaselineGrant(input, baseline.matchedPattern),
@@ -152,6 +167,7 @@ export class TaControlPlaneGateway {
       status: "review_required",
       request: this.submitAccessRequest({
         ...input,
+        riskLevel: effectiveRiskLevel,
         metadata: {
           ...(input.metadata ?? {}),
           capabilityAccess,
@@ -173,6 +189,7 @@ export class TaControlPlaneGateway {
       requestedScope: input.requestedScope,
       requestedDurationMs: input.requestedDurationMs,
       mode: input.mode ?? this.profile.defaultMode,
+      riskLevel: input.riskLevel,
       createdAt: this.#clock().toISOString(),
       metadata: input.metadata,
     });

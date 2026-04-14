@@ -15,8 +15,20 @@ test("safety interceptor blocks clearly dangerous capability keys", () => {
     reason: "Delete a folder recursively.",
   });
 
-  assert.equal(result.outcome, "block");
+  assert.equal(result.outcome, "escalate_to_human");
   assert.equal(result.matchedPattern, "shell.rm*");
+});
+
+test("safety interceptor keeps restricted normal baseline candidates alive for gateway routing", () => {
+  const result = evaluateSafetyInterception({
+    mode: "restricted",
+    requestedTier: "B0",
+    capabilityKey: "docs.read",
+    reason: "Read a workspace document.",
+  });
+
+  assert.equal(result.outcome, "allow");
+  assert.equal(result.riskLevel, "normal");
 });
 
 test("safety interceptor can downgrade broad but non-critical shell requests", () => {

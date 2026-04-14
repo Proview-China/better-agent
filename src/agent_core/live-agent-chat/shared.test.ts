@@ -7,6 +7,7 @@ import {
   buildSpreadsheetReadCompletionAnswer,
   createCapabilityFamilyTelemetry,
   createCoreContextSnapshot,
+  decodeEscapedDisplayTextMaybe,
   estimateContextTokens,
   extractReplyResponseTextFromPartialEnvelope,
   extractResponseTextMaybe,
@@ -15,6 +16,9 @@ import {
   normalizeCoreTaskStatus,
   parseCliOptions,
   parseCoreActionEnvelope,
+  parseDirectInitRequestEnvelope,
+  parseDirectQuestionAnswerEnvelope,
+  parseDirectUserInputEnvelope,
   parseTapRequest,
   resolveContextWindowProfile,
   shouldStopCoreCapabilityLoop,
@@ -41,6 +45,139 @@ test("parseCliOptions reads once, history-turns, and direct ui mode", () => {
     historyTurns: 9,
     uiMode: "direct",
   });
+});
+
+test("parseDirectUserInputEnvelope accepts direct image attachments and ignores plain text", () => {
+  assert.equal(parseDirectUserInputEnvelope("hello"), undefined);
+
+  assert.deepEqual(
+    parseDirectUserInputEnvelope(JSON.stringify({
+      type: "direct_user_input",
+      text: "请看 [Image #1]",
+      attachments: [
+        {
+          id: "img-1",
+          tokenText: "[Image #1]",
+          sourceKind: "clipboard",
+          localPath: "/tmp/test.png",
+        },
+      ],
+    })),
+    {
+      type: "direct_user_input",
+      text: "请看 [Image #1]",
+      attachments: [
+        {
+          id: "img-1",
+          tokenText: "[Image #1]",
+          sourceKind: "clipboard",
+          localPath: "/tmp/test.png",
+        },
+      ],
+    },
+  );
+
+  assert.deepEqual(
+    parseDirectUserInputEnvelope(JSON.stringify({
+      type: "direct_user_input",
+      text: "请处理 [Pasted Content #1 with 2600 characters]",
+      pastedContents: [
+        {
+          id: "paste-1",
+          tokenText: "[Pasted Content #1 with 2600 characters]",
+          text: "A".repeat(2600),
+          characterCount: 2600,
+        },
+      ],
+    })),
+    {
+      type: "direct_user_input",
+      text: "请处理 [Pasted Content #1 with 2600 characters]",
+      pastedContents: [
+        {
+          id: "paste-1",
+          tokenText: "[Pasted Content #1 with 2600 characters]",
+          text: "A".repeat(2600),
+          characterCount: 2600,
+        },
+      ],
+    },
+  );
+
+  assert.deepEqual(
+    parseDirectUserInputEnvelope(JSON.stringify({
+      type: "direct_user_input",
+      text: "请看 @src/agent_core/direct-tui.tsx",
+      fileRefs: [
+        {
+          id: "file-1",
+          tokenText: "@src/agent_core/direct-tui.tsx",
+          relativePath: "src/agent_core/direct-tui.tsx",
+          absolutePath: "/tmp/repo/src/agent_core/direct-tui.tsx",
+        },
+      ],
+    })),
+    {
+      type: "direct_user_input",
+      text: "请看 @src/agent_core/direct-tui.tsx",
+      fileRefs: [
+        {
+          id: "file-1",
+          tokenText: "@src/agent_core/direct-tui.tsx",
+          relativePath: "src/agent_core/direct-tui.tsx",
+          absolutePath: "/tmp/repo/src/agent_core/direct-tui.tsx",
+        },
+      ],
+    },
+  );
+});
+
+test("parseDirectInitRequestEnvelope accepts init requests and ignores plain text", () => {
+  assert.equal(parseDirectInitRequestEnvelope("hello"), undefined);
+  assert.deepEqual(
+    parseDirectInitRequestEnvelope(JSON.stringify({
+      type: "direct_init_request",
+      text: "请把当前项目目标和成功标准整理成初始化上下文。",
+    })),
+    {
+      type: "direct_init_request",
+      text: "请把当前项目目标和成功标准整理成初始化上下文。",
+    },
+  );
+});
+
+test("parseDirectQuestionAnswerEnvelope accepts structured answers and ignores plain text", () => {
+  assert.equal(parseDirectQuestionAnswerEnvelope("hello"), undefined);
+  assert.deepEqual(
+    parseDirectQuestionAnswerEnvelope(JSON.stringify({
+      type: "direct_question_answer",
+      requestId: "question-1",
+      answers: [
+        {
+          questionId: "lang",
+          selectedOptionId: "go",
+          selectedOptionLabel: "Golang",
+          annotation: "我想使用完全原生的 Go 技术栈。",
+        },
+      ],
+      currentIndex: 0,
+      isFinal: true,
+    })),
+    {
+      type: "direct_question_answer",
+      requestId: "question-1",
+      answers: [
+        {
+          questionId: "lang",
+          selectedOptionId: "go",
+          selectedOptionLabel: "Golang",
+          annotation: "我想使用完全原生的 Go 技术栈。",
+        },
+      ],
+      currentIndex: 0,
+      isFinal: true,
+    },
+  );
 });
 
 test("parseCoreActionEnvelope parses reply and capability_call envelopes", () => {
@@ -126,6 +263,33 @@ test("extractResponseTextMaybe unwraps fenced JSON envelopes", () => {
   assert.equal(
     extractResponseTextMaybe(fenced),
     "最终正文",
+  );
+});
+
+test("decodeEscapedDisplayTextMaybe restores escaped paragraphs and unicode text", () => {
+  const escaped = "可以。\\n\\n我能直接帮你做这些代码工作：\\n- 写新功能\\n- 改 bug\\n\\u4f60\\u597d";
+
+  assert.equal(
+    decodeEscapedDisplayTextMaybe(escaped),
+    "可以。\n\n我能直接帮你做这些代码工作：\n- 写新功能\n- 改 bug\n你好",
+  );
+});
+
+test("decodeEscapedDisplayTextMaybe preserves Windows paths while decoding surrounding text", () => {
+  const escaped = "请查看 C:\\new\\test.txt\\n\\n然后继续。";
+
+  assert.equal(
+    decodeEscapedDisplayTextMaybe(escaped),
+    "请查看 C:\\new\\test.txt\n\n然后继续。",
+  );
+});
+
+test("decodeEscapedDisplayTextMaybe decodes double-escaped paragraphs in two passes", () => {
+  const escaped = "第一段\\\\n\\\\n第二段";
+
+  assert.equal(
+    decodeEscapedDisplayTextMaybe(escaped),
+    "第一段\n\n第二段",
   );
 });
 
@@ -297,6 +461,33 @@ test("createCapabilityFamilyTelemetry emits docs family summaries and metadata",
   assert.deepEqual(telemetry?.resultMetadata, {
     targetPaths: ["data/report.xlsx"],
     sheetCount: 3,
+  });
+});
+
+test("createCapabilityFamilyTelemetry emits viewing picture summaries and metadata", () => {
+  const telemetry = createCapabilityFamilyTelemetry({
+    capabilityKey: "view_image",
+    requestInput: {
+      sourceKind: "remote_url",
+      sourceUrl: "https://example.com/chart.png",
+    },
+    status: "success",
+    output: {
+      mimeType: "image/png",
+      imageUrl: "data:image/png;base64,abcd",
+    },
+  });
+
+  assert.equal(telemetry?.familyKey, "viewing_picture");
+  assert.equal(telemetry?.familyTitle, "ViewingPicture");
+  assert.deepEqual(telemetry?.familyResultSummary, [
+    "Viewing the provided image succeeded",
+  ]);
+  assert.deepEqual(telemetry?.resultMetadata, {
+    sourceKind: "remote_url",
+    targetUrl: "https://example.com/chart.png",
+    imageCount: 1,
+    mimeType: "image/png",
   });
 });
 
@@ -745,6 +936,23 @@ test("applyCliDefaultsToCapabilityRequest inherits previous browser session sett
   assert.equal(request.input.headless, true);
   assert.equal(request.input.browser, "chrome");
   assert.equal(request.input.isolated, true);
+});
+
+test("applyCliDefaultsToCapabilityRequest rewrites file-looking code.ls requests into code.read when the user asked for file content", async () => {
+  const request = await applyCliDefaultsToCapabilityRequest(
+    {
+      capabilityKey: "code.ls",
+      reason: "inspect file content",
+      input: {
+        path: "README.md",
+      },
+    },
+    { model: "gpt-5.4" } as never,
+    "请帮我使用code.read功能看看 README.md 这个文件主要干了什么。",
+  );
+
+  assert.equal(request.capabilityKey, "code.read");
+  assert.equal(request.input.path, "README.md");
 });
 
 test("trimStructuredValue summarizes image data URLs instead of keeping raw base64", () => {

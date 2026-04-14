@@ -29,7 +29,7 @@ export interface CreateRaxCmpConfigInput {
   git: Omit<RaxCmpGitInfraConfig, "provider" | "defaultBranchName"> & {
     defaultBranchName?: string;
   };
-  db?: Partial<Omit<RaxCmpDatabaseConfig, "kind">> & Pick<RaxCmpDatabaseConfig, "databaseName">;
+  db?: { kind?: RaxCmpDatabaseConfig["kind"] } & Partial<Omit<RaxCmpDatabaseConfig, "kind">> & Pick<RaxCmpDatabaseConfig, "databaseName">;
   mq?: Partial<Omit<RaxCmpMqConfig, "kind">>;
   metadata?: Record<string, unknown>;
 }
@@ -51,8 +51,12 @@ export function createRaxCmpConfig(input: CreateRaxCmpConfigInput): RaxCmpConfig
   const projectId = assertNonEmpty(input.projectId, "RAX CMP projectId");
   const repoName = assertNonEmpty(input.git.repoName, "RAX CMP git repoName");
   const repoRootPath = assertNonEmpty(input.git.repoRootPath, "RAX CMP git repoRootPath");
+  const dbKind = input.db?.kind ?? "postgresql";
   const databaseName = assertNonEmpty(
-    input.db?.databaseName ?? `cmp_${projectId.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase()}`,
+    input.db?.databaseName
+      ?? (dbKind === "sqlite"
+        ? `cmp_${projectId.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase()}.sqlite`
+        : `cmp_${projectId.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase()}`),
     "RAX CMP databaseName",
   );
 
@@ -74,9 +78,9 @@ export function createRaxCmpConfig(input: CreateRaxCmpConfigInput): RaxCmpConfig
       metadata: input.git.metadata,
     },
     db: {
-      kind: "postgresql",
+      kind: dbKind,
       databaseName,
-      schemaName: input.db?.schemaName?.trim() || undefined,
+      schemaName: input.db?.schemaName?.trim() || (dbKind === "sqlite" ? "main" : undefined),
       liveExecutionPreferred: input.db?.liveExecutionPreferred ?? true,
       metadata: input.db?.metadata,
     },
@@ -145,6 +149,7 @@ export function loadRaxCmpConfigFromEnv(
       worktreeRootPath: source.PRAXIS_CMP_GIT_WORKTREE_ROOT,
     },
     db: {
+      kind: source.PRAXIS_CMP_DB_KIND === "sqlite" ? "sqlite" : "postgresql",
       databaseName: source.PRAXIS_CMP_DB_NAME?.trim() || `cmp_${projectId.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase()}`,
       schemaName: source.PRAXIS_CMP_DB_SCHEMA,
       liveExecutionPreferred: source.PRAXIS_CMP_DB_LIVE !== "0",

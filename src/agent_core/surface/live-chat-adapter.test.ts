@@ -47,6 +47,21 @@ test("live log adapter maps turn results and stages into messages and tasks", ()
   assert.equal(assistantMessages[0]?.text, "最终回答");
 });
 
+test("live log adapter decodes escaped turn_result answers for assistant messages", () => {
+  const assistantMessages = mapLiveLogRecordToSurfaceMessages({
+    ts: "2026-04-11T00:00:01.000Z",
+    event: "turn_result",
+    turnIndex: 2,
+    core: {
+      answer: "第一段\\n\\n第二段\\u4f60\\u597d",
+      capabilityResultStatus: "success",
+    },
+  });
+
+  assert.equal(assistantMessages.length, 1);
+  assert.equal(assistantMessages[0]?.text, "第一段\n\n第二段你好");
+});
+
 test("live cli state seed exposes session messages and panels", () => {
   const state = {
     sessionId: "session-1",

@@ -140,6 +140,49 @@ test("cmp git cli backend writes checked and promoted refs against the cmp branc
   assert.equal(promoted.promotedCommitSha, commitSha);
 });
 
+test("cmp git cli backend tolerates cmp branch worktrees that are already attached elsewhere", async (t) => {
+  await assertGitCliAvailable();
+  const repoRootPath = await createTempRepoRoot("praxis-cmp-git-cli-worktree-reuse-");
+  t.after(async () => {
+    await rm(repoRootPath, { recursive: true, force: true });
+  });
+
+  const backend = createGitCliCmpGitBackend();
+  const plan = createCmpGitProjectRepoBootstrapPlan({
+    projectId: "project.cmp",
+    repoName: "cmp-history",
+    repoRootPath,
+    defaultAgentId: "main",
+  });
+  await backend.bootstrapProjectRepo(plan);
+
+  const repo = createCmpGitProjectRepo({
+    projectId: "project.cmp",
+    repoName: "cmp-history",
+  });
+  const registry = new CmpGitLineageRegistry();
+  const main = registry.register({
+    projectId: "project.cmp",
+    agentId: "main",
+  });
+  const firstRuntime = createCmpGitAgentBranchRuntime({
+    projectRepo: repo,
+    lineage: main,
+    repoRootPath,
+  });
+  await backend.bootstrapAgentBranchRuntime(firstRuntime);
+
+  const reusedRuntime = createCmpGitAgentBranchRuntime({
+    projectRepo: repo,
+    lineage: main,
+    repoRootPath,
+    worktreeRootPath: `${repoRootPath}/.cmp-worktrees-alt`,
+  });
+  const created = await backend.bootstrapAgentBranchRuntime(reusedRuntime);
+
+  assert.deepEqual(created, []);
+});
+
 test("cmp git cli backend rejects promoted ref writes before checked ref exists", async (t) => {
   await assertGitCliAvailable();
   const repoRootPath = await createTempRepoRoot("praxis-cmp-git-cli-promoted-");

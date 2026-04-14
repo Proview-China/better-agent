@@ -19,6 +19,11 @@ test("computeSlashState includes alias matches", () => {
   assert.equal(state.suggestions[0]?.command.name, "exit");
 });
 
+test("computeSlashState hides language from the default slash menu", () => {
+  const state = computeSlashState("/", DEFAULT_PRAXIS_SLASH_COMMANDS);
+  assert.equal(state.suggestions.some((suggestion) => suggestion.command.id === "language"), false);
+});
+
 test("computeSlashState only activates when first character is slash", () => {
   const state = computeSlashState(" /st", DEFAULT_PRAXIS_SLASH_COMMANDS);
   assert.equal(state.active, false);

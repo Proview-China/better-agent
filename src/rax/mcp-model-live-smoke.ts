@@ -3,14 +3,14 @@ import { mcpTools } from "@anthropic-ai/sdk/helpers/beta/mcp";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { GoogleGenAI, mcpToTool } from "@google/genai";
-import OpenAI from "openai";
 import type {
   FunctionTool,
   ResponseInputItem
 } from "openai/resources/responses/responses";
 
-import { loadLiveProviderConfig } from "./live-config.js";
+import { createOpenAIClient, loadLiveProviderConfig } from "./live-config.js";
 import { rax } from "./runtime.js";
+import { refreshOpenAIOAuthIfNeeded } from "../raxcode-openai-auth.js";
 
 interface SmokeResult {
   name: string;
@@ -49,12 +49,10 @@ function extractTextContent(content: unknown): string {
 }
 
 async function runGptViaResponsesLoop(): Promise<SmokeResult> {
+  await refreshOpenAIOAuthIfNeeded();
   const config = loadLiveProviderConfig();
   const modelCandidates = Array.from(new Set([config.openai.model, "gpt-5.4"]));
-  const client = new OpenAI({
-    apiKey: config.openai.apiKey,
-    baseURL: config.openai.baseURL
-  });
+  const client = createOpenAIClient(config.openai);
 
   for (const model of modelCandidates) {
     const session = await rax.mcp.use({

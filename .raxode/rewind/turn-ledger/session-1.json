@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "workspaceRoot": "/tmp/praxis-direct-turn-checkpoints-8ungtf/workspace",
+  "sessionId": "session-1",
+  "checkpoints": [
+    {
+      "sessionId": "session-1",
+      "agentId": "agent.core:main",
+      "turnId": "1",
+      "turnIndex": 1,
+      "messageId": "user:1",
+      "transcriptCutMessageId": "assistant:1:1",
+      "createdAt": "2026-04-14T00:00:01.000Z",
+      "userText": "first",
+      "workspaceRoot": "/tmp/praxis-direct-turn-checkpoints-8ungtf/workspace",
+      "workspaceCheckpointRef": "refs/checkpoints/1",
+      "workspaceCheckpointCommit": "abc123"
+    },
+    {
+      "sessionId": "session-1",
+      "agentId": "agent.core:main",
+      "turnId": "2",
+      "turnIndex": 2,
+      "messageId": "user:2",
+      "transcriptCutMessageId": "assistant:2:1",
+      "createdAt": "2026-04-14T00:00:02.000Z",
+      "userText": "second updated",
+      "workspaceRoot": "/tmp/praxis-direct-turn-checkpoints-8ungtf/workspace",
+      "workspaceCheckpointRef": "refs/checkpoints/2",
+      "workspaceCheckpointCommit": "def456"
+    }
+  ]
+}

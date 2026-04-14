@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "workspaceRoot": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp",
+  "sessionId": "direct-1776169988384",
+  "checkpoints": [
+    {
+      "sessionId": "direct-1776169988384",
+      "agentId": "agent.core:main",
+      "turnId": "turn-1",
+      "turnIndex": 1,
+      "messageId": "user:turn-1",
+      "transcriptCutMessageId": "assistant:turn-1:3",
+      "createdAt": "2026-04-14T12:36:37.977Z",
+      "userText": "所以请你使用code.read功能,随便在目录下找个文件读一下,看看内容是干什么的",
+      "workspaceRoot": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp",
+      "git": {
+        "repoRootPath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp",
+        "currentBranchName": "integrate/dev-master-cmp",
+        "headCommitSha": "9e473286847eafafab9a7f97d7d3c8d9641a1444",
+        "worktreeRootPath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp/.cmp-worktrees",
+        "cmpWorktreePath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp/.cmp-worktrees/cmp__agent.core-main",
+        "checkedRefName": "refs/praxis/cmp/checked/agent.core-main",
+        "promotedRefName": "refs/praxis/cmp/promoted/agent.core-main",
+        "branchFamily": {
+          "agentId": "agent.core-main",
+          "workBranchName": "work/agent.core-main",
+          "cmpBranchName": "cmp/agent.core-main",
+          "mpBranchName": "mp/agent.core-main",
+          "tapBranchName": "tap/agent.core-main"
+        }
+      },
+      "workspaceCheckpointRef": "refs/sessions/direct-1776169988384/turns/turn-1",
+      "workspaceCheckpointCommit": "82310e96eca796fbf164308cd7c2d4747f35f984"
+    },
+    {
+      "sessionId": "direct-1776169988384",
+      "agentId": "agent.core:main",
+      "turnId": "turn-2",
+      "turnIndex": 2,
+      "messageId": "user:turn-2",
+      "transcriptCutMessageId": "assistant:turn-2:4",
+      "createdAt": "2026-04-14T12:41:13.264Z",
+      "userText": "请你使用网络搜索功能,给我搜索三条今天的国际要闻",
+      "workspaceRoot": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp",
+      "git": {
+        "repoRootPath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp",
+        "currentBranchName": "integrate/dev-master-cmp",
+        "headCommitSha": "9e473286847eafafab9a7f97d7d3c8d9641a1444",
+        "worktreeRootPath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp/.cmp-worktrees",
+        "cmpWorktreePath": "/home/proview/Desktop/Praxis_series/Praxis/.parallel-worktrees/integrate-dev-master-cmp/.cmp-worktrees/cmp__agent.core-main",
+        "checkedRefName": "refs/praxis/cmp/checked/agent.core-main",
+        "promotedRefName": "refs/praxis/cmp/promoted/agent.core-main",
+        "branchFamily": {
+          "agentId": "agent.core-main",
+          "workBranchName": "work/agent.core-main",
+          "cmpBranchName": "cmp/agent.core-main",
+          "mpBranchName": "mp/agent.core-main",
+          "tapBranchName": "tap/agent.core-main"
+        }
+      },
+      "workspaceCheckpointRef": "refs/sessions/direct-1776169988384/turns/turn-2",
+      "workspaceCheckpointCommit": "82310e96eca796fbf164308cd7c2d4747f35f984"
+    }
+  ]
+}

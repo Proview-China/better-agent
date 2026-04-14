@@ -1,11 +1,11 @@
-import type { CmpDbPostgresAdapter, CmpDbPsqlLiveExecutor } from "../cmp-db/index.js";
+import type { CmpDbAdapterLike, CmpDbLiveExecutor } from "../cmp-db/index.js";
 import type { CmpGitBackend } from "../cmp-git/index.js";
 import type { CmpRedisMqAdapter } from "../cmp-mq/index.js";
 
 export interface CmpInfraBackends {
   git?: CmpGitBackend;
-  db?: CmpDbPostgresAdapter;
-  dbExecutor?: CmpDbPsqlLiveExecutor;
+  db?: CmpDbAdapterLike;
+  dbExecutor?: CmpDbLiveExecutor;
   mq?: CmpRedisMqAdapter;
 }
 

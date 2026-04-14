@@ -5,6 +5,7 @@ import type {
 import type { TapFamilyCheckReport, TapFamilyCheckSeverity } from "./family-check-types.js";
 
 export const USERIO_FAMILY_CHECK_CAPABILITY_KEYS = [
+  "question.ask",
   "request_user_input",
   "request_permissions",
   "audio.transcribe",

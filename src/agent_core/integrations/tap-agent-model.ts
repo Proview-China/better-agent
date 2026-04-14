@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 
 import type { ModelInferenceExecutionResult } from "./model-inference.js";
 import type { GoalFrameCompiled, ModelInferenceIntent } from "../types/index.js";
+import type { RaxcodeRoleId } from "../../raxcode-config.js";
 
 export interface TapAgentModelRoute {
   provider: string;
   model: string;
   layer?: string;
   variant?: string;
-  reasoningEffort?: "low" | "medium" | "high";
+  roleId?: RaxcodeRoleId;
+  reasoningEffort?: string;
+  serviceTier?: "fast";
   maxOutputTokens?: number;
 }
 
@@ -55,7 +58,9 @@ function buildGoalFrame(params: {
       model: params.route.model,
       layer: params.route.layer ?? DEFAULT_TAP_AGENT_MODEL_ROUTE.layer,
       variant: params.route.variant ?? DEFAULT_TAP_AGENT_MODEL_ROUTE.variant,
+      roleId: params.route.roleId,
       reasoningEffort: params.route.reasoningEffort,
+      serviceTier: params.route.serviceTier,
       maxOutputTokens: params.route.maxOutputTokens,
       tapWorkerKind: params.workerKind,
       tapWorkerModel: true,

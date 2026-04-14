@@ -1,5 +1,7 @@
 import { pathToFileURL } from "node:url";
 
+import { runRaxcodeCli } from "./raxcode-cli.js";
+
 export {
   CMP_RULE_ACTIONS,
   CMP_SECTION_FIDELITY,
@@ -57,5 +59,14 @@ const isDirectRun =
   import.meta.url === pathToFileURL(entrypoint).href;
 
 if (isDirectRun) {
-  console.log(describePraxisBootstrap());
+  const argv = process.argv.slice(2);
+  runRaxcodeCli(argv)
+    .then((exitCode) => {
+      process.exitCode = exitCode;
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(message);
+      process.exitCode = 1;
+    });
 }

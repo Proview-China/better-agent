@@ -44,6 +44,15 @@ test("buildLiveChatCoreContextualPrompt injects key live-chat blocks", () => {
       primaryMemoryRefs: ["memory-1"],
       supportingMemoryRefs: ["memory-2"],
     },
+    workspaceInitContext: {
+      schemaVersion: "core-workspace-init-context/v1",
+      sourcePath: ".raxode/AGENTS.md",
+      bodyRef: ".raxode/AGENTS.md",
+      summary: "Primary direction: 先把 /init 与 core 长期上下文打通。",
+      excerpt: "Primary direction: 先把 /init 与 core 长期上下文打通。 | Constraint: 中文优先。",
+      updatedAt: "2026-04-15T00:00:00.000Z",
+      freshness: "fresh",
+    },
     availableCapabilitiesText: "Currently registered TAP capabilities: code.read, search.ground.",
     capabilityUsageIndexText: "search.ground => latest/current web facts",
     capabilityHistoryText: "Step 1 · code.read · success",
@@ -54,6 +63,8 @@ test("buildLiveChatCoreContextualPrompt injects key live-chat blocks", () => {
   assert.match(rendered, /^<core_contextual_user>/);
   assert.match(rendered, /<current_objective>/);
   assert.match(rendered, /继续调研 core prompt engineering/);
+  assert.match(rendered, /<workspace_init_context>/);
+  assert.match(rendered, /source_path: \.raxode\/AGENTS\.md/);
   assert.match(rendered, /<cmp_context_package>/);
   assert.match(rendered, /schema_version: core-cmp-context-package\/v1/);
   assert.match(rendered, /delivery_status: available/);
@@ -92,17 +103,35 @@ test("createLiveChatCoreContextualInput returns structured contextual object bef
       sourceClass: "mp_resolve_bundle",
       summary: "MP routed primary and supporting memories for this task.",
     },
+    workspaceInitContext: {
+      schemaVersion: "core-workspace-init-context/v1",
+      sourcePath: ".raxode/AGENTS.md",
+      bodyRef: ".raxode/AGENTS.md",
+      summary: "Primary direction: 继续推进。",
+      excerpt: "Primary direction: 继续推进。",
+      updatedAt: "2026-04-15T00:00:00.000Z",
+      freshness: "fresh",
+    },
     availableCapabilitiesText: "Currently registered TAP capabilities: code.read.",
     capabilityUsageIndexText: "code.read => inspect local workspace state",
+    memoryEntries: [{
+      id: "workspace-init:agents",
+      label: "workspace/.raxode/AGENTS.md",
+      summary: "workspace init context. Primary direction: 继续推进。",
+      bodyRef: ".raxode/AGENTS.md",
+    }],
   });
 
   assert.equal(contextual.currentObjective, "继续推进");
   assert.match(contextual.recentTranscript, /继续推进/);
   assert.match(contextual.tapCapabilityWindow ?? "", /Currently registered TAP capabilities:/);
+  assert.equal(contextual.workspaceInitContext?.schemaVersion, "core-workspace-init-context/v1");
   assert.equal(typeof contextual.cmpContextPackage, "object");
   assert.equal(contextual.cmpContextPackage?.schemaVersion, "core-cmp-context-package/v1");
   assert.equal(contextual.mpRoutedPackage?.schemaVersion, "core-mp-routed-package/v1");
   assert.equal(contextual.overlayIndex?.schemaVersion, "core-overlay-index/v1");
+  assert.equal(contextual.overlayIndex?.memories?.[0]?.id, "workspace-init:agents");
+  assert.equal(contextual.overlayIndex?.memories?.[0]?.bodyRef, ".raxode/AGENTS.md");
 });
 
 test("createLiveChatCoreContextualInput degrades cleanly when cmp and capability index are absent", () => {

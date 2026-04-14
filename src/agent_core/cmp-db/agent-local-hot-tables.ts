@@ -1,5 +1,6 @@
 import {
   CMP_DB_AGENT_LOCAL_TABLE_KINDS,
+  type CmpDbStorageEngine,
   type CmpDbColumnDefinition,
   type CmpAgentLocalTableSet,
   type CmpDbAgentLocalTableDefinition,
@@ -10,6 +11,7 @@ import {
 
 function createAgentLocalTableColumns(
   kind: CmpDbAgentLocalTableDefinition["kind"],
+  storageEngine: CmpDbStorageEngine,
 ): CmpDbColumnDefinition[] {
   const baseColumns: Pick<Record<string, CmpDbColumnDefinition>, "projectId" | "agentId" | "metadata" | "updatedAt"> = {
     projectId: {
@@ -24,9 +26,9 @@ function createAgentLocalTableColumns(
     },
     metadata: {
       name: "metadata",
-      sqlType: "jsonb",
+      sqlType: storageEngine === "sqlite" ? "text" : "jsonb",
       nullable: true,
-      defaultExpression: "'{}'::jsonb",
+      defaultExpression: storageEngine === "sqlite" ? "'{}'" : "'{}'::jsonb",
       description: "Structured DB projection metadata only; never raw git truth.",
     },
     updatedAt: {
@@ -102,6 +104,7 @@ function createLocalTableDefinition(params: {
   projectId: string;
   schemaName: string;
   agentId: string;
+  storageEngine: CmpDbStorageEngine;
   kind: CmpDbAgentLocalTableDefinition["kind"];
 }): CmpDbAgentLocalTableDefinition {
   const projectSegment = sanitizeSqlIdentifier(params.projectId);
@@ -138,10 +141,10 @@ function createLocalTableDefinition(params: {
     tableName: `cmp_${projectSegment}_${agentSegment}_${params.kind}`,
     agentId: params.agentId.trim(),
     kind: params.kind,
-    storageEngine: "postgresql",
+    storageEngine: params.storageEngine,
     ownership: "agent_local",
     primaryKey: `${params.kind}_id`,
-    columns: createAgentLocalTableColumns(params.kind),
+    columns: createAgentLocalTableColumns(params.kind, params.storageEngine),
     description: `CMP agent-local ${params.kind} table for ${params.agentId}.`,
     indexes,
     metadata: {
@@ -153,9 +156,11 @@ function createLocalTableDefinition(params: {
 export function createCmpAgentLocalTableSet(input: {
   projectId: string;
   schemaName?: string;
+  storageEngine?: CmpDbStorageEngine;
   agentId: string;
 }): CmpAgentLocalTableSet {
-  const schemaName = input.schemaName?.trim() || "cmp";
+  const storageEngine = input.storageEngine ?? "postgresql";
+  const schemaName = input.schemaName?.trim() || (storageEngine === "sqlite" ? "main" : "cmp");
   const set: CmpAgentLocalTableSet = {
     projectId: input.projectId.trim(),
     schemaName,
@@ -164,6 +169,7 @@ export function createCmpAgentLocalTableSet(input: {
       projectId: input.projectId,
       schemaName,
       agentId: input.agentId,
+      storageEngine,
       kind,
     })),
   };

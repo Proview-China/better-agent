@@ -330,3 +330,18 @@ export function createCoreBoundedOutputLines(input: {
     "For shell.restricted and test.run, prefer bounded output and avoid commands likely to dump an entire large repository or massive raw result in one step.",
   ];
 }
+
+export function createCoreWorkspaceInitDisciplineLines(input: {
+  forceFinalAnswer?: boolean;
+}): string[] {
+  if (input.forceFinalAnswer) {
+    return [];
+  }
+  return [
+    "Treat <workspace_init_context> as the current project initialization baseline when it is present.",
+    "Keep following that initialization baseline across later turns unless the latest user request or verified repo reality clearly overrides it.",
+    "When the task only drifts slightly from that baseline, prefer updating .raxode/AGENTS.md yourself so the workspace instructions stay aligned with reality.",
+    "When the task departs broadly from that baseline, say so explicitly and guide the user toward rerunning /init instead of silently rewriting the project direction.",
+    "If <workspace_init_context> conflicts with verified repo reality or appears stale, say so explicitly and prefer docs.read on .raxode/AGENTS.md, question.ask, or a suggestion to rerun /init before drifting silently.",
+  ];
+}

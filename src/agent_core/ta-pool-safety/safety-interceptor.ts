@@ -233,11 +233,11 @@ export function evaluateSafetyInterception(
   }
 
   if (riskPolicy.decision === "human_gate") {
-    if (input.mode === "permissive") {
+    if (riskPolicy.baselineFastPath && classification.riskLevel === "normal") {
       return {
-        outcome: "block",
+        outcome: "allow",
         riskLevel: classification.riskLevel,
-        reason: `Capability ${input.capabilityKey} is ${classification.riskLevel} and is blocked in permissive mode.`,
+        reason: `Capability ${input.capabilityKey} keeps the baseline fast path in ${input.mode} mode.`,
         matchedPattern: classification.matchedPattern,
         metadata: {
           mode: input.mode,

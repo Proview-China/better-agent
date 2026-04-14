@@ -1,5 +1,6 @@
 export type DisplayFamilyKey =
   | "websearch"
+  | "viewing_picture"
   | "code"
   | "docs"
   | "git"
@@ -26,11 +27,23 @@ export interface CapabilityFamilyDefinition {
   familyTitle: string;
 }
 
+export interface CapabilityFamilyDisplayInput {
+  familyKey?: string | null;
+  capabilityKey?: string | null;
+}
+
 const WEBSEARCH_FAMILY: CapabilityFamilyDefinition = {
   tapFamilyKey: "websearch",
   tapFamilyTitle: "Websearch",
   familyKey: "websearch",
   familyTitle: "WebSearch",
+};
+
+const FOUNDATION_VIEWING_PICTURE_FAMILY: CapabilityFamilyDefinition = {
+  tapFamilyKey: "foundation",
+  tapFamilyTitle: "Foundation",
+  familyKey: "viewing_picture",
+  familyTitle: "ViewingPicture",
 };
 
 const FOUNDATION_CODE_FAMILY: CapabilityFamilyDefinition = {
@@ -149,9 +162,11 @@ export function resolveCapabilityFamilyDefinition(
     || normalized === "spreadsheet.write"
     || normalized === "read_pdf"
     || normalized === "read_notebook"
-    || normalized === "view_image"
   ) {
     return FOUNDATION_DOCS_FAMILY;
+  }
+  if (normalized === "view_image") {
+    return FOUNDATION_VIEWING_PICTURE_FAMILY;
   }
   if (
     normalized === "git.status"
@@ -192,7 +207,8 @@ export function resolveCapabilityFamilyDefinition(
     return FOUNDATION_SKILL_FAMILY;
   }
   if (
-    normalized === "request_user_input"
+    normalized === "question.ask"
+    || normalized === "request_user_input"
     || normalized === "request_permissions"
     || normalized === "audio.transcribe"
     || normalized === "speech.synthesize"
@@ -227,4 +243,16 @@ export function resolveFamilyOutcomeKind(status?: string | null): FamilyOutcomeK
     return "failed";
   }
   return undefined;
+}
+
+export function shouldRenderCapabilityFamilyBlock(
+  input: CapabilityFamilyDisplayInput,
+): boolean {
+  const telemetryFamilyKey = typeof input.familyKey === "string" && input.familyKey.trim()
+    ? input.familyKey.trim().toLowerCase()
+    : null;
+  if (telemetryFamilyKey) {
+    return true;
+  }
+  return Boolean(resolveCapabilityFamilyDefinition(input.capabilityKey));
 }

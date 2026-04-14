@@ -6,6 +6,9 @@ import {
   type CmpProjectDbReadbackRowInput,
 } from "./postgresql-bootstrap.js";
 import type {
+  CmpDbLiveExecutor,
+  CmpDbQueryPrimitive,
+  CmpDbStatementExecutionReceipt,
   CmpDbSqlStatement,
   CmpProjectDbBootstrapContract,
   CmpProjectDbBootstrapReceipt,
@@ -35,16 +38,10 @@ export interface CmpDbPsqlCommandResult {
   exitCode: number;
 }
 
-export interface CmpDbPsqlStatementExecutionReceipt {
-  statementId: string;
-  target: string;
-  phase: CmpDbSqlStatement["phase"];
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
+export interface CmpDbPsqlStatementExecutionReceipt extends CmpDbStatementExecutionReceipt {}
 
-export interface CmpDbPsqlLiveExecutor {
+export interface CmpDbPsqlLiveExecutor extends CmpDbLiveExecutor {
+  readonly driver: "postgresql";
   readonly connection: CmpDbPsqlConnectionOptions;
   executeStatement(
     statement: CmpDbSqlStatement,
@@ -147,6 +144,7 @@ export function createCmpDbPsqlLiveExecutor(
   const commandRunner = input.commandRunner ?? createCmpDbPsqlCommandRunner(connection);
 
   return {
+    driver: "postgresql",
     connection,
     async executeStatement(statement) {
       const sql = assertNonEmpty(statement.text, "CMP DB SQL statement text");

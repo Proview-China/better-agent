@@ -1,9 +1,10 @@
 import {
   createCmpProjectDbBootstrapReceipt,
   createCmpProjectDbBootstrapContract,
+  type CmpDbLiveExecutor,
+  type CmpDbStorageEngine,
   type CmpProjectDbBootstrapContract,
   type CmpProjectDbBootstrapReceipt,
-  type CmpDbPsqlLiveExecutor,
 } from "../cmp-db/index.js";
 import {
   createCmpGitAgentBranchRuntime,
@@ -36,6 +37,7 @@ export interface CreateCmpProjectInfraBootstrapPlanInput {
   defaultAgentId?: string;
   defaultBranchName?: string;
   worktreeRootPath?: string;
+  storageEngine?: CmpDbStorageEngine;
   databaseName?: string;
   dbSchemaName?: string;
   redisNamespaceRoot?: string;
@@ -54,7 +56,7 @@ export interface CmpProjectInfraBootstrapPlan {
 export interface ExecuteCmpProjectInfraBootstrapInput {
   plan: CmpProjectInfraBootstrapPlan;
   gitBackend: CmpGitBackend;
-  dbExecutor?: CmpDbPsqlLiveExecutor;
+  dbExecutor?: CmpDbLiveExecutor;
   mqAdapter: CmpRedisMqAdapter;
 }
 
@@ -128,6 +130,7 @@ export function createCmpProjectInfraBootstrapPlan(
   const db = createCmpProjectDbBootstrapContract({
     projectId: input.projectId,
     agentIds: agents.map((agent) => agent.agentId),
+    storageEngine: input.storageEngine,
     databaseName: input.databaseName,
     schemaName: input.dbSchemaName,
     metadata: input.metadata,

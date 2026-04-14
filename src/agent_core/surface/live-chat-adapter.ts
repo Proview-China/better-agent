@@ -8,6 +8,10 @@ import type {
   TurnArtifacts,
 } from "../live-agent-chat/shared.js";
 import {
+  decodeEscapedDisplayTextMaybe,
+  extractResponseTextMaybe,
+} from "../live-agent-chat/shared.js";
+import {
   createSurfaceAppState,
   createSurfaceMessage,
   createSurfacePanelSnapshot,
@@ -257,10 +261,10 @@ export function mapLiveLogRecordToSurfaceTasks(record: LiveChatLogRecordLike): S
 function extractAnswerText(record: LiveChatLogRecordLike): string | undefined {
   const answer = record.core?.answer;
   if (typeof answer === "string") {
-    return answer;
+    return decodeEscapedDisplayTextMaybe(extractResponseTextMaybe(answer));
   }
   if (answer && typeof answer === "object" && typeof answer.text === "string") {
-    return answer.text;
+    return decodeEscapedDisplayTextMaybe(extractResponseTextMaybe(answer.text));
   }
   if (typeof record.text === "string" && record.text.trim().length > 0) {
     return record.text;

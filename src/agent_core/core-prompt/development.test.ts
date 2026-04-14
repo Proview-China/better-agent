@@ -12,6 +12,7 @@ import {
   createCoreLoopContinuationLines,
   createCoreObjectiveAnchoringLines,
   createCoreSearchDisciplineLines,
+  createCoreWorkspaceInitDisciplineLines,
   createCoreTaskStatusDisciplineLines,
   createCoreValidationLadderLines,
   createCoreWorkflowProtocolLines,
@@ -84,10 +85,14 @@ test("browser, search, and bounded output helpers stay out of final-answer mode"
   assert.equal(createCoreBrowserDisciplineLines({ forceFinalAnswer: true }).length, 0);
   assert.equal(createCoreSearchDisciplineLines({ mode: "user_input", forceFinalAnswer: true }).length, 0);
   assert.equal(createCoreBoundedOutputLines({ mode: "action_planner", forceFinalAnswer: true }).length, 0);
+  assert.equal(createCoreWorkspaceInitDisciplineLines({ forceFinalAnswer: true }).length, 0);
 
   assert.equal(createCoreBrowserDisciplineLines({}).length, 2);
   assert.equal(createCoreSearchDisciplineLines({ mode: "action_planner" }).length, 1);
   assert.equal(createCoreBoundedOutputLines({ mode: "user_input" }).length, 1);
+  assert.equal(createCoreWorkspaceInitDisciplineLines({}).length, 5);
+  assert.match(createCoreWorkspaceInitDisciplineLines({})[2]!, /drifts slightly/i);
+  assert.match(createCoreWorkspaceInitDisciplineLines({})[3]!, /rerunning \/init/i);
 });
 
 test("objective, workflow, validation, context, and continuation helpers expose thick protocol lines", () => {

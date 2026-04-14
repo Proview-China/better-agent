@@ -70,6 +70,16 @@ export interface CoreMpRoutedPackageV1 {
   supportingMemoryRefs?: string[];
 }
 
+export interface CoreWorkspaceInitContextV1 {
+  schemaVersion: "core-workspace-init-context/v1";
+  sourcePath: string;
+  bodyRef?: string;
+  summary: string;
+  excerpt: string;
+  updatedAt: string;
+  freshness: "fresh" | "changed";
+}
+
 export interface CoreOverlayIndexEntryV1 {
   id: string;
   label: string;
@@ -99,6 +109,7 @@ export interface CoreContextualUserV1 {
   currentObjective: string;
   recentTranscript: string;
   workspaceContext?: string;
+  workspaceInitContext?: string | CoreWorkspaceInitContextV1;
   cmpContextPackage?: string | CoreCmpContextPackageV1;
   mpRoutedPackage?: string | CoreMpRoutedPackageV1;
   overlayIndex?: CoreOverlayIndexV1;

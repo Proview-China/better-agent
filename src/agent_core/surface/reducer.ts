@@ -32,6 +32,16 @@ function upsertById<T extends { id: string }>(items: readonly T[], nextItem: T):
   return next;
 }
 
+function replaceById<T extends { id: string }>(items: readonly T[], nextItem: T): T[] {
+  const index = items.findIndex((item) => item.id === nextItem.id);
+  if (index < 0) {
+    return items as T[];
+  }
+  const next = [...items];
+  next[index] = nextItem;
+  return next;
+}
+
 function currentTurnFromState(state: SurfaceAppState): SurfaceTurn | undefined {
   if (state.currentTurnId) {
     return state.turns.find((turn) => turn.id === state.currentTurnId);
@@ -585,7 +595,9 @@ export function applySurfaceEvent(
               ...updateTurnForMessage(turn, message),
               inputMessageId: message.kind === "user" ? message.messageId : turn.inputMessageId,
               outputMessageIds: message.kind === "assistant"
-                ? [...turn.outputMessageIds, message.messageId]
+                ? (turn.outputMessageIds.includes(message.messageId)
+                    ? turn.outputMessageIds
+                    : [...turn.outputMessageIds, message.messageId])
                 : turn.outputMessageIds,
             })
             : turn
@@ -605,6 +617,33 @@ export function applySurfaceEvent(
             updatedAt: at,
           })
           : next.session,
+      };
+      break;
+    }
+    case "message.updated": {
+      const message = createSurfaceMessage(event.message);
+      const messages = replaceById(next.messages, message);
+      const turns = event.message.turnId
+        ? next.turns.map((turn) => (
+          turn.id === event.message.turnId || turn.turnId === event.message.turnId
+            ? createSurfaceTurn({
+              ...updateTurnForMessage(turn, message),
+              updatedAt: at,
+              inputMessageId: message.kind === "user" ? message.messageId : turn.inputMessageId,
+              outputMessageIds: message.kind === "assistant"
+                ? (turn.outputMessageIds.includes(message.messageId)
+                    ? turn.outputMessageIds
+                    : [...turn.outputMessageIds, message.messageId])
+                : turn.outputMessageIds,
+            })
+            : turn
+        ))
+        : next.turns;
+      next = {
+        ...next,
+        messages,
+        turns,
+        currentTurnId: message.turnId ?? next.currentTurnId,
       };
       break;
     }

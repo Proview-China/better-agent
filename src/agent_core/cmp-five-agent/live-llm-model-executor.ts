@@ -1,10 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import type { ProviderId, SdkLayer } from "../../rax/index.js";
+import { loadResolvedRoleConfig } from "../../raxcode-config.js";
+import { loadOpenAILiveConfig, resolveProviderGenerationVariant, resolveOpenAIGenerationVariant } from "../../rax/live-config.js";
 import {
   executeModelInference,
   type ModelInferenceExecutionResult,
 } from "../integrations/model-inference.js";
+import {
+  resolveProviderRouteKind,
+  sanitizeProviderRouteFeatureOptions,
+} from "../integrations/model-route-features.js";
 import type { GoalFrameCompiled, ModelInferenceIntent } from "../types/index.js";
 import type { CmpRoleLiveLlmExecutor } from "./types.js";
 
@@ -13,7 +19,9 @@ export interface CreateCmpRoleLiveLlmModelExecutorInput {
   model?: string;
   layer?: Exclude<SdkLayer, "auto">;
   variant?: string;
-  reasoningEffort?: "low" | "medium" | "high";
+  roleId?: Parameters<typeof loadResolvedRoleConfig>[0];
+  reasoningEffort?: string;
+  serviceTier?: "fast";
   maxOutputTokens?: number;
   executor?: (params: { intent: ModelInferenceIntent }) => Promise<ModelInferenceExecutionResult>;
 }
@@ -129,11 +137,37 @@ function buildInstruction(request: Parameters<CmpRoleLiveLlmExecutor>[0]): strin
 export function createCmpRoleLiveLlmModelExecutor(
   input: CreateCmpRoleLiveLlmModelExecutorInput = {},
 ): CmpRoleLiveLlmExecutor {
-  const provider = input.provider ?? "openai";
+  const roleId = input.roleId;
+  const resolvedRole = roleId ? loadResolvedRoleConfig(roleId) : null;
+  const provider = input.provider ?? resolvedRole?.profile.provider ?? "openai";
   const model = input.model ?? "gpt-5.4";
   const layer = input.layer ?? "api";
-  const variant = input.variant ?? "responses";
-  const reasoningEffort = input.reasoningEffort;
+  const variant = input.variant
+    ?? (resolvedRole
+      ? resolveProviderGenerationVariant({
+          provider: resolvedRole.profile.provider,
+          baseURL: resolvedRole.profile.route.baseURL,
+          apiStyle: resolvedRole.profile.route.apiStyle,
+        })
+      : provider === "openai"
+        ? resolveOpenAIGenerationVariant(loadOpenAILiveConfig("core.main"))
+        : provider === "anthropic"
+          ? "messages"
+          : "generateContent");
+  const routeKind = resolvedRole
+    ? resolveProviderRouteKind({
+      provider: resolvedRole.profile.provider,
+      baseURL: resolvedRole.profile.route.baseURL,
+      apiStyle: resolvedRole.profile.route.apiStyle,
+      variant,
+    })
+    : "openai_responses";
+  const sanitized = sanitizeProviderRouteFeatureOptions(routeKind, {
+    reasoningEffort: input.reasoningEffort,
+    serviceTier: input.serviceTier,
+  });
+  const reasoningEffort = sanitized.reasoningEffort;
+  const serviceTier = sanitized.serviceTier;
   const maxOutputTokens = input.maxOutputTokens;
   const executor = input.executor ?? ((params: { intent: ModelInferenceIntent }) => executeModelInference(params));
 
@@ -154,9 +188,11 @@ export function createCmpRoleLiveLlmModelExecutor(
         model,
         layer,
         variant,
+        roleId,
         cmpRole: request.role,
         cmpLiveMode: request.mode,
         reasoningEffort,
+        serviceTier,
         maxOutputTokens,
         ...(request.metadata ?? {}),
       },

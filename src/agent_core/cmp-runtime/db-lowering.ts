@@ -1,20 +1,20 @@
 import type {
+  CmpDbAdapterLike,
   CmpDbContextPackageRecord,
   CmpDbDeliveryRegistryRecord,
-  CmpDbPsqlLiveExecutor,
-  CmpDbPsqlStatementExecutionReceipt,
-  CmpDbPostgresAdapter,
+  CmpDbLiveExecutor,
+  CmpDbStatementExecutionReceipt,
   CmpDbDeliveryRecordState,
   CmpProjectionRecord,
 } from "../cmp-db/index.js";
-import type { CmpDbPostgresQueryPrimitive } from "../cmp-db/postgresql-adapter.js";
+import type { CmpDbQueryPrimitive } from "../cmp-db/index.js";
 import type { CmpMqDeliveryProjectionPatch } from "../cmp-mq/index.js";
 
 export interface CmpDbLoweringExecution {
-  writeStatement: CmpDbPostgresQueryPrimitive;
-  writeExecution: CmpDbPsqlStatementExecutionReceipt;
-  readStatement: CmpDbPostgresQueryPrimitive;
-  readExecution: CmpDbPsqlStatementExecutionReceipt;
+  writeStatement: CmpDbQueryPrimitive;
+  writeExecution: CmpDbStatementExecutionReceipt;
+  readStatement: CmpDbQueryPrimitive;
+  readExecution: CmpDbStatementExecutionReceipt;
 }
 
 export interface CmpProjectionTruthReadback {
@@ -33,7 +33,7 @@ function normalizeReadbackTableRef(stdout: string): string | undefined {
 
 export function summarizeCmpProjectionTruthReadback(input: {
   record: CmpProjectionRecord;
-  execution: CmpDbPsqlStatementExecutionReceipt;
+  execution: CmpDbStatementExecutionReceipt;
 }): CmpProjectionTruthReadback {
   const tableRef = normalizeReadbackTableRef(input.execution.stdout);
   return {
@@ -51,8 +51,8 @@ export interface CmpProjectionLoweringExecution extends CmpDbLoweringExecution {
 }
 
 export async function executeCmpProjectionLowering(input: {
-  adapter: CmpDbPostgresAdapter;
-  executor: CmpDbPsqlLiveExecutor;
+  adapter: CmpDbAdapterLike;
+  executor: CmpDbLiveExecutor;
   record: CmpProjectionRecord;
 }): Promise<CmpProjectionLoweringExecution> {
   const writeStatement = input.adapter.buildProjectionUpsert(input.record);
@@ -75,8 +75,8 @@ export async function executeCmpProjectionLowering(input: {
 }
 
 export async function executeCmpContextPackageLowering(input: {
-  adapter: CmpDbPostgresAdapter;
-  executor: CmpDbPsqlLiveExecutor;
+  adapter: CmpDbAdapterLike;
+  executor: CmpDbLiveExecutor;
   record: CmpDbContextPackageRecord;
 }): Promise<CmpDbLoweringExecution> {
   const writeStatement = input.adapter.buildContextPackageUpsert(input.record);
@@ -95,8 +95,8 @@ export async function executeCmpContextPackageLowering(input: {
 }
 
 export async function executeCmpDeliveryLowering(input: {
-  adapter: CmpDbPostgresAdapter;
-  executor: CmpDbPsqlLiveExecutor;
+  adapter: CmpDbAdapterLike;
+  executor: CmpDbLiveExecutor;
   record: CmpDbDeliveryRegistryRecord;
 }): Promise<CmpDbLoweringExecution> {
   const writeStatement = input.adapter.buildDeliveryUpsert(input.record);

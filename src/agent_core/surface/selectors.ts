@@ -35,7 +35,10 @@ export function selectTranscriptMessages(
 }
 
 export function selectStatusMessages(state: SurfaceState): SurfaceMessage[] {
-  return state.messages.filter((message) => message.kind === "status" || message.kind === "error");
+  return state.messages.filter((message) =>
+    message.kind === "status"
+    || message.kind === "notice"
+    || message.kind === "error");
 }
 
 export function selectCurrentTurn(state: SurfaceState): SurfaceTurn | undefined {
