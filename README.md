@@ -1,124 +1,109 @@
 # Praxis
 
-Praxis 是一个基于 Swift + SwiftPM 的本地 agent runtime framework。
+Praxis 是一个基于 Swift + SwiftPM 的本地 agent runtime framework。仓库当前主线不是 CLI、TUI 或 GUI，而是一组可嵌入、可测试、可导出的 runtime products，用来承载 run lifecycle、capability governance、project context、memory retrieval 和 host export boundary。
 
-它的目标不是做一个命令行壳，而是提供一套可以被原生应用或其他 Swift 工程直接嵌入的运行时能力，包括：
+对大多数 Swift 调用方，默认公开入口是 `PraxisRuntimeKit`。
 
-- 任务运行与恢复
-- capability 治理与审批
-- 项目上下文与会话协作
-- 记忆搜索、解析与历史检索
-- 面向宿主的 runtime 导出边界
+## Technical Overview
 
-当前最推荐的接入入口是 `PraxisRuntimeKit`。
+Praxis 当前的设计目标是把运行时拆成边界明确的 Swift package products，而不是把所有能力堆进一个粗粒度模块。
 
-## 适合谁
+核心技术方向：
 
-如果你正在做这些事情，Praxis 是相关的：
+- 以 SwiftPM products 组织运行时能力
+- 以 `PraxisRuntimeKit` 暴露 caller-friendly API
+- 以 host contracts 隔离 provider、workspace、tooling、infra、user I/O 等宿主能力
+- 以 runtime composition / facade / gateway / FFI 承担装配与导出责任
+- 以 architecture tests 约束 target 边界，避免能力重新塌回“大模块”
 
-- 想在 macOS 或 Apple 平台应用里嵌入本地 agent runtime
-- 想直接用 Swift 调用 runtime，而不是再套一层 CLI
-- 想把 run、approval、memory、project context 做成稳定的 framework API
+## Product Surface
 
-如果你想找的是现成的桌面 UI、TUI 或部署型 Node 服务，这个仓库当前不是那个方向。
+`Package.swift` 当前公开了这些 library products：
 
-## 当前状态
+- `PraxisFoundation`
+  基础领域模型，包括 core identity、goal、state、transition、run、session、journal、checkpoint。
+- `PraxisCapabilityDomain`
+  capability contract、planning、result normalization、catalog。
+- `PraxisTapDomain`
+  capability governance、review、provision、runtime availability。
+- `PraxisCmpDomain`
+  project context、approval、projection、delivery，以及 Git / DB / MQ 相关模型。
+- `PraxisMpDomain`
+  memory、search、resolve、history 相关模型与服务。
+- `PraxisHostContracts`
+  provider、workspace、tooling、infra、user I/O 协议层。
+- `PraxisHostRuntime`
+  runtime composition、use cases、facades、interface、gateway、FFI。
+- `PraxisRuntimeKit`
+  面向调用方的高层 Swift API。
+- `PraxisArchitectureTests`
+  用于验证 target 拆分与依赖方向的测试 product。
 
-Praxis 目前处于 Swift runtime 收口阶段，主工具链已经切到 Swift + SwiftPM，旧 TypeScript / Node.js runtime 不再是当前主线。
+如果你只是要接入运行时，不需要先理解全部 products；优先从 `PraxisRuntimeKit` 开始。
 
-这意味着：
+## Runtime Layering
 
-- 这是一个以 framework 为中心的仓库
-- 主验证入口是 `swift test`
-- 对外调用优先从 `PraxisRuntimeKit` 开始
+当前仓库可以粗分为四层：
 
-## 平台与环境要求
+1. Foundation / Domain
+   - `PraxisCoreTypes`
+   - `PraxisGoal`
+   - `PraxisState`
+   - `PraxisTransition`
+   - `PraxisRun`
+   - `PraxisSession`
+   - `PraxisJournal`
+   - `PraxisCheckpoint`
 
-`Package.swift` 当前声明的平台下限：
+2. Capability / Workflow Domain
+   - `PraxisCapabilityContracts`
+   - `PraxisCapabilityPlanning`
+   - `PraxisCapabilityResults`
+   - `PraxisCapabilityCatalog`
+   - `PraxisTap*`
+   - `PraxisCmp*`
+   - `PraxisMp*`
 
-- macOS 14+
-- iOS 17+
-- tvOS 17+
-- watchOS 10+
-- visionOS 1+
+3. Host Boundary
+   - `PraxisProviderContracts`
+   - `PraxisWorkspaceContracts`
+   - `PraxisToolingContracts`
+   - `PraxisInfraContracts`
+   - `PraxisUserIOContracts`
 
-建议开发环境：
+4. Runtime Assembly / Export
+   - `PraxisRuntimeComposition`
+   - `PraxisRuntimeUseCases`
+   - `PraxisRuntimeFacades`
+   - `PraxisRuntimeInterface`
+   - `PraxisRuntimeGateway`
+   - `PraxisFFI`
+   - `PraxisRuntimeKit`
 
-- Xcode 16 或更新版本
-- Swift 6.x
-- macOS 本地环境
+约束上，`PraxisRuntimeKit` 应该保持 thin shell，不直接把 composition、transport、bootstrap 或 FFI 细节暴露给调用方。
 
-查看本机 Swift 版本：
+## Recommended Entry
 
-```bash
-swift --version
-```
-
-## 快速开始
-
-### 1. 克隆仓库
-
-```bash
-git clone https://github.com/Proview-China/Praxis.git
-cd Praxis
-```
-
-### 2. 编译
-
-Praxis 当前是标准 Swift Package，直接在仓库根目录执行：
-
-```bash
-swift build
-```
-
-如果你想用 release 配置编译：
-
-```bash
-swift build -c release
-```
-
-如果你想先确认 package graph 正常：
-
-```bash
-swift package resolve
-swift package describe
-```
-
-### 3. 测试
-
-完整验证：
-
-```bash
-swift test
-```
-
-如果只想先验证高层公开入口：
-
-```bash
-swift test --filter PraxisRuntimeKitTests
-```
-
-## 在 SwiftPM 项目中接入
-
-把 Praxis 作为依赖加入你的 `Package.swift`：
+对 Swift 集成方，最小入口是：
 
 ```swift
-dependencies: [
-  .package(url: "https://github.com/Proview-China/Praxis.git", branch: "main")
-]
+import PraxisRuntimeKit
 ```
 
-优先依赖 `PraxisRuntimeKit`：
+典型初始化方式：
 
 ```swift
-dependencies: [
-  .product(name: "PraxisRuntimeKit", package: "Praxis")
-]
+let client = try PraxisRuntimeClient.makeDefault()
 ```
 
-## 最小调用示例
+高层 API 当前收敛为四个 scoped clients：
 
-下面是一条最小可运行的 Swift 调用路径：
+- `client.runs`
+- `client.tap`
+- `client.cmp`
+- `client.mp`
+
+其中最小 run 调用路径如下：
 
 ```swift
 import Foundation
@@ -137,47 +122,134 @@ print(run.runID.rawValue)
 print(run.phaseSummary)
 ```
 
-如果你想从同一个 runtime 里继续走项目上下文或记忆能力，也可以使用：
-
-- `client.cmp`
-- `client.tap`
-- `client.mp`
-
-## 你今天能用到什么
-
-当前对外最清晰的一层是 `PraxisRuntimeKit`，它把高层调用面收敛成四组入口：
-
-- `runs`
-  发起 run、恢复 run
-- `tap`
-  查看 capability 治理与状态概览
-- `cmp`
-  做项目级会话、审批、上下文读写
-- `mp`
-  做记忆搜索、resolve、history
-
-如果你想看真实调用样例，最好的参考不是内部文档，而是测试：
+当前可直接参考的真实用法，优先看：
 
 - [PraxisRuntimeKitTests.swift](/Users/shiyu/Documents/Project/Praxis/Tests/PraxisRuntimeKitTests/PraxisRuntimeKitTests.swift)
 
-## 仓库大致结构
+这个测试 target 已覆盖：
 
-你不需要先理解全部内部 target 才能开始用，但大致可以这样理解：
+- `PraxisRuntimeClient.makeDefault(...)`
+- `runs.run(...)`
+- `runs.resumeRun(...)`
+- `cmp.project(...).approvals.*`
+- `tap.project(...).overview(...)`
+- `mp.project(...).search(...)`
+- `mp.project(...).resolve(...)`
+- `mp.project(...).history(...)`
 
-- `Sources/PraxisRuntimeKit/`
-  面向调用者的高层 Swift API
-- `Sources/` 下的 runtime/export targets：
-  `PraxisRuntimeComposition`、`PraxisRuntimeUseCases`、`PraxisRuntimeFacades`、`PraxisRuntimeInterface`、`PraxisRuntimeGateway`、`PraxisFFI`
-- `Sources/PraxisTap*/`
-  capability 治理、review、provision、runtime support
-- `Sources/PraxisCmp*/`
-  项目上下文、审批、投影与交付模型
-- `Sources/PraxisMp*/`
-  搜索、记忆与检索模型
+## Build Requirements
+
+平台下限由 `Package.swift` 声明为：
+
+- macOS 14+
+- iOS 17+
+- tvOS 17+
+- watchOS 10+
+- visionOS 1+
+
+建议本地环境：
+
+- Xcode 16 或更新版本
+- Swift 6.x
+- macOS 本地开发环境
+
+查看本机 Swift 版本：
+
+```bash
+swift --version
+```
+
+## Build
+
+Praxis 当前是纯 Swift Package，没有默认 app target。常用编译命令：
+
+```bash
+swift build
+```
+
+release 编译：
+
+```bash
+swift build -c release
+```
+
+检查 package graph：
+
+```bash
+swift package resolve
+swift package describe
+```
+
+## Test
+
+仓库主验证入口：
+
+```bash
+swift test
+```
+
+如果只想先验证公开 API 或边界守卫，可以按需执行：
+
+```bash
+swift test --filter PraxisRuntimeKitTests
+swift test --filter PraxisHostRuntimeArchitectureTests
+swift test --filter PraxisTapArchitectureTests
+```
+
+## Integration
+
+在其他 SwiftPM 项目中接入时，先加入 package：
+
+```swift
+dependencies: [
+  .package(url: "https://github.com/Proview-China/Praxis.git", branch: "main")
+]
+```
+
+然后优先依赖 `PraxisRuntimeKit`：
+
+```swift
+dependencies: [
+  .product(name: "PraxisRuntimeKit", package: "Praxis")
+]
+```
+
+如果你是在做 runtime 装配、宿主桥接或导出边界，再考虑 `PraxisHostContracts`、`PraxisHostRuntime` 或 `PraxisFFI`。
+
+## Repository Layout
+
+主要目录：
+
+- `Sources/`
+  全部 Swift targets 的实现
 - `Tests/`
   单元测试与架构守卫测试
+- `Package.swift`
+  package products、targets、平台与依赖关系定义
+- `AGENTS.md`
+  仓库协作约束
+- `TAKEOVER_EXECUTION_WORKFLOW.md`
+  接手执行流程文档
 
-## 用 Xcode 打开
+如果你第一次读代码，建议顺序：
+
+1. `Package.swift`
+2. `Sources/PraxisRuntimeKit/`
+3. `Tests/PraxisRuntimeKitTests/`
+4. `Sources/PraxisRuntimeUseCases/`
+5. `Sources/PraxisRuntimeFacades/`
+
+## Current Constraints
+
+当前主线的几个技术边界是明确的：
+
+- 新能力默认继续落在 Swift targets
+- 不恢复旧 TypeScript / Node.js runtime
+- 不把 CLI、TUI、GUI 当成长期主入口
+- `PraxisRuntimeKit` 优先保持 caller-friendly，而不是暴露底层装配细节
+- 架构边界变化时，应同步更新 architecture tests
+
+## Open In Xcode
 
 Praxis 当前没有 `.xcodeproj`，直接把仓库根目录作为 Swift Package 打开即可：
 
@@ -186,15 +258,6 @@ Praxis 当前没有 `.xcodeproj`，直接把仓库根目录作为 Swift Package 
 3. 选择仓库根目录
 4. 等待 Swift Package indexing 完成
 
-## 当前边界
-
-Praxis 当前强调的是原生 runtime/framework 路径，因此有几个边界是明确的：
-
-- 新功能默认继续落在 Swift targets
-- 不重新恢复旧 TS/Node runtime
-- 不把 CLI、TUI、GUI 当成长期主入口
-- 对外调用优先走 `PraxisRuntimeKit`
-
-## 许可证
+## License
 
 本仓库使用 [LICENSE](/Users/shiyu/Documents/Project/Praxis/LICENSE) 中定义的许可证。
