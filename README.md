@@ -257,7 +257,3 @@ Praxis 当前没有 `.xcodeproj`，直接把仓库根目录作为 Swift Package 
 2. 选择 `File` → `Open...`
 3. 选择仓库根目录
 4. 等待 Swift Package indexing 完成
-
-## License
-
-本仓库使用 [LICENSE](/Users/shiyu/Documents/Project/Praxis/LICENSE) 中定义的许可证。
