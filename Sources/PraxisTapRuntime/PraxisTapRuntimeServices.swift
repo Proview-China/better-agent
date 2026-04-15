@@ -69,6 +69,69 @@ public struct PraxisActivationLifecycleService: Sendable {
     )
   }
 
+  /// Marks one activation attempt as completed and synthesizes a host-neutral activation receipt.
+  ///
+  /// - Parameters:
+  ///   - attempt: The activation attempt being finalized.
+  ///   - bindingKey: The stable binding identifier produced by the host-neutral activation path.
+  ///   - activatedAt: The timestamp when activation finished.
+  /// - Returns: The updated activation attempt and one synthesized activation receipt.
+  public func completeActivation(
+    _ attempt: PraxisActivationAttemptRecord,
+    bindingKey: String,
+    activatedAt: String
+  ) -> (attempt: PraxisActivationAttemptRecord, receipt: PraxisActivationReceipt) {
+    (
+      attempt: .init(
+        attemptID: attempt.attemptID,
+        capabilityKey: attempt.capabilityKey,
+        status: .completed,
+        createdAt: attempt.createdAt
+      ),
+      receipt: .init(
+        capabilityKey: attempt.capabilityKey,
+        bindingKey: bindingKey,
+        activatedAt: activatedAt
+      )
+    )
+  }
+
+  /// Advances one replay record from staged to ready.
+  ///
+  /// - Parameter replay: The replay record to update.
+  /// - Returns: A replay record that is ready to be consumed by a later dispatch or resume path.
+  public func markReplayReady(_ replay: PraxisPendingReplay) -> PraxisPendingReplay {
+    PraxisPendingReplay(
+      replayID: replay.replayID,
+      capabilityKey: replay.capabilityKey,
+      policy: replay.policy,
+      status: replay.status == .skipped ? .skipped : .ready,
+      nextAction: replay.nextAction,
+      summary: replay.status == .skipped
+        ? replay.summary
+        : "Replay \(replay.replayID) is ready for \(replay.nextAction.rawValue).",
+      recommendedAction: replay.status == .skipped ? replay.recommendedAction : replay.nextAction.rawValue
+    )
+  }
+
+  /// Marks one replay record as consumed after dispatch or resume succeeds.
+  ///
+  /// - Parameter replay: The replay record to update.
+  /// - Returns: A replay record that no longer requires follow-up action.
+  public func consumeReplay(_ replay: PraxisPendingReplay) -> PraxisPendingReplay {
+    PraxisPendingReplay(
+      replayID: replay.replayID,
+      capabilityKey: replay.capabilityKey,
+      policy: replay.policy,
+      status: replay.status == .skipped ? .skipped : .consumed,
+      nextAction: replay.status == .skipped ? replay.nextAction : .none,
+      summary: replay.status == .skipped
+        ? replay.summary
+        : "Replay \(replay.replayID) has been consumed by a resumed dispatch path.",
+      recommendedAction: replay.status == .skipped ? replay.recommendedAction : "none"
+    )
+  }
+
   /// Applies a human-gate state transition to a runtime snapshot and returns the updated snapshot.
   ///
   /// - Parameters:

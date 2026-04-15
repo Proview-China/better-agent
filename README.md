@@ -32,13 +32,13 @@ swift run PraxisRuntimeKitSmoke --suite all
 - `PraxisRuntimeKitSearchExample`
   展示 Phase 3 search chain：`search.web`、`search.fetch`、`search.ground`。
 - `PraxisRuntimeKitSmoke --suite provisioning`
-  展示 Phase 4 的 host-neutral provisioning receipt、activation staging、pending replay，以及 inspection/readback 恢复链。
+  展示 Phase 4 的 host-neutral provisioning receipt、activation staging、project-scoped provisioning readback、pending replay，以及 inspection/readback 恢复链。
 
 当前这些 examples 依赖本地 baseline host adapters，默认按 macOS 本地运行验证。
 Linux 路径当前只保留 compile-safe placeholder 和条件编译接缝，待 macOS 实现完备后再推进兼容实现。
 `PraxisRuntimeKitSmoke` 是独立于测试 target 的 smoke harness 骨架，适合在 examples 之外做快速回归验收。
 当前 `--suite recovery` 会验证重建 RuntimeKit client 后，run checkpoint 和 TAP approval checkpoint 仍然能恢复出最新状态。
-当前 `tap.project(...).provision(...)` 会返回 host-neutral staged receipt，不会执行真实安装副作用，但会把 bundle / activation / replay 证据写入 TAP checkpoint 与 recovery readback。
+当前 `tap.project(...).provision(...)` 会返回 host-neutral staged receipt，不会执行真实安装副作用，但会把 bundle / activation / replay 证据写入 TAP checkpoint 与 recovery readback。现在也可以通过 `tap.project(...).provisioning()` 单独读取 durable provisioning state；当 `retryDispatch` 清除 gate 并成功继续时，对应 replay 会被消费并回写 activation receipt / replay status。
 
 ## Technical Overview
 

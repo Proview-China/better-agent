@@ -5,7 +5,7 @@
 > 本文负责把 12 周接手路线拆成可执行的推进流程、阶段出口、工件清单和验证顺序。
 > 截至 2026-04-14，旧的 `SWIFT_REFACTOR_PLAN.md` 已视为过时，不再作为执行依据。
 > 当前仓库涉及 Swift 重构范围、target 职责、执行顺序和阶段边界时，统一以本文为唯一执行入口。
-> 截至 2026-04-15，Phase 1 的 RuntimeKit examples / README 入口、Phase 2 的 support matrix / error matrix / smoke harness skeleton，以及 Phase 3 的 thin capability baseline + search chain + reviewer context inspection / workbench 已落地到主线代码；Phase 4 现在已经接通 TAP approval checkpoint、跨 client recovery smoke，以及 host-neutral provisioning -> activation staging -> pending replay 的 durable runtime 主链。
+> 截至 2026-04-15，Phase 1 的 RuntimeKit examples / README 入口、Phase 2 的 support matrix / error matrix / smoke harness skeleton，以及 Phase 3 的 thin capability baseline + search chain + reviewer context inspection / workbench 已落地到主线代码；Phase 4 现在已经接通 TAP approval checkpoint、跨 client recovery smoke，以及 host-neutral provisioning -> activation staging -> project-scoped provisioning readback -> pending replay consumption 的 durable runtime 主链。
 
 ## 1. 文档定位
 
@@ -296,6 +296,7 @@
 - TMA planner -> executor -> bundle assembly 主链
 - 独立 smoke/e2e 入口
 - AI/provider request seam 已从 runtime caller surface 收口到聚合边界，避免后续独立 SDK 抽离时回拆上层调用方
+- project-scoped provisioning readback，以及 retry dispatch 对 replay consumption 的持久化回写
 
 ### 阶段完成标准
 

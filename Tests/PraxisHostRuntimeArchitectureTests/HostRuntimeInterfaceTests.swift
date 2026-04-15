@@ -5691,6 +5691,22 @@ struct HostRuntimeInterfaceTests {
   }
 
   @Test
+  func runtimeInterfaceCodecEncodesTapProvisioningRequestsAsNestedPayloads() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let request = PraxisRuntimeInterfaceRequest.readbackTapProvisioning(
+      .init(
+        payloadSummary: "Read back TAP provisioning",
+        projectID: "cmp.local-runtime"
+      )
+    )
+
+    let requestData = try codec.encode(request)
+    let decodedRequest = try codec.decodeRequest(requestData)
+
+    #expect(decodedRequest == request)
+  }
+
+  @Test
   func runtimeInterfaceCodecEncodesTapHistoryRequestsAsNestedPayloads() throws {
     let codec = PraxisJSONRuntimeInterfaceCodec()
     let request = PraxisRuntimeInterfaceRequest.readbackTapHistory(
@@ -5933,6 +5949,53 @@ struct HostRuntimeInterfaceTests {
       #expect(response.error?.retryable == false)
       #expect(response.error?.message.contains(fieldName) == true)
     }
+  }
+
+  @Test
+  func runtimeInterfaceReadbackTapProvisioningRequiresProjectID() async throws {
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
+
+    let response = await runtimeInterface.handle(
+      .readbackTapProvisioning(
+        .init(
+          payloadSummary: "Missing TAP provisioning project",
+          projectID: ""
+        )
+      )
+    )
+
+    #expect(response.status == .failure)
+    #expect(response.snapshot == nil)
+    #expect(response.events.isEmpty)
+    #expect(response.error?.code == .missingRequiredField)
+    #expect(response.error?.missingField == "projectID")
+  }
+
+  @Test
+  func runtimeInterfaceRoutesTapProvisioningReadback() async throws {
+    let runtimeInterface = try PraxisRuntimeGatewayFactory.makeRuntimeInterface(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
+
+    let response = await runtimeInterface.handle(
+      .readbackTapProvisioning(
+        .init(
+          payloadSummary: "Read back TAP provisioning",
+          projectID: "cmp.local-runtime"
+        )
+      )
+    )
+
+    #expect(response.status == .success)
+    #expect(response.error == nil)
+    #expect(response.snapshot?.kind == .tapProvisioning)
+    #expect(response.snapshot?.projectID == "cmp.local-runtime")
+    #expect(response.snapshot?.found == false)
+    #expect(response.events.first?.name == .tapProvisioningReadback)
   }
 
   @Test

@@ -222,6 +222,66 @@ public struct PraxisTapProvisionStaging: Sendable, Equatable, Codable {
   }
 }
 
+public struct PraxisReadbackTapProvisioningCommand: Sendable, Equatable, Codable {
+  public let projectID: String
+
+  public init(projectID: String) {
+    self.projectID = projectID
+  }
+}
+
+public struct PraxisTapProvisioningReadback: Sendable, Equatable, Codable {
+  public let projectID: String
+  public let summary: String
+  public let capabilityKey: PraxisCapabilityID?
+  public let planSummary: String?
+  public let bundleSummary: String?
+  public let activationSummary: String?
+  public let activationAttemptID: String?
+  public let activationStatus: PraxisActivationAttemptStatus?
+  public let activationBindingKey: String?
+  public let activatedAt: String?
+  public let replayRecords: [PraxisPendingReplay]
+  public let activeReplayCount: Int
+  public let checkpointReference: String?
+  public let found: Bool
+  public let issues: [String]
+
+  public init(
+    projectID: String,
+    summary: String,
+    capabilityKey: PraxisCapabilityID? = nil,
+    planSummary: String? = nil,
+    bundleSummary: String? = nil,
+    activationSummary: String? = nil,
+    activationAttemptID: String? = nil,
+    activationStatus: PraxisActivationAttemptStatus? = nil,
+    activationBindingKey: String? = nil,
+    activatedAt: String? = nil,
+    replayRecords: [PraxisPendingReplay] = [],
+    activeReplayCount: Int = 0,
+    checkpointReference: String? = nil,
+    found: Bool,
+    issues: [String] = []
+  ) {
+    self.projectID = projectID
+    self.summary = summary
+    self.capabilityKey = capabilityKey
+    self.planSummary = planSummary
+    self.bundleSummary = bundleSummary
+    self.activationSummary = activationSummary
+    self.activationAttemptID = activationAttemptID
+    self.activationStatus = activationStatus
+    self.activationBindingKey = activationBindingKey
+    self.activatedAt = activatedAt
+    self.replayRecords = replayRecords
+    self.activeReplayCount = activeReplayCount
+    self.checkpointReference = checkpointReference
+    self.found = found
+    self.issues = issues
+  }
+}
+
 public struct PraxisReadbackTapStatusCommand: Sendable, Equatable, Codable {
   public let projectID: String
   public let agentID: String?

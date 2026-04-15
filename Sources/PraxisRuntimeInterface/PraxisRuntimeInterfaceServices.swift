@@ -476,6 +476,43 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
     )
   }
 
+  private func response(from provisioning: PraxisTapProvisioningReadbackSnapshot) -> PraxisRuntimeInterfaceResponse {
+    let primaryReplay = provisioning.replayRecords.first {
+      switch $0.status {
+      case .pending, .ready:
+        return true
+      case .consumed, .skipped:
+        return false
+      }
+    } ?? provisioning.replayRecords.first
+
+    return .success(
+      snapshot: .init(
+        kind: .tapProvisioning,
+        title: "TAP Provisioning \(provisioning.projectID)",
+        summary: provisioning.summary,
+        projectID: provisioning.projectID,
+        capabilityKey: provisioning.capabilityKey,
+        checkpointReference: provisioning.checkpointReference.map(PraxisRuntimeInterfaceReferenceID.init(rawValue:)),
+        decisionSummary: provisioning.activationSummary,
+        activationStatus: provisioning.activationStatus,
+        activationBindingKey: provisioning.activationBindingKey,
+        activatedAt: provisioning.activatedAt,
+        replayID: primaryReplay.map { .init(rawValue: $0.replayID) },
+        replayStatus: primaryReplay?.status,
+        replayNextAction: primaryReplay?.nextAction,
+        activeReplayCount: provisioning.activeReplayCount,
+        found: provisioning.found
+      ),
+      events: [
+        .init(
+          name: .tapProvisioningReadback,
+          detail: provisioning.summary
+        )
+      ]
+    )
+  }
+
   private func response(from history: PraxisTapHistorySnapshot) -> PraxisRuntimeInterfaceResponse {
     .success(
       snapshot: .init(
@@ -892,6 +929,12 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
           summary: "\(inspection.summary) Governance: \(inspection.governanceSummary)"
         )
       )
+    case .readbackTapProvisioning(let payload):
+      let projectID = try requireRuntimeInterfaceField(payload.projectID, named: "projectID")
+      let provisioning = try await runtimeFacade.inspectionFacade.readbackTapProvisioning(
+        .init(projectID: projectID)
+      )
+      return response(from: provisioning)
     case .readbackTapStatus(let payload):
       guard !payload.projectID.isEmpty else {
         throw PraxisRuntimeInterfaceError.missingRequiredField("projectID")

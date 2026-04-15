@@ -19,6 +19,24 @@ struct PraxisTapRuntimeTests {
       capabilityKey: "shell.exec",
       policy: .none
     )
+    let completedActivation = lifecycle.completeActivation(
+      .init(
+        attemptID: "activation.1",
+        capabilityKey: "shell.exec",
+        status: .pending,
+        createdAt: "2026-04-15T10:00:00Z"
+      ),
+      bindingKey: "binding.shell.exec",
+      activatedAt: "2026-04-15T10:05:00Z"
+    )
+    let readyReplay = lifecycle.markReplayReady(
+      lifecycle.createPendingReplay(
+        replayID: "replay.ready",
+        capabilityKey: "shell.exec",
+        policy: .reReviewThenDispatch
+      )
+    )
+    let consumedReplay = lifecycle.consumeReplay(readyReplay)
 
     #expect(!nonePolicy.allowsResume)
     #expect(nonePolicy.nextAction == .none)
@@ -26,6 +44,11 @@ struct PraxisTapRuntimeTests {
     #expect(autoPolicy.nextAction == .verifyThenAuto)
     #expect(reviewPolicy.nextAction == .reReviewThenDispatch)
     #expect(skippedReplay.status == .skipped)
+    #expect(completedActivation.attempt.status == .completed)
+    #expect(completedActivation.receipt.bindingKey == "binding.shell.exec")
+    #expect(readyReplay.status == .ready)
+    #expect(consumedReplay.status == .consumed)
+    #expect(consumedReplay.nextAction == .none)
   }
 
   @Test

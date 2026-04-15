@@ -126,6 +126,7 @@ private let tapProvisioningPayloadKeys: Set<String> = [
   "planSummary",
   "activationSummary",
   "activationAttempt",
+  "activationReceipt",
   "pendingReplays",
 ]
 
@@ -134,10 +135,26 @@ private struct PraxisTapProvisioningCheckpointState {
   let planSummary: String?
   let activationSummary: String?
   let activationAttempt: PraxisActivationAttemptRecord?
+  let activationReceipt: PraxisActivationReceipt?
   let pendingReplays: [PraxisPendingReplay]
 
   var hasRuntimeEvidence: Bool {
-    bundleSummary != nil || planSummary != nil || activationAttempt != nil || pendingReplays.isEmpty == false
+    bundleSummary != nil
+      || planSummary != nil
+      || activationAttempt != nil
+      || activationReceipt != nil
+      || pendingReplays.isEmpty == false
+  }
+
+  var activeReplayCount: Int {
+    pendingReplays.filter { replay in
+      switch replay.status {
+      case .pending, .ready:
+        return true
+      case .consumed, .skipped:
+        return false
+      }
+    }.count
   }
 }
 
@@ -159,9 +176,10 @@ private func tapProvisioningPayloadFields(
   planSummary: String,
   activationSummary: String,
   activationAttempt: PraxisActivationAttemptRecord,
+  activationReceipt: PraxisActivationReceipt?,
   pendingReplays: [PraxisPendingReplay]
 ) -> [String: PraxisValue] {
-  [
+  var payload: [String: PraxisValue] = [
     "bundleSummary": .string(bundleSummary),
     "planSummary": .string(planSummary),
     "activationSummary": .string(activationSummary),
@@ -185,6 +203,14 @@ private func tapProvisioningPayloadFields(
       }
     ),
   ]
+  if let activationReceipt {
+    payload["activationReceipt"] = .object([
+      "capabilityKey": .string(activationReceipt.capabilityKey),
+      "bindingKey": .string(activationReceipt.bindingKey),
+      "activatedAt": .string(activationReceipt.activatedAt),
+    ])
+  }
+  return payload
 }
 
 private func tapProvisioningCheckpointState(
@@ -206,6 +232,21 @@ private func tapProvisioningCheckpointState(
     )
   } else {
     activationAttempt = nil
+  }
+
+  let activationReceipt: PraxisActivationReceipt?
+  if let object = payload?["activationReceipt"]?.objectValue,
+    let capabilityKey = object["capabilityKey"]?.stringValue,
+    let bindingKey = object["bindingKey"]?.stringValue,
+    let activatedAt = object["activatedAt"]?.stringValue
+  {
+    activationReceipt = .init(
+      capabilityKey: capabilityKey,
+      bindingKey: bindingKey,
+      activatedAt: activatedAt
+    )
+  } else {
+    activationReceipt = nil
   }
 
   let pendingReplays: [PraxisPendingReplay] = payload?["pendingReplays"]?.arrayValue?.compactMap { value in
@@ -239,6 +280,7 @@ private func tapProvisioningCheckpointState(
     planSummary: payload?["planSummary"]?.stringValue,
     activationSummary: payload?["activationSummary"]?.stringValue,
     activationAttempt: activationAttempt,
+    activationReceipt: activationReceipt,
     pendingReplays: pendingReplays
   )
 }
@@ -2076,8 +2118,12 @@ private func dispatchCmpFlow(
     )
   }
 
+  let dispatchResultStatus: PraxisCmpInterfaceResultStatus = publishedAt == nil ? .materialized : .dispatched
+  let decisionSummary = publishedAt == nil
+    ? "Dispatch prepared package \(command.contextPackage.id.rawValue) on \(topicName) and is waiting for transport availability."
+    : "Dispatch released package \(command.contextPackage.id.rawValue) on \(topicName)."
   let result = PraxisDispatchContextPackageResult(
-    status: .dispatched,
+    status: dispatchResultStatus,
     receipt: receipt,
     metadata: [
       "topicName": .string(topicName),
@@ -2099,7 +2145,7 @@ private func dispatchCmpFlow(
       "humanGateState": .string(PraxisHumanGateState.notRequired.rawValue),
       "targetAgentID": .string(command.contextPackage.targetAgentID),
       "packageID": .string(command.contextPackage.id.rawValue),
-      "decisionSummary": .string("Dispatch released package \(command.contextPackage.id.rawValue) on \(topicName)."),
+      "decisionSummary": .string(decisionSummary),
     ],
     dependencies: dependencies
   )
@@ -2107,13 +2153,15 @@ private func dispatchCmpFlow(
     projectID: command.projectID,
     latestEventKind: .dispatchReleased,
     latestCapabilityID: nil,
-    latestDecisionSummary: "Dispatch released package \(command.contextPackage.id.rawValue) on \(topicName).",
+    latestDecisionSummary: decisionSummary,
     dependencies: dependencies
   )
   return PraxisCmpFlowDispatch(
     projectID: command.projectID,
     agentID: command.agentID,
-    summary: "CMP dispatch routed package \(command.contextPackage.id.rawValue) toward \(receipt.targetAgentID) on \(topicName) through the neutral flow surface.",
+    summary: publishedAt == nil
+      ? "CMP dispatch prepared package \(command.contextPackage.id.rawValue) toward \(receipt.targetAgentID) on \(topicName) and is waiting for a transport surface."
+      : "CMP dispatch routed package \(command.contextPackage.id.rawValue) toward \(receipt.targetAgentID) on \(topicName) through the neutral flow surface.",
     result: result,
     deliveryPlan: deliveryPlan
   )
@@ -2187,8 +2235,44 @@ private func retryCmpDispatch(
     ],
     dependencies: dependencies
   )
+  let replayDispatchState: PraxisTapProvisioningDispatchState?
+  let checkpointPointer = tapInspectionCheckpointPointer(for: command.projectID)
+  let checkpointRecord = try await dependencies.hostAdapters.checkpointStore?.load(pointer: checkpointPointer)
+  let provisioningState = tapProvisioningCheckpointState(from: checkpointRecord?.snapshot.payload)
+  if let activationAttempt = provisioningState.activationAttempt,
+     let replayCandidate = tapProvisioningReplayCandidate(from: provisioningState),
+     let capabilityID = try optionalCapabilityID(
+      from: activationAttempt.capabilityKey,
+      context: "TAP provisioning checkpoint"
+     ),
+     let bundleSummary = provisioningState.bundleSummary,
+     let planSummary = provisioningState.planSummary
+  {
+    let lifecycle = PraxisActivationLifecycleService()
+    let completedActivation = lifecycle.completeActivation(
+      activationAttempt,
+      bindingKey: tapActivationBindingKey(projectID: command.projectID, capabilityID: capabilityID),
+      activatedAt: createdAt
+    )
+    let activationReceipt = provisioningState.activationReceipt ?? completedActivation.receipt
+    let readyReplay = lifecycle.markReplayReady(replayCandidate)
+    let updatedReplays = provisioningState.pendingReplays.map { replay in
+      replay.replayID == readyReplay.replayID ? readyReplay : replay
+    }
+    replayDispatchState = .init(
+      capabilityID: capabilityID,
+      bundleSummary: bundleSummary,
+      planSummary: planSummary,
+      activationAttempt: completedActivation.attempt,
+      activationReceipt: activationReceipt,
+      pendingReplays: updatedReplays,
+      replayID: readyReplay.replayID
+    )
+  } else {
+    replayDispatchState = nil
+  }
 
-  return try await dispatchCmpFlow(
+  let dispatch = try await dispatchCmpFlow(
     command: .init(
       projectID: command.projectID,
       agentID: command.agentID,
@@ -2198,6 +2282,75 @@ private func retryCmpDispatch(
     ),
     dependencies: dependencies
   )
+  guard let replayDispatchState else {
+    return dispatch
+  }
+
+  let lifecycle = PraxisActivationLifecycleService()
+  let updatedReplays: [PraxisPendingReplay]
+  let activationSummary: String
+  let latestEventKind: PraxisTapRuntimeEventKind
+  let latestDecisionSummary: String
+
+  switch dispatch.result.receipt.status {
+  case .delivered:
+    updatedReplays = replayDispatchState.pendingReplays.map { replay in
+      replay.replayID == replayDispatchState.replayID ? lifecycle.consumeReplay(replay) : replay
+    }
+    activationSummary =
+      "Activation receipt \(replayDispatchState.activationReceipt.bindingKey) completed for \(replayDispatchState.capabilityID.rawValue); replay \(replayDispatchState.replayID) was consumed by dispatch package \(command.packageID.rawValue)."
+    latestEventKind = .dispatchReleased
+    latestDecisionSummary = activationSummary
+  case .rejected:
+    updatedReplays = replayDispatchState.pendingReplays
+    activationSummary =
+      "Activation receipt \(replayDispatchState.activationReceipt.bindingKey) completed for \(replayDispatchState.capabilityID.rawValue); replay \(replayDispatchState.replayID) remains ready while dispatch stays gated."
+    latestEventKind = .dispatchBlocked
+    latestDecisionSummary = activationSummary
+  case .prepared:
+    updatedReplays = replayDispatchState.pendingReplays
+    activationSummary =
+      "Activation receipt \(replayDispatchState.activationReceipt.bindingKey) completed for \(replayDispatchState.capabilityID.rawValue); replay \(replayDispatchState.replayID) remains ready until transport delivery succeeds."
+    latestEventKind = .dispatchReleased
+    latestDecisionSummary = activationSummary
+  case .acknowledged:
+    updatedReplays = replayDispatchState.pendingReplays.map { replay in
+      replay.replayID == replayDispatchState.replayID ? lifecycle.consumeReplay(replay) : replay
+    }
+    activationSummary =
+      "Activation receipt \(replayDispatchState.activationReceipt.bindingKey) completed for \(replayDispatchState.capabilityID.rawValue); replay \(replayDispatchState.replayID) was consumed after dispatch package \(command.packageID.rawValue) reached acknowledgement."
+    latestEventKind = .dispatchReleased
+    latestDecisionSummary = activationSummary
+  case .expired:
+    updatedReplays = replayDispatchState.pendingReplays
+    activationSummary =
+      "Activation receipt \(replayDispatchState.activationReceipt.bindingKey) completed for \(replayDispatchState.capabilityID.rawValue); replay \(replayDispatchState.replayID) remains ready because dispatch package \(command.packageID.rawValue) expired before delivery completed."
+    latestEventKind = .dispatchRetryRequested
+    latestDecisionSummary = activationSummary
+  }
+
+  try await appendTapInspectionReplayEvidence(
+    projectID: command.projectID,
+    capabilityID: replayDispatchState.capabilityID,
+    summary: activationSummary,
+    bundleSummary: replayDispatchState.bundleSummary,
+    pendingReplay: updatedReplays.first { $0.replayID == replayDispatchState.replayID } ?? replayDispatchState.pendingReplays[0],
+    dependencies: dependencies
+  )
+  try await persistTapInspectionCheckpoint(
+    projectID: command.projectID,
+    latestEventKind: latestEventKind,
+    latestCapabilityID: replayDispatchState.capabilityID,
+    latestDecisionSummary: latestDecisionSummary,
+    activationAttempt: replayDispatchState.activationAttempt,
+    activationReceipt: replayDispatchState.activationReceipt,
+    pendingReplays: updatedReplays,
+    bundleSummary: replayDispatchState.bundleSummary,
+    planSummary: replayDispatchState.planSummary,
+    activationSummary: activationSummary,
+    dependencies: dependencies
+  )
+  return dispatch
 }
 
 private func requestCmpHistory(
@@ -3334,6 +3487,7 @@ private func persistTapInspectionCheckpoint(
   latestCapabilityID: PraxisCapabilityID?,
   latestDecisionSummary: String,
   activationAttempt: PraxisActivationAttemptRecord? = nil,
+  activationReceipt: PraxisActivationReceipt? = nil,
   pendingReplays: [PraxisPendingReplay]? = nil,
   bundleSummary: String? = nil,
   planSummary: String? = nil,
@@ -3381,6 +3535,7 @@ private func persistTapInspectionCheckpoint(
             planSummary: planSummary,
             activationSummary: activationSummary,
             activationAttempt: activationAttempt,
+            activationReceipt: activationReceipt ?? tapProvisioningCheckpointState(from: existingCheckpoint?.snapshot.payload).activationReceipt,
             pendingReplays: pendingReplays
           )
         }
@@ -3435,6 +3590,40 @@ private func appendTapInspectionReplayEvidence(
       ]
     )
   )
+}
+
+private func tapProvisioningReplayCandidate(
+  from state: PraxisTapProvisioningCheckpointState
+) -> PraxisPendingReplay? {
+  let candidates = state.pendingReplays.filter { replay in
+    switch replay.status {
+    case .pending, .ready:
+      return true
+    case .consumed, .skipped:
+      return false
+    }
+  }
+  guard candidates.count == 1 else {
+    return nil
+  }
+  return candidates.first
+}
+
+private struct PraxisTapProvisioningDispatchState {
+  let capabilityID: PraxisCapabilityID
+  let bundleSummary: String
+  let planSummary: String
+  let activationAttempt: PraxisActivationAttemptRecord
+  let activationReceipt: PraxisActivationReceipt
+  let pendingReplays: [PraxisPendingReplay]
+  let replayID: String
+}
+
+private func tapActivationBindingKey(
+  projectID: String,
+  capabilityID: PraxisCapabilityID
+) -> String {
+  "binding.\(tapInspectionStorageComponent(for: projectID)).\(capabilityID.rawValue)"
 }
 
 private func cmpPendingPeerApprovalDescriptors(
@@ -4777,6 +4966,68 @@ public final class PraxisStageTapProvisionUseCase: PraxisStageTapProvisionUseCas
   }
 }
 
+public final class PraxisReadbackTapProvisioningUseCase: PraxisReadbackTapProvisioningUseCaseProtocol {
+  public let dependencies: PraxisDependencyGraph
+
+  public init(dependencies: PraxisDependencyGraph) {
+    self.dependencies = dependencies
+  }
+
+  /// Reads the latest TAP provisioning checkpoint slice for one project-scoped runtime.
+  ///
+  /// - Parameter command: Structured project-scoped provisioning readback request.
+  /// - Returns: The latest provisioning, activation, and replay snapshot recovered from durable checkpoint state.
+  /// - Throws: Propagates checkpoint loading failures.
+  public func execute(_ command: PraxisReadbackTapProvisioningCommand) async throws -> PraxisTapProvisioningReadback {
+    let projectID = command.projectID.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !projectID.isEmpty else {
+      throw PraxisError.invalidInput("TAP provisioning readback requires a non-empty projectID.")
+    }
+
+    var issues: [String] = []
+    if dependencies.hostAdapters.checkpointStore == nil {
+      issues.append("Checkpoint store adapter is still missing from HostRuntime composition.")
+    }
+
+    let checkpointPointer = tapInspectionCheckpointPointer(for: projectID)
+    let checkpointRecord = try await dependencies.hostAdapters.checkpointStore?.load(pointer: checkpointPointer)
+    let state = tapProvisioningCheckpointState(from: checkpointRecord?.snapshot.payload)
+    let capabilityID = try optionalCapabilityID(
+      from: state.activationAttempt?.capabilityKey ?? state.activationReceipt?.capabilityKey ?? state.pendingReplays.first?.capabilityKey,
+      context: "TAP provisioning checkpoint"
+    )
+
+    guard state.hasRuntimeEvidence else {
+      return PraxisTapProvisioningReadback(
+        projectID: projectID,
+        summary: "No durable TAP provisioning, activation, or replay evidence is currently stored for \(projectID).",
+        checkpointReference: checkpointRecord?.pointer.checkpointID.rawValue,
+        found: false,
+        issues: issues
+      )
+    }
+
+    return PraxisTapProvisioningReadback(
+      projectID: projectID,
+      summary:
+        "Recovered durable TAP provisioning evidence for \(projectID) with \(state.activeReplayCount) active replay record(s) and \(state.pendingReplays.count) total replay record(s).",
+      capabilityKey: capabilityID,
+      planSummary: state.planSummary,
+      bundleSummary: state.bundleSummary,
+      activationSummary: state.activationSummary,
+      activationAttemptID: state.activationAttempt?.attemptID,
+      activationStatus: state.activationAttempt?.status,
+      activationBindingKey: state.activationReceipt?.bindingKey,
+      activatedAt: state.activationReceipt?.activatedAt,
+      replayRecords: state.pendingReplays,
+      activeReplayCount: state.activeReplayCount,
+      checkpointReference: checkpointRecord?.pointer.checkpointID.rawValue,
+      found: true,
+      issues: issues
+    )
+  }
+}
+
 public final class PraxisInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
   public let dependencies: PraxisDependencyGraph
 
@@ -4805,13 +5056,15 @@ public final class PraxisInspectTapUseCase: PraxisInspectTapUseCaseProtocol {
     )
     let replayedEventCount = replaySlice?.events.count ?? 0
     let replaySummary: String
-    switch (replayedEventCount, provisioningState.pendingReplays.count) {
-    case let (journalEvents, pendingReplays) where journalEvents > 0 && pendingReplays > 0:
-      replaySummary = "Recent replay evidence contains \(journalEvents) journal events and \(pendingReplays) pending replay record(s)."
-    case let (journalEvents, _) where journalEvents > 0:
+    switch (replayedEventCount, provisioningState.activeReplayCount, provisioningState.pendingReplays.count) {
+    case let (journalEvents, activeReplays, replayRecords) where journalEvents > 0 && replayRecords > 0:
+      replaySummary =
+        "Recent replay evidence contains \(journalEvents) journal events, \(activeReplays) active replay record(s), and \(replayRecords) total replay record(s)."
+    case let (journalEvents, _, _) where journalEvents > 0:
       replaySummary = "Recent replay evidence contains \(journalEvents) journal events."
-    case let (_, pendingReplays) where pendingReplays > 0:
-      replaySummary = "Recent replay evidence contains \(pendingReplays) pending replay record(s) recovered from the TAP checkpoint."
+    case let (_, activeReplays, replayRecords) where replayRecords > 0:
+      replaySummary =
+        "Recent replay evidence contains \(activeReplays) active replay record(s) and \(replayRecords) total replay record(s) recovered from the TAP checkpoint."
     default:
       replaySummary = "No TAP replay events are currently stored for the inspection session."
     }
@@ -5006,7 +5259,10 @@ private func tapInspectionRunSummary(
   let activationAttemptSummary = provisioningState.activationAttempt.map {
     " Activation attempt \($0.attemptID) is \($0.status.rawValue) for \($0.capabilityKey)."
   } ?? ""
-  return "\(persistenceSummary) \(replaySummary) \(historySummary)\(activationAttemptSummary)"
+  let activationReceiptSummary = provisioningState.activationReceipt.map {
+    " Activation receipt \($0.bindingKey) was recorded at \($0.activatedAt)."
+  } ?? ""
+  return "\(persistenceSummary) \(replaySummary) \(historySummary)\(activationAttemptSummary)\(activationReceiptSummary)"
 }
 
 private func tapInspectionRiskSummary(
@@ -5077,12 +5333,16 @@ private func tapInspectionSections(
   if provisioningState.hasRuntimeEvidence {
     let bundleSummary = provisioningState.bundleSummary ?? "Provision bundle assembly has not been staged yet."
     let activationSummary = provisioningState.activationSummary ?? "Activation staging has not been summarized yet."
+    let activationReceiptSummary = provisioningState.activationReceipt.map {
+      " Activation binding \($0.bindingKey) was recorded at \($0.activatedAt)."
+    } ?? ""
     sections.append(
       .init(
         sectionID: "activation-replay",
         title: "Activation and replay",
-        summary: "\(bundleSummary) \(activationSummary) Pending replay count: \(provisioningState.pendingReplays.count).",
-        status: provisioningState.pendingReplays.isEmpty ? .ready : .pending,
+        summary:
+          "\(bundleSummary) \(activationSummary)\(activationReceiptSummary) Active replay count: \(provisioningState.activeReplayCount). Total replay record count: \(provisioningState.pendingReplays.count).",
+        status: provisioningState.activeReplayCount == 0 ? .ready : .pending,
         freshness: .fresh,
         trustLevel: .verified
       )
@@ -5261,7 +5521,7 @@ private func tapInspectionAdvisories(
       PraxisToolReviewAdvisory(
         code: "pending_replay_staged",
         severity: status.riskLevel,
-        summary: "Pending replay \(pendingReplay.replayID) is staged for \(pendingReplay.capabilityKey) with next action \(pendingReplay.nextAction.rawValue)."
+        summary: "Replay \(pendingReplay.replayID) is \(pendingReplay.status.rawValue) for \(pendingReplay.capabilityKey) with next action \(pendingReplay.nextAction.rawValue)."
       )
     )
   }

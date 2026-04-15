@@ -8,6 +8,7 @@ import PraxisRuntimeFacades
 import PraxisRuntimeUseCases
 import PraxisSession
 import PraxisTapReview
+import PraxisTapRuntime
 import PraxisTapTypes
 
 public enum PraxisRuntimeInterfaceResponseStatus: String, Sendable, Equatable, Codable {
@@ -36,6 +37,7 @@ public enum PraxisRuntimeInterfaceCommandKind: String, Sendable, Equatable, Coda
   case runGoal
   case resumeRun
   case inspectTap
+  case readbackTapProvisioning
   case readbackTapStatus
   case readbackTapHistory
   case openCmpSession
@@ -191,6 +193,19 @@ public struct PraxisRuntimeInterfaceTapStatusRequestPayload: Sendable, Equatable
     self.payloadSummary = payloadSummary
     self.projectID = projectID
     self.agentID = agentID
+  }
+}
+
+public struct PraxisRuntimeInterfaceTapProvisioningRequestPayload: Sendable, Equatable, Codable {
+  public let payloadSummary: String
+  public let projectID: String
+
+  public init(
+    payloadSummary: String,
+    projectID: String
+  ) {
+    self.payloadSummary = payloadSummary
+    self.projectID = projectID
   }
 }
 
@@ -1039,6 +1054,7 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
   case runGoal(PraxisRuntimeInterfaceRunGoalRequestPayload)
   case resumeRun(PraxisRuntimeInterfaceResumeRunRequestPayload)
   case inspectTap
+  case readbackTapProvisioning(PraxisRuntimeInterfaceTapProvisioningRequestPayload)
   case readbackTapStatus(PraxisRuntimeInterfaceTapStatusRequestPayload)
   case readbackTapHistory(PraxisRuntimeInterfaceTapHistoryRequestPayload)
   case openCmpSession(PraxisRuntimeInterfaceOpenCmpSessionRequestPayload)
@@ -1083,6 +1099,8 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       return .resumeRun
     case .inspectTap:
       return .inspectTap
+    case .readbackTapProvisioning:
+      return .readbackTapProvisioning
     case .readbackTapStatus:
       return .readbackTapStatus
     case .readbackTapHistory:
@@ -1157,6 +1175,8 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
     case .runGoal(let payload):
       return payload.payloadSummary
     case .resumeRun(let payload):
+      return payload.payloadSummary
+    case .readbackTapProvisioning(let payload):
       return payload.payloadSummary
     case .readbackTapStatus(let payload):
       return payload.payloadSummary
@@ -1245,7 +1265,7 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       return payload.sessionID
     case .requestMpHistory(let payload):
       return payload.sessionID
-    case .inspectArchitecture, .resumeRun, .inspectTap, .readbackTapStatus, .readbackTapHistory, .readbackCmpProject, .readbackCmpRoles, .readbackCmpControl, .updateCmpControl, .requestCmpPeerApproval, .decideCmpPeerApproval, .readbackCmpPeerApproval, .readbackCmpStatus, .bootstrapCmpProject, .recoverCmpProject, .resolveCmpFlow, .materializeCmpFlow, .dispatchCmpFlow, .retryCmpDispatch, .requestCmpHistory, .smokeCmpProject, .inspectCmp, .inspectMp, .smokeMp, .alignMp, .archiveMp, .buildCapabilityCatalog:
+    case .inspectArchitecture, .resumeRun, .inspectTap, .readbackTapProvisioning, .readbackTapStatus, .readbackTapHistory, .readbackCmpProject, .readbackCmpRoles, .readbackCmpControl, .updateCmpControl, .requestCmpPeerApproval, .decideCmpPeerApproval, .readbackCmpPeerApproval, .readbackCmpStatus, .bootstrapCmpProject, .recoverCmpProject, .resolveCmpFlow, .materializeCmpFlow, .dispatchCmpFlow, .retryCmpDispatch, .requestCmpHistory, .smokeCmpProject, .inspectCmp, .inspectMp, .smokeMp, .alignMp, .archiveMp, .buildCapabilityCatalog:
       return nil
     }
   }
@@ -1258,13 +1278,15 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       return payload.runID
     case .commitCmpFlow(let payload):
       return payload.runID
-    case .inspectArchitecture, .runGoal, .inspectTap, .openCmpSession, .readbackTapStatus, .readbackTapHistory, .readbackCmpProject, .readbackCmpRoles, .readbackCmpControl, .updateCmpControl, .requestCmpPeerApproval, .decideCmpPeerApproval, .readbackCmpPeerApproval, .readbackCmpStatus, .bootstrapCmpProject, .recoverCmpProject, .resolveCmpFlow, .materializeCmpFlow, .dispatchCmpFlow, .retryCmpDispatch, .requestCmpHistory, .smokeCmpProject, .inspectCmp, .inspectMp, .searchMp, .readbackMp, .smokeMp, .ingestMp, .alignMp, .promoteMp, .archiveMp, .resolveMp, .requestMpHistory, .buildCapabilityCatalog:
+    case .inspectArchitecture, .runGoal, .inspectTap, .openCmpSession, .readbackTapProvisioning, .readbackTapStatus, .readbackTapHistory, .readbackCmpProject, .readbackCmpRoles, .readbackCmpControl, .updateCmpControl, .requestCmpPeerApproval, .decideCmpPeerApproval, .readbackCmpPeerApproval, .readbackCmpStatus, .bootstrapCmpProject, .recoverCmpProject, .resolveCmpFlow, .materializeCmpFlow, .dispatchCmpFlow, .retryCmpDispatch, .requestCmpHistory, .smokeCmpProject, .inspectCmp, .inspectMp, .searchMp, .readbackMp, .smokeMp, .ingestMp, .alignMp, .promoteMp, .archiveMp, .resolveMp, .requestMpHistory, .buildCapabilityCatalog:
       return nil
     }
   }
 
   public var projectID: String? {
     switch self {
+    case .readbackTapProvisioning(let payload):
+      return payload.projectID
     case .readbackTapStatus(let payload):
       return payload.projectID
     case .readbackTapHistory(let payload):
@@ -1334,6 +1356,7 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
     case kind
     case runGoal
     case resumeRun
+    case readbackTapProvisioning
     case readbackTapStatus
     case readbackTapHistory
     case openCmpSession
@@ -1407,6 +1430,13 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       }
     case .inspectTap:
       self = .inspectTap
+    case .readbackTapProvisioning:
+      self = .readbackTapProvisioning(
+        try container.decode(
+          PraxisRuntimeInterfaceTapProvisioningRequestPayload.self,
+          forKey: .readbackTapProvisioning
+        )
+      )
     case .readbackTapStatus:
       self = .readbackTapStatus(
         try container.decode(
@@ -1635,6 +1665,8 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
       try container.encode(payload, forKey: .runGoal)
     case .resumeRun(let payload):
       try container.encode(payload, forKey: .resumeRun)
+    case .readbackTapProvisioning(let payload):
+      try container.encode(payload, forKey: .readbackTapProvisioning)
     case .readbackTapStatus(let payload):
       try container.encode(payload, forKey: .readbackTapStatus)
     case .readbackTapHistory(let payload):
@@ -1704,6 +1736,7 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
 public enum PraxisRuntimeInterfaceSnapshotKind: String, Sendable, Equatable, Codable {
   case architecture
   case run
+  case tapProvisioning
   case tapStatus
   case tapHistory
   case cmpSession
@@ -1766,6 +1799,14 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
   public let humanGateState: PraxisHumanGateState?
   public let requestedAt: String?
   public let decisionSummary: String?
+  public let activationStatus: PraxisActivationAttemptStatus?
+  public let activationBindingKey: String?
+  public let activatedAt: String?
+  public let replayID: PraxisRuntimeInterfaceReferenceID?
+  public let replayStatus: PraxisReplayStatus?
+  public let replayNextAction: PraxisReplayNextAction?
+  public let activeReplayCount: Int?
+  public let found: Bool?
   public let tapHistoryTotalCount: Int?
   public let tapHistoryEntries: [PraxisTapHistoryEntrySnapshot]?
 
@@ -1806,6 +1847,14 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     humanGateState: PraxisHumanGateState? = nil,
     requestedAt: String? = nil,
     decisionSummary: String? = nil,
+    activationStatus: PraxisActivationAttemptStatus? = nil,
+    activationBindingKey: String? = nil,
+    activatedAt: String? = nil,
+    replayID: PraxisRuntimeInterfaceReferenceID? = nil,
+    replayStatus: PraxisReplayStatus? = nil,
+    replayNextAction: PraxisReplayNextAction? = nil,
+    activeReplayCount: Int? = nil,
+    found: Bool? = nil,
     tapHistoryTotalCount: Int? = nil,
     tapHistoryEntries: [PraxisTapHistoryEntrySnapshot]? = nil
   ) {
@@ -1845,6 +1894,14 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     self.humanGateState = humanGateState
     self.requestedAt = requestedAt
     self.decisionSummary = decisionSummary
+    self.activationStatus = activationStatus
+    self.activationBindingKey = activationBindingKey
+    self.activatedAt = activatedAt
+    self.replayID = replayID
+    self.replayStatus = replayStatus
+    self.replayNextAction = replayNextAction
+    self.activeReplayCount = activeReplayCount
+    self.found = found
     self.tapHistoryTotalCount = tapHistoryTotalCount
     self.tapHistoryEntries = tapHistoryEntries
   }
@@ -1856,6 +1913,7 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
 /// carry CLI, UI, platform, or provider-specific semantics beyond those stable channels.
 public enum PraxisRuntimeInterfaceEventName: String, Sendable, Equatable, Codable, CaseIterable {
   case cmpSessionOpened = "cmp.session.opened"
+  case tapProvisioningReadback = "tap.provisioning.readback"
   case tapStatusReadback = "tap.status.readback"
   case tapHistoryReadback = "tap.history.readback"
   case cmpRolesReadback = "cmp.roles.readback"

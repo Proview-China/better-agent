@@ -29,6 +29,12 @@ private struct PraxisUnsupportedStageTapProvisionUseCase: PraxisStageTapProvisio
   }
 }
 
+private struct PraxisUnsupportedReadbackTapProvisioningUseCase: PraxisReadbackTapProvisioningUseCaseProtocol {
+  func execute(_ command: PraxisReadbackTapProvisioningCommand) async throws -> PraxisTapProvisioningReadback {
+    throw PraxisError.unsupportedOperation("TAP provisioning readback is not available in this facade profile.")
+  }
+}
+
 private struct PraxisUnsupportedIngestMpUseCase: PraxisIngestMpUseCaseProtocol {
   func execute(_ command: PraxisIngestMpCommand) async throws -> PraxisMpIngestResult {
     throw PraxisError.unsupportedOperation("MP ingest is not available in this facade profile.")
@@ -188,6 +194,7 @@ public final class PraxisRuntimeFacade: Sendable {
       inspectionFacade: .init(
         inspectTapUseCase: PraxisInspectTapUseCase(dependencies: dependencies),
         stageTapProvisionUseCase: PraxisStageTapProvisionUseCase(dependencies: dependencies),
+        readbackTapProvisioningUseCase: PraxisReadbackTapProvisioningUseCase(dependencies: dependencies),
         readbackTapStatusUseCase: PraxisReadbackTapStatusUseCase(dependencies: dependencies),
         readbackTapHistoryUseCase: PraxisReadbackTapHistoryUseCase(dependencies: dependencies),
         inspectCmpUseCase: PraxisInspectCmpUseCase(dependencies: dependencies),
@@ -556,6 +563,7 @@ public final class PraxisRunFacade: Sendable {
 public final class PraxisInspectionFacade: Sendable {
   public let inspectTapUseCase: any PraxisInspectTapUseCaseProtocol
   public let stageTapProvisionUseCase: any PraxisStageTapProvisionUseCaseProtocol
+  public let readbackTapProvisioningUseCase: any PraxisReadbackTapProvisioningUseCaseProtocol
   public let readbackTapStatusUseCase: any PraxisReadbackTapStatusUseCaseProtocol
   public let readbackTapHistoryUseCase: any PraxisReadbackTapHistoryUseCaseProtocol
   public let inspectCmpUseCase: any PraxisInspectCmpUseCaseProtocol
@@ -573,6 +581,7 @@ public final class PraxisInspectionFacade: Sendable {
     self.init(
       inspectTapUseCase: inspectTapUseCase,
       stageTapProvisionUseCase: PraxisUnsupportedStageTapProvisionUseCase(),
+      readbackTapProvisioningUseCase: PraxisUnsupportedReadbackTapProvisioningUseCase(),
       readbackTapStatusUseCase: readbackTapStatusUseCase,
       readbackTapHistoryUseCase: readbackTapHistoryUseCase,
       inspectCmpUseCase: inspectCmpUseCase,
@@ -584,6 +593,7 @@ public final class PraxisInspectionFacade: Sendable {
   public init(
     inspectTapUseCase: any PraxisInspectTapUseCaseProtocol,
     stageTapProvisionUseCase: any PraxisStageTapProvisionUseCaseProtocol,
+    readbackTapProvisioningUseCase: any PraxisReadbackTapProvisioningUseCaseProtocol,
     readbackTapStatusUseCase: any PraxisReadbackTapStatusUseCaseProtocol,
     readbackTapHistoryUseCase: any PraxisReadbackTapHistoryUseCaseProtocol,
     inspectCmpUseCase: any PraxisInspectCmpUseCaseProtocol,
@@ -592,6 +602,7 @@ public final class PraxisInspectionFacade: Sendable {
   ) {
     self.inspectTapUseCase = inspectTapUseCase
     self.stageTapProvisionUseCase = stageTapProvisionUseCase
+    self.readbackTapProvisioningUseCase = readbackTapProvisioningUseCase
     self.readbackTapStatusUseCase = readbackTapStatusUseCase
     self.readbackTapHistoryUseCase = readbackTapHistoryUseCase
     self.inspectCmpUseCase = inspectCmpUseCase
@@ -603,6 +614,7 @@ public final class PraxisInspectionFacade: Sendable {
     self.init(
       inspectTapUseCase: PraxisInspectTapUseCase(dependencies: dependencies),
       stageTapProvisionUseCase: PraxisStageTapProvisionUseCase(dependencies: dependencies),
+      readbackTapProvisioningUseCase: PraxisReadbackTapProvisioningUseCase(dependencies: dependencies),
       readbackTapStatusUseCase: PraxisReadbackTapStatusUseCase(dependencies: dependencies),
       readbackTapHistoryUseCase: PraxisReadbackTapHistoryUseCase(dependencies: dependencies),
       inspectCmpUseCase: PraxisInspectCmpUseCase(dependencies: dependencies),
@@ -669,6 +681,29 @@ public final class PraxisInspectionFacade: Sendable {
       pendingReplayNextAction: staging.pendingReplay.nextAction,
       checkpointReference: staging.checkpointReference,
       stagedAt: staging.stagedAt
+    )
+  }
+
+  public func readbackTapProvisioning(
+    _ command: PraxisReadbackTapProvisioningCommand
+  ) async throws -> PraxisTapProvisioningReadbackSnapshot {
+    let readback = try await readbackTapProvisioningUseCase.execute(command)
+    return PraxisTapProvisioningReadbackSnapshot(
+      summary: readback.summary,
+      projectID: readback.projectID,
+      capabilityKey: readback.capabilityKey,
+      planSummary: readback.planSummary,
+      bundleSummary: readback.bundleSummary,
+      activationSummary: readback.activationSummary,
+      activationAttemptID: readback.activationAttemptID,
+      activationStatus: readback.activationStatus,
+      activationBindingKey: readback.activationBindingKey,
+      activatedAt: readback.activatedAt,
+      replayRecords: readback.replayRecords,
+      activeReplayCount: readback.activeReplayCount,
+      checkpointReference: readback.checkpointReference,
+      found: readback.found,
+      issues: readback.issues
     )
   }
 

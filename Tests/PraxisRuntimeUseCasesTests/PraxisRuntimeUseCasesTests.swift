@@ -1975,6 +1975,7 @@ struct PraxisRuntimeUseCasesTests {
 
     let dependencies = try makeDependencies(rootDirectory: rootDirectory)
     let stageProvisionUseCase = PraxisStageTapProvisionUseCase(dependencies: dependencies)
+    let readbackProvisioningUseCase = PraxisReadbackTapProvisioningUseCase(dependencies: dependencies)
     let inspectTapUseCase = PraxisInspectTapUseCase(dependencies: dependencies)
     let readbackTapHistoryUseCase = PraxisReadbackTapHistoryUseCase(dependencies: dependencies)
     let checkpointPointer = PraxisCheckpointPointer(
@@ -1996,6 +1997,7 @@ struct PraxisRuntimeUseCasesTests {
       )
     )
     let checkpoint = try await dependencies.hostAdapters.checkpointStore?.load(pointer: checkpointPointer)
+    let provisioning = try await readbackProvisioningUseCase.execute(.init(projectID: "cmp.local-runtime"))
     let inspection = try await inspectTapUseCase.execute(.init(projectID: "cmp.local-runtime", historyLimit: 10))
     let history = try await readbackTapHistoryUseCase.execute(
       .init(projectID: "cmp.local-runtime", agentID: "checker.local", limit: 10)
@@ -2006,8 +2008,11 @@ struct PraxisRuntimeUseCasesTests {
     #expect(checkpoint?.snapshot.payload?["latestEventKind"]?.stringValue == "activation_staged")
     #expect(checkpoint?.snapshot.payload?["bundleSummary"]?.stringValue?.contains("tool.shell.exec") == true)
     #expect(checkpoint?.snapshot.payload?["pendingReplays"]?.arrayValue?.count == 1)
+    #expect(provisioning.found)
+    #expect(provisioning.capabilityKey == capabilityID("tool.shell.exec"))
+    #expect(provisioning.activeReplayCount == 1)
     #expect(inspection.runtimeSnapshot.pendingReplays.count == 1)
-    #expect(inspection.reviewContext.runSummary.summary.contains("pending replay record"))
+    #expect(inspection.reviewContext.runSummary.summary.contains("replay record"))
     #expect(inspection.reviewContext.sections.contains { $0.sectionID == "activation-replay" })
     #expect(
       history.entries.contains {
@@ -2145,6 +2150,393 @@ struct PraxisRuntimeUseCasesTests {
       releasedCheckpoint?.snapshot.payload?["latestDecisionSummary"]?.stringValue?.contains("Dispatch released package")
         == true
     )
+  }
+
+  @Test
+  func retryDispatchConsumesProvisionedReplayAndPersistsActivationReceipt() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-replay-consume-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let dependencies = try makeDependencies(rootDirectory: rootDirectory)
+    let bootstrapProjectUseCase = PraxisBootstrapCmpProjectUseCase(dependencies: dependencies)
+    let ingestFlowUseCase = PraxisIngestCmpFlowUseCase(dependencies: dependencies)
+    let commitFlowUseCase = PraxisCommitCmpFlowUseCase(dependencies: dependencies)
+    let runGoalUseCase = PraxisRunGoalUseCase(dependencies: dependencies)
+    let resolveFlowUseCase = PraxisResolveCmpFlowUseCase(dependencies: dependencies)
+    let materializeFlowUseCase = PraxisMaterializeCmpFlowUseCase(dependencies: dependencies)
+    let updateControlUseCase = PraxisUpdateCmpControlUseCase(dependencies: dependencies)
+    let dispatchFlowUseCase = PraxisDispatchCmpFlowUseCase(dependencies: dependencies)
+    let retryDispatchUseCase = PraxisRetryCmpDispatchUseCase(dependencies: dependencies)
+    let stageProvisionUseCase = PraxisStageTapProvisionUseCase(dependencies: dependencies)
+    let readbackProvisioningUseCase = PraxisReadbackTapProvisioningUseCase(dependencies: dependencies)
+
+    _ = try await bootstrapProjectUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentIDs: ["runtime.local", "checker.local"],
+        defaultAgentID: "runtime.local"
+      )
+    )
+    let ingest = try await ingestFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "cmp.dispatch.replay",
+        taskSummary: "Capture runtime context for replay consumption coverage",
+        materials: [.init(kind: .userInput, ref: "payload:user:dispatch-replay")],
+        requiresActiveSync: true
+      )
+    )
+    _ = try await commitFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "cmp.dispatch.replay",
+        eventIDs: ingest.result.acceptedEventIDs,
+        changeSummary: "Commit dispatch replay context",
+        syncIntent: .toParent
+      )
+    )
+    _ = try await runGoalUseCase.execute(
+      .init(
+        goal: .init(
+          normalizedGoal: .init(
+            id: .init(rawValue: "goal.cmp-dispatch-replay"),
+            title: "CMP Dispatch Replay Seed",
+            summary: "Seed projection for replay consumption coverage"
+          ),
+          intentSummary: "Seed projection for replay consumption coverage"
+        ),
+        sessionID: .init(rawValue: "session.cmp-dispatch-replay")
+      )
+    )
+    _ = try await resolveFlowUseCase.execute(
+      .init(projectID: "cmp.local-runtime", agentID: "runtime.local")
+    )
+    let materialize = try await materializeFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal
+      )
+    )
+    _ = try await stageProvisionUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityKey: capabilityID("tool.shell.exec"),
+        requestedTier: .b2,
+        summary: "Stage shell execution provisioning before retry dispatch",
+        expectedArtifacts: ["shell.exec binding"],
+        requiredVerification: ["shell.exec smoke"],
+        replayPolicy: .reReviewThenDispatch
+      )
+    )
+    _ = try await updateControlUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: .manual,
+        mode: .peerReview,
+        automation: .init(values: [.autoDispatch: false])
+      )
+    )
+
+    let blockedDispatch = try await dispatchFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        contextPackage: materialize.result.contextPackage,
+        targetKind: .peer,
+        reason: "Block dispatch before replay consumption"
+      )
+    )
+    #expect(blockedDispatch.result.receipt.status == .rejected)
+
+    _ = try await updateControlUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: .automatic,
+        mode: .activePreferred,
+        automation: .init(values: [.autoDispatch: true])
+      )
+    )
+
+    let releasedDispatch = try await retryDispatchUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        packageID: materialize.result.contextPackage.id,
+        reason: "Retry blocked dispatch after provisioning activation is ready"
+      )
+    )
+    let provisioning = try await readbackProvisioningUseCase.execute(.init(projectID: "cmp.local-runtime"))
+
+    #expect(releasedDispatch.result.receipt.status == .delivered)
+    #expect(provisioning.found)
+    #expect(provisioning.activationStatus == .completed)
+    #expect(provisioning.activationBindingKey?.contains("binding.cmp.local-runtime.tool.shell.exec") == true)
+    #expect(provisioning.activeReplayCount == 0)
+    #expect(provisioning.replayRecords.first?.status == .consumed)
+    #expect(provisioning.summary.contains("0 active replay"))
+  }
+
+  @Test
+  func retryDispatchKeepsReplayActiveUntilActualDeliveryWhenMessageBusIsMissing() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-replay-no-bus-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let registry = hostAdaptersRemovingMessageBus(
+      from: PraxisHostAdapterRegistry.localDefaults(rootDirectory: rootDirectory)
+    )
+    let dependencies = try makeDependencies(hostAdapters: registry)
+    let bootstrapProjectUseCase = PraxisBootstrapCmpProjectUseCase(dependencies: dependencies)
+    let ingestFlowUseCase = PraxisIngestCmpFlowUseCase(dependencies: dependencies)
+    let commitFlowUseCase = PraxisCommitCmpFlowUseCase(dependencies: dependencies)
+    let runGoalUseCase = PraxisRunGoalUseCase(dependencies: dependencies)
+    let resolveFlowUseCase = PraxisResolveCmpFlowUseCase(dependencies: dependencies)
+    let materializeFlowUseCase = PraxisMaterializeCmpFlowUseCase(dependencies: dependencies)
+    let updateControlUseCase = PraxisUpdateCmpControlUseCase(dependencies: dependencies)
+    let dispatchFlowUseCase = PraxisDispatchCmpFlowUseCase(dependencies: dependencies)
+    let retryDispatchUseCase = PraxisRetryCmpDispatchUseCase(dependencies: dependencies)
+    let stageProvisionUseCase = PraxisStageTapProvisionUseCase(dependencies: dependencies)
+    let readbackProvisioningUseCase = PraxisReadbackTapProvisioningUseCase(dependencies: dependencies)
+
+    _ = try await bootstrapProjectUseCase.execute(
+      .init(projectID: "cmp.local-runtime", agentIDs: ["runtime.local", "checker.local"], defaultAgentID: "runtime.local")
+    )
+    let ingest = try await ingestFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "cmp.dispatch.no-bus",
+        taskSummary: "Capture runtime context for no-bus retry coverage",
+        materials: [.init(kind: .userInput, ref: "payload:user:dispatch-no-bus")],
+        requiresActiveSync: true
+      )
+    )
+    _ = try await commitFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "cmp.dispatch.no-bus",
+        eventIDs: ingest.result.acceptedEventIDs,
+        changeSummary: "Commit no-bus dispatch context",
+        syncIntent: .toParent
+      )
+    )
+    _ = try await runGoalUseCase.execute(
+      .init(
+        goal: .init(
+          normalizedGoal: .init(
+            id: .init(rawValue: "goal.cmp-dispatch-no-bus"),
+            title: "CMP Dispatch No Bus Seed",
+            summary: "Seed projection for no-bus dispatch coverage"
+          ),
+          intentSummary: "Seed projection for no-bus dispatch coverage"
+        ),
+        sessionID: .init(rawValue: "session.cmp-dispatch-no-bus")
+      )
+    )
+    _ = try await resolveFlowUseCase.execute(.init(projectID: "cmp.local-runtime", agentID: "runtime.local"))
+    let materialize = try await materializeFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal
+      )
+    )
+    _ = try await stageProvisionUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityKey: capabilityID("tool.shell.exec"),
+        requestedTier: .b2,
+        summary: "Stage shell execution provisioning before no-bus retry",
+        expectedArtifacts: ["shell.exec binding"],
+        requiredVerification: ["shell.exec smoke"],
+        replayPolicy: .reReviewThenDispatch
+      )
+    )
+    _ = try await updateControlUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: .manual,
+        mode: .peerReview,
+        automation: .init(values: [.autoDispatch: false])
+      )
+    )
+
+    _ = try await dispatchFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        contextPackage: materialize.result.contextPackage,
+        targetKind: .peer,
+        reason: "Block dispatch before no-bus retry"
+      )
+    )
+
+    _ = try await updateControlUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: .automatic,
+        mode: .activePreferred,
+        automation: .init(values: [.autoDispatch: true])
+      )
+    )
+
+    let retriedDispatch = try await retryDispatchUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        packageID: materialize.result.contextPackage.id,
+        reason: "Retry blocked dispatch while transport is unavailable"
+      )
+    )
+    let provisioning = try await readbackProvisioningUseCase.execute(.init(projectID: "cmp.local-runtime"))
+
+    #expect(retriedDispatch.result.status == .materialized)
+    #expect(retriedDispatch.result.receipt.status == .prepared)
+    #expect(provisioning.activeReplayCount == 1)
+    #expect(provisioning.replayRecords.first?.status == .ready)
+    #expect(provisioning.activationBindingKey?.contains("binding.cmp.local-runtime.tool.shell.exec") == true)
+  }
+
+  @Test
+  func blockedRetryPreservesOriginalActivationReceiptTimestamp() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-runtime-usecases-replay-idempotent-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+    let dependencies = try makeDependencies(rootDirectory: rootDirectory)
+    let bootstrapProjectUseCase = PraxisBootstrapCmpProjectUseCase(dependencies: dependencies)
+    let ingestFlowUseCase = PraxisIngestCmpFlowUseCase(dependencies: dependencies)
+    let commitFlowUseCase = PraxisCommitCmpFlowUseCase(dependencies: dependencies)
+    let runGoalUseCase = PraxisRunGoalUseCase(dependencies: dependencies)
+    let resolveFlowUseCase = PraxisResolveCmpFlowUseCase(dependencies: dependencies)
+    let materializeFlowUseCase = PraxisMaterializeCmpFlowUseCase(dependencies: dependencies)
+    let updateControlUseCase = PraxisUpdateCmpControlUseCase(dependencies: dependencies)
+    let dispatchFlowUseCase = PraxisDispatchCmpFlowUseCase(dependencies: dependencies)
+    let retryDispatchUseCase = PraxisRetryCmpDispatchUseCase(dependencies: dependencies)
+    let stageProvisionUseCase = PraxisStageTapProvisionUseCase(dependencies: dependencies)
+    let readbackProvisioningUseCase = PraxisReadbackTapProvisioningUseCase(dependencies: dependencies)
+
+    _ = try await bootstrapProjectUseCase.execute(
+      .init(projectID: "cmp.local-runtime", agentIDs: ["runtime.local", "checker.local"], defaultAgentID: "runtime.local")
+    )
+    let ingest = try await ingestFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "cmp.dispatch.idempotent",
+        taskSummary: "Capture runtime context for idempotent blocked retry coverage",
+        materials: [.init(kind: .userInput, ref: "payload:user:dispatch-idempotent")],
+        requiresActiveSync: true
+      )
+    )
+    _ = try await commitFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        sessionID: "cmp.dispatch.idempotent",
+        eventIDs: ingest.result.acceptedEventIDs,
+        changeSummary: "Commit blocked retry context",
+        syncIntent: .toParent
+      )
+    )
+    _ = try await runGoalUseCase.execute(
+      .init(
+        goal: .init(
+          normalizedGoal: .init(
+            id: .init(rawValue: "goal.cmp-dispatch-idempotent"),
+            title: "CMP Dispatch Idempotent Seed",
+            summary: "Seed projection for idempotent blocked retry coverage"
+          ),
+          intentSummary: "Seed projection for idempotent blocked retry coverage"
+        ),
+        sessionID: .init(rawValue: "session.cmp-dispatch-idempotent")
+      )
+    )
+    _ = try await resolveFlowUseCase.execute(.init(projectID: "cmp.local-runtime", agentID: "runtime.local"))
+    let materialize = try await materializeFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        packageKind: .runtimeFill,
+        fidelityLabel: .highSignal
+      )
+    )
+    _ = try await stageProvisionUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        targetAgentID: "checker.local",
+        capabilityKey: capabilityID("tool.shell.exec"),
+        requestedTier: .b2,
+        summary: "Stage shell execution provisioning before repeated blocked retries",
+        expectedArtifacts: ["shell.exec binding"],
+        requiredVerification: ["shell.exec smoke"],
+        replayPolicy: .reReviewThenDispatch
+      )
+    )
+    _ = try await updateControlUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "checker.local",
+        executionStyle: .manual,
+        mode: .peerReview,
+        automation: .init(values: [.autoDispatch: false])
+      )
+    )
+
+    _ = try await dispatchFlowUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        contextPackage: materialize.result.contextPackage,
+        targetKind: .peer,
+        reason: "Keep dispatch gated before repeated retries"
+      )
+    )
+
+    let firstRetry = try await retryDispatchUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        packageID: materialize.result.contextPackage.id,
+        reason: "First blocked retry"
+      )
+    )
+    let firstProvisioning = try await readbackProvisioningUseCase.execute(.init(projectID: "cmp.local-runtime"))
+    let secondRetry = try await retryDispatchUseCase.execute(
+      .init(
+        projectID: "cmp.local-runtime",
+        agentID: "runtime.local",
+        packageID: materialize.result.contextPackage.id,
+        reason: "Second blocked retry"
+      )
+    )
+    let secondProvisioning = try await readbackProvisioningUseCase.execute(.init(projectID: "cmp.local-runtime"))
+
+    #expect(firstRetry.result.receipt.status == .rejected)
+    #expect(secondRetry.result.receipt.status == .rejected)
+    #expect(firstProvisioning.activationBindingKey == secondProvisioning.activationBindingKey)
+    #expect(firstProvisioning.activatedAt == secondProvisioning.activatedAt)
+    #expect(secondProvisioning.activeReplayCount == 1)
+    #expect(secondProvisioning.replayRecords.first?.status == .ready)
   }
 
   @Test
@@ -4128,6 +4520,55 @@ struct PraxisRuntimeUseCasesTests {
       browserGroundingSurfaceProvenance: registry.browserGroundingSurfaceProvenance,
       audioTranscriptionSurfaceProvenance: registry.audioTranscriptionSurfaceProvenance,
       speechSynthesisSurfaceProvenance: registry.speechSynthesisSurfaceProvenance,
+      imageGenerationSurfaceProvenance: registry.imageGenerationSurfaceProvenance
+    )
+  }
+
+  private func hostAdaptersRemovingMessageBus(
+    from registry: PraxisHostAdapterRegistry
+  ) -> PraxisHostAdapterRegistry {
+    PraxisHostAdapterRegistry(
+      runtimeRootDirectory: registry.runtimeRootDirectory,
+      workspaceRootDirectory: registry.workspaceRootDirectory,
+      capabilityExecutor: registry.capabilityExecutor,
+      providerInferenceExecutor: registry.providerInferenceExecutor,
+      providerEmbeddingExecutor: registry.providerEmbeddingExecutor,
+      providerFileStore: registry.providerFileStore,
+      providerBatchExecutor: registry.providerBatchExecutor,
+      providerSkillRegistry: registry.providerSkillRegistry,
+      providerSkillActivator: registry.providerSkillActivator,
+      providerMCPExecutor: registry.providerMCPExecutor,
+      workspaceReader: registry.workspaceReader,
+      workspaceSearcher: registry.workspaceSearcher,
+      workspaceWriter: registry.workspaceWriter,
+      shellExecutor: registry.shellExecutor,
+      browserExecutor: registry.browserExecutor,
+      browserGroundingCollector: registry.browserGroundingCollector,
+      gitAvailabilityProbe: registry.gitAvailabilityProbe,
+      gitExecutor: registry.gitExecutor,
+      processSupervisor: registry.processSupervisor,
+      checkpointStore: registry.checkpointStore,
+      journalStore: registry.journalStore,
+      projectionStore: registry.projectionStore,
+      cmpContextPackageStore: registry.cmpContextPackageStore,
+      cmpControlStore: registry.cmpControlStore,
+      cmpPeerApprovalStore: registry.cmpPeerApprovalStore,
+      tapRuntimeEventStore: registry.tapRuntimeEventStore,
+      messageBus: nil,
+      deliveryTruthStore: registry.deliveryTruthStore,
+      embeddingStore: registry.embeddingStore,
+      semanticSearchIndex: registry.semanticSearchIndex,
+      semanticMemoryStore: registry.semanticMemoryStore,
+      lineageStore: registry.lineageStore,
+      userInputDriver: registry.userInputDriver,
+      permissionDriver: registry.permissionDriver,
+      terminalPresenter: registry.terminalPresenter,
+      conversationPresenter: registry.conversationPresenter,
+      audioTranscriptionDriver: registry.audioTranscriptionDriver,
+      speechSynthesisDriver: registry.speechSynthesisDriver,
+      imageGenerationDriver: registry.imageGenerationDriver,
+      providerInferenceSurfaceProvenance: registry.providerInferenceSurfaceProvenance,
+      browserGroundingSurfaceProvenance: registry.browserGroundingSurfaceProvenance,
       imageGenerationSurfaceProvenance: registry.imageGenerationSurfaceProvenance
     )
   }

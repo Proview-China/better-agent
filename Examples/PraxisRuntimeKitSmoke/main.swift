@@ -233,6 +233,7 @@ private struct PraxisRuntimeKitSmokeHarness {
         replayPolicy: .reReviewThenDispatch
       )
     )
+    let provisioning = try await tapProject.provisioning()
     let inspection = try await tapProject.inspect(historyLimit: 10)
     let workbench = try await tapProject.reviewWorkbench(for: "checker.local", limit: 10)
 
@@ -245,8 +246,13 @@ private struct PraxisRuntimeKitSmokeHarness {
       staged.pendingReplayNextAction == .reReviewThenDispatch,
       "Provisioning smoke expected the pending replay to require re-review before dispatch."
     )
+    try require(provisioning.found, "Provisioning smoke expected the durable provisioning readback to be available.")
     try require(
-      inspection.runSummary.contains("pending replay record"),
+      provisioning.activeReplayCount == 1,
+      "Provisioning smoke expected one active replay record after staging."
+    )
+    try require(
+      inspection.runSummary.contains("replay record"),
       "Provisioning smoke expected TAP inspection to surface persisted pending replay evidence."
     )
     try require(
@@ -258,7 +264,7 @@ private struct PraxisRuntimeKitSmokeHarness {
       "Provisioning smoke expected the reviewer workbench to surface the staged activation summary."
     )
 
-    return "capability=\(staged.capabilityID) replay=\(staged.pendingReplayID) nextAction=\(staged.pendingReplayNextAction.rawValue)"
+    return "capability=\(staged.capabilityID) replay=\(staged.pendingReplayID) activeReplays=\(provisioning.activeReplayCount)"
   }
 
   private func recoverySuite() async throws -> String {

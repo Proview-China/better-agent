@@ -129,6 +129,17 @@ public struct PraxisRuntimeTapProjectClient: Sendable {
     return PraxisRuntimeTapProvisionResult(snapshot: snapshot)
   }
 
+  /// Reads the durable TAP provisioning and replay snapshot for the scoped project.
+  ///
+  /// - Returns: A project-scoped provisioning readback recovered from checkpoint state.
+  /// - Throws: Any checkpoint or readback error raised by the underlying runtime use cases.
+  public func provisioning() async throws -> PraxisRuntimeTapProvisioningReadback {
+    let snapshot = try await inspectionFacade.readbackTapProvisioning(
+      .init(projectID: project.rawValue)
+    )
+    return PraxisRuntimeTapProvisioningReadback(snapshot: snapshot)
+  }
+
   /// Reads one reviewer-facing workbench for the scoped project.
   ///
   /// - Parameter options: Structured workbench options for one project read.
@@ -383,5 +394,42 @@ public struct PraxisRuntimeTapProvisionResult: Sendable, Equatable {
     self.pendingReplayNextAction = snapshot.pendingReplayNextAction
     self.checkpointReference = snapshot.checkpointReference
     self.stagedAt = snapshot.stagedAt
+  }
+}
+
+/// Caller-facing durable TAP provisioning readback recovered from checkpoint state.
+public struct PraxisRuntimeTapProvisioningReadback: Sendable, Equatable {
+  public let summary: String
+  public let projectID: String
+  public let capabilityID: String?
+  public let planSummary: String?
+  public let bundleSummary: String?
+  public let activationSummary: String?
+  public let activationAttemptID: String?
+  public let activationStatus: PraxisActivationAttemptStatus?
+  public let activationBindingKey: String?
+  public let activatedAt: String?
+  public let replayRecords: [PraxisPendingReplay]
+  public let activeReplayCount: Int
+  public let checkpointReference: String?
+  public let found: Bool
+  public let issues: [String]
+
+  init(snapshot: PraxisTapProvisioningReadbackSnapshot) {
+    self.summary = snapshot.summary
+    self.projectID = snapshot.projectID
+    self.capabilityID = snapshot.capabilityKey?.rawValue
+    self.planSummary = snapshot.planSummary
+    self.bundleSummary = snapshot.bundleSummary
+    self.activationSummary = snapshot.activationSummary
+    self.activationAttemptID = snapshot.activationAttemptID
+    self.activationStatus = snapshot.activationStatus
+    self.activationBindingKey = snapshot.activationBindingKey
+    self.activatedAt = snapshot.activatedAt
+    self.replayRecords = snapshot.replayRecords
+    self.activeReplayCount = snapshot.activeReplayCount
+    self.checkpointReference = snapshot.checkpointReference
+    self.found = snapshot.found
+    self.issues = snapshot.issues
   }
 }

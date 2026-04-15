@@ -209,6 +209,7 @@ struct PraxisRuntimeKitTests {
         requiredVerification: ["shell.exec smoke"]
       )
     )
+    let provisioning = try await tapProject.provisioning()
     let inspection = try await tapProject.inspect(historyLimit: 10)
     let reviewWorkbench = try await tapProject.reviewWorkbench(for: "checker.local", limit: 10)
 
@@ -216,7 +217,11 @@ struct PraxisRuntimeKitTests {
     #expect(staged.capabilityID == "tool.shell.exec")
     #expect(staged.selectedAssetNames.isEmpty == false)
     #expect(staged.pendingReplayNextAction.rawValue == "re_review_then_dispatch")
-    #expect(inspection.runSummary.contains("pending replay record"))
+    #expect(provisioning.found)
+    #expect(provisioning.capabilityID == "tool.shell.exec")
+    #expect(provisioning.activeReplayCount == 1)
+    #expect(provisioning.activationBindingKey == nil)
+    #expect(inspection.runSummary.contains("replay record"))
     #expect(inspection.sections.contains { $0.sectionID == "activation-replay" })
     #expect(reviewWorkbench.latestDecisionSummary?.contains("Activation staged attempt") == true)
   }

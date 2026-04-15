@@ -65,6 +65,8 @@ public struct PraxisHumanGateEvent: Sendable, Equatable, Codable {
 
 public enum PraxisReplayStatus: String, Sendable, Codable {
   case pending
+  case ready
+  case consumed
   case skipped
 }
 

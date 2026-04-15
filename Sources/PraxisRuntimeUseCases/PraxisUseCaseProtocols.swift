@@ -17,6 +17,10 @@ public protocol PraxisStageTapProvisionUseCaseProtocol: Sendable {
   func execute(_ command: PraxisStageTapProvisionCommand) async throws -> PraxisTapProvisionStaging
 }
 
+public protocol PraxisReadbackTapProvisioningUseCaseProtocol: Sendable {
+  func execute(_ command: PraxisReadbackTapProvisioningCommand) async throws -> PraxisTapProvisioningReadback
+}
+
 public protocol PraxisReadbackTapStatusUseCaseProtocol: Sendable {
   func execute(_ command: PraxisReadbackTapStatusCommand) async throws -> PraxisTapStatusReadback
 }
