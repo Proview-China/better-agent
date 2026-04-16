@@ -15,6 +15,9 @@ swift run PraxisRuntimeKitCmpTapExample
 swift run PraxisRuntimeKitMpExample
 swift run PraxisRuntimeKitCapabilitiesExample
 swift run PraxisRuntimeKitSearchExample
+swift run PraxisFFIEmbeddingExample
+swift run PraxisAppleHostEmbeddingExample
+swift run PraxisExportBaselineExample --iterations 5 --format json
 swift run PraxisRuntimeKitSmoke --suite shell
 swift run PraxisRuntimeKitSmoke --suite shell-approval
 swift run PraxisRuntimeKitSmoke --suite code-sandbox
@@ -34,6 +37,12 @@ swift run PraxisRuntimeKitSmoke --suite all
   展示当前 thin capability baseline：catalog、generate、stream、embed、`code.sandbox` contract、bounded `code.run` / `code.patch` / `shell.approve` / `shell.run`、provider `skill.list` / `skill.activate` / MCP tool discovery、tool、file、batch、session。
 - `PraxisRuntimeKitSearchExample`
   展示 Phase 3 search chain：`search.web`、`search.fetch`、`search.ground`。
+- `PraxisFFIEmbeddingExample`
+  展示 Phase 6 的最小 embedding path：`open handle -> encode request -> decode response -> drain FFI events`，并打印当前 schema version。
+- `PraxisAppleHostEmbeddingExample`
+  展示更接近真实宿主的 Apple-side embedding path：先 `inspectArchitecture` 协商 supported schema versions，再通过 FFI 提交业务请求并处理 response / event envelope。
+- `PraxisExportBaselineExample`
+  展示 Phase 6 的 export/readiness baseline：重复采样 `open session -> inspectArchitecture -> runGoal -> drain events`，输出可归档的 latency / payload / resident-memory 基线摘要。
 - `PraxisRuntimeKitSmoke --suite code`
   展示 Phase 5 第一条 bounded code 路径；macOS 当前执行 bounded Swift snippet，Linux 诚实返回 placeholder failed-to-launch 语义。
 - `PraxisRuntimeKitSmoke --suite code-sandbox`
@@ -131,6 +140,20 @@ Praxis 当前的设计目标是把运行时拆成边界明确的 Swift package p
    - `PraxisRuntimeKit`
 
 约束上，`PraxisRuntimeKit` 应该保持 thin shell，不直接把 composition、transport、bootstrap 或 FFI 细节暴露给调用方。
+
+当前 `PraxisRuntimeInterface` / `PraxisFFI` 已开始显式携带 schema version：
+
+- request payloads emit `requestSchemaVersion = "1"`
+- response payloads emit `responseSchemaVersion = "1"` and `eventSchemaVersion = "1"`
+- FFI event envelopes emit `eventSchemaVersion = "1"`
+
+当前 decode 规则会兼容缺失版本字段的 legacy payload，并拒绝未知版本值。
+`inspectArchitecture` / `bootstrapSnapshot` 现在也会返回 machine-readable 的 supported schema versions 与 legacy compatibility flag，便于 embedding host 在发出业务请求前做协商。
+更完整的兼容说明见 [docs/PraxisFFICompatibility.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisFFICompatibility.md)。
+发布和升级纪律见 [docs/PraxisReleasePolicy.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisReleasePolicy.md) 与 [docs/PraxisMigrationNotes.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisMigrationNotes.md)。
+当前公开面支持矩阵见 [docs/PraxisSupportMatrix.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisSupportMatrix.md)。
+高风险 capability 安全说明见 [docs/PraxisHighRiskCapabilitySafety.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisHighRiskCapabilitySafety.md)。
+导出面性能/资源基线见 [docs/PraxisPerformanceBaseline.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisPerformanceBaseline.md)。
 
 ## Recommended Entry
 
@@ -396,6 +419,8 @@ swift test --filter PraxisHostRuntimeArchitectureTests
 swift test --filter PraxisTapArchitectureTests
 swift run PraxisRuntimeKitCapabilitiesExample
 swift run PraxisRuntimeKitSearchExample
+swift run PraxisFFIEmbeddingExample
+swift run PraxisAppleHostEmbeddingExample
 swift run PraxisRuntimeKitSmoke --suite recovery
 swift run PraxisRuntimeKitSmoke --suite all
 ```
@@ -419,6 +444,14 @@ dependencies: [
 ```
 
 如果你是在做 runtime 装配、宿主桥接或导出边界，再考虑 `PraxisHostContracts`、`PraxisHostRuntime` 或 `PraxisFFI`。
+当前对外导出边界的兼容说明、release policy 和 migration baseline 分别在：
+
+- [docs/PraxisFFICompatibility.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisFFICompatibility.md)
+- [docs/PraxisReleasePolicy.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisReleasePolicy.md)
+- [docs/PraxisMigrationNotes.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisMigrationNotes.md)
+- [docs/PraxisSupportMatrix.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisSupportMatrix.md)
+- [docs/PraxisHighRiskCapabilitySafety.md](/Users/shiyu/Documents/Project/Praxis/docs/PraxisHighRiskCapabilitySafety.md)
+- [CHANGELOG.md](/Users/shiyu/Documents/Project/Praxis/CHANGELOG.md)
 
 ## Repository Layout
 

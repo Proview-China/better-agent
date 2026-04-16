@@ -392,7 +392,11 @@ public actor PraxisRuntimeInterfaceSession: PraxisRuntimeInterfaceServing {
     PraxisRuntimeInterfaceSnapshot(
       kind: .architecture,
       title: "Praxis Architecture",
-      summary: "Foundation \(blueprint.foundationModules.count) / Domain \(blueprint.functionalDomainModules.count) / Host \(blueprint.hostContractModules.count + blueprint.runtimeModules.count)"
+      summary: "Foundation \(blueprint.foundationModules.count) / Domain \(blueprint.functionalDomainModules.count) / Host \(blueprint.hostContractModules.count + blueprint.runtimeModules.count)",
+      supportedRequestSchemaVersion: .v1,
+      supportedResponseSchemaVersion: .v1,
+      supportedEventSchemaVersion: .v1,
+      acceptsLegacyVersionlessPayloads: true
     )
   }
 

@@ -136,6 +136,9 @@ let package = Package(
     .executable(name: "PraxisRuntimeKitMpExample", targets: ["PraxisRuntimeKitMpExample"]),
     .executable(name: "PraxisRuntimeKitCapabilitiesExample", targets: ["PraxisRuntimeKitCapabilitiesExample"]),
     .executable(name: "PraxisRuntimeKitSearchExample", targets: ["PraxisRuntimeKitSearchExample"]),
+    .executable(name: "PraxisFFIEmbeddingExample", targets: ["PraxisFFIEmbeddingExample"]),
+    .executable(name: "PraxisAppleHostEmbeddingExample", targets: ["PraxisAppleHostEmbeddingExample"]),
+    .executable(name: "PraxisExportBaselineExample", targets: ["PraxisExportBaselineExample"]),
   ],
   targets: sqliteSystemLibraryTargets + [
     .target(
@@ -656,6 +659,30 @@ let package = Package(
         "PraxisRuntimeKit",
       ],
       path: "Examples/PraxisRuntimeKitMpExample",
+    ),
+    .executableTarget(
+      name: "PraxisFFIEmbeddingExample",
+      dependencies: [
+        "PraxisFFI",
+        "PraxisRuntimeInterface",
+      ],
+      path: "Examples/PraxisFFIEmbeddingExample",
+    ),
+    .executableTarget(
+      name: "PraxisAppleHostEmbeddingExample",
+      dependencies: [
+        "PraxisFFI",
+        "PraxisRuntimeInterface",
+      ],
+      path: "Examples/PraxisAppleHostEmbeddingExample",
+    ),
+    .executableTarget(
+      name: "PraxisExportBaselineExample",
+      dependencies: [
+        "PraxisFFI",
+        "PraxisRuntimeInterface",
+      ],
+      path: "Examples/PraxisExportBaselineExample",
     ),
     .testTarget(
       name: "PraxisFoundationArchitectureTests",

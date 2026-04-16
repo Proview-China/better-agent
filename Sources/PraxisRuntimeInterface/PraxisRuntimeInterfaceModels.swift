@@ -12,6 +12,31 @@ import PraxisTapRuntime
 import PraxisTapTypes
 import PraxisToolingContracts
 
+private func decodeRuntimeInterfaceSchemaVersion<Key: CodingKey>(
+  from container: KeyedDecodingContainer<Key>,
+  forKey key: Key,
+  label: String
+) throws -> PraxisRuntimeInterfaceSchemaVersion {
+  guard container.contains(key) else {
+    return .v1
+  }
+  guard let rawValue = try container.decodeIfPresent(String.self, forKey: key) else {
+    throw DecodingError.dataCorruptedError(
+      forKey: key,
+      in: container,
+      debugDescription: "Runtime interface \(label) schema version must be omitted or set to a supported string value."
+    )
+  }
+  guard let version = PraxisRuntimeInterfaceSchemaVersion(rawValue: rawValue) else {
+    throw DecodingError.dataCorruptedError(
+      forKey: key,
+      in: container,
+      debugDescription: "Unsupported runtime interface \(label) schema version '\(rawValue)'."
+    )
+  }
+  return version
+}
+
 public enum PraxisRuntimeInterfaceResponseStatus: String, Sendable, Equatable, Codable {
   case success
   case failure
@@ -77,6 +102,14 @@ public enum PraxisRuntimeInterfaceCommandKind: String, Sendable, Equatable, Coda
   case describeCodeSandbox
   case listProviderSkills
   case listProviderMCPTools
+}
+
+/// Declares the stable schema versions exposed by the runtime interface export surface.
+///
+/// This version covers encoded request, response, and event envelope shapes. It does not imply
+/// capability availability or behavioral parity across host profiles.
+public enum PraxisRuntimeInterfaceSchemaVersion: String, Sendable, Equatable, Codable, CaseIterable {
+  case v1 = "1"
 }
 
 /// Stable opaque handle used to address one runtime interface session inside a registry.
@@ -1185,6 +1218,11 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
   case listProviderSkills(PraxisRuntimeInterfaceProviderSkillListRequestPayload)
   case listProviderMCPTools(PraxisRuntimeInterfaceProviderMCPToolListRequestPayload)
 
+  /// Stable schema version for encoded runtime interface requests.
+  public var requestSchemaVersion: PraxisRuntimeInterfaceSchemaVersion {
+    .v1
+  }
+
   public var kind: PraxisRuntimeInterfaceCommandKind {
     switch self {
     case .inspectArchitecture:
@@ -1473,6 +1511,7 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
   }
 
   private enum CodingKeys: String, CodingKey {
+    case requestSchemaVersion
     case kind
     case runGoal
     case resumeRun
@@ -1522,6 +1561,11 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
+    _ = try decodeRuntimeInterfaceSchemaVersion(
+      from: container,
+      forKey: .requestSchemaVersion,
+      label: "request"
+    )
     let kind = try container.decode(PraxisRuntimeInterfaceCommandKind.self, forKey: .kind)
 
     switch kind {
@@ -1818,6 +1862,7 @@ public enum PraxisRuntimeInterfaceRequest: Sendable, Equatable, Codable {
 
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(requestSchemaVersion, forKey: .requestSchemaVersion)
     try container.encode(kind, forKey: .kind)
 
     switch self {
@@ -1939,6 +1984,10 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
   public let kind: PraxisRuntimeInterfaceSnapshotKind
   public let title: String
   public let summary: String
+  public let supportedRequestSchemaVersion: PraxisRuntimeInterfaceSchemaVersion?
+  public let supportedResponseSchemaVersion: PraxisRuntimeInterfaceSchemaVersion?
+  public let supportedEventSchemaVersion: PraxisRuntimeInterfaceSchemaVersion?
+  public let acceptsLegacyVersionlessPayloads: Bool?
   public let projectID: String?
   public let agentID: String?
   public let targetAgentID: String?
@@ -1996,6 +2045,10 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     kind: PraxisRuntimeInterfaceSnapshotKind,
     title: String,
     summary: String,
+    supportedRequestSchemaVersion: PraxisRuntimeInterfaceSchemaVersion? = nil,
+    supportedResponseSchemaVersion: PraxisRuntimeInterfaceSchemaVersion? = nil,
+    supportedEventSchemaVersion: PraxisRuntimeInterfaceSchemaVersion? = nil,
+    acceptsLegacyVersionlessPayloads: Bool? = nil,
     projectID: String? = nil,
     agentID: String? = nil,
     targetAgentID: String? = nil,
@@ -2052,6 +2105,10 @@ public struct PraxisRuntimeInterfaceSnapshot: Sendable, Equatable, Codable {
     self.kind = kind
     self.title = title
     self.summary = summary
+    self.supportedRequestSchemaVersion = supportedRequestSchemaVersion
+    self.supportedResponseSchemaVersion = supportedResponseSchemaVersion
+    self.supportedEventSchemaVersion = supportedEventSchemaVersion
+    self.acceptsLegacyVersionlessPayloads = acceptsLegacyVersionlessPayloads
     self.projectID = projectID
     self.agentID = agentID
     self.targetAgentID = targetAgentID
@@ -2194,17 +2251,23 @@ public struct PraxisRuntimeInterfaceErrorEnvelope: Sendable, Equatable, Codable 
 }
 
 public struct PraxisRuntimeInterfaceResponse: Sendable, Equatable, Codable {
+  public let responseSchemaVersion: PraxisRuntimeInterfaceSchemaVersion
+  public let eventSchemaVersion: PraxisRuntimeInterfaceSchemaVersion
   public let status: PraxisRuntimeInterfaceResponseStatus
   public let snapshot: PraxisRuntimeInterfaceSnapshot?
   public let events: [PraxisRuntimeInterfaceEvent]
   public let error: PraxisRuntimeInterfaceErrorEnvelope?
 
   public init(
+    responseSchemaVersion: PraxisRuntimeInterfaceSchemaVersion = .v1,
+    eventSchemaVersion: PraxisRuntimeInterfaceSchemaVersion = .v1,
     status: PraxisRuntimeInterfaceResponseStatus,
     snapshot: PraxisRuntimeInterfaceSnapshot? = nil,
     events: [PraxisRuntimeInterfaceEvent] = [],
     error: PraxisRuntimeInterfaceErrorEnvelope? = nil
   ) {
+    self.responseSchemaVersion = responseSchemaVersion
+    self.eventSchemaVersion = eventSchemaVersion
     self.status = status
     self.snapshot = snapshot
     self.events = events
@@ -2216,6 +2279,8 @@ public struct PraxisRuntimeInterfaceResponse: Sendable, Equatable, Codable {
     events: [PraxisRuntimeInterfaceEvent] = []
   ) -> PraxisRuntimeInterfaceResponse {
     .init(
+      responseSchemaVersion: .v1,
+      eventSchemaVersion: .v1,
       status: .success,
       snapshot: snapshot,
       events: events,
@@ -2228,6 +2293,8 @@ public struct PraxisRuntimeInterfaceResponse: Sendable, Equatable, Codable {
     events: [PraxisRuntimeInterfaceEvent] = []
   ) -> PraxisRuntimeInterfaceResponse {
     .init(
+      responseSchemaVersion: .v1,
+      eventSchemaVersion: .v1,
       status: .failure,
       snapshot: nil,
       events: events,
@@ -2237,5 +2304,42 @@ public struct PraxisRuntimeInterfaceResponse: Sendable, Equatable, Codable {
 
   public var isSuccess: Bool {
     status == .success
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case responseSchemaVersion
+    case eventSchemaVersion
+    case status
+    case snapshot
+    case events
+    case error
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    responseSchemaVersion = try decodeRuntimeInterfaceSchemaVersion(
+      from: container,
+      forKey: .responseSchemaVersion,
+      label: "response"
+    )
+    eventSchemaVersion = try decodeRuntimeInterfaceSchemaVersion(
+      from: container,
+      forKey: .eventSchemaVersion,
+      label: "event"
+    )
+    status = try container.decode(PraxisRuntimeInterfaceResponseStatus.self, forKey: .status)
+    snapshot = try container.decodeIfPresent(PraxisRuntimeInterfaceSnapshot.self, forKey: .snapshot)
+    events = try container.decodeIfPresent([PraxisRuntimeInterfaceEvent].self, forKey: .events) ?? []
+    error = try container.decodeIfPresent(PraxisRuntimeInterfaceErrorEnvelope.self, forKey: .error)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(responseSchemaVersion, forKey: .responseSchemaVersion)
+    try container.encode(eventSchemaVersion, forKey: .eventSchemaVersion)
+    try container.encode(status, forKey: .status)
+    try container.encodeIfPresent(snapshot, forKey: .snapshot)
+    try container.encode(events, forKey: .events)
+    try container.encodeIfPresent(error, forKey: .error)
   }
 }

@@ -1,3 +1,4 @@
+import Foundation
 import PraxisCoreTypes
 import PraxisRuntimeGateway
 import PraxisRuntimeInterface
@@ -39,6 +40,19 @@ public enum PraxisFFIFactory {
   public static func makeFFIBridge() -> PraxisFFIBridge {
     PraxisFFIBridge(
       runtimeInterfaceRegistry: makeRuntimeInterfaceRegistry()
+    )
+  }
+
+  /// Builds an FFI bridge backed by local default host adapters rooted at the supplied directory.
+  ///
+  /// - Parameter rootDirectory: Optional runtime root directory used to construct local default adapters.
+  /// - Returns: A bridge that exposes the encoded runtime interface over opaque session handles.
+  public static func makeFFIBridge(rootDirectory: URL?) -> PraxisFFIBridge {
+    PraxisFFIBridge(
+      runtimeInterfaceRegistry: PraxisRuntimeGatewayFactory.makeRuntimeInterfaceRegistry(
+        rootDirectory: rootDirectory,
+        blueprint: PraxisRuntimeGatewayModule.bootstrap
+      )
     )
   }
 }

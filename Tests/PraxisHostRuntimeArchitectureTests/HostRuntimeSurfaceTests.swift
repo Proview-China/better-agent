@@ -1264,11 +1264,33 @@ struct HostRuntimeSurfaceTests {
     #expect(ffiBridge.exportArchitectureSnapshot() == PraxisRuntimeGatewayModule.bootstrap)
     #expect(response.snapshot?.sessionID?.rawValue == "session.ffi-smoke")
     #expect(response.events.map(\.name) == [.runStarted, .runFollowUpReady])
+    #expect(response.responseSchemaVersion == .v1)
+    #expect(response.eventSchemaVersion == .v1)
     #expect(eventEnvelope.status == .success)
+    #expect(eventEnvelope.eventSchemaVersion == .v1)
     #expect(eventEnvelope.handle == handle)
     #expect(eventEnvelope.events.map(\.name) == [.runStarted, .runFollowUpReady])
     #expect(eventEnvelope.error == nil)
     #expect(await ffiBridge.activeRuntimeSessionHandles() == [handle])
+  }
+
+  @Test
+  func ffiFactoryBuildsRootScopedBridge() async throws {
+    let rootDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("praxis-ffi-root-scoped-bridge", isDirectory: true)
+      .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
+    try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+    let ffiBridge = PraxisFFIFactory.makeFFIBridge(rootDirectory: rootDirectory)
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let handle = try await ffiBridge.openRuntimeSession()
+    let responseData = try await ffiBridge.handleEncodedRequest(codec.encode(.inspectArchitecture), on: handle)
+    let response = try codec.decodeResponse(responseData)
+
+    #expect(response.status == .success)
+    #expect(response.snapshot?.kind == .architecture)
+    #expect(response.snapshot?.supportedRequestSchemaVersion == .v1)
+    #expect(await ffiBridge.closeRuntimeSession(handle))
   }
 
   @Test
@@ -1337,6 +1359,28 @@ struct HostRuntimeSurfaceTests {
     #expect(closedEventEnvelope.error?.message == "Runtime interface session handle \(handle.rawValue) was not found.")
     #expect(closedEventEnvelope.error?.retryable == false)
     #expect(closedEventEnvelope.handle == handle)
+  }
+
+  @Test
+  func ffiEventEnvelopeRejectsUnsupportedEventSchemaVersion() throws {
+    let invalidEventEnvelopeJSON = """
+    {"eventSchemaVersion":"99","status":"success","handle":"ffi.runtime.1","events":[],"error":null}
+    """
+
+    #expect(throws: DecodingError.self) {
+      _ = try JSONDecoder().decode(PraxisFFIEventEnvelope.self, from: Data(invalidEventEnvelopeJSON.utf8))
+    }
+  }
+
+  @Test
+  func ffiEventEnvelopeRejectsExplicitNullEventSchemaVersion() throws {
+    let invalidEventEnvelopeJSON = """
+    {"eventSchemaVersion":null,"status":"success","handle":"ffi.runtime.1","events":[],"error":null}
+    """
+
+    #expect(throws: DecodingError.self) {
+      _ = try JSONDecoder().decode(PraxisFFIEventEnvelope.self, from: Data(invalidEventEnvelopeJSON.utf8))
+    }
   }
 
   @Test

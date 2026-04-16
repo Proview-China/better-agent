@@ -105,4 +105,49 @@ struct HostRuntimeTopologyTests {
     #expect(runtimeKitTargetBlock.contains(#""PraxisRuntimeInterface""#) == false)
     #expect(runtimeKitTargetBlock.contains(#""PraxisFFI""#) == false)
   }
+
+  @Test
+  func ffiEmbeddingExampleIsPublishedAsAnExecutableProduct() throws {
+    let projectRoot = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let packageManifest = try String(contentsOf: projectRoot.appendingPathComponent("Package.swift"))
+
+    #expect(packageManifest.contains(#".executable(name: "PraxisFFIEmbeddingExample", targets: ["PraxisFFIEmbeddingExample"])"#))
+    #expect(packageManifest.contains(#"name: "PraxisFFIEmbeddingExample""#))
+    #expect(packageManifest.contains(#"path: "Examples/PraxisFFIEmbeddingExample""#))
+    #expect(packageManifest.contains(#""PraxisFFI""#))
+    #expect(packageManifest.contains(#""PraxisRuntimeInterface""#))
+  }
+
+  @Test
+  func appleHostEmbeddingExampleIsPublishedAsAnExecutableProduct() throws {
+    let projectRoot = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let packageManifest = try String(contentsOf: projectRoot.appendingPathComponent("Package.swift"))
+
+    #expect(packageManifest.contains(#".executable(name: "PraxisAppleHostEmbeddingExample", targets: ["PraxisAppleHostEmbeddingExample"])"#))
+    #expect(packageManifest.contains(#"name: "PraxisAppleHostEmbeddingExample""#))
+    #expect(packageManifest.contains(#"path: "Examples/PraxisAppleHostEmbeddingExample""#))
+    #expect(packageManifest.contains(#""PraxisFFI""#))
+    #expect(packageManifest.contains(#""PraxisRuntimeInterface""#))
+  }
+
+  @Test
+  func exportBaselineExampleIsPublishedAsAnExecutableProduct() throws {
+    let projectRoot = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let packageManifest = try String(contentsOf: projectRoot.appendingPathComponent("Package.swift"))
+
+    #expect(packageManifest.contains(#".executable(name: "PraxisExportBaselineExample", targets: ["PraxisExportBaselineExample"])"#))
+    #expect(packageManifest.contains(#"name: "PraxisExportBaselineExample""#))
+    #expect(packageManifest.contains(#"path: "Examples/PraxisExportBaselineExample""#))
+    #expect(packageManifest.contains(#""PraxisFFI""#))
+    #expect(packageManifest.contains(#""PraxisRuntimeInterface""#))
+  }
 }

@@ -4242,6 +4242,10 @@ struct HostRuntimeInterfaceTests {
     #expect(await registry.containsSession(firstHandle))
     #expect(await registry.containsSession(secondHandle))
     #expect(await registry.bootstrapSnapshot(for: firstHandle)?.kind == .architecture)
+    #expect(await registry.bootstrapSnapshot(for: firstHandle)?.supportedRequestSchemaVersion == .v1)
+    #expect(await registry.bootstrapSnapshot(for: firstHandle)?.supportedResponseSchemaVersion == .v1)
+    #expect(await registry.bootstrapSnapshot(for: firstHandle)?.supportedEventSchemaVersion == .v1)
+    #expect(await registry.bootstrapSnapshot(for: firstHandle)?.acceptsLegacyVersionlessPayloads == true)
 
     let started = await registry.handle(
       .runGoal(
@@ -4355,7 +4359,7 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       requestJSON ==
-        #"{"commitCmpFlow":{"agentID":"runtime.codec","changeSummary":"Commit typed interface event references","eventIDs":["evt.codec.1","evt.codec.2"],"payloadSummary":"Commit interface flow","projectID":"cmp.codec.project","sessionID":"cmp.flow.codec","syncIntent":"toParent"},"kind":"commitCmpFlow"}"#
+        #"{"commitCmpFlow":{"agentID":"runtime.codec","changeSummary":"Commit typed interface event references","eventIDs":["evt.codec.1","evt.codec.2"],"payloadSummary":"Commit interface flow","projectID":"cmp.codec.project","sessionID":"cmp.flow.codec","syncIntent":"toParent"},"kind":"commitCmpFlow","requestSchemaVersion":"1"}"#
     )
     #expect(responseJSON.contains(#""status":"success""#))
     #expect(!responseJSON.contains(#""error":"#))
@@ -4417,15 +4421,15 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       recoverJSON ==
-        #"{"kind":"recoverCmpProject","recoverCmpProject":{"agentID":"runtime.local","packageKind":"historicalReply","payloadSummary":"Recover typed snapshot reference","projectID":"cmp.local-runtime","reason":"Recover from typed reference","snapshotID":"snapshot.runtime.recover","targetAgentID":"checker.local"}}"#
+        #"{"kind":"recoverCmpProject","recoverCmpProject":{"agentID":"runtime.local","packageKind":"historicalReply","payloadSummary":"Recover typed snapshot reference","projectID":"cmp.local-runtime","reason":"Recover from typed reference","snapshotID":"snapshot.runtime.recover","targetAgentID":"checker.local"},"requestSchemaVersion":"1"}"#
     )
     #expect(
       materializeJSON ==
-        #"{"kind":"materializeCmpFlow","materializeCmpFlow":{"agentID":"runtime.local","fidelityLabel":"highSignal","packageKind":"runtimeFill","payloadSummary":"Materialize typed references","projectID":"cmp.local-runtime","projectionID":"projection.runtime.materialize","snapshotID":"snapshot.runtime.materialize","targetAgentID":"checker.local"}}"#
+        #"{"kind":"materializeCmpFlow","materializeCmpFlow":{"agentID":"runtime.local","fidelityLabel":"highSignal","packageKind":"runtimeFill","payloadSummary":"Materialize typed references","projectID":"cmp.local-runtime","projectionID":"projection.runtime.materialize","snapshotID":"snapshot.runtime.materialize","targetAgentID":"checker.local"},"requestSchemaVersion":"1"}"#
     )
     #expect(
       ingestJSON ==
-        #"{"ingestMp":{"agentID":"runtime.local","branchRef":"main","checkedSnapshotRef":"snapshot.mp.runtime","confidence":"medium","memoryKind":"semantic","payloadSummary":"Ingest typed snapshot reference","projectID":"mp.local-runtime","scopeLevel":"agent_isolated","sessionID":"mp.session","sourceRefs":[],"summary":"Store typed reference memory","tags":[]},"kind":"ingestMp"}"#
+        #"{"ingestMp":{"agentID":"runtime.local","branchRef":"main","checkedSnapshotRef":"snapshot.mp.runtime","confidence":"medium","memoryKind":"semantic","payloadSummary":"Ingest typed snapshot reference","projectID":"mp.local-runtime","scopeLevel":"agent_isolated","sessionID":"mp.session","sourceRefs":[],"summary":"Store typed reference memory","tags":[]},"kind":"ingestMp","requestSchemaVersion":"1"}"#
     )
     #expect(decodedRecover == recoverRequest)
     #expect(decodedMaterialize == materializeRequest)
@@ -4531,27 +4535,27 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       ingestJSON ==
-        #"{"ingestMp":{"agentID":"runtime.local","branchRef":"main","capturedAt":"2026-04-13T10:01:00Z","checkedSnapshotRef":"snapshot.mp.runtime","confidence":"high","memoryKind":"summary","observedAt":"2026-04-13T10:00:00Z","payloadSummary":"Ingest MP workflow memory","projectID":"mp.local-runtime","scopeLevel":"project","semanticGroupID":"semantic.group.runtime","sessionID":"mp.session","sourceRefs":["cmp:\/\/snapshot\/runtime","doc:\/\/memory\/runtime"],"storageKey":"memory\/primary","summary":"Store host-neutral MP workflow memory","tags":["host-neutral","wire-shape"]},"kind":"ingestMp"}"#
+        #"{"ingestMp":{"agentID":"runtime.local","branchRef":"main","capturedAt":"2026-04-13T10:01:00Z","checkedSnapshotRef":"snapshot.mp.runtime","confidence":"high","memoryKind":"summary","observedAt":"2026-04-13T10:00:00Z","payloadSummary":"Ingest MP workflow memory","projectID":"mp.local-runtime","scopeLevel":"project","semanticGroupID":"semantic.group.runtime","sessionID":"mp.session","sourceRefs":["cmp:\/\/snapshot\/runtime","doc:\/\/memory\/runtime"],"storageKey":"memory\/primary","summary":"Store host-neutral MP workflow memory","tags":["host-neutral","wire-shape"]},"kind":"ingestMp","requestSchemaVersion":"1"}"#
     )
     #expect(
       alignJSON ==
-        #"{"alignMp":{"alignedAt":"2026-04-13T10:05:00Z","memoryID":"memory.primary","payloadSummary":"Align MP workflow memory","projectID":"mp.local-runtime","queryText":"verify onboarding summary"},"kind":"alignMp"}"#
+        #"{"alignMp":{"alignedAt":"2026-04-13T10:05:00Z","memoryID":"memory.primary","payloadSummary":"Align MP workflow memory","projectID":"mp.local-runtime","queryText":"verify onboarding summary"},"kind":"alignMp","requestSchemaVersion":"1"}"#
     )
     #expect(
       promoteJSON ==
-        #"{"kind":"promoteMp","promoteMp":{"memoryID":"memory.primary","payloadSummary":"Promote MP workflow memory","projectID":"mp.local-runtime","promotedAt":"2026-04-13T10:06:00Z","reason":"Promote stable onboarding memory","targetPromotionState":"accepted_by_parent","targetSessionID":"mp.session"}}"#
+        #"{"kind":"promoteMp","promoteMp":{"memoryID":"memory.primary","payloadSummary":"Promote MP workflow memory","projectID":"mp.local-runtime","promotedAt":"2026-04-13T10:06:00Z","reason":"Promote stable onboarding memory","targetPromotionState":"accepted_by_parent","targetSessionID":"mp.session"},"requestSchemaVersion":"1"}"#
     )
     #expect(
       archiveJSON ==
-        #"{"archiveMp":{"archivedAt":"2026-04-13T10:07:00Z","memoryID":"memory.primary","payloadSummary":"Archive MP workflow memory","projectID":"mp.local-runtime","reason":"Superseded by project memory"},"kind":"archiveMp"}"#
+        #"{"archiveMp":{"archivedAt":"2026-04-13T10:07:00Z","memoryID":"memory.primary","payloadSummary":"Archive MP workflow memory","projectID":"mp.local-runtime","reason":"Superseded by project memory"},"kind":"archiveMp","requestSchemaVersion":"1"}"#
     )
     #expect(
       resolveJSON ==
-        #"{"kind":"resolveMp","resolveMp":{"limit":7,"payloadSummary":"Resolve MP workflow bundle","projectID":"mp.local-runtime","query":"onboarding","requesterAgentID":"runtime.local","scopeLevels":["global","project"],"sessionID":"mp.session"}}"#
+        #"{"kind":"resolveMp","requestSchemaVersion":"1","resolveMp":{"limit":7,"payloadSummary":"Resolve MP workflow bundle","projectID":"mp.local-runtime","query":"onboarding","requesterAgentID":"runtime.local","scopeLevels":["global","project"],"sessionID":"mp.session"}}"#
     )
     #expect(
       historyJSON ==
-        #"{"kind":"requestMpHistory","requestMpHistory":{"limit":4,"payloadSummary":"Request MP workflow history","projectID":"mp.local-runtime","query":"onboarding","reason":"Need historical MP context","requesterAgentID":"runtime.local","scopeLevels":["project","agent_isolated"],"sessionID":"mp.session"}}"#
+        #"{"kind":"requestMpHistory","requestMpHistory":{"limit":4,"payloadSummary":"Request MP workflow history","projectID":"mp.local-runtime","query":"onboarding","reason":"Need historical MP context","requesterAgentID":"runtime.local","scopeLevels":["project","agent_isolated"],"sessionID":"mp.session"},"requestSchemaVersion":"1"}"#
     )
 
     #expect(decodedIngest == ingestRequest)
@@ -4610,15 +4614,15 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       searchJSON ==
-        #"{"kind":"searchMp","searchMp":{"agentID":"runtime.local","includeSuperseded":true,"limit":7,"payloadSummary":"Search MP neutral memory","projectID":" mp.local-runtime ","query":"onboarding","scopeLevels":["project","agent_isolated"],"sessionID":" session.search "}}"#
+        #"{"kind":"searchMp","requestSchemaVersion":"1","searchMp":{"agentID":"runtime.local","includeSuperseded":true,"limit":7,"payloadSummary":"Search MP neutral memory","projectID":" mp.local-runtime ","query":"onboarding","scopeLevels":["project","agent_isolated"],"sessionID":" session.search "}}"#
     )
     #expect(
       readbackJSON ==
-        #"{"kind":"readbackMp","readbackMp":{"agentID":"runtime.local","includeSuperseded":true,"limit":8,"payloadSummary":"Read back MP neutral memory","projectID":"\tmp.local-runtime\t","query":"","scopeLevels":["project"],"sessionID":" readback.session "}}"#
+        #"{"kind":"readbackMp","readbackMp":{"agentID":"runtime.local","includeSuperseded":true,"limit":8,"payloadSummary":"Read back MP neutral memory","projectID":"\tmp.local-runtime\t","query":"","scopeLevels":["project"],"sessionID":" readback.session "},"requestSchemaVersion":"1"}"#
     )
     #expect(
       smokeJSON ==
-        #"{"kind":"smokeMp","smokeMp":{"payloadSummary":"Smoke MP neutral surface","projectID":" smoke.project "}}"#
+        #"{"kind":"smokeMp","requestSchemaVersion":"1","smokeMp":{"payloadSummary":"Smoke MP neutral surface","projectID":" smoke.project "}}"#
     )
     #expect(decodedSearch == searchRequest)
     #expect(decodedReadback == readbackRequest)
@@ -4643,7 +4647,7 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       requestJSON ==
-        #"{"describeCodeSandbox":{"payloadSummary":"Describe bounded code sandbox","profile":"workspace_write_limited","requestedRuntime":"swift","workingDirectory":"\/tmp\/praxis"},"kind":"describeCodeSandbox"}"#
+        #"{"describeCodeSandbox":{"payloadSummary":"Describe bounded code sandbox","profile":"workspace_write_limited","requestedRuntime":"swift","workingDirectory":"\/tmp\/praxis"},"kind":"describeCodeSandbox","requestSchemaVersion":"1"}"#
     )
     #expect(decodedRequest == request)
   }
@@ -4665,14 +4669,124 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       skillJSON ==
-        #"{"kind":"listProviderSkills","listProviderSkills":{"payloadSummary":"List registered provider skills"}}"#
+        #"{"kind":"listProviderSkills","listProviderSkills":{"payloadSummary":"List registered provider skills"},"requestSchemaVersion":"1"}"#
     )
     #expect(
       toolJSON ==
-        #"{"kind":"listProviderMCPTools","listProviderMCPTools":{"payloadSummary":"List registered provider MCP tools"}}"#
+        #"{"kind":"listProviderMCPTools","listProviderMCPTools":{"payloadSummary":"List registered provider MCP tools"},"requestSchemaVersion":"1"}"#
     )
     #expect(try codec.decodeRequest(skillData) == skillRequest)
     #expect(try codec.decodeRequest(toolData) == toolRequest)
+  }
+
+  @Test
+  func runtimeInterfaceCodecAddsSchemaVersionsAndAcceptsLegacyBarePayloads() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let request = PraxisRuntimeInterfaceRequest.inspectArchitecture
+    let response = PraxisRuntimeInterfaceResponse.success(
+      snapshot: .init(
+        kind: .architecture,
+        title: "Architecture",
+        summary: "Topology snapshot"
+      )
+    )
+
+    let requestJSON = String(decoding: try codec.encode(request), as: UTF8.self)
+    let responseJSON = String(decoding: try codec.encode(response), as: UTF8.self)
+
+    #expect(requestJSON.contains(#""requestSchemaVersion":"1""#))
+    #expect(responseJSON.contains(#""responseSchemaVersion":"1""#))
+    #expect(responseJSON.contains(#""eventSchemaVersion":"1""#))
+
+    let legacyResponseJSON = """
+    {"status":"success","snapshot":{"kind":"architecture","summary":"Legacy topology snapshot","title":"Architecture"},"events":[],"error":null}
+    """
+    let decodedLegacyResponse = try codec.decodeResponse(Data(legacyResponseJSON.utf8))
+
+    #expect(decodedLegacyResponse.responseSchemaVersion == .v1)
+    #expect(decodedLegacyResponse.eventSchemaVersion == .v1)
+    #expect(decodedLegacyResponse.snapshot?.kind == .architecture)
+  }
+
+  @Test
+  func runtimeInterfaceArchitectureSnapshotPublishesSupportedSchemaVersions() async throws {
+    let registry = PraxisRuntimeGatewayFactory.makeRuntimeInterfaceRegistry(
+      hostAdapters: PraxisHostAdapterRegistry.scaffoldDefaults(),
+      blueprint: PraxisRuntimeGatewayModule.bootstrap
+    )
+    let handle = try await registry.openSession()
+
+    let response = await registry.handle(.inspectArchitecture, on: handle)
+
+    #expect(response.status == .success)
+    #expect(response.snapshot?.kind == .architecture)
+    #expect(response.snapshot?.supportedRequestSchemaVersion == .v1)
+    #expect(response.snapshot?.supportedResponseSchemaVersion == .v1)
+    #expect(response.snapshot?.supportedEventSchemaVersion == .v1)
+    #expect(response.snapshot?.acceptsLegacyVersionlessPayloads == true)
+  }
+
+  @Test
+  func runtimeInterfaceCodecRejectsUnsupportedSchemaVersions() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let invalidRequestJSON = """
+    {"kind":"inspectArchitecture","requestSchemaVersion":"99"}
+    """
+    let invalidResponseJSON = """
+    {"status":"success","responseSchemaVersion":"99","eventSchemaVersion":"1","snapshot":{"kind":"architecture","summary":"Topology snapshot","title":"Architecture"},"events":[],"error":null}
+    """
+
+    do {
+      _ = try codec.decodeRequest(Data(invalidRequestJSON.utf8))
+      Issue.record("Expected invalidInput for unsupported runtime interface request schema version.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput, got \(error).")
+        return
+      }
+      #expect(message.contains("requestSchemaVersion"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput, got \(error).")
+    }
+
+    #expect(throws: DecodingError.self) {
+      _ = try codec.decodeResponse(Data(invalidResponseJSON.utf8))
+    }
+  }
+
+  @Test
+  func runtimeInterfaceCodecRejectsExplicitNullSchemaVersions() throws {
+    let codec = PraxisJSONRuntimeInterfaceCodec()
+    let nullRequestJSON = """
+    {"kind":"inspectArchitecture","requestSchemaVersion":null}
+    """
+    let nullResponseJSON = """
+    {"status":"success","responseSchemaVersion":null,"eventSchemaVersion":"1","snapshot":{"kind":"architecture","summary":"Topology snapshot","title":"Architecture"},"events":[],"error":null}
+    """
+    let nullEventResponseJSON = """
+    {"status":"success","responseSchemaVersion":"1","eventSchemaVersion":null,"snapshot":{"kind":"architecture","summary":"Topology snapshot","title":"Architecture"},"events":[],"error":null}
+    """
+
+    do {
+      _ = try codec.decodeRequest(Data(nullRequestJSON.utf8))
+      Issue.record("Expected invalidInput for explicit null runtime interface request schema version.")
+    } catch let error as PraxisError {
+      guard case let .invalidInput(message) = error else {
+        Issue.record("Expected invalidInput, got \(error).")
+        return
+      }
+      #expect(message.contains("schema version"))
+    } catch {
+      Issue.record("Expected PraxisError.invalidInput, got \(error).")
+    }
+
+    #expect(throws: DecodingError.self) {
+      _ = try codec.decodeResponse(Data(nullResponseJSON.utf8))
+    }
+
+    #expect(throws: DecodingError.self) {
+      _ = try codec.decodeResponse(Data(nullEventResponseJSON.utf8))
+    }
   }
 
   @Test
@@ -5666,7 +5780,7 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       requestJSON ==
-        #"{"kind":"readbackCmpProject","readbackCmpProject":{"payloadSummary":"Read back project","projectID":"cmp.local-runtime"}}"#
+        #"{"kind":"readbackCmpProject","readbackCmpProject":{"payloadSummary":"Read back project","projectID":"cmp.local-runtime"},"requestSchemaVersion":"1"}"#
     )
     #expect(decodedRequest == request)
   }
@@ -5755,15 +5869,15 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       historyJSON ==
-        #"{"kind":"requestCmpHistory","requestCmpHistory":{"payloadSummary":"Request history","projectID":"cmp.local-runtime","query":{"metadata":{},"packageKindHint":"historicalReply","snapshotID":"projection.runtime.local:checked"},"reason":"Recover context","requesterAgentID":"checker.local"}}"#
+        #"{"kind":"requestCmpHistory","requestCmpHistory":{"payloadSummary":"Request history","projectID":"cmp.local-runtime","query":{"metadata":{},"packageKindHint":"historicalReply","snapshotID":"projection.runtime.local:checked"},"reason":"Recover context","requesterAgentID":"checker.local"},"requestSchemaVersion":"1"}"#
     )
     #expect(
       retryJSON ==
-        #"{"kind":"retryCmpDispatch","retryCmpDispatch":{"agentID":"runtime.local","packageID":"projection.runtime.local:checker.local:runtimeFill","payloadSummary":"Retry dispatch","projectID":"cmp.local-runtime","reason":"Retry after approval"}}"#
+        #"{"kind":"retryCmpDispatch","requestSchemaVersion":"1","retryCmpDispatch":{"agentID":"runtime.local","packageID":"projection.runtime.local:checker.local:runtimeFill","payloadSummary":"Retry dispatch","projectID":"cmp.local-runtime","reason":"Retry after approval"}}"#
     )
     #expect(
       dispatchStoredJSON ==
-        #"{"dispatchStoredCmpPackage":{"agentID":"runtime.local","packageID":"projection.runtime.local:checker.local:runtimeFill","payloadSummary":"Dispatch stored package","projectID":"cmp.local-runtime","reason":"Dispatch persisted package","targetKind":"peer"},"kind":"dispatchStoredCmpPackage"}"#
+        #"{"dispatchStoredCmpPackage":{"agentID":"runtime.local","packageID":"projection.runtime.local:checker.local:runtimeFill","payloadSummary":"Dispatch stored package","projectID":"cmp.local-runtime","reason":"Dispatch persisted package","targetKind":"peer"},"kind":"dispatchStoredCmpPackage","requestSchemaVersion":"1"}"#
     )
     #expect(decodedIngestRequest == ingestRequest)
     #expect(decodedHistoryRequest == historyRequest)
@@ -5800,7 +5914,7 @@ struct HostRuntimeInterfaceTests {
 
     #expect(
       requestJSON ==
-        #"{"kind":"requestCmpHistory","requestCmpHistory":{"payloadSummary":"Request history boundary","projectID":"cmp.local-runtime","query":{"branchRef":"cmp\/runtime","lineageID":"lineage.history.runtime","metadata":{"attempt":2,"reason":"recover"},"packageKindHint":"historicalReply","projectionVisibilityHint":"acceptedByParent","snapshotID":"snapshot.history.runtime"},"reason":"Recover boundary context","requesterAgentID":"checker.local"}}"#
+        #"{"kind":"requestCmpHistory","requestCmpHistory":{"payloadSummary":"Request history boundary","projectID":"cmp.local-runtime","query":{"branchRef":"cmp\/runtime","lineageID":"lineage.history.runtime","metadata":{"attempt":2,"reason":"recover"},"packageKindHint":"historicalReply","projectionVisibilityHint":"acceptedByParent","snapshotID":"snapshot.history.runtime"},"reason":"Recover boundary context","requesterAgentID":"checker.local"},"requestSchemaVersion":"1"}"#
     )
     #expect(decodedRequest == request)
     if case .requestCmpHistory(let payload) = decodedRequest {
