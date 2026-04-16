@@ -40,6 +40,10 @@ tmp/
 # Local browser automation traces and screenshots
 .playwright-mcp/
 
+# Local compare/worktree scratch directories
+.cmp-worktrees/
+src/.cmp-worktrees/
+
 # Agent runtime scratch state
 .raxode/agents/agent.task_*.json
 
