@@ -11,6 +11,15 @@ import type {
 } from "./types.js";
 
 function inferCmpDeliveryStatus(input: CmpTurnArtifacts): CoreCmpContextPackageV1["deliveryStatus"] {
+  if (input.syncStatus === "skipped") {
+    return "skipped";
+  }
+  if (input.syncStatus === "warming" || input.syncStatus === "ingested" || input.syncStatus === "checked" || input.syncStatus === "materialized") {
+    return "pending";
+  }
+  if (input.syncStatus === "failed") {
+    return "partial";
+  }
   const values = [
     input.packageId,
     input.packageRef,

@@ -4128,6 +4128,15 @@ export class AgentCoreRuntime {
         }),
       );
     }
+    syncCmpDbProjectionFromCheckedSnapshot({
+      state: this.#cmpDbRuntimeSync,
+      snapshot,
+      projectionId: projection.projectionId,
+      metadata: {
+        ...(projection.metadata ?? {}),
+        source: "cmp-runtime-materialize",
+      },
+    });
     syncCmpDbPackageFromContextPackage({
       state: this.#cmpDbRuntimeSync,
       contextPackage: enrichedContextPackage,

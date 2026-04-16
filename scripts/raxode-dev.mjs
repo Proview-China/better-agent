@@ -12,6 +12,7 @@ const tsxBin = resolve(appRoot, "node_modules", ".bin", "tsx");
 const argv = process.argv.slice(2);
 const raxodeHome = resolve(process.env.RAXCODE_HOME ?? resolve(process.env.HOME ?? process.cwd(), ".raxcode"));
 const configPath = resolve(raxodeHome, "config.json");
+const launchWorkspace = resolve(process.env.PRAXIS_WORKSPACE_ROOT ?? appRoot);
 
 function resolveDevCommand(args) {
   const [rawCommand] = args;
@@ -70,10 +71,11 @@ async function runWithImmediateSplashIfNeeded() {
     exitCode: await runRaxodeTuiWithStartupSplash({
     command: tsxBin,
     args: [entrypoint, ...argv],
-    cwd: process.cwd(),
+    cwd: launchWorkspace,
     env: {
       ...process.env,
       PRAXIS_APP_ROOT: appRoot,
+      PRAXIS_WORKSPACE_ROOT: launchWorkspace,
       PRAXIS_BOOTSTRAP_PARENT_ACTIVE: "1",
     },
     animationMode,
@@ -90,10 +92,11 @@ runWithImmediateSplashIfNeeded()
     }
 
     const child = spawn(tsxBin, [entrypoint, ...argv], {
-      cwd: process.cwd(),
+      cwd: launchWorkspace,
       env: {
         ...process.env,
         PRAXIS_APP_ROOT: appRoot,
+        PRAXIS_WORKSPACE_ROOT: launchWorkspace,
         PRAXIS_BOOTSTRAP_MODE: animationMode,
       },
       stdio: "inherit",

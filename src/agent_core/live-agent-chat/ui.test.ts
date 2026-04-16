@@ -90,6 +90,7 @@ test("formatDirectCmpSnapshotLines keeps latest cmp turn as secondary context", 
     emptyReason: "CMP DB truth is healthy but there are no materialized section records to show yet.",
     entries: [],
   }, {
+    syncStatus: "synced",
     agentId: "cmp-live-cli-main",
     packageId: "pkg-1",
     packageRef: "cmp-package:pkg-1",

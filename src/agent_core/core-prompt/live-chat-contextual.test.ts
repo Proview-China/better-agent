@@ -14,6 +14,7 @@ test("buildLiveChatCoreContextualPrompt injects key live-chat blocks", () => {
       { role: "assistant", text: "我们在看 core prompt" },
     ],
     cmp: {
+      syncStatus: "synced",
       agentId: "cmp-main",
       packageId: "pkg-1",
       packageRef: "cmp-package:1",
@@ -155,6 +156,7 @@ test("createLiveChatCoreContextualInput maps pending skipped and partial cmp sta
     userMessage: "继续主任务",
     transcript: [{ role: "user", text: "继续主任务" }],
     cmp: {
+      syncStatus: "warming",
       agentId: "cmp-sidecar-pending",
       packageId: "pending",
       packageRef: "pending",
@@ -179,6 +181,7 @@ test("createLiveChatCoreContextualInput maps pending skipped and partial cmp sta
     userMessage: "继续主任务",
     transcript: [{ role: "user", text: "继续主任务" }],
     cmp: {
+      syncStatus: "skipped",
       agentId: "cmp-sidecar-skipped",
       packageId: "skipped",
       packageRef: "skipped",
@@ -203,6 +206,7 @@ test("createLiveChatCoreContextualInput maps pending skipped and partial cmp sta
     userMessage: "继续主任务",
     transcript: [{ role: "user", text: "继续主任务" }],
     cmp: {
+      syncStatus: "synced",
       agentId: "cmp-main",
       packageId: "pkg-1",
       packageRef: "cmp-package:1",

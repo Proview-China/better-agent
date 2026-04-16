@@ -6,6 +6,7 @@ import { createInitialSurfaceState, reduceSurfaceEvents } from "./reducer.js";
 import {
   selectActiveTasks,
   selectCurrentTurn,
+  selectInterruptibleTasks,
   selectLatestAssistantMessage,
   selectOpenOverlays,
   selectPanel,
@@ -207,6 +208,24 @@ test("surface selectors expose active tasks overlays panels and status messages"
       }),
     }),
     createSurfaceEvent({
+      eventId: "event:task.upserted:task-blocked",
+      type: "task.upserted",
+      emittedAt: "2026-04-11T09:10:01.500Z",
+      at: "2026-04-11T09:10:01.500Z",
+      source: "tap",
+      task: createSurfaceTask({
+        taskId: "task-blocked",
+        id: "task-blocked",
+        kind: "question",
+        status: "blocked",
+        title: "Need user input",
+        summary: "waiting on questionnaire",
+        startedAt: "2026-04-11T09:10:01.500Z",
+        updatedAt: "2026-04-11T09:10:01.500Z",
+        foregroundable: true,
+      }),
+    }),
+    createSurfaceEvent({
       eventId: "event:overlay.opened:overlay-search",
       type: "overlay.opened",
       emittedAt: "2026-04-11T09:10:02.000Z",
@@ -239,6 +258,10 @@ test("surface selectors expose active tasks overlays panels and status messages"
 
   assert.deepEqual(
     selectActiveTasks(state).map((task) => task.id),
+    ["task-blocked", "task-running", "task-background"],
+  );
+  assert.deepEqual(
+    selectInterruptibleTasks(state).map((task) => task.id),
     ["task-running", "task-background"],
   );
   assert.equal(selectOpenOverlays(state)[0]?.id, "overlay-search");

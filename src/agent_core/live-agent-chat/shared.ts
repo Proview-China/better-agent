@@ -51,6 +51,7 @@ export type OpenAILiveConfig = ReturnType<typeof loadOpenAILiveConfig>;
 export type CmpRuntimeSummary = ReturnType<LiveCliRuntime["getCmpFiveAgentRuntimeSummary"]>;
 
 export interface CmpTurnArtifacts {
+  syncStatus: "skipped" | "warming" | "ingested" | "checked" | "materialized" | "synced" | "failed";
   agentId: string;
   packageId: string;
   packageRef: string;
@@ -68,6 +69,7 @@ export interface CmpTurnArtifacts {
   scopePolicy: string;
   packageStrategy: string;
   timelineStrategy: string;
+  failureReason?: string;
 }
 
 export interface CoreTurnArtifacts {

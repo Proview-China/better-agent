@@ -389,6 +389,7 @@ export function printWorkspaceView(currentWorkspace = resolveConfiguredWorkspace
 
 export function printCmpArtifacts(turn: CmpTurnArtifacts): void {
   printDivider("CMP Active View");
+  console.log(`syncStatus: ${turn.syncStatus}`);
   console.log(`agentId: ${turn.agentId}`);
   console.log(`intent: ${turn.intent}`);
   console.log(`operatorGuide: ${turn.operatorGuide}`);
@@ -399,6 +400,9 @@ export function printCmpArtifacts(turn: CmpTurnArtifacts): void {
   console.log(`scopePolicy: ${turn.scopePolicy}`);
   console.log(`packageStrategy: ${formatDisplayValue(turn.packageStrategy)}`);
   console.log(`timelineStrategy: ${formatDisplayValue(turn.timelineStrategy)}`);
+  if (turn.failureReason) {
+    console.log(`failureReason: ${turn.failureReason}`);
+  }
   console.log(
     `live: icma=${formatLiveStatus(turn.summary.live.icma)}, iterator=${formatLiveStatus(turn.summary.live.iterator)}, checker=${formatLiveStatus(turn.summary.live.checker)}, dbagent=${formatLiveStatus(turn.summary.live.dbagent)}, dispatcher=${formatLiveStatus(turn.summary.live.dispatcher)}`,
   );
@@ -526,11 +530,7 @@ export function printDirectStatus(state: LiveCliState): void {
     userOverride: LIVE_CHAT_TAP_OVERRIDE,
   });
   const snapshot = state.runtime.createTapGovernanceSnapshot();
-  const cmpStatus = state.lastTurn.cmp.agentId === "cmp-sidecar-skipped"
-    ? "skipped"
-    : state.latestCmp
-      ? "synced"
-      : "warming";
+  const cmpStatus = state.lastTurn.cmp.syncStatus;
   const coreTaskStatus = state.lastTurn.core.taskStatus ?? "completed";
   const capabilityResultStatus = state.lastTurn.core.capabilityResultStatus ?? "success";
   const capabilityStatusSuffix =
@@ -545,7 +545,7 @@ export function printDirectStatus(state: LiveCliState): void {
   console.log("");
   printDirectBox("Status", [
     `core: ${state.lastTurn.core.dispatchStatus} / ${coreTaskStatus} / ${state.lastTurn.core.capabilityKey ?? "no capability"} / ${capabilityResultStatus}${capabilityStatusSuffix}`,
-    `cmp: ${cmpStatus} / ${truncate(state.lastTurn.cmp.intent, 96)}`,
+    `cmp: ${cmpStatus} / ${truncate(state.lastTurn.cmp.failureReason ?? state.lastTurn.cmp.intent, 96)}`,
     `tap: ${governance.taskPolicy.effectiveMode} / ${state.runtime.capabilityPool.listCapabilities().length} registered / ${snapshot.blockingCapabilityKeys.length} blocked`,
   ]);
 }

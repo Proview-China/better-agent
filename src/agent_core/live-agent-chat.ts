@@ -26,6 +26,7 @@ import {
 import {
   parseHumanGateDecisionEnvelope,
 } from "./live-agent-chat/human-gate-envelope.js";
+import { runCmpSidecarTurn } from "./live-agent-chat/cmp-sidecar.js";
 import {
   createCmpFiveAgentConfiguration,
   createCmpFiveAgentRuntime,
@@ -118,6 +119,7 @@ import {
   LIVE_CHAT_MODEL_PLAN,
   LiveChatLogger,
   type LiveCliState,
+  type MpPanelSnapshotEntry,
   type MpPanelSnapshotPayload,
   LIVE_CHAT_TAP_OVERRIDE,
   normalizeCoreTaskStatus,
@@ -175,10 +177,6 @@ import { rewindDialogueTranscript } from "./live-agent-chat/rewind.js";
 import type {
   HumanGatePanelEntry,
 } from "./tui-input/human-gate-panel.js";
-import {
-  createAgentLineage,
-  createCmpBranchFamily,
-} from "./cmp-types/index.js";
 import {
   createRaxCmpConfig,
   createRaxCmpFacade,
@@ -1288,261 +1286,6 @@ async function runCoreActionPlanner(
   };
 }
 
-async function runCmpTurn(state: LiveCliState, userMessage: string): Promise<CmpTurnArtifacts> {
-  const turnId = `${state.turnIndex}`;
-  const timestamp = new Date().toISOString();
-  const agentId = "cmp-live-cli-main";
-  const projectionId = `cmp-cli-projection-${turnId}`;
-  const snapshotId = `cmp-cli-snapshot-${turnId}`;
-  const packageId = `cmp-cli-package-${turnId}`;
-  const packageRef = `cmp-package:${snapshotId}:core-live-cli:active_reseed`;
-  const transcriptWindow = state.transcript.slice(-6);
-  const previousAssistant = [...state.transcript].reverse().find((turn) => turn.role === "assistant")?.text;
-
-  const icmaInput = {
-    ingest: {
-      agentId,
-      sessionId: state.sessionId,
-      taskSummary: `Prepare current executable context for the latest user request: ${truncate(userMessage, 160)}`,
-      materials: [
-        { kind: "user_input" as const, ref: `turn:${turnId}:user` },
-        ...(previousAssistant
-          ? [{ kind: "assistant_output" as const, ref: `turn:${turnId}:assistant-prev` }]
-          : []),
-        ...(transcriptWindow.length > 1
-          ? [{ kind: "system_prompt" as const, ref: `session:${state.sessionId}:history` }]
-          : []),
-      ],
-      lineage: createAgentLineage({
-        agentId,
-        depth: 0,
-        projectId: "praxis-live-cli",
-        branchFamily: createCmpBranchFamily({
-          workBranch: "work/praxis-live-cli",
-          cmpBranch: "cmp/praxis-live-cli",
-          mpBranch: "mp/praxis-live-cli",
-          tapBranch: "tap/praxis-live-cli",
-        }),
-      }),
-      metadata: {
-        latestUserMessage: userMessage,
-        previousAssistantMessage: previousAssistant,
-        transcriptWindow,
-        harness: "praxis-live-cli",
-        cliLogger: state.logger,
-        cliTurnIndex: state.turnIndex,
-        cliUiMode: state.uiMode,
-      },
-    },
-    createdAt: timestamp,
-    loopId: `cmp-cli-icma-${turnId}`,
-  };
-
-  const iteratorInput = {
-    agentId,
-    deltaId: `cmp-cli-delta-${turnId}`,
-    candidateId: `cmp-cli-candidate-${turnId}`,
-    branchRef: "refs/heads/cmp/praxis-live-cli",
-    commitRef: `cmp-cli-commit-${turnId}`,
-    reviewRef: `refs/cmp/review/${turnId}`,
-    createdAt: timestamp,
-    metadata: {
-      latestUserMessage: userMessage,
-      cliLogger: state.logger,
-      cliTurnIndex: state.turnIndex,
-      cliUiMode: state.uiMode,
-    },
-  };
-
-  const checkerInput = {
-    agentId,
-    candidateId: `cmp-cli-candidate-${turnId}`,
-    checkedSnapshotId: snapshotId,
-    checkedAt: timestamp,
-    suggestPromote: false,
-    metadata: {
-      latestUserMessage: userMessage,
-      transcriptWindow,
-      cliLogger: state.logger,
-      cliTurnIndex: state.turnIndex,
-      cliUiMode: state.uiMode,
-    },
-  };
-
-  const contextPackage = {
-    packageId,
-    sourceProjectionId: projectionId,
-    targetAgentId: "core-live-cli",
-    packageKind: "active_reseed" as const,
-    packageRef,
-    fidelityLabel: "checked_high_fidelity" as const,
-    createdAt: timestamp,
-    sourceSnapshotId: snapshotId,
-    requestId: `cmp-cli-request-${turnId}`,
-    metadata: {
-      cmpGuideRef: `cmp-guide:${packageId}`,
-      cmpBackgroundRef: `cmp-background:${packageId}`,
-      cmpTimelinePackageId: `${packageId}:timeline`,
-      latestUserMessage: userMessage,
-      transcriptWindow,
-    },
-  };
-
-  const dbagentInput = {
-    checkedSnapshot: {
-      snapshotId,
-      agentId,
-      lineageRef: `lineage:${agentId}`,
-      branchRef: "refs/heads/cmp/praxis-live-cli",
-      commitRef: `cmp-cli-commit-${turnId}`,
-      checkedAt: timestamp,
-      qualityLabel: "usable" as const,
-      promotable: true,
-      metadata: {
-        latestUserMessage: userMessage,
-        cliLogger: state.logger,
-        cliTurnIndex: state.turnIndex,
-        cliUiMode: state.uiMode,
-      },
-    },
-    projectionId,
-    contextPackage,
-    createdAt: timestamp,
-    loopId: `cmp-cli-dbagent-${turnId}`,
-    metadata: {
-      sourceRequestId: `cmp-cli-request-${turnId}`,
-      cliLogger: state.logger,
-      cliTurnIndex: state.turnIndex,
-      cliUiMode: state.uiMode,
-    },
-  };
-
-  const dispatcherInput = {
-    contextPackage,
-    dispatch: {
-      agentId,
-      packageId,
-      sourceAgentId: agentId,
-      targetAgentId: "core-live-cli",
-      targetKind: "core_agent" as const,
-      metadata: {
-        sourceRequestId: `cmp-cli-request-${turnId}`,
-        sourceSnapshotId: snapshotId,
-        cliLogger: state.logger,
-        cliTurnIndex: state.turnIndex,
-      },
-    },
-    receipt: {
-      dispatchId: `cmp-cli-dispatch-${turnId}`,
-      packageId,
-      sourceAgentId: agentId,
-      targetAgentId: "core-live-cli",
-      status: "delivered" as const,
-      deliveredAt: timestamp,
-    },
-    createdAt: timestamp,
-    loopId: `cmp-cli-dispatcher-${turnId}`,
-  };
-
-  await state.logger.log("stage_start", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/icma",
-  });
-  const icmaResult = await withStopwatch(
-    `[turn ${state.turnIndex}] CMP/icma elapsed`,
-    () => state.runtime.captureCmpIcmaWithLlm(icmaInput),
-    { quiet: state.uiMode === "direct" },
-  );
-  await state.logger.log("stage_end", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/icma",
-    status: "success",
-    intent: icmaResult.loop.structuredOutput.intent,
-  });
-  await state.logger.log("stage_start", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/iterator",
-  });
-  const iteratorResult = await withStopwatch(
-    `[turn ${state.turnIndex}] CMP/iterator elapsed`,
-    () => state.runtime.advanceCmpIteratorWithLlm(iteratorInput),
-    { quiet: state.uiMode === "direct" },
-  );
-  await state.logger.log("stage_end", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/iterator",
-    status: "success",
-    reviewRef: iteratorResult.reviewRef,
-  });
-  await state.logger.log("stage_start", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/checker",
-  });
-  const checkerResult = await withStopwatch(
-    `[turn ${state.turnIndex}] CMP/checker elapsed`,
-    () => state.runtime.evaluateCmpCheckerWithLlm(checkerInput),
-    { quiet: state.uiMode === "direct" },
-  );
-  await state.logger.log("stage_end", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/checker",
-    status: "success",
-    shortReason: checkerResult.checkerRecord.reviewOutput.shortReason,
-  });
-  await state.logger.log("stage_start", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/dbagent",
-  });
-  const dbagentResult = await withStopwatch(
-    `[turn ${state.turnIndex}] CMP/dbagent elapsed`,
-    () => state.runtime.materializeCmpDbAgentWithLlm(dbagentInput),
-    { quiet: state.uiMode === "direct" },
-  );
-  await state.logger.log("stage_end", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/dbagent",
-    status: "success",
-    packageTopology: dbagentResult.loop.materializationOutput.packageTopology,
-  });
-  await state.logger.log("stage_start", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/dispatcher",
-  });
-  const dispatcherResult = await withStopwatch(
-    `[turn ${state.turnIndex}] CMP/dispatcher elapsed`,
-    () => state.runtime.dispatchCmpDispatcherWithLlm(dispatcherInput),
-    { quiet: state.uiMode === "direct" },
-  );
-  await state.logger.log("stage_end", {
-    turnIndex: state.turnIndex,
-    stage: "cmp/dispatcher",
-    status: "success",
-    routeRationale: dispatcherResult.loop.bundle.governance.routeRationale ?? null,
-    scopePolicy: dispatcherResult.loop.bundle.governance.scopePolicy ?? null,
-  });
-
-  const summary = state.runtime.getCmpFiveAgentRuntimeSummary(agentId);
-
-  return {
-    agentId,
-    packageId,
-    packageRef,
-    packageKind: contextPackage.packageKind,
-    packageMode: dispatcherResult.loop.packageMode,
-    fidelityLabel: contextPackage.fidelityLabel,
-    projectionId,
-    snapshotId,
-    summary,
-    intent: icmaResult.loop.structuredOutput.intent,
-    operatorGuide: icmaResult.loop.structuredOutput.guide.operatorGuide,
-    childGuide: icmaResult.loop.structuredOutput.guide.childGuide,
-    checkerReason: checkerResult.checkerRecord.reviewOutput.shortReason,
-    routeRationale: dispatcherResult.loop.bundle.governance.routeRationale ?? "missing",
-    scopePolicy: dispatcherResult.loop.bundle.governance.scopePolicy ?? "missing",
-    packageStrategy: dbagentResult.loop.materializationOutput.primaryPackageStrategy ?? "missing",
-    timelineStrategy: dbagentResult.loop.materializationOutput.timelinePackageStrategy ?? "missing",
-  };
-}
 
 function createCmpViewerRuntimePort(state: LiveCliState): RaxCmpPort {
   return {
@@ -4566,7 +4309,15 @@ async function handleUserTurn(
     state.pendingCmpSync = undefined;
   } else {
     state.pendingCmpSync = (async () => {
-      const cmp = await withStopwatch(backgroundCmpLabel, () => runCmpTurn(state, userMessage), {
+      const cmp = await withStopwatch(backgroundCmpLabel, () => runCmpSidecarTurn({
+        runtime: state.runtime,
+        sessionId: state.sessionId,
+        transcript: state.transcript,
+        turnIndex: state.turnIndex,
+        uiMode: state.uiMode,
+        logger: state.logger,
+        userMessage,
+      }), {
         quiet: state.uiMode === "direct",
       });
       state.latestCmp = cmp;
@@ -4575,8 +4326,8 @@ async function handleUserTurn(
         : state.lastTurn;
       await emitViewerPanelSnapshots(state);
       console.log(state.uiMode === "direct"
-        ? `  ↳ CMP sidecar 已同步 (${formatElapsed(Date.now() - cmpStartedAt)})`
-        : `[turn ${state.turnIndex}] CMP sidecar synced.`);
+        ? `  ↳ CMP sidecar ${cmp.syncStatus === "failed" ? "失败" : "已同步"} (${formatElapsed(Date.now() - cmpStartedAt)})`
+        : `[turn ${state.turnIndex}] CMP sidecar ${cmp.syncStatus}.`);
     })();
   }
 
@@ -4618,6 +4369,7 @@ async function handleUserTurn(
       : trimStructuredValue(core, 5_000);
   state.lastTurn = {
     cmp: state.latestCmp ?? previousCmp ?? {
+      syncStatus: options.enableCmpSync === false ? "skipped" : "warming",
       agentId: options.enableCmpSync === false ? "cmp-sidecar-skipped" : "cmp-sidecar-pending",
       packageId: options.enableCmpSync === false ? "skipped" : "pending",
       packageRef: options.enableCmpSync === false ? "skipped" : "pending",
@@ -4637,6 +4389,7 @@ async function handleUserTurn(
       scopePolicy: options.enableCmpSync === false ? "skipped" : "pending",
       packageStrategy: options.enableCmpSync === false ? "skipped" : "pending",
       timelineStrategy: options.enableCmpSync === false ? "skipped" : "pending",
+      failureReason: undefined,
     },
     core,
   };

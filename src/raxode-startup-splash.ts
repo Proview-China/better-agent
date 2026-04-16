@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import stringWidth from "string-width";
 import type { RaxcodeAnimationMode } from "./raxcode-config.js";
+import { buildRaxodeTerminalTitle, writeTerminalTitle } from "./terminal-title.js";
 
 const require = createRequire(import.meta.url);
 const nodePty = require("node-pty") as typeof import("node-pty");
@@ -23,16 +24,19 @@ interface PersistedExitSummaryPayload {
   lines?: string[];
 }
 
+const EXIT_SUMMARY_WAIT_TIMEOUT_MS = 450;
+const EXIT_SUMMARY_WAIT_POLL_MS = 25;
+
 const INPUT_PROMPT_PREFIX = ">> ";
 const INPUT_PROMPT_TEXT = "Hello, AI World!";
 const INPUT_PROMPT_WIDTH = stringWidth(INPUT_PROMPT_TEXT) + 1;
 const INPUT_TYPING_STEP_MS = 52;
 const INPUT_HOLD_MS = 500;
-const PRAXIS_HOLD_MS = 500;
-const PRAXIS_REVEAL_COLUMNS_PER_FRAME = 9;
-const PRAXIS_REVEAL_STEP_MS = 18;
-const PRAXIS_ERASE_COLUMNS_PER_FRAME = 10;
-const PRAXIS_ERASE_STEP_MS = 18;
+const PRAXIS_HOLD_MS = 120;
+const PRAXIS_REVEAL_COLUMNS_PER_FRAME = 14;
+const PRAXIS_REVEAL_STEP_MS = 14;
+const PRAXIS_ERASE_COLUMNS_PER_FRAME = 15;
+const PRAXIS_ERASE_STEP_MS = 14;
 const PTY_READY_GRACE_MS = 6_000;
 
 const PRAXIS_ART_LINES = [
@@ -145,6 +149,44 @@ async function readPersistedExitSummaryLines(summaryPath: string): Promise<strin
   }
 }
 
+async function waitForPersistedExitSummaryLines(
+  summaryPath: string,
+  options: {
+    timeoutMs?: number;
+    pollMs?: number;
+  } = {},
+): Promise<string[] | null> {
+  const timeoutMs = options.timeoutMs ?? EXIT_SUMMARY_WAIT_TIMEOUT_MS;
+  const pollMs = options.pollMs ?? EXIT_SUMMARY_WAIT_POLL_MS;
+  const deadline = Date.now() + Math.max(0, timeoutMs);
+  while (Date.now() <= deadline) {
+    const lines = await readPersistedExitSummaryLines(summaryPath);
+    if (lines && lines.length > 0) {
+      return lines;
+    }
+    if (Date.now() >= deadline) {
+      break;
+    }
+    await delay(pollMs);
+  }
+  return null;
+}
+
+function buildFallbackExitSummaryLines(sessionId?: string): string[] {
+  const command = sessionId ? `raxode resume ${sessionId}` : "raxode resume";
+  const body = [
+    "RAXODE EXIT SUMMARY UNAVAILABLE",
+    "Session finished, but the summary payload could not be recovered.",
+    `Resume to RUN:  ${command}`,
+  ];
+  const width = body.reduce((max, line) => Math.max(max, countVisibleColumns(line)), 0);
+  return [
+    `┌${"─".repeat(width + 2)}┐`,
+    ...body.map((line) => `│ ${line}${" ".repeat(width - countVisibleColumns(line))} │`),
+    `└${"─".repeat(width + 2)}┘`,
+  ];
+}
+
 function writePersistedExitSummaryToTerminal(lines: string[]): void {
   if (lines.length === 0) {
     return;
@@ -198,6 +240,10 @@ export async function runRaxodeTuiWithStartupSplash(
   const exitSummaryPath = join(exitSummaryDir, "summary.json");
   const childReady = createDeferred<void>();
   const childFinished = createDeferred<number>();
+  const childReadyGate = Promise.race([
+    childReady.promise,
+    delay(PTY_READY_GRACE_MS),
+  ]);
   const pty = nodePty.spawn(launchPlan.command, launchPlan.args, {
     name: process.env.TERM ?? "xterm-256color",
     cols: process.stdout.columns ?? 80,
@@ -247,12 +293,14 @@ export async function runRaxodeTuiWithStartupSplash(
 
   const finalizeChildSession = async (): Promise<number> => {
     const exitCode = await childFinished.promise;
-    const summaryLines = await readPersistedExitSummaryLines(exitSummaryPath);
+    const summaryLines = await waitForPersistedExitSummaryLines(exitSummaryPath);
     cleanup();
     if (summaryLines && summaryLines.length > 0) {
       writePersistedExitSummaryToTerminal(summaryLines);
-    } else if (!handedOff && bufferedOutput.length > 0) {
-      process.stdout.write(bufferedOutput);
+    } else {
+      writePersistedExitSummaryToTerminal(
+        buildFallbackExitSummaryLines(launchPlan.env.PRAXIS_DIRECT_SESSION_ID),
+      );
     }
     return exitCode;
   };
@@ -307,6 +355,7 @@ export async function runRaxodeTuiWithStartupSplash(
   });
 
   enterAltScreenOnce();
+  writeTerminalTitle(buildRaxodeTerminalTitle());
   process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.on("data", onInput);
@@ -348,6 +397,10 @@ export async function runRaxodeTuiWithStartupSplash(
 
       await delay(PRAXIS_HOLD_MS);
 
+      if (!readyResolved) {
+        await childReadyGate;
+      }
+
       for (let lineIndex = 0; lineIndex < PRAXIS_ART_LINES.length; lineIndex += 1) {
         const lineWidth = countVisibleColumns(PRAXIS_ART_LINES[lineIndex] ?? "");
         for (let erasedColumns = PRAXIS_ERASE_COLUMNS_PER_FRAME; erasedColumns <= lineWidth; erasedColumns += PRAXIS_ERASE_COLUMNS_PER_FRAME) {
@@ -361,11 +414,6 @@ export async function runRaxodeTuiWithStartupSplash(
     if (childExited) {
       return await finalizeChildSession();
     }
-
-    await Promise.race([
-      childReady.promise,
-      delay(PTY_READY_GRACE_MS),
-    ]);
 
     handedOff = true;
     process.stdout.write("\u001B[2J\u001B[H");
@@ -394,4 +442,7 @@ export const raxodeStartupSplashTestUtils = {
   buildPraxisEraseFrame,
   revealTextByColumns,
   eraseTextByColumns,
+  buildFallbackExitSummaryLines,
+  readPersistedExitSummaryLines,
+  waitForPersistedExitSummaryLines,
 };

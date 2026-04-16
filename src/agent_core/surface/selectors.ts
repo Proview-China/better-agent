@@ -70,6 +70,22 @@ export function selectActiveTasks(state: SurfaceState): SurfaceTask[] {
     });
 }
 
+export function selectInterruptibleTasks(state: SurfaceState): SurfaceTask[] {
+  return state.tasks
+    .filter((task) =>
+      task.status === "queued"
+      || task.status === "running"
+      || task.status === "waiting")
+    .sort((left, right) => {
+      const foregroundDelta = Number(right.foregroundable === true) - Number(left.foregroundable === true);
+      if (foregroundDelta !== 0) {
+        return foregroundDelta;
+      }
+      const updatedDelta = right.updatedAt.localeCompare(left.updatedAt);
+      return updatedDelta !== 0 ? updatedDelta : left.id.localeCompare(right.id);
+    });
+}
+
 export function selectForegroundTasks(state: SurfaceState): SurfaceTask[] {
   return selectActiveTasks(state).filter((task) => task.foregroundable !== false);
 }

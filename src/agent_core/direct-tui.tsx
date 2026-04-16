@@ -1,6 +1,6 @@
 import { execFile as execFileCallback, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, statSync, writeSync } from "node:fs";
-import { mkdir, open, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, rename, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, resolve } from "node:path";
 import { Box, render, Text, useInput, type Instance as InkInstance } from "ink";
@@ -22,9 +22,15 @@ import {
 } from "../raxcode-config.js";
 import { getOpenAIAuthStatus } from "../raxcode-openai-auth.js";
 import { resolveAppRoot } from "../runtime-paths.js";
+import {
+  buildRaxodeTerminalTitle,
+  RAXODE_TERMINAL_TITLE_MOON_PHASES,
+  writeTerminalTitle,
+} from "../terminal-title.js";
 import { applySurfaceEvent, createInitialSurfaceState } from "./surface/reducer.js";
 import {
   selectActiveTasks,
+  selectInterruptibleTasks,
   selectTranscriptMessages,
 } from "./surface/selectors.js";
 import {
@@ -35,6 +41,7 @@ import {
   createSurfaceTurn,
   type SurfaceAppState,
   type SurfaceMessage,
+  type SurfaceTask,
 } from "./surface/types.js";
 import {
   applyTuiTextInputKey,
@@ -142,6 +149,7 @@ import {
   type DirectTuiRewindModeOption,
   type DirectTuiRewindTurnOption,
 } from "./tui-input/rewind-state.js";
+import { resolveNextOptimisticTurnIndex } from "./tui-input/optimistic-turn-index.js";
 import {
   formatHumanGateDecisionEnvelope,
 } from "./live-agent-chat/human-gate-envelope.js";
@@ -192,9 +200,10 @@ import {
   resolveStateRoot,
 } from "../runtime-paths.js";
 import {
-  restoreWorkspaceGitCheckpoint,
+  type WorkspaceGitCheckpointRestoreResult,
   writeWorkspaceGitCheckpoint,
 } from "./tui-input/workspace-git-checkpoint.js";
+import { restoreWorkspaceGitCheckpointInSubprocess } from "./tui-input/workspace-git-checkpoint-subprocess.js";
 import {
   readWorkspaceRaxodeGitReadback,
   upsertWorkspaceRaxodeAgent,
@@ -743,6 +752,9 @@ const STATUS_CONTEXT_BAR_WIDTH = 20;
 const STARTUP_WORD = "RAXODE";
 const STARTUP_ANIMATION_INTERVAL_MS = 200;
 const ANIMATION_TICK_MS = 1000 / 60;
+const TERMINAL_TITLE_SPINNER_INTERVAL_MS = 160;
+const REWIND_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
+const REWIND_SPINNER_FRAME_STEP = 3;
 const COMPOSER_PLACEHOLDER =
   "Hold Shift to select, Ctrl+V to paste images, @ to choose files, / to choose commands";
 const INIT_COMPOSER_PLACEHOLDER =
@@ -777,6 +789,9 @@ const CMP_CONTEXT_ANIMATION_COLORS = [
   "magentaBright",
 ] as const;
 const CMP_CONTEXT_SPINNER_FRAMES = ["◐", "◓", "◑", "◒"] as const;
+const FOOTER_CONTEXT_BREATH_FRAMES = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"] as const;
+const FOOTER_CONTEXT_BREATH_COLORS = ["gray", "cyan", "cyanBright", "greenBright", "cyanBright"] as const;
+const FOOTER_CONTEXT_BREATH_INTERVAL_MS = 150;
 const RUN_STATUS_DOT_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const SYNC_OUTPUT_BEGIN = "\u001B[?2026h";
 const SYNC_OUTPUT_END = "\u001B[?2026l";
@@ -829,6 +844,14 @@ const EXIT_SUMMARY_REVEAL_WIDTH_PER_STEP = 6;
 const EXIT_SUMMARY_TOTAL_STEPS = Math.ceil(
   Math.max(...EXIT_SUMMARY_ART_LINES.map((line) => stringWidth(line))) / EXIT_SUMMARY_REVEAL_WIDTH_PER_STEP,
 );
+
+function isExitBlockingTask(task: Pick<SurfaceTask, "status">): boolean {
+  return task.status === "queued" || task.status === "running";
+}
+
+function hasExitBlockingTasks(tasks: readonly Pick<SurfaceTask, "status">[]): boolean {
+  return tasks.some((task) => isExitBlockingTask(task));
+}
 const EXIT_SUMMARY_DISPLAY_MS = EXIT_SUMMARY_TOTAL_STEPS * EXIT_SUMMARY_FRAME_MS + EXIT_SUMMARY_FRAME_MS;
 
 type ExitPanelAction =
@@ -850,19 +873,21 @@ let directTuiInkInstance: InkInstance | null = null;
 let persistedDirectTuiExitInFlight = false;
 const DIRECT_TUI_EXIT_SUMMARY_FILE = process.env.PRAXIS_EXIT_SUMMARY_FILE;
 
-async function persistDirectTuiExitSummaryFile(lines: string[]): Promise<boolean> {
+async function persistDirectTuiExitSummaryFile(lines: string[]): Promise<"persisted" | "missing_path" | "write_failed"> {
   if (!DIRECT_TUI_EXIT_SUMMARY_FILE) {
-    return false;
+    return "missing_path";
   }
   try {
+    const tempPath = `${DIRECT_TUI_EXIT_SUMMARY_FILE}.tmp`;
     await writeFile(
-      DIRECT_TUI_EXIT_SUMMARY_FILE,
+      tempPath,
       `${JSON.stringify({ lines })}\n`,
       "utf8",
     );
-    return true;
+    await rename(tempPath, DIRECT_TUI_EXIT_SUMMARY_FILE);
+    return "persisted";
   } catch {
-    return false;
+    return "write_failed";
   }
 }
 
@@ -897,8 +922,8 @@ async function persistDirectTuiExitSummaryAndExit(input: {
     }
   }
   process.stdin.pause();
-  const persistedToWrapper = await persistDirectTuiExitSummaryFile(input.lines);
-  if (persistedToWrapper) {
+  const persistResult = await persistDirectTuiExitSummaryFile(input.lines);
+  if (persistResult !== "missing_path") {
     process.exit(input.exitCode);
   }
   const lineBreak = process.stdout.isTTY ? "\r\n" : "\n";
@@ -1397,6 +1422,12 @@ interface PendingTranscriptRewind {
   transcriptCutMessageId?: string;
   workspaceCheckpointRef?: string;
   userText: string;
+}
+
+interface RewindInFlightState {
+  mode: DirectTuiRewindMode;
+  startedAt: string;
+  phase: "pending_backend_rewind" | "pending_workspace_restore" | "finalizing";
 }
 
 interface TerminalOverlaySegment {
@@ -2757,12 +2788,6 @@ function buildSlashPanelView(
         showFields: false,
         showHints: true,
         bodyLines: [
-          ...(context.activeTaskCount > 0
-            ? [{
-                text: "    Current tasks are still running. How would you like to proceed?",
-                tone: "warning" as const,
-              }]
-            : []),
           {
             text: "     Close this panel for now and wait a moment.",
             fieldKey: "exit:close",
@@ -4329,6 +4354,24 @@ function colorForRenderLine(kind: RenderLine["kind"]): string | undefined {
 
 function createTurnId(turnIndex?: number): string {
   return `turn-${turnIndex ?? 0}`;
+}
+
+function buildRewindComposerPrefix(animationTick: number): string {
+  const frameIndex = (Math.floor(animationTick / REWIND_SPINNER_FRAME_STEP) + 1) % REWIND_SPINNER_FRAMES.length;
+  return `${REWIND_SPINNER_FRAMES[frameIndex] ?? REWIND_SPINNER_FRAMES[0]} rewinding... `;
+}
+
+function isInterruptibleForegroundTask(task: {
+  turnId?: string;
+  foregroundable?: boolean;
+}): boolean {
+  if (task.foregroundable === false) {
+    return false;
+  }
+  if (typeof task.turnId !== "string" || task.turnId.length === 0) {
+    return false;
+  }
+  return parseDirectTuiTurnIndex(task.turnId) > 0;
 }
 
 function shouldConsumeRecordAfterTurnCompletion(record: LiveLogRecord): boolean {
@@ -6184,6 +6227,9 @@ const ComposerPane = memo(function ComposerPane({
   composerValue,
   composerLines,
   composerPlaceholder,
+  composerPrefix,
+  composerPrefixColor,
+  composerInputLocked,
   workspaceLabel,
   contextBar,
   contextPercent,
@@ -6192,7 +6238,6 @@ const ComposerPane = memo(function ComposerPane({
   cmpStatusLabel,
   cmpContextActive,
   cmpContextColor,
-  cmpSpinnerFrame,
 }: {
   showSlashMenu: boolean;
   slashPanel: DirectSlashPanelView | null;
@@ -6204,6 +6249,9 @@ const ComposerPane = memo(function ComposerPane({
   composerValue: string;
   composerLines: string[];
   composerPlaceholder: string;
+  composerPrefix: string;
+  composerPrefixColor?: string;
+  composerInputLocked: boolean;
   workspaceLabel: string;
   contextBar: string;
   contextPercent: string;
@@ -6212,12 +6260,22 @@ const ComposerPane = memo(function ComposerPane({
   cmpStatusLabel: string;
   cmpContextActive: boolean;
   cmpContextColor?: string;
-  cmpSpinnerFrame: string;
 }): JSX.Element {
   const maxLabelWidth = commandPaletteItems.reduce((max, item) => Math.max(max, item.label.length), 0);
   const panelLabelWidth = slashPanel
     ? slashPanel.fields.reduce((max, field) => Math.max(max, field.label.length), 0)
     : 0;
+  const [contextBreathFrameIndex, setContextBreathFrameIndex] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setContextBreathFrameIndex((previous) => (previous + 1) % FOOTER_CONTEXT_BREATH_FRAMES.length);
+    }, FOOTER_CONTEXT_BREATH_INTERVAL_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+  const contextBreathFrame = FOOTER_CONTEXT_BREATH_FRAMES[contextBreathFrameIndex] ?? FOOTER_CONTEXT_BREATH_FRAMES[0];
+  const contextBreathColor = FOOTER_CONTEXT_BREATH_COLORS[contextBreathFrameIndex] ?? TUI_THEME.mint;
 
   return (
     <Box marginTop={1} flexDirection="column">
@@ -6407,12 +6465,15 @@ const ComposerPane = memo(function ComposerPane({
       <Text color={TUI_THEME.line}>{"─".repeat(lineWidth)}</Text>
       {composerLines.map((line, index) => (
         <Text key={`composer-line-${index}`}>
-          <Text color={TUI_THEME.mint}>{index === 0 ? ">> " : "   "}</Text>
+          <Text color={composerPrefixColor ?? TUI_THEME.mint}>{index === 0 ? composerPrefix : "   "}</Text>
           {composerValue.length === 0 && index === 0 ? (
             <Text color={TUI_THEME.textMuted}>{composerPlaceholder}</Text>
           ) : (
             <>
-              {renderComposerLineFragments(line.length > 0 ? line : " ", TUI_THEME.text).map((fragment, fragmentIndex) => (
+              {renderComposerLineFragments(
+                line.length > 0 ? line : (composerInputLocked && index === 0 ? "" : " "),
+                TUI_THEME.text,
+              ).map((fragment, fragmentIndex) => (
                 <Text key={`composer-fragment-${index}-${fragmentIndex}`} color={fragment.color}>
                   {fragment.text}
                 </Text>
@@ -6426,7 +6487,7 @@ const ComposerPane = memo(function ComposerPane({
         <Text color={TUI_THEME.textMuted}>WorkSpace: </Text>
         <Text color={TUI_THEME.text}>{workspaceLabel}</Text>
         <Text color={TUI_THEME.text}>    </Text>
-        <Text color={TUI_THEME.text}>{cmpContextActive ? `${cmpSpinnerFrame} ` : "  "}</Text>
+        <Text color={cmpContextActive ? contextBreathColor : TUI_THEME.text}>{cmpContextActive ? `${contextBreathFrame} ` : "  "}</Text>
         <Text color={cmpContextColor}>Context </Text>
         <Text color={TUI_THEME.text}>{contextBar} </Text>
         <Text color={TUI_THEME.text}>{contextPercent} </Text>
@@ -6525,6 +6586,7 @@ function PraxisDirectTuiApp(): JSX.Element {
   const [pendingExitAction, setPendingExitAction] = useState<ExitPanelAction | null>(null);
   const [exitSummaryDisplay, setExitSummaryDisplay] = useState<ExitSummaryDisplayState | null>(null);
   const [rewindOverlayState, setRewindOverlayState] = useState<RewindOverlayState | null>(null);
+  const [rewindInFlight, setRewindInFlight] = useState<RewindInFlightState | null>(null);
   const [conversationActivated, setConversationActivated] = useState(initialBootState.conversationActivated);
   const [terminalSize, setTerminalSize] = useState(() => ({
     rows: process.stdout.rows ?? 24,
@@ -6547,6 +6609,7 @@ function PraxisDirectTuiApp(): JSX.Element {
   const interruptedTurnIdsRef = useRef(new Set<string>());
   const completedTurnIdsRef = useRef(new Set<string>());
   const activeTasksRef = useRef<ReturnType<typeof selectActiveTasks>>([]);
+  const interruptibleTasksRef = useRef<ReturnType<typeof selectInterruptibleTasks>>([]);
   const activeTurnIdsRef = useRef(new Set<string>());
   const toolFamilyStateRef = useRef(new Map<string, {
     hadFailure: boolean;
@@ -6575,10 +6638,16 @@ function PraxisDirectTuiApp(): JSX.Element {
   const pendingInitCompletedPanelRef = useRef(false);
   const sessionUsageLedgerRef = useRef<DirectTuiSessionUsageEntry[]>(initialBootState.usageLedger);
   const exitSummaryPersistRequestedRef = useRef(false);
+  const exitSummaryFilePersistedRef = useRef<string | null>(null);
+  const surfaceStateRef = useRef(surfaceState);
 
   const dispatchSurfaceEvent = (event: Record<string, unknown>) => {
     setSurfaceState((previous) => applySurfaceEvent(previous, event as never));
   };
+
+  useEffect(() => {
+    surfaceStateRef.current = surfaceState;
+  }, [surfaceState]);
 
   const appendInlineError = (text: string) => {
     const at = new Date().toISOString();
@@ -6608,6 +6677,28 @@ function PraxisDirectTuiApp(): JSX.Element {
         createdAt: at,
       }),
     });
+  };
+
+  const beginRewindInFlight = (
+    mode: DirectTuiRewindMode,
+    phase: RewindInFlightState["phase"],
+  ) => {
+    setRewindInFlight({
+      mode,
+      startedAt: new Date().toISOString(),
+      phase,
+    });
+  };
+
+  const setRewindInFlightPhase = (phase: RewindInFlightState["phase"]) => {
+    setRewindInFlight((current) => current ? {
+      ...current,
+      phase,
+    } : current);
+  };
+
+  const finishRewindInFlight = () => {
+    setRewindInFlight(null);
   };
 
   const recordSessionUsage = (entry: DirectTuiSessionUsageEntry) => {
@@ -6642,24 +6733,38 @@ function PraxisDirectTuiApp(): JSX.Element {
     });
   };
 
+  const requestExitSummaryFilePersistence = (lines: string[]) => {
+    if (!DIRECT_TUI_EXIT_SUMMARY_FILE) {
+      return;
+    }
+    const serializedLines = JSON.stringify(lines);
+    if (exitSummaryFilePersistedRef.current === serializedLines) {
+      return;
+    }
+    exitSummaryFilePersistedRef.current = serializedLines;
+    void persistDirectTuiExitSummaryFile(lines);
+  };
+
   const beginExitSummarySequence = (generatedAt = new Date().toISOString()) => {
     closeSlashPanel();
     setPendingExitAction(null);
     const animated = directTuiAnimationMode !== "off";
     const startedAtMs = Date.now();
     const summary = buildCurrentExitSummary(generatedAt);
+    const finalLines = buildExitSummaryPanelLines(
+      summary,
+      EXIT_SUMMARY_TOTAL_STEPS,
+      terminalSize.columns,
+    );
     exitSummaryPersistRequestedRef.current = false;
+    requestExitSummaryFilePersistence(finalLines);
     setExitSummaryDisplay({
       summary,
       animationStep: animated ? 0 : EXIT_SUMMARY_TOTAL_STEPS,
       animated,
       startedAtMs,
       exitAtMs: startedAtMs + EXIT_SUMMARY_DISPLAY_MS,
-      finalLines: buildExitSummaryPanelLines(
-        summary,
-        EXIT_SUMMARY_TOTAL_STEPS,
-        terminalSize.columns,
-      ),
+      finalLines,
     });
   };
 
@@ -7581,6 +7686,7 @@ function PraxisDirectTuiApp(): JSX.Element {
     setRunIndicator(null);
     setLogPath(null);
     setRewindOverlayState(null);
+    setRewindInFlight(null);
   };
 
   const updateWorkspaceSurface = (nextCwd: string) => {
@@ -7645,16 +7751,23 @@ function PraxisDirectTuiApp(): JSX.Element {
     () => selectActiveTasks(surfaceState),
     [surfaceState],
   );
+  const interruptibleTasks = useMemo(
+    () => selectInterruptibleTasks(surfaceState).filter((task) => isInterruptibleForegroundTask(task)),
+    [surfaceState],
+  );
   const activeCmpTask = useMemo(
     () => activeTasks.find((task) => task.kind === "cmp_sync"),
     [activeTasks],
   );
   const activeCmpStage = useMemo(() => {
-    const candidate = activeCmpTask?.title ?? activeCmpTask?.summary;
+    const stageFromMetadata = activeCmpTask?.metadata?.stage;
+    const candidate = typeof stageFromMetadata === "string" && stageFromMetadata.trim().length > 0
+      ? stageFromMetadata
+      : (activeCmpTask?.title ?? activeCmpTask?.summary);
     return typeof candidate === "string" && candidate.startsWith("cmp/")
       ? candidate
       : undefined;
-  }, [activeCmpTask?.summary, activeCmpTask?.title]);
+  }, [activeCmpTask?.metadata, activeCmpTask?.summary, activeCmpTask?.title]);
   const transcriptMessages = useMemo(
     () => selectTranscriptMessages(surfaceState),
     [surfaceState],
@@ -7710,16 +7823,34 @@ function PraxisDirectTuiApp(): JSX.Element {
   );
   const activeTurnIds = useMemo(
     () => new Set(
-      activeTasks
+      interruptibleTasks
         .map((task) => task.turnId)
         .filter((turnId): turnId is string => typeof turnId === "string" && turnId.length > 0),
     ),
-    [activeTasks],
+    [interruptibleTasks],
   );
+  const terminalTitleBusy = Boolean(runIndicator) || interruptibleTasks.length > 0;
+  useEffect(() => {
+    writeTerminalTitle(buildRaxodeTerminalTitle());
+    if (!terminalTitleBusy) {
+      return;
+    }
+    let frameIndex = 0;
+    writeTerminalTitle(buildRaxodeTerminalTitle(frameIndex));
+    const timer = setInterval(() => {
+      frameIndex = (frameIndex + 1) % RAXODE_TERMINAL_TITLE_MOON_PHASES.length;
+      writeTerminalTitle(buildRaxodeTerminalTitle(frameIndex));
+    }, TERMINAL_TITLE_SPINNER_INTERVAL_MS);
+    return () => {
+      clearInterval(timer);
+      writeTerminalTitle(buildRaxodeTerminalTitle());
+    };
+  }, [terminalTitleBusy]);
   useEffect(() => {
     activeTasksRef.current = activeTasks;
+    interruptibleTasksRef.current = interruptibleTasks;
     activeTurnIdsRef.current = activeTurnIds;
-  }, [activeTasks, activeTurnIds]);
+  }, [activeTasks, activeTurnIds, interruptibleTasks]);
   useEffect(() => {
     if (!rewindOverlayState) {
       rewindPrimedAtRef.current = 0;
@@ -7778,28 +7909,26 @@ function PraxisDirectTuiApp(): JSX.Element {
       DirectTuiRewindTurnOption,
       "agentId" | "turnId" | "turnIndex" | "messageId" | "createdAt" | "userText" | "workspaceCheckpointRef"
     >,
-  ): Promise<void> => {
+  ): Promise<WorkspaceGitCheckpointRestoreResult> => {
     if (!option.workspaceCheckpointRef) {
       throw new Error("No workspace checkpoint is available for the selected turn.");
     }
-    const restored = await restoreWorkspaceGitCheckpoint({
+    return await restoreWorkspaceGitCheckpointInSubprocess({
+      appRoot,
       sessionId: sessionIdRef.current,
       workspaceRoot: currentCwd,
       checkpointRef: option.workspaceCheckpointRef,
       agentId: option.agentId,
     });
-    appendInlineStatus(
-      `Workspace restored to turn ${option.turnId} (${restored.restoredFileCount} files, removed ${restored.removedFileCount}).`,
-      "notice",
-    );
   };
 
-  const applyConfirmedTranscriptRewind = async (
+  const finalizeTranscriptRewind = (
     pending: PendingTranscriptRewind,
     at: string,
-  ): Promise<void> => {
+  ): void => {
+    setRewindInFlightPhase("finalizing");
     const rewoundSurfaceState = rewindSurfaceStateToTurn(
-      surfaceState,
+      surfaceStateRef.current,
       pending.selectedTurnId,
       at,
       pending.transcriptCutMessageId,
@@ -7831,27 +7960,7 @@ function PraxisDirectTuiApp(): JSX.Element {
     setComposerPastedContents([]);
     setComposerFileReferences([]);
     setScrollOffset(0);
-    appendInlineStatus(`Conversation rewound to before ${pending.selectedTurnId}.`, "notice");
-    if (
-      pending.mode === "rewind_turn_and_workspace"
-      && pending.workspaceCheckpointRef
-    ) {
-      try {
-        await restoreWorkspaceFromCheckpoint({
-          agentId: pending.agentId,
-          turnId: pending.selectedTurnId,
-          turnIndex: pending.selectedTurnIndex,
-          messageId: `user:${pending.selectedTurnId}`,
-          createdAt: at,
-          userText: pending.userText,
-          workspaceCheckpointRef: pending.workspaceCheckpointRef,
-        });
-      } catch (error) {
-        appendInlineError(
-          `Conversation rewound, but workspace restore failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }
+    finishRewindInFlight();
   };
 
   const requestTranscriptRewind = (
@@ -7874,9 +7983,16 @@ function PraxisDirectTuiApp(): JSX.Element {
       workspaceCheckpointRef: option.workspaceCheckpointRef,
       userText: option.userText,
     };
-    child.stdin.write(`/rewind ${rewindRequestTurnIndex}\u0000`);
+    beginRewindInFlight(mode, "pending_backend_rewind");
+    try {
+      child.stdin.write(`/rewind ${rewindRequestTurnIndex}\u0000`);
+    } catch (error) {
+      pendingTranscriptRewindRef.current = null;
+      finishRewindInFlight();
+      appendInlineError(`Failed to request rewind: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
     closeRewindOverlay();
-    appendInlineStatus(`Rewinding conversation to before ${option.turnId}...`, "notice");
   };
 
   const persistPreTurnCheckpoint = async (params: {
@@ -8121,6 +8237,9 @@ function PraxisDirectTuiApp(): JSX.Element {
   const runStatusAnimationFrame = runIndicator
     ? Math.floor(animationTick / 8)
     : 0;
+  const rewindAnimationFrame = rewindInFlight
+    ? Math.floor(animationTick / REWIND_SPINNER_FRAME_STEP)
+    : 0;
   const questionPanelActive = activeSlashPanelId === "question" && questionViewerSnapshot?.status === "active";
   const questionAnimationFrame = Math.floor(animationTick / 6);
   const toolSummaryAnimationFrame = Math.floor(animationTick / 5);
@@ -8128,6 +8247,7 @@ function PraxisDirectTuiApp(): JSX.Element {
     (directTuiAnimationMode === "fresh" && startupAnimationStep < STARTUP_WORD.length + STARTUP_RAINBOW_COLORS.length)
     || cmpContextActive
     || Boolean(runIndicator)
+    || Boolean(rewindInFlight)
     || questionPanelActive;
 
   useEffect(() => {
@@ -8557,12 +8677,13 @@ function PraxisDirectTuiApp(): JSX.Element {
                     : record.targetTurnId,
                 ) ?? "",
               };
-            void applyConfirmedTranscriptRewind(rewindMode, at);
+            finalizeTranscriptRewind(rewindMode, at);
             continue;
           }
 
           if (record.event === "rewind_failed") {
             pendingTranscriptRewindRef.current = null;
+            finishRewindInFlight();
             appendInlineError(
               typeof record.error === "string"
                 ? `Rewind failed: ${record.error}`
@@ -8646,6 +8767,9 @@ function PraxisDirectTuiApp(): JSX.Element {
                 startedAt: at,
                 updatedAt: at,
                 foregroundable: true,
+                metadata: {
+                  stage: record.stage ?? undefined,
+                },
               }),
             });
             if (record.stage === "core/run") {
@@ -9641,7 +9765,10 @@ function PraxisDirectTuiApp(): JSX.Element {
   };
 
   const requestImmediateQuit = (options?: { force?: boolean }) => {
-    if (!options?.force && (runIndicator || activeTasksRef.current.length > 0)) {
+    const hasBlockingTasks = hasExitBlockingTasks(activeTasksRef.current)
+      || interruptibleTasksRef.current.length > 0
+      || activeTurnIdsRef.current.size > 0;
+    if (!options?.force && hasBlockingTasks) {
       openSlashPanel("exit");
       setSlashPanelNotice({
         tone: "warning",
@@ -9688,13 +9815,13 @@ function PraxisDirectTuiApp(): JSX.Element {
   };
 
   useEffect(() => {
-    if (!pendingExitAction || activeTasks.length > 0) {
+    if (!pendingExitAction || hasExitBlockingTasks(activeTasks)) {
       return;
     }
     requestImmediateQuit({
       force: pendingExitAction === "force_exit",
     });
-  }, [activeTasks.length, pendingExitAction]);
+  }, [activeTasks, pendingExitAction]);
 
   useEffect(() => {
     if (!exitSummaryDisplay?.animated) {
@@ -9715,6 +9842,13 @@ function PraxisDirectTuiApp(): JSX.Element {
       clearInterval(animationTimer);
     };
   }, [exitSummaryDisplay?.animated, exitSummaryDisplay?.startedAtMs]);
+
+  useEffect(() => {
+    if (!DIRECT_TUI_EXIT_SUMMARY_FILE || !exitSummaryDisplay) {
+      return;
+    }
+    requestExitSummaryFilePersistence(exitSummaryDisplay.finalLines);
+  }, [exitSummaryDisplay]);
 
   useEffect(() => {
     if (!exitSummaryDisplay) {
@@ -9977,7 +10111,7 @@ function PraxisDirectTuiApp(): JSX.Element {
       return;
     }
     if (actionKey === "exit:wait") {
-      if (activeTasksRef.current.length === 0) {
+      if (!hasExitBlockingTasks(activeTasksRef.current)) {
         requestImmediateQuit();
         return;
       }
@@ -9992,9 +10126,6 @@ function PraxisDirectTuiApp(): JSX.Element {
       setPendingExitAction(null);
       closeSlashPanel();
       setScrollOffset(0);
-      appendInlineStatus(activeTasksRef.current.length > 0
-        ? "Switched back to the running task view."
-        : "Stayed in the current session.");
       return;
     }
     if (actionKey === "agent:create") {
@@ -10275,6 +10406,9 @@ function PraxisDirectTuiApp(): JSX.Element {
   };
 
   const submitInput = async () => {
+    if (rewindInFlight) {
+      return;
+    }
     const dispatchInitRequest = (noteText: string) => {
       const child = childRef.current;
       if (!child || child.killed || backendStatus === "failed") {
@@ -10417,10 +10551,12 @@ function PraxisDirectTuiApp(): JSX.Element {
       });
       return;
     }
-    const optimisticTurnIndex = Math.max(
-      0,
-      ...surfaceState.turns.map((turn) => Number.isFinite(turn.turnIndex) ? turn.turnIndex : 0),
-    ) + pendingOutboundTurnsRef.current.length + 1;
+    const optimisticTurnIndex = resolveNextOptimisticTurnIndex({
+      existingTurns: surfaceState.turns,
+      transcriptMessages: transcriptMessagesRef.current,
+      usageLedger: sessionUsageLedgerRef.current,
+      pendingOutboundTurns: pendingOutboundTurnsRef.current,
+    });
     const optimisticTurnId = createTurnId(optimisticTurnIndex);
     const optimisticMessageId = `user:${optimisticTurnId}`;
     const queuedAt = new Date().toISOString();
@@ -10582,13 +10718,13 @@ function PraxisDirectTuiApp(): JSX.Element {
     if (!child || child.killed) {
       return false;
     }
-    if (!(runIndicator || activeTasksRef.current.length > 0 || activeTurnIdsRef.current.size > 0)) {
+    if (!(runIndicator || interruptibleTasksRef.current.length > 0 || activeTurnIdsRef.current.size > 0)) {
       return false;
     }
     interruptPendingRef.current = true;
     setRunIndicator(null);
     const at = new Date().toISOString();
-    for (const task of activeTasksRef.current) {
+    for (const task of interruptibleTasksRef.current) {
       dispatchSurfaceEvent({
         type: "task.completed",
         at,
@@ -10680,6 +10816,13 @@ function PraxisDirectTuiApp(): JSX.Element {
   };
 
   useInput((inputText, key) => {
+    if (rewindInFlight) {
+      if (key.ctrl && inputText === "c") {
+        flushPendingPasteText();
+        requestImmediateQuit({ force: true });
+      }
+      return;
+    }
     const mouseScrollDelta = parseMouseScrollDelta(inputText);
     if (mouseScrollDelta !== null) {
       if (mouseScrollDelta !== 0) {
@@ -10852,9 +10995,27 @@ function PraxisDirectTuiApp(): JSX.Element {
         }
         if (selectedMode.mode === "rewind_workspace_only") {
           closeRewindOverlay();
-          void restoreWorkspaceFromCheckpoint(selectedTurn).catch((error) => {
-            appendInlineError(`Workspace rewind failed: ${error instanceof Error ? error.message : String(error)}`);
-          });
+          beginRewindInFlight(selectedMode.mode, "pending_workspace_restore");
+          void restoreWorkspaceFromCheckpoint(selectedTurn)
+            .catch((error) => {
+              appendInlineError(`Workspace rewind failed: ${error instanceof Error ? error.message : String(error)}`);
+            })
+            .finally(() => {
+              finishRewindInFlight();
+            });
+          return;
+        }
+        if (selectedMode.mode === "rewind_turn_and_workspace") {
+          closeRewindOverlay();
+          beginRewindInFlight(selectedMode.mode, "pending_workspace_restore");
+          void restoreWorkspaceFromCheckpoint(selectedTurn)
+            .then(() => {
+              requestTranscriptRewind(selectedTurn, selectedMode.mode);
+            })
+            .catch((error) => {
+              appendInlineError(`Rewind failed: ${error instanceof Error ? error.message : String(error)}`);
+              finishRewindInFlight();
+            });
           return;
         }
         requestTranscriptRewind(selectedTurn, selectedMode.mode);
@@ -10902,7 +11063,7 @@ function PraxisDirectTuiApp(): JSX.Element {
         return;
       }
       flushPendingPasteText();
-      if (runIndicator || activeTasksRef.current.length > 0 || activeTurnIdsRef.current.size > 0) {
+      if (runIndicator || interruptibleTasksRef.current.length > 0 || activeTurnIdsRef.current.size > 0) {
         interruptActiveRun(true);
         return;
       }
@@ -11459,14 +11620,20 @@ function PraxisDirectTuiApp(): JSX.Element {
   const terminalRows = terminalSize.rows;
   const terminalColumns = terminalSize.columns;
   const transcriptLineWidth = Math.max(1, terminalColumns - 2);
-  const composerDisplayState = workspacePickerInputState
-    ? setTuiTextInputValue(
-      createTuiTextInputState(),
-      `/workspace ${workspacePickerInputState.value}`,
-      "/workspace ".length + workspacePickerInputState.cursorOffset,
-    )
-    : composerState;
+  const composerDisplayState = rewindInFlight
+    ? createTuiTextInputState()
+    : workspacePickerInputState
+      ? setTuiTextInputValue(
+        createTuiTextInputState(),
+        `/workspace ${workspacePickerInputState.value}`,
+        "/workspace ".length + workspacePickerInputState.cursorOffset,
+      )
+      : composerState;
   const composerLines = splitComposerLines(composerDisplayState.value);
+  const composerPrefix = rewindInFlight
+    ? buildRewindComposerPrefix(rewindAnimationFrame)
+    : ">> ";
+  const composerPrefixColor = rewindInFlight ? TUI_THEME.cyan : TUI_THEME.mint;
   const startupModelLabel = runtimeConfig
     ? formatModelEffortDisplayLine(
       runtimeConfig.modelPlan.core.main.model,
@@ -12062,9 +12229,6 @@ function PraxisDirectTuiApp(): JSX.Element {
       : cmpStatusDescriptor.tone === "warning"
         ? TUI_THEME.yellow
         : TUI_THEME.textMuted;
-  const cmpSpinnerFrame = cmpContextActive
-    ? CMP_CONTEXT_SPINNER_FRAMES[Math.floor(cmpContextAnimationFrame / 2) % CMP_CONTEXT_SPINNER_FRAMES.length]
-    : "";
   const composerCursor = measureComposerCursor(composerDisplayState.value, composerDisplayState.cursorOffset);
   const composerCursorRow = Math.max(
     1,
@@ -12073,14 +12237,14 @@ function PraxisDirectTuiApp(): JSX.Element {
   const composerCursorColumn = Math.max(1, 5 + composerCursor.column);
   composerCursorParking.row = composerCursorRow;
   composerCursorParking.column = composerCursorColumn;
-  composerCursorParking.active = exitSummaryDisplay === null;
+  composerCursorParking.active = exitSummaryDisplay === null && !rewindInFlight;
 
   useEffect(() => {
-    composerCursorParking.active = exitSummaryDisplay === null;
+    composerCursorParking.active = exitSummaryDisplay === null && !rewindInFlight;
     return () => {
       composerCursorParking.active = false;
     };
-  }, [exitSummaryDisplay]);
+  }, [exitSummaryDisplay, rewindInFlight]);
   terminalOverlaySnapshot = modelPicker?.open
     ? buildModelPickerOverlaySnapshot(modelPicker, terminalRows, terminalColumns)
     : null;
@@ -12117,17 +12281,19 @@ function PraxisDirectTuiApp(): JSX.Element {
           selectedSlashIndex={selectedSlashIndex}
           composerValue={composerDisplayState.value}
           composerLines={composerLines}
-          composerPlaceholder={composerPlaceholder}
-        workspaceLabel={cwdLabel}
-        contextBar={contextBar}
-        contextPercent={contextPercent}
-        contextWindowLabel={contextWindowLabel}
-        lineWidth={Math.max(1, terminalColumns - 2)}
-        cmpStatusLabel={cmpStatusDescriptor.label}
-        cmpContextActive={cmpContextActive}
-        cmpContextColor={cmpContextColor}
-        cmpSpinnerFrame={cmpSpinnerFrame}
-      />
+          composerPlaceholder={rewindInFlight ? "" : composerPlaceholder}
+          composerPrefix={composerPrefix}
+          composerPrefixColor={composerPrefixColor}
+          composerInputLocked={Boolean(rewindInFlight)}
+          workspaceLabel={cwdLabel}
+          contextBar={contextBar}
+          contextPercent={contextPercent}
+          contextWindowLabel={contextWindowLabel}
+          lineWidth={Math.max(1, terminalColumns - 2)}
+          cmpStatusLabel={cmpStatusDescriptor.label}
+          cmpContextActive={cmpContextActive}
+          cmpContextColor={cmpContextColor}
+        />
       )}
     </Box>
   );
