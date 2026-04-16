@@ -177,6 +177,54 @@ test("reviewer runtime routes review-required requests through the bootstrap rev
   );
 });
 
+test("reviewer runtime folds cmp tap aperture into the review context aperture", async () => {
+  const runtime = createReviewerRuntime({
+    llmReviewerHook: async ({ reviewContext }) => {
+      const cmpSection = reviewContext.sections.find((section) => section.sectionId === "review.cmp-worksite");
+      assert.ok(cmpSection);
+      assert.match(cmpSection.summary, /current worksite objective/u);
+      assert.equal(
+        (cmpSection.metadata?.cmpTapReviewAperture as { packageRef?: string } | undefined)?.packageRef,
+        "cmp-package:worksite-77",
+      );
+      assert.equal(
+        (reviewContext.metadata?.cmpTapReviewAperture as { requestedCapabilityKey?: string } | undefined)?.requestedCapabilityKey,
+        "mcp.playwright",
+      );
+
+      return {
+        schemaVersion: REVIEWER_WORKER_OUTPUT_SCHEMA_VERSION,
+        workerKind: "reviewer",
+        lane: REVIEWER_WORKER_BRIDGE_LANE,
+        vote: "allow",
+        reason: "cmp aperture observed",
+      };
+    },
+  });
+
+  const decision = await runtime.submit({
+    request: createRequest({
+      requestedCapabilityKey: "mcp.playwright",
+      requestedTier: "B1",
+    }),
+    profile: createProfile(),
+    inventory: {
+      availableCapabilityKeys: ["mcp.playwright"],
+    },
+    cmpTapReviewAperture: {
+      schemaVersion: "cmp-tap-review-aperture/v1",
+      sessionId: "session-1",
+      agentId: "cmp-agent-1",
+      currentObjective: "current worksite objective",
+      requestedCapabilityKey: "mcp.playwright",
+      packageRef: "cmp-package:worksite-77",
+      reviewStateSummary: "peer approval pending 1",
+    },
+  });
+
+  assert.equal(decision.reason, "cmp aperture observed");
+});
+
 test("reviewer runtime rejects bridge output that tries to return an inline grant", async () => {
   const runtime = createReviewerRuntime({
     llmReviewerHook: async ({ request }) => ({

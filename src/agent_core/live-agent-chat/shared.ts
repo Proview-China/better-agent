@@ -93,6 +93,28 @@ export interface CoreTurnArtifacts {
     status: string;
     output?: unknown;
     error?: unknown;
+    diagnostics?: {
+      capabilityKey: string;
+      requestedTier?: string;
+      requestedMode?: string;
+      effectiveMode?: string;
+      automationDepth?: string;
+      explanationStyle?: string;
+      derivedRiskLevel?: string;
+      matchedToolPolicy?: string;
+      matchedToolPolicySelector?: string;
+      forceHumanByRisk?: boolean;
+      accessStatus?: string;
+      accessAssignment?: string;
+      accessMatchedPattern?: string;
+      safetyOutcome?: string;
+      safetyReason?: string;
+      safetyMatchedPattern?: string;
+      requestedScopeKind?: string;
+      externalPathPrefixes?: string[];
+      routeDecision?: string;
+      routeReason?: string;
+    };
   };
 }
 
@@ -2462,6 +2484,65 @@ export function summarizeToolOutputForCore(
         : typeof normalized?.raw === "string"
           ? maybeExcerptText(normalized.raw, 6_000, preserveBody)
           : undefined,
+    }, null, 2);
+  }
+
+  if (capabilityKey === "repo.write") {
+    const writes = Array.isArray(normalized?.writes)
+      ? normalized.writes.slice(0, 8).map((entry) => {
+        const record = entry && typeof entry === "object"
+          ? entry as Record<string, unknown>
+          : undefined;
+        return {
+          path: typeof record?.path === "string" ? record.path : undefined,
+          mode: typeof record?.mode === "string" ? record.mode : undefined,
+          bytesWritten: typeof record?.bytesWritten === "number" ? record.bytesWritten : undefined,
+        };
+      })
+      : [];
+    return JSON.stringify({
+      capabilityKey,
+      writeCount: Array.isArray(normalized?.writes) ? normalized.writes.length : writes.length,
+      writes,
+    }, null, 2);
+  }
+
+  if (capabilityKey === "code.edit") {
+    return JSON.stringify({
+      capabilityKey,
+      path: normalized?.path,
+      created: normalized?.created,
+      replacedCount: normalized?.replacedCount,
+      replaceAll: normalized?.replaceAll,
+      bytesWritten: normalized?.bytesWritten,
+      beforeChars: normalized?.beforeChars,
+      afterChars: normalized?.afterChars,
+      lineDelta: normalized?.lineDelta,
+    }, null, 2);
+  }
+
+  if (capabilityKey === "code.patch") {
+    const changes = Array.isArray(normalized?.changes)
+      ? normalized.changes.slice(0, 8).map((entry) => {
+        const record = entry && typeof entry === "object"
+          ? entry as Record<string, unknown>
+          : undefined;
+        return {
+          type: typeof record?.type === "string" ? record.type : undefined,
+          path: typeof record?.path === "string" ? record.path : undefined,
+          targetPath: typeof record?.targetPath === "string" ? record.targetPath : undefined,
+          bytesWritten: typeof record?.bytesWritten === "number" ? record.bytesWritten : undefined,
+          addedLines: typeof record?.addedLines === "number" ? record.addedLines : undefined,
+          removedLines: typeof record?.removedLines === "number" ? record.removedLines : undefined,
+          hunkCount: typeof record?.hunkCount === "number" ? record.hunkCount : undefined,
+        };
+      })
+      : [];
+    return JSON.stringify({
+      capabilityKey,
+      operationCount: normalized?.operationCount,
+      patchChars: normalized?.patchChars,
+      changes,
     }, null, 2);
   }
 

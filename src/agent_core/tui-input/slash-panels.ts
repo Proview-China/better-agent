@@ -1,6 +1,7 @@
 export type PraxisSlashPanelId =
   | "model"
   | "status"
+  | "rush"
   | "exit"
   | "human-gate"
   | "cmp"
@@ -100,6 +101,7 @@ export interface PraxisSlashPanelView {
 export const PRAXIS_SLASH_PANEL_IDS: PraxisSlashPanelId[] = [
   "model",
   "status",
+  "rush",
   "exit",
   "human-gate",
   "cmp",

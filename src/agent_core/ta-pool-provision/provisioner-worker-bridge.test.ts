@@ -160,3 +160,37 @@ test("provisioner worker envelope carries an attached tool reviewer work order i
     true,
   );
 });
+
+test("provisioner worker envelope folds cmp tap aperture into the provision context aperture", () => {
+  const input = createProvisionerWorkerBridgeInput(createRequest({
+    requestedCapabilityKey: "computer.use",
+    metadata: {
+      cmpTapReviewAperture: {
+        schemaVersion: "cmp-tap-review-aperture/v1",
+        sessionId: "session-cmp-aperture-1",
+        agentId: "cmp-agent-1",
+        currentObjective: "repair the current computer.use worksite",
+        requestedCapabilityKey: "computer.use",
+        packageRef: "cmp-package:computer.use",
+        routeRationale: "core return keeps the worksite aligned",
+        reviewStateSummary: "peer approval pending 1",
+      },
+    },
+  }));
+
+  assert.equal(
+    input.envelope.projectConstraints[0],
+    "CMP worksite objective: repair the current computer.use worksite",
+  );
+  assert.equal(
+    input.envelope.reviewerInstructions[0],
+    "CMP review state: peer approval pending 1",
+  );
+  const cmpSection = input.envelope.contextAperture.sections.find((section) => section.sectionId === "provision.cmp-worksite");
+  assert.ok(cmpSection);
+  assert.match(cmpSection.summary, /cmp-package:computer\.use/u);
+  assert.equal(
+    (cmpSection.metadata?.cmpTapReviewAperture as { currentObjective?: string } | undefined)?.currentObjective,
+    "repair the current computer.use worksite",
+  );
+});

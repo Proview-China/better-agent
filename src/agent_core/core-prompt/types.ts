@@ -57,17 +57,110 @@ export interface CoreCmpContextPackageV1 {
   governance?: CoreCmpContextPackageGovernanceV1;
 }
 
+export interface CoreCmpWorksitePackageIdentityV1 {
+  sessionId: string;
+  agentId: string;
+  packageId?: string;
+  packageRef?: string;
+  packageKind?: string;
+  packageMode?: string;
+  projectionId?: string;
+  snapshotId?: string;
+  packageFamilyId?: string;
+  primaryPackageId?: string;
+  primaryPackageRef?: string;
+}
+
+export interface CoreCmpWorksitePackageObjectiveV1 {
+  currentObjective?: string;
+  taskSummary?: string;
+  requestedAction?: string;
+  activeTurnIndex?: number;
+}
+
+export interface CoreCmpWorksitePackagePayloadV1 {
+  primaryContext?: string;
+  backgroundContext?: string;
+  timelineSummary?: string;
+  sourceAnchorRefs?: string[];
+  unresolvedStateSummary?: string;
+  reviewStateSummary?: string;
+  routeStateSummary?: string;
+}
+
+export interface CoreCmpWorksitePackageGovernanceV1 {
+  operatorGuide?: string;
+  childGuide?: string;
+  checkerReason?: string;
+  routeRationale?: string;
+  scopePolicy?: string;
+  confidenceLabel?: "high" | "medium" | "low";
+  fidelityLabel?: string;
+  freshness?: "fresh" | "stale" | "aging";
+  recoveryStatus?: "healthy" | "degraded";
+}
+
+export interface CoreCmpWorksitePackageFlowV1 {
+  pendingPeerApprovalCount?: number;
+  approvedPeerApprovalCount?: number;
+  parentPromoteReviewCount?: number;
+  reinterventionPendingCount?: number;
+  reinterventionServedCount?: number;
+  childSeedToIcmaCount?: number;
+  passiveReturnCount?: number;
+  latestStages?: string[];
+}
+
+export interface CoreCmpWorksitePackageV1 {
+  schemaVersion: "core-cmp-worksite-package/v1";
+  deliveryStatus: "available" | "partial" | "absent" | "pending" | "skipped";
+  identity?: CoreCmpWorksitePackageIdentityV1;
+  objective?: CoreCmpWorksitePackageObjectiveV1;
+  payload?: CoreCmpWorksitePackagePayloadV1;
+  governance?: CoreCmpWorksitePackageGovernanceV1;
+  flow?: CoreCmpWorksitePackageFlowV1;
+}
+
+export interface CoreMpRoutedPackageObjectiveV1 {
+  currentObjective?: string;
+  retrievalMode?: "resolve" | "history" | "fallback";
+  objectiveMatchSummary?: string;
+}
+
+export interface CoreMpRoutedPackageGovernanceV1 {
+  routeLabel?: string;
+  governanceReason?: string;
+  fallbackReason?: string;
+}
+
+export interface CoreMpRoutedPackageRetrievalV1 {
+  receiptId?: string;
+  primaryCount?: number;
+  supportingCount?: number;
+  omittedCount?: number;
+}
+
 export interface CoreMpRoutedPackageV1 {
-  schemaVersion: "core-mp-routed-package/v1";
-  deliveryStatus: "available" | "partial" | "absent";
+  schemaVersion: "core-mp-routed-package/v1" | "core-mp-routed-package/v2";
+  deliveryStatus: "available" | "partial" | "absent" | "pending" | "skipped";
   packageId: string;
-  sourceClass: "mp_resolve_bundle" | "mp_history_bundle" | "repo_memory_fallback";
+  packageRef?: string;
+  sourceClass:
+    | "mp_resolve_bundle"
+    | "mp_history_bundle"
+    | "mp_native_resolve"
+    | "mp_native_history"
+    | "cmp_seeded_memory"
+    | "repo_memory_fallback";
   summary: string;
   relevanceLabel?: "high" | "medium" | "low";
   freshnessLabel?: "fresh" | "aging" | "stale";
   confidenceLabel?: "high" | "medium" | "low";
   primaryMemoryRefs?: string[];
   supportingMemoryRefs?: string[];
+  objective?: CoreMpRoutedPackageObjectiveV1;
+  governance?: CoreMpRoutedPackageGovernanceV1;
+  retrieval?: CoreMpRoutedPackageRetrievalV1;
 }
 
 export interface CoreWorkspaceInitContextV1 {
@@ -110,6 +203,7 @@ export interface CoreContextualUserV1 {
   recentTranscript: string;
   workspaceContext?: string;
   workspaceInitContext?: string | CoreWorkspaceInitContextV1;
+  cmpWorksitePackage?: string | CoreCmpWorksitePackageV1;
   cmpContextPackage?: string | CoreCmpContextPackageV1;
   mpRoutedPackage?: string | CoreMpRoutedPackageV1;
   overlayIndex?: CoreOverlayIndexV1;

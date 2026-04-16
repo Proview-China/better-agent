@@ -101,6 +101,7 @@ test("createRaxCmpRuntime exposes full cmp workflow surface through agent_core r
   assert.equal(typeof runtime.fiveAgent.getSummary, "function");
   assert.equal(typeof runtime.roles.resolveCapabilityAccess, "function");
   assert.equal(typeof runtime.roles.dispatchCapability, "function");
+  assert.equal(typeof runtime.worksite.exportCorePackage, "function");
 });
 
 test("createRaxCmpRuntime can carry peer approval from pending to approved through the real five-agent summary", async () => {
@@ -177,11 +178,11 @@ test("createRaxCmpRuntime can carry peer approval from pending to approved throu
 
   const approvalId = dispatched.peerApproval?.approvalId;
   assert.ok(approvalId);
-  const pendingSummary = runtime.fiveAgent.getSummary("peer-a");
+  const pendingSummary = runtime.fiveAgent.getSummary!("peer-a");
   assert.equal(pendingSummary.flow.pendingPeerApprovalCount, 1);
   assert.equal(pendingSummary.flow.approvedPeerApprovalCount, 0);
 
-  const approval = await runtime.roles.approvePeerExchange({
+  const approval = await runtime.roles.approvePeerExchange!({
     approvalId,
     actorAgentId: "parent-main",
     decision: "approved",
@@ -189,8 +190,67 @@ test("createRaxCmpRuntime can carry peer approval from pending to approved throu
   });
 
   assert.equal(approval.status, "approved");
-  const approvedSummary = runtime.fiveAgent.getSummary("peer-a");
+  const approvedSummary = runtime.fiveAgent.getSummary!("peer-a");
   assert.equal(approvedSummary.flow.pendingPeerApprovalCount, 0);
   assert.equal(approvedSummary.flow.approvedPeerApprovalCount, 1);
-  assert.equal(approvedSummary.latestRoleMetadata.dispatcher?.bundle?.governance?.approvalStatus, "approved");
+  assert.equal(
+    ((approvedSummary.latestRoleMetadata.dispatcher?.bundle as { governance?: { approvalStatus?: string } } | undefined)
+      ?.governance?.approvalStatus),
+    "approved",
+  );
+});
+
+test("createRaxCmpRuntime proxies CMP worksite exports through the runtime port", async () => {
+  const config = createRaxCmpConfig({
+    projectId: "proj-rax-cmp-runtime-worksite",
+    git: {
+      repoName: "proj-rax-cmp-runtime-worksite",
+      repoRootPath: "/tmp/praxis/proj-rax-cmp-runtime-worksite",
+    },
+    db: {
+      databaseName: "cmp_proj_rax_cmp_runtime_worksite",
+      liveExecutionPreferred: false,
+    },
+    mq: {
+      liveExecutionPreferred: false,
+    },
+  });
+
+  const runtime = createRaxCmpRuntime({
+    config,
+  });
+
+  runtime.worksite.observeTurn({
+    sessionId: "session-runtime-worksite",
+    turnIndex: 2,
+    currentObjective: "继续推进 runtime worksite",
+    cmp: {
+      syncStatus: "synced",
+      agentId: "cmp-live-cli-main",
+      packageId: "pkg-runtime-worksite",
+      packageRef: "cmp-package:runtime-worksite",
+      packageKind: "active_reseed",
+      packageMode: "core_return",
+      fidelityLabel: "checked_high_fidelity",
+      projectionId: "projection-runtime-worksite",
+      snapshotId: "snapshot-runtime-worksite",
+      intent: "keep runtime worksite aligned",
+      operatorGuide: "focus on the checked worksite",
+      childGuide: "child icma only",
+      checkerReason: "usable",
+      routeRationale: "core return",
+      scopePolicy: "current_worksite_only",
+      packageStrategy: "primary",
+      timelineStrategy: "timeline",
+    },
+  });
+
+  const worksite = await runtime.worksite.exportCorePackage({
+    sessionId: "session-runtime-worksite",
+    currentObjective: "现在继续 runtime worksite",
+  });
+
+  assert.equal(worksite.schemaVersion, "core-cmp-worksite-package/v1");
+  assert.equal(worksite.identity?.packageRef, "cmp-package:runtime-worksite");
+  assert.equal(worksite.objective?.currentObjective, "现在继续 runtime worksite");
 });

@@ -9,7 +9,11 @@ import { createCmpDbSqliteLiveExecutor } from "../cmp-db/index.js";
 import { createInMemoryCmpGitBackend } from "../cmp-git/index.js";
 import { createInMemoryCmpRedisMqAdapter } from "../cmp-mq/index.js";
 import { createAgentCoreRuntime } from "../runtime.js";
-import { runCmpSidecarTurn } from "./cmp-sidecar.js";
+import {
+  createLiveCmpAgentId,
+  createLiveCmpTargetAgentId,
+  runCmpSidecarTurn,
+} from "./cmp-sidecar.js";
 import { LiveChatLogger } from "./shared.js";
 
 async function readCmpSqliteCounts(databasePath: string): Promise<{
@@ -23,19 +27,21 @@ async function readCmpSqliteCounts(databasePath: string): Promise<{
     timeout: 1_000,
   });
   try {
-    const snapshotCount = Number(database.prepare([
-      "SELECT",
-      "  (SELECT COUNT(*) FROM cmp_praxis_live_cli_cmp_live_cli_main_snapshots) +",
-      "  (SELECT COUNT(*) FROM cmp_praxis_live_cli_core_live_cli_snapshots) AS n",
-    ].join(" ")).get().n ?? 0);
-    const packageCount = Number(database.prepare([
-      "SELECT",
-      "  (SELECT COUNT(*) FROM cmp_praxis_live_cli_cmp_live_cli_main_packages) +",
-      "  (SELECT COUNT(*) FROM cmp_praxis_live_cli_core_live_cli_packages) AS n",
-    ].join(" ")).get().n ?? 0);
-    const deliveryCount = Number(database.prepare(
-      "SELECT COUNT(*) AS n FROM cmp_praxis_live_cli_delivery_registry",
-    ).get().n ?? 0);
+    const snapshotTables = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'cmp_praxis_live_cli_%_snapshots'",
+    ).all() as Array<{ name: string }>;
+    const packageTables = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'cmp_praxis_live_cli_%_packages'",
+    ).all() as Array<{ name: string }>;
+    const snapshotCount = snapshotTables.reduce((sum, table) =>
+      sum + Number((database.prepare(`SELECT COUNT(*) AS n FROM ${table.name}`).get() as { n?: number }).n ?? 0), 0);
+    const packageCount = packageTables.reduce((sum, table) =>
+      sum + Number((database.prepare(`SELECT COUNT(*) AS n FROM ${table.name}`).get() as { n?: number }).n ?? 0), 0);
+    const deliveryCount = Number(
+      ((database.prepare(
+        "SELECT COUNT(*) AS n FROM cmp_praxis_live_cli_delivery_registry",
+      ).get() as { n?: number }).n ?? 0),
+    );
     return {
       snapshotCount,
       packageCount,
@@ -83,10 +89,14 @@ test("runCmpTurn drives the real CMP runtime flow and lowers sqlite-backed recor
     repoName: "praxis-live-cli-test",
     repoRootPath: workspaceRoot,
     agents: [
-      { agentId: "cmp-live-cli-main", depth: 0 },
-      { agentId: "core-live-cli", parentAgentId: "cmp-live-cli-main", depth: 1 },
+      { agentId: createLiveCmpAgentId("session-cmp-sidecar-test"), depth: 0 },
+      {
+        agentId: createLiveCmpTargetAgentId("session-cmp-sidecar-test"),
+        parentAgentId: createLiveCmpAgentId("session-cmp-sidecar-test"),
+        depth: 1,
+      },
     ],
-    defaultAgentId: "cmp-live-cli-main",
+    defaultAgentId: createLiveCmpAgentId("session-cmp-sidecar-test"),
     defaultBranchName: "main",
     worktreeRootPath: resolve(workspaceRoot, ".cmp-worktrees"),
     storageEngine: "sqlite",

@@ -127,6 +127,37 @@ function adaptLegacyCmpRuntimeStub(runtime: LegacyCmpRuntimeStub): RaxCmpPort {
         return runtime.reviewCmpPeerExchangeApproval?.(input);
       },
     },
+    worksite: {
+      observeTurn(input) {
+        return runtime.observeCmpWorksiteTurn?.(input) ?? {
+          sessionId: input.sessionId,
+          agentId: input.cmp.agentId,
+          activeTurnIndex: input.turnIndex,
+          currentObjective: input.currentObjective,
+          updatedAt: input.observedAt ?? "unknown",
+          deliveryStatus: "available" as const,
+        };
+      },
+      getCurrent(input) {
+        return runtime.getCmpCurrentWorksite?.(input);
+      },
+      clearSession(input) {
+        return runtime.clearCmpWorksiteSession?.(input);
+      },
+      exportCorePackage(input) {
+        return runtime.exportCmpCoreWorksitePackage?.(input) ?? {
+          schemaVersion: "core-cmp-worksite-package/v1",
+          deliveryStatus: "absent" as const,
+          objective: {
+            currentObjective: input.currentObjective,
+            taskSummary: "no active CMP worksite is available yet",
+          },
+        };
+      },
+      exportTapPackage(input) {
+        return runtime.exportCmpTapReviewPackage?.(input);
+      },
+    },
   };
 }
 
@@ -818,7 +849,7 @@ test("createRaxCmpFacade creates a session and delegates bootstrap/readback/reco
             model: "gpt-5.4",
           },
         },
-      } satisfies CmpFiveAgentSummary;
+      } as unknown as CmpFiveAgentSummary;
     },
     getCmpRuntimeSnapshot() {
       return createCmpRuntimeSnapshotFixture("proj-facade", "main");
@@ -1468,7 +1499,7 @@ test("createRaxCmpFacade smoke surfaces pending peer approval as degraded flow s
           dbagent: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
           dispatcher: { mode: "llm_assisted", status: "succeeded", fallbackApplied: false, provider: "openai", model: "gpt-5.4" },
         },
-      } satisfies CmpFiveAgentSummary;
+      } as unknown as CmpFiveAgentSummary;
     },
     getCmpRuntimeSnapshot() {
       return createCmpRuntimeSnapshotFixture("proj-peer-flow", "main");
@@ -1767,9 +1798,16 @@ test("createRaxCmpFacade treats sqlite-backed quiescent projects as healthy empt
       return {
         projectId: "proj-sqlite-empty",
         git: {
-          repoId: "repo-sqlite-empty",
+          projectRepo: {
+            projectId: "proj-sqlite-empty",
+            repoId: "repo-sqlite-empty",
+            repoName: "proj-sqlite-empty",
+            repoStrategy: "single_project_repo",
+            defaultAgentId: "main",
+          },
           repoRootPath: "/tmp/praxis/proj-sqlite-empty",
           defaultBranchName: "main",
+          createdBranchNames: ["work/main", "cmp/main", "mp/main", "tap/main"],
           status: "bootstrapped" as const,
         },
         gitBranchBootstraps: [

@@ -20,6 +20,27 @@ export interface CapabilityViewerSnapshotRecord {
   familyCount?: number;
   blockedCount?: number;
   pendingHumanGateCount?: number;
+  lastAttempt?: {
+    capabilityKey: string;
+    requestedMode?: string;
+    effectiveMode?: string;
+    derivedRiskLevel?: string;
+    routeDecision?: string;
+    routeReason?: string;
+    matchedToolPolicy?: string;
+    matchedToolPolicySelector?: string;
+    finalStatus?: string;
+    errorCode?: string;
+  };
+  writeDiagnostics?: Array<{
+    capabilityKey: string;
+    requestedMode?: string;
+    effectiveMode?: string;
+    derivedRiskLevel?: string;
+    routeDecision?: string;
+    matchedToolPolicy?: string;
+    matchedToolPolicySelector?: string;
+  }>;
   groups: CapabilityViewerGroupRecord[];
 }
 
@@ -94,6 +115,7 @@ export function buildCapabilityViewerBodyLines(params: {
   snapshot: CapabilityViewerSnapshotRecord | null;
   pageIndex: number;
   lineWidth: number;
+  currentMode?: string;
 }): { lines: PraxisSlashPanelBodyLine[]; meta: CapabilityViewerPageMeta } {
   const meta = buildCapabilityViewerPageMeta(params.snapshot, params.pageIndex);
   const snapshot = params.snapshot;
@@ -118,6 +140,58 @@ export function buildCapabilityViewerBodyLines(params: {
       value: familyValue,
     }),
   ];
+
+  const lastAttempt = snapshot?.lastAttempt;
+  if (lastAttempt) {
+    const routeLine = [
+      `${lastAttempt.capabilityKey}`,
+      lastAttempt.routeDecision ? `route=${lastAttempt.routeDecision}` : undefined,
+      lastAttempt.finalStatus ? `final=${lastAttempt.finalStatus}` : undefined,
+      lastAttempt.derivedRiskLevel ? `risk=${lastAttempt.derivedRiskLevel}` : undefined,
+    ].filter((part): part is string => Boolean(part)).join(" · ");
+    const policyLine = [
+      lastAttempt.effectiveMode ? `mode=${lastAttempt.effectiveMode}` : undefined,
+      lastAttempt.matchedToolPolicy
+        ? `policy=${lastAttempt.matchedToolPolicy}${lastAttempt.matchedToolPolicySelector ? `(${lastAttempt.matchedToolPolicySelector})` : ""}`
+        : undefined,
+      lastAttempt.errorCode ? `error=${lastAttempt.errorCode}` : undefined,
+    ].filter((part): part is string => Boolean(part)).join(" · ");
+    lines.push(
+      { text: "    Last attempt", tone: "info" },
+      { text: `      ${routeLine}`, tone: lastAttempt.finalStatus === "failed" ? "danger" : "warning" },
+    );
+    if (policyLine) {
+      lines.push({ text: `      ${policyLine}`, tone: "warning" });
+    }
+    if (lastAttempt.routeReason) {
+      lines.push({ text: `      ${lastAttempt.routeReason}`, tone: "info" });
+    }
+  }
+
+  const visibleMode = params.currentMode ?? snapshot?.lastAttempt?.effectiveMode;
+  const writeDiagnostics = (snapshot?.writeDiagnostics ?? [])
+    .filter((entry) => !visibleMode || entry.requestedMode === visibleMode)
+    .slice(0, 6);
+  if (writeDiagnostics.length > 0) {
+    lines.push(
+      {
+        text: `    Write route preview${visibleMode ? ` · ${visibleMode}` : ""}`,
+        tone: "info",
+      },
+      ...writeDiagnostics.map((entry) => ({
+        text: `      ${entry.capabilityKey.padEnd(18, " ")} ${String(entry.routeDecision ?? "unknown").padEnd(10, " ")} risk=${entry.derivedRiskLevel ?? "unknown"}${entry.matchedToolPolicy ? ` policy=${entry.matchedToolPolicy}` : ""}`,
+        tone: entry.routeDecision === "human_gate" || entry.routeDecision === "interrupt"
+          ? "warning" as const
+          : entry.routeDecision === "deny"
+            ? "danger" as const
+            : undefined,
+      })),
+      {
+        text: "      route preview shows TAP governance path only; adapter payload guards can still reject invalid writes.",
+        tone: "warning",
+      },
+    );
+  }
 
   if (!currentGroup || currentGroup.entries.length === 0) {
     lines.push({

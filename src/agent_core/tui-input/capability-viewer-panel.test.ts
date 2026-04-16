@@ -102,3 +102,48 @@ test("status line marks non-zero blockers in red", () => {
   assert.equal(rendered.lines[2]?.segments?.[3]?.tone, "danger");
   assert.equal(rendered.lines[2]?.segments?.[5]?.tone, "danger");
 });
+
+test("buildCapabilityViewerBodyLines includes last attempt and write route preview details", () => {
+  const rendered = buildCapabilityViewerBodyLines({
+    snapshot: {
+      ...snapshot,
+      lastAttempt: {
+        capabilityKey: "code.edit",
+        effectiveMode: "restricted",
+        derivedRiskLevel: "risky",
+        routeDecision: "human_gate",
+        routeReason: "Capability code.edit requires human approval in restricted mode.",
+        matchedToolPolicy: "human_gate",
+        matchedToolPolicySelector: "code.edit",
+        finalStatus: "blocked",
+        errorCode: "tap_vendor_user_input_required",
+      },
+      writeDiagnostics: [
+        {
+          capabilityKey: "repo.write",
+          requestedMode: "standard",
+          derivedRiskLevel: "normal",
+          routeDecision: "review",
+        },
+        {
+          capabilityKey: "code.edit",
+          requestedMode: "standard",
+          derivedRiskLevel: "normal",
+          routeDecision: "review",
+          matchedToolPolicy: "human_gate",
+          matchedToolPolicySelector: "code.edit",
+        },
+      ],
+    },
+    pageIndex: 0,
+    lineWidth: 100,
+    currentMode: "standard",
+  });
+
+  const joined = rendered.lines.map((line) => line.text).join("\n");
+  assert.match(joined, /Last attempt/u);
+  assert.match(joined, /code\.edit · route=human_gate · final=blocked · risk=risky/u);
+  assert.match(joined, /Write route preview · standard/u);
+  assert.match(joined, /repo\.write/u);
+  assert.match(joined, /policy=human_gate/u);
+});

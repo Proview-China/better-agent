@@ -17,6 +17,7 @@ import {
   createProvisionContextApertureSnapshot,
   type ProvisionContextApertureSnapshot,
 } from "../ta-pool-context/context-aperture.js";
+import type { AgentCoreCmpTapReviewApertureV1 } from "../cmp-api/index.js";
 
 export const PROVISIONER_WORKER_LANES = [
   "bootstrap",
@@ -276,6 +277,15 @@ function readToolReviewWorkOrder(request: ProvisionRequest): Record<string, unkn
   return isRecord(metadata.toolReviewWorkOrder) ? metadata.toolReviewWorkOrder : undefined;
 }
 
+function readCmpTapReviewAperture(
+  request: ProvisionRequest,
+): AgentCoreCmpTapReviewApertureV1 | undefined {
+  const metadata = readMetadataRecord(request);
+  return isRecord(metadata.cmpTapReviewAperture)
+    ? metadata.cmpTapReviewAperture as unknown as AgentCoreCmpTapReviewApertureV1
+    : undefined;
+}
+
 function readToolReviewRequestedLane(request: ProvisionRequest): ProvisionerWorkerLane | undefined {
   const workOrder = readToolReviewWorkOrder(request);
   return workOrder ? readLane(workOrder.requestedLane) : undefined;
@@ -328,6 +338,7 @@ export function createProvisionerWorkerEnvelope(
 ): ProvisionerWorkerEnvelope {
   const metadata = readMetadataRecord(request);
   const toolReviewWorkOrder = readToolReviewWorkOrder(request);
+  const cmpTapReviewAperture = readCmpTapReviewAperture(request);
   const inventorySnapshot = createDefaultInventorySnapshot(request);
   const siblingCapabilities = normalizeStringArray(
     metadata.existingSiblingCapabilities,
@@ -347,6 +358,9 @@ export function createProvisionerWorkerEnvelope(
   if (toolReviewWorkOrder?.objective && typeof toolReviewWorkOrder.objective === "string") {
     projectConstraints.unshift(`Tool reviewer objective: ${toolReviewWorkOrder.objective}`);
   }
+  if (cmpTapReviewAperture?.currentObjective) {
+    projectConstraints.unshift(`CMP worksite objective: ${cmpTapReviewAperture.currentObjective}`);
+  }
   const reviewerInstructions = normalizeStringArray(metadata.reviewerInstructions, [
     "Provisioner may emit artifacts, activation payload, and replay recommendation only.",
     "Any real activation driver stays outside this worker bridge.",
@@ -356,6 +370,9 @@ export function createProvisionerWorkerEnvelope(
   ]);
   if (toolReviewWorkOrder?.rationale && typeof toolReviewWorkOrder.rationale === "string") {
     reviewerInstructions.unshift(`Tool reviewer rationale: ${toolReviewWorkOrder.rationale}`);
+  }
+  if (cmpTapReviewAperture?.reviewStateSummary) {
+    reviewerInstructions.unshift(`CMP review state: ${cmpTapReviewAperture.reviewStateSummary}`);
   }
   const contextAperture = createProvisionContextApertureSnapshot({
     projectSummary: {
@@ -444,10 +461,39 @@ export function createProvisionerWorkerEnvelope(
           metadata: toolReviewWorkOrder,
         }]
         : []),
+      ...(cmpTapReviewAperture
+        ? [{
+          sectionId: "provision.cmp-worksite",
+          title: "CMP Worksite Aperture",
+          summary: [
+            cmpTapReviewAperture.currentObjective
+              ? `Objective ${cmpTapReviewAperture.currentObjective}.`
+              : undefined,
+            cmpTapReviewAperture.packageRef
+              ? `Package ${cmpTapReviewAperture.packageRef}.`
+              : undefined,
+            cmpTapReviewAperture.routeRationale
+              ? `Route ${cmpTapReviewAperture.routeRationale}.`
+              : undefined,
+          ].filter((value): value is string => Boolean(value)).join(" "),
+          status: "ready" as const,
+          source: "provisioner-worker-bridge",
+          freshness: "fresh" as const,
+          trustLevel: "derived" as const,
+          metadata: {
+            cmpTapReviewAperture,
+          },
+        }]
+        : []),
     ],
     metadata: {
       lane,
       requestedReplayPolicy: request.replayPolicy ?? "re_review_then_dispatch",
+      ...(cmpTapReviewAperture
+        ? {
+          cmpTapReviewAperture,
+        }
+        : {}),
     },
   });
   const allowedBuildScope = createAllowedBuildScope(lane);

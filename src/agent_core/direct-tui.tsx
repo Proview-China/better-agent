@@ -794,6 +794,40 @@ const CMP_CONTEXT_SPINNER_FRAMES = ["◐", "◓", "◑", "◒"] as const;
 const FOOTER_CONTEXT_BREATH_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const FOOTER_CONTEXT_BREATH_COLORS = ["cyan", "cyanBright", "greenBright", "yellowBright", "cyanBright"] as const;
 const FOOTER_CONTEXT_BREATH_INTERVAL_MS = 150;
+const FOOTER_MODE_CYCLE_INPUT = "\u001B[Z";
+const FOOTER_MODE_HINT = "(shift+tab to cycle)";
+const FOOTER_MODE_OPTIONS = [
+  {
+    key: "agent",
+    label: "Agent Mode",
+    color: TUI_THEME.text,
+  },
+  {
+    key: "plan",
+    label: "Plan Mode",
+    color: TUI_THEME.violet,
+  },
+  {
+    key: "chore",
+    label: "Chore Mode",
+    color: "yellow",
+  },
+  {
+    key: "exhaustive",
+    label: "Exhaustive Mode",
+    color: TUI_THEME.red,
+  },
+] as const;
+const RUSH_OVERLAY_COLOR = "orange";
+const RUSH_OVERLAY_TOTAL_FRAMES = 120;
+const RUSH_OVERLAY_SPEED_SWELL = 0.82;
+const RUSH_OVERLAY_ART_LINES = [
+  "███████   ██    ██  ███████  ██    ██",
+  "██    ██  ██    ██  ██       ██    ██",
+  "███████   ██    ██  ███████  ████████",
+  "██    ██  ██    ██       ██  ██    ██",
+  "██    ██   ██████   ███████  ██    ██",
+] as const;
 const RUN_STATUS_DOT_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const SYNC_OUTPUT_BEGIN = "\u001B[?2026h";
 const SYNC_OUTPUT_END = "\u001B[?2026l";
@@ -1118,6 +1152,32 @@ interface CapabilityViewerEntry {
   bindingState: string;
 }
 
+interface TapCapabilityDiagnosticRecord {
+  capabilityKey: string;
+  requestedTier?: string;
+  requestedMode?: string;
+  effectiveMode?: string;
+  automationDepth?: string;
+  explanationStyle?: string;
+  derivedRiskLevel?: string;
+  matchedToolPolicy?: string;
+  matchedToolPolicySelector?: string;
+  forceHumanByRisk?: boolean;
+  accessStatus?: string;
+  accessAssignment?: string;
+  accessMatchedPattern?: string;
+  safetyOutcome?: string;
+  safetyReason?: string;
+  safetyMatchedPattern?: string;
+  requestedScopeKind?: string;
+  externalPathPrefixes?: string[];
+  routeDecision?: string;
+  routeReason?: string;
+  finalStatus?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 interface CapabilityViewerGroup {
   groupKey: string;
   title: string;
@@ -1133,6 +1193,8 @@ interface CapabilityViewerSnapshot {
   blockedCount?: number;
   pendingHumanGateCount?: number;
   pendingHumanGates: HumanGatePanelEntry[];
+  lastAttempt?: TapCapabilityDiagnosticRecord;
+  writeDiagnostics: TapCapabilityDiagnosticRecord[];
   groups: CapabilityViewerGroup[];
 }
 
@@ -1450,6 +1512,10 @@ interface RewindInFlightState {
   mode: DirectTuiRewindMode;
   startedAt: string;
   phase: "pending_backend_rewind" | "pending_workspace_restore" | "finalizing";
+}
+
+interface RushOverlayState {
+  startedTick: number;
 }
 
 interface TerminalOverlaySegment {
@@ -2819,6 +2885,20 @@ function buildSlashPanelView(
           "press ESC to return to previous page",
         ],
       };
+    case "rush":
+      return {
+        id,
+        title: "/rush",
+        description: "Rush toward the goal at a faster speed.",
+        status: statusText,
+        showChrome: false,
+        showStatus: false,
+        showFields: false,
+        showHints: false,
+        bodyLines: [],
+        fields: [],
+        hints: [],
+      };
     case "exit":
       return {
         id,
@@ -2975,6 +3055,7 @@ function buildSlashPanelView(
           snapshot: context.capabilityViewerSnapshot,
           pageIndex: capabilitiesPageIndex,
           lineWidth,
+          currentMode: modeChoice,
         });
       return {
         id,
@@ -3296,6 +3377,8 @@ function buildSlashPanelView(
           persistedAllowRuleCount: context.configFile?.permissions.persistedAllowRules.length
             ?? context.runtimeConfig?.permissions.persistedAllowRules.length
             ?? 0,
+          previewRecords: context.capabilityViewerSnapshot?.writeDiagnostics,
+          lastAttempt: context.capabilityViewerSnapshot?.lastAttempt,
         }),
         fields: permissionFields,
         hints: [
@@ -3480,6 +3563,8 @@ function stripAnsi(value: string): string {
 
 function ansiColorCode(color?: string): string {
   switch (color) {
+    case "orange":
+      return "\u001B[38;5;208m";
     case "red":
     case "redBright":
       return "\u001B[91m";
@@ -3662,6 +3747,87 @@ function buildModelPickerOverlaySnapshot(
     top: Math.max(1, Math.floor((terminalRows - height) / 2)),
     left: Math.max(1, Math.floor((terminalColumns - width) / 2)),
     lines,
+  };
+}
+
+function sliceTextByDisplayWidth(
+  text: string,
+  startWidth: number,
+  maxWidth: number,
+): string {
+  if (maxWidth <= 0) {
+    return "";
+  }
+  let output = "";
+  let offset = 0;
+  for (const grapheme of splitGraphemes(text)) {
+    const width = Math.max(1, stringWidth(grapheme));
+    const nextOffset = offset + width;
+    if (nextOffset <= startWidth) {
+      offset = nextOffset;
+      continue;
+    }
+    if (offset >= startWidth + maxWidth) {
+      break;
+    }
+    output += grapheme;
+    offset = nextOffset;
+  }
+  return output;
+}
+
+function buildSlidingOverlaySegments(
+  text: string,
+  offset: number,
+  viewportWidth: number,
+  color: string,
+): TerminalOverlaySegment[] {
+  const safeViewportWidth = Math.max(1, viewportWidth);
+  const lineWidth = stringWidth(text);
+  const leftPadding = Math.max(0, Math.min(safeViewportWidth, offset));
+  const visibleStart = Math.max(0, -offset);
+  const visibleWidth = Math.max(0, Math.min(lineWidth - visibleStart, safeViewportWidth - leftPadding));
+  const visibleText = visibleWidth > 0
+    ? sliceTextByDisplayWidth(text, visibleStart, visibleWidth)
+    : "";
+  const renderedVisibleWidth = stringWidth(visibleText);
+  const rightPadding = Math.max(0, safeViewportWidth - leftPadding - renderedVisibleWidth);
+  const segments: TerminalOverlaySegment[] = [];
+  if (leftPadding > 0) {
+    segments.push({ text: " ".repeat(leftPadding) });
+  }
+  if (visibleText.length > 0) {
+    segments.push({ text: visibleText, color });
+  }
+  if (rightPadding > 0) {
+    segments.push({ text: " ".repeat(rightPadding) });
+  }
+  return segments.length > 0 ? segments : [{ text: " ".repeat(safeViewportWidth) }];
+}
+
+function easeRushOverlayProgress(progress: number): number {
+  const normalized = Math.max(0, Math.min(1, progress));
+  return normalized + ((RUSH_OVERLAY_SPEED_SWELL / (2 * Math.PI)) * Math.sin(2 * Math.PI * normalized));
+}
+
+function buildRushOverlaySnapshot(
+  frame: number,
+  terminalRows: number,
+  terminalColumns: number,
+): TerminalOverlaySnapshot {
+  const safeTerminalColumns = Math.max(1, terminalColumns);
+  const progress = Math.max(0, Math.min(1, frame / RUSH_OVERLAY_TOTAL_FRAMES));
+  const easedProgress = easeRushOverlayProgress(progress);
+  const artWidth = RUSH_OVERLAY_ART_LINES.reduce((max, line) => Math.max(max, stringWidth(line)), 0);
+  const startOffset = -artWidth;
+  const endOffset = safeTerminalColumns;
+  const horizontalOffset = Math.round(startOffset + ((endOffset - startOffset) * easedProgress));
+  return {
+    top: Math.max(1, Math.floor((terminalRows - RUSH_OVERLAY_ART_LINES.length) / 2)),
+    left: 1,
+    lines: RUSH_OVERLAY_ART_LINES.map((line) => ({
+      segments: buildSlidingOverlaySegments(line, horizontalOffset, safeTerminalColumns, RUSH_OVERLAY_COLOR),
+    })),
   };
 }
 
@@ -5532,6 +5698,42 @@ function normalizeCapabilityViewerSnapshot(input: unknown): CapabilityViewerSnap
     return null;
   }
   const record = input as Record<string, unknown>;
+  const normalizeTapCapabilityDiagnostic = (value: unknown): TapCapabilityDiagnosticRecord | null => {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const item = value as Record<string, unknown>;
+    if (typeof item.capabilityKey !== "string" || item.capabilityKey.trim().length === 0) {
+      return null;
+    }
+    return {
+      capabilityKey: item.capabilityKey,
+      requestedTier: typeof item.requestedTier === "string" ? item.requestedTier : undefined,
+      requestedMode: typeof item.requestedMode === "string" ? item.requestedMode : undefined,
+      effectiveMode: typeof item.effectiveMode === "string" ? item.effectiveMode : undefined,
+      automationDepth: typeof item.automationDepth === "string" ? item.automationDepth : undefined,
+      explanationStyle: typeof item.explanationStyle === "string" ? item.explanationStyle : undefined,
+      derivedRiskLevel: typeof item.derivedRiskLevel === "string" ? item.derivedRiskLevel : undefined,
+      matchedToolPolicy: typeof item.matchedToolPolicy === "string" ? item.matchedToolPolicy : undefined,
+      matchedToolPolicySelector: typeof item.matchedToolPolicySelector === "string" ? item.matchedToolPolicySelector : undefined,
+      forceHumanByRisk: typeof item.forceHumanByRisk === "boolean" ? item.forceHumanByRisk : undefined,
+      accessStatus: typeof item.accessStatus === "string" ? item.accessStatus : undefined,
+      accessAssignment: typeof item.accessAssignment === "string" ? item.accessAssignment : undefined,
+      accessMatchedPattern: typeof item.accessMatchedPattern === "string" ? item.accessMatchedPattern : undefined,
+      safetyOutcome: typeof item.safetyOutcome === "string" ? item.safetyOutcome : undefined,
+      safetyReason: typeof item.safetyReason === "string" ? item.safetyReason : undefined,
+      safetyMatchedPattern: typeof item.safetyMatchedPattern === "string" ? item.safetyMatchedPattern : undefined,
+      requestedScopeKind: typeof item.requestedScopeKind === "string" ? item.requestedScopeKind : undefined,
+      externalPathPrefixes: Array.isArray(item.externalPathPrefixes)
+        ? item.externalPathPrefixes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        : undefined,
+      routeDecision: typeof item.routeDecision === "string" ? item.routeDecision : undefined,
+      routeReason: typeof item.routeReason === "string" ? item.routeReason : undefined,
+      finalStatus: typeof item.finalStatus === "string" ? item.finalStatus : undefined,
+      errorCode: typeof item.errorCode === "string" ? item.errorCode : undefined,
+      errorMessage: typeof item.errorMessage === "string" ? item.errorMessage : undefined,
+    };
+  };
   const summaryLines = Array.isArray(record.summaryLines)
     ? record.summaryLines.filter((line): line is string => typeof line === "string" && line.trim().length > 0)
     : [];
@@ -5674,6 +5876,13 @@ function normalizeCapabilityViewerSnapshot(input: unknown): CapabilityViewerSnap
       ? record.pendingHumanGateCount
       : pendingHumanGates.length,
     pendingHumanGates,
+    lastAttempt: normalizeTapCapabilityDiagnostic(record.lastAttempt) ?? undefined,
+    writeDiagnostics: Array.isArray(record.writeDiagnostics)
+      ? record.writeDiagnostics.flatMap((entry) => {
+        const normalized = normalizeTapCapabilityDiagnostic(entry);
+        return normalized ? [normalized] : [];
+      })
+      : [],
     groups,
   };
 }
@@ -5831,6 +6040,13 @@ function formatStatusContextUsageLine(used: number, total: number): string {
   const contextBar = renderContextBar(used, total, STATUS_CONTEXT_BAR_WIDTH);
   const percent = formatContextUsagePercent(used, total);
   return `${contextBar} ${percent} as ${formatContextWindowLabel(used)} of ${formatContextWindowLabel(total)} tokens`;
+}
+
+function isFooterModeCycleInput(
+  inputText: string,
+  key: { tab?: boolean; shift?: boolean },
+): boolean {
+  return inputText === FOOTER_MODE_CYCLE_INPUT || Boolean(key.tab && key.shift);
 }
 
 function isCreateEntryFieldKey(fieldKey?: string): boolean {
@@ -6279,6 +6495,9 @@ const ComposerPane = memo(function ComposerPane({
   cmpStatusLabel,
   cmpContextActive,
   cmpContextColor,
+  footerModeLabel,
+  footerModeColor,
+  footerModeHint,
 }: {
   showSlashMenu: boolean;
   slashPanel: DirectSlashPanelView | null;
@@ -6301,6 +6520,9 @@ const ComposerPane = memo(function ComposerPane({
   cmpStatusLabel: string;
   cmpContextActive: boolean;
   cmpContextColor?: string;
+  footerModeLabel: string;
+  footerModeColor: string;
+  footerModeHint: string;
 }): JSX.Element {
   const maxLabelWidth = commandPaletteItems.reduce((max, item) => Math.max(max, item.label.length), 0);
   const panelLabelWidth = slashPanel
@@ -6524,18 +6746,28 @@ const ComposerPane = memo(function ComposerPane({
         </Text>
       ))}
       <Text color={TUI_THEME.line}>{"─".repeat(lineWidth)}</Text>
-      <Text wrap="truncate-end">
-        <Text color={TUI_THEME.textMuted}>WorkSpace: </Text>
-        <Text color={TUI_THEME.text}>{workspaceLabel}</Text>
-        <Text color={TUI_THEME.text}>    </Text>
-        <Text color={cmpContextActive ? contextBreathColor : cmpContextColor}>
-          {cmpContextActive ? `${contextBreathFrame} Context ` : "Context "}
-        </Text>
-        <Text color={TUI_THEME.text}>{contextBar} </Text>
-        <Text color={TUI_THEME.text}>{contextPercent} </Text>
-        <Text color={TUI_THEME.textMuted}>of </Text>
-        <Text color={TUI_THEME.text}>{contextWindowLabel}</Text>
-      </Text>
+      <Box>
+        <Box flexGrow={1} flexShrink={1} marginRight={1}>
+          <Text wrap="truncate-end">
+            <Text color={TUI_THEME.textMuted}>WorkSpace: </Text>
+            <Text color={TUI_THEME.text}>{workspaceLabel}</Text>
+            <Text color={TUI_THEME.text}>    </Text>
+            <Text color={cmpContextActive ? contextBreathColor : cmpContextColor}>
+              {cmpContextActive ? `${contextBreathFrame} Context ` : "Context "}
+            </Text>
+            <Text color={TUI_THEME.text}>{contextBar} </Text>
+            <Text color={TUI_THEME.text}>{contextPercent} </Text>
+            <Text color={TUI_THEME.textMuted}>of </Text>
+            <Text color={TUI_THEME.text}>{contextWindowLabel}</Text>
+          </Text>
+        </Box>
+        <Box flexShrink={0}>
+          <Text>
+            <Text color={footerModeColor}>{footerModeLabel}</Text>
+            <Text color={TUI_THEME.textMuted}>{footerModeHint}</Text>
+          </Text>
+        </Box>
+      </Box>
     </Box>
   );
 });
@@ -6611,6 +6843,8 @@ function PraxisDirectTuiApp(): JSX.Element {
   const [logPath, setLogPath] = useState<string | null>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [animationTick, setAnimationTick] = useState(0);
+  const [footerModeIndex, setFooterModeIndex] = useState(0);
+  const [rushOverlayState, setRushOverlayState] = useState<RushOverlayState | null>(null);
   const [surfaceState, setSurfaceState] = useState<SurfaceAppState>(initialBootState.surfaceState);
   const [backendContextSnapshot, setBackendContextSnapshot] = useState<ReturnType<typeof normalizeContextSnapshot>>(null);
   const [cmpViewerSnapshot, setCmpViewerSnapshot] = useState<CmpViewerSnapshot | null>(null);
@@ -7244,6 +7478,18 @@ function PraxisDirectTuiApp(): JSX.Element {
     setComposerState(createTuiTextInputState());
     setComposerAttachments([]);
     setComposerPastedContents([]);
+  };
+
+  const triggerRushMode = () => {
+    closeSlashPanel();
+    setComposerState(createTuiTextInputState());
+    setComposerAttachments([]);
+    setComposerPastedContents([]);
+    setComposerFileReferences([]);
+    setSelectedSlashIndex(0);
+    setRushOverlayState({
+      startedTick: animationTick,
+    });
   };
 
   const resolveActiveQuestionSnapshot = () =>
@@ -8280,6 +8526,9 @@ function PraxisDirectTuiApp(): JSX.Element {
   const rewindAnimationFrame = rewindInFlight
     ? Math.floor(animationTick / REWIND_SPINNER_FRAME_STEP)
     : 0;
+  const rushOverlayFrame = rushOverlayState
+    ? Math.max(0, animationTick - rushOverlayState.startedTick)
+    : 0;
   const questionPanelActive = activeSlashPanelId === "question" && questionViewerSnapshot?.status === "active";
   const questionAnimationFrame = Math.floor(animationTick / 6);
   const toolSummaryAnimationFrame = Math.floor(animationTick / 5);
@@ -8288,6 +8537,7 @@ function PraxisDirectTuiApp(): JSX.Element {
     || cmpContextActive
     || Boolean(runIndicator)
     || Boolean(rewindInFlight)
+    || Boolean(rushOverlayState)
     || questionPanelActive;
 
   useEffect(() => {
@@ -8301,6 +8551,16 @@ function PraxisDirectTuiApp(): JSX.Element {
       clearInterval(timer);
     };
   }, [shouldAnimate]);
+
+  useEffect(() => {
+    if (!rushOverlayState) {
+      return;
+    }
+    if (rushOverlayFrame < RUSH_OVERLAY_TOTAL_FRAMES) {
+      return;
+    }
+    setRushOverlayState(null);
+  }, [rushOverlayFrame, rushOverlayState]);
 
   useEffect(() => {
     if (!process.stdout.isTTY) {
@@ -10542,6 +10802,7 @@ function PraxisDirectTuiApp(): JSX.Element {
     }
     const normalizedMessage = message.toLowerCase();
     const isExitCommand = normalizedMessage === "/exit" || normalizedMessage === "/quit";
+    const isRushCommand = normalizedMessage === "/rush";
     const isWorkspaceCommand = normalizedMessage === "/workspace" || normalizedMessage.startsWith("/workspace ");
 
     if (isWorkspaceCommand && (runIndicator || activeTasksRef.current.length > 0)) {
@@ -10569,6 +10830,11 @@ function PraxisDirectTuiApp(): JSX.Element {
 
     if (isExitCommand) {
       requestImmediateQuit();
+      return;
+    }
+
+    if (isRushCommand) {
+      triggerRushMode();
       return;
     }
 
@@ -10961,6 +11227,17 @@ function PraxisDirectTuiApp(): JSX.Element {
           enqueuePastedText(clipboardText);
         }
       })();
+      return;
+    }
+
+    if (
+      isFooterModeCycleInput(inputText, key)
+      && !panelInputActive
+      && !modelPicker?.open
+      && !(activeSlashPanelId === "question" && questionViewerSnapshot?.status === "active")
+    ) {
+      flushPendingPasteText();
+      setFooterModeIndex((previous) => (previous + 1) % FOOTER_MODE_OPTIONS.length);
       return;
     }
 
@@ -11633,6 +11910,10 @@ function PraxisDirectTuiApp(): JSX.Element {
             requestImmediateQuit();
             return;
           }
+          if (selectedSuggestion.command.id === "rush") {
+            triggerRushMode();
+            return;
+          }
           if (selectedSuggestion.command.id === "workspace") {
             openWorkspacePicker("");
             return;
@@ -11800,6 +12081,7 @@ function PraxisDirectTuiApp(): JSX.Element {
     [estimatedContextUsed, contextWindowSize],
   );
   const contextWindowLabel = formatContextWindowLabel(contextWindowSize);
+  const footerMode = FOOTER_MODE_OPTIONS[footerModeIndex] ?? FOOTER_MODE_OPTIONS[0];
   const baseShouldShowConversationHeader = shouldRenderDirectTuiConversationHeader({
     conversationActivated,
     messages: transcriptMessages,
@@ -12296,9 +12578,11 @@ function PraxisDirectTuiApp(): JSX.Element {
       composerCursorParking.active = false;
     };
   }, [exitSummaryDisplay, rewindInFlight]);
-  terminalOverlaySnapshot = modelPicker?.open
-    ? buildModelPickerOverlaySnapshot(modelPicker, terminalRows, terminalColumns)
-    : null;
+  terminalOverlaySnapshot = rushOverlayState
+    ? buildRushOverlaySnapshot(rushOverlayFrame, terminalRows, terminalColumns)
+    : modelPicker?.open
+      ? buildModelPickerOverlaySnapshot(modelPicker, terminalRows, terminalColumns)
+      : null;
 
   return (
     <Box flexDirection="column" paddingX={1} height={terminalRows}>
@@ -12344,6 +12628,9 @@ function PraxisDirectTuiApp(): JSX.Element {
           cmpStatusLabel={cmpStatusDescriptor.label}
           cmpContextActive={cmpContextActive}
           cmpContextColor={cmpContextColor}
+          footerModeLabel={footerMode.label}
+          footerModeColor={footerMode.color}
+          footerModeHint={FOOTER_MODE_HINT}
         />
       )}
     </Box>

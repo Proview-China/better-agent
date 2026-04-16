@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   createCoreContextualBlocks,
   renderCoreCmpContextPackageV1,
+  renderCoreCmpWorksitePackageV1,
   renderCoreMpRoutedPackageV1,
   renderCoreContextualUserV1,
 } from "./contextual.js";
@@ -12,6 +13,14 @@ test("createCoreContextualBlocks keeps stable order and omits empty optional blo
   const blocks = createCoreContextualBlocks({
     currentObjective: "完成 core system v1 起草",
     recentTranscript: "user: ...\nassistant: ...",
+    cmpWorksitePackage: {
+      schemaVersion: "core-cmp-worksite-package/v1",
+      deliveryStatus: "available",
+      identity: {
+        sessionId: "session-1",
+        agentId: "cmp-main",
+      },
+    },
     cmpContextPackage: {
       schemaVersion: "core-cmp-context-package/v1",
       deliveryStatus: "available",
@@ -28,6 +37,7 @@ test("createCoreContextualBlocks keeps stable order and omits empty optional blo
     [
       "current_objective",
       "recent_transcript",
+      "cmp_worksite_package",
       "cmp_context_package",
       "latest_tool_result",
     ],
@@ -54,6 +64,15 @@ test("renderCoreContextualUserV1 renders structured cmp package blocks without d
   const rendered = renderCoreContextualUserV1({
     currentObjective: "继续推进 core-cmp handoff",
     recentTranscript: "u: hi",
+    cmpWorksitePackage: {
+      schemaVersion: "core-cmp-worksite-package/v1",
+      deliveryStatus: "available",
+      identity: {
+        sessionId: "session-1",
+        agentId: "cmp-main",
+        packageRef: "cmp-worksite:1",
+      },
+    },
     cmpContextPackage: {
       schemaVersion: "core-cmp-context-package/v1",
       deliveryStatus: "available",
@@ -69,6 +88,8 @@ test("renderCoreContextualUserV1 renders structured cmp package blocks without d
     },
   });
 
+  assert.match(rendered, /<cmp_worksite_package>/);
+  assert.match(rendered, /schema_version: core-cmp-worksite-package\/v1/);
   assert.match(rendered, /<cmp_context_package>/);
   assert.match(rendered, /schema_version: core-cmp-context-package\/v1/);
   assert.match(rendered, /delivery_status: available/);
@@ -106,21 +127,75 @@ test("renderCoreCmpContextPackageV1 supports multiple delivery states without in
   assert.match(partial, /freshness: aging/);
 });
 
+test("renderCoreCmpWorksitePackageV1 renders worksite-specific fields", () => {
+  const rendered = renderCoreCmpWorksitePackageV1({
+    schemaVersion: "core-cmp-worksite-package/v1",
+    deliveryStatus: "available",
+    identity: {
+      sessionId: "session-1",
+      agentId: "cmp-main",
+      packageRef: "cmp-worksite:1",
+      packageFamilyId: "family-1",
+    },
+    objective: {
+      currentObjective: "继续推进 worksite control plane",
+      activeTurnIndex: 6,
+    },
+    payload: {
+      unresolvedStateSummary: "parent review 1, peer approval pending 1",
+    },
+    governance: {
+      recoveryStatus: "degraded",
+    },
+    flow: {
+      pendingPeerApprovalCount: 1,
+      latestStages: ["checker:checked", "dispatcher:route"],
+    },
+  });
+
+  assert.match(rendered, /schema_version: core-cmp-worksite-package\/v1/);
+  assert.match(rendered, /package_family_id: family-1/);
+  assert.match(rendered, /active_turn_index: 6/);
+  assert.match(rendered, /unresolved_state_summary: parent review 1, peer approval pending 1/);
+  assert.match(rendered, /recovery_status: degraded/);
+  assert.match(rendered, /latest_stages: checker:checked \| dispatcher:route/);
+});
+
 test("renderCoreMpRoutedPackageV1 renders mp routed package summary", () => {
   const rendered = renderCoreMpRoutedPackageV1({
-    schemaVersion: "core-mp-routed-package/v1",
+    schemaVersion: "core-mp-routed-package/v2",
     deliveryStatus: "available",
     packageId: "mp-resolve:1",
-    sourceClass: "mp_resolve_bundle",
+    packageRef: "receipt-1",
+    sourceClass: "mp_native_resolve",
     summary: "MP routed primary and supporting memories for the task.",
     relevanceLabel: "high",
     freshnessLabel: "fresh",
     confidenceLabel: "high",
     primaryMemoryRefs: ["memory-1"],
     supportingMemoryRefs: ["memory-2"],
+    objective: {
+      currentObjective: "继续推进 MP native routing",
+      retrievalMode: "resolve",
+      objectiveMatchSummary: "matched native route",
+    },
+    governance: {
+      routeLabel: "mp_native_resolve",
+      governanceReason: "selected via MP resolve routing discipline",
+    },
+    retrieval: {
+      receiptId: "receipt-1",
+      primaryCount: 1,
+      supportingCount: 1,
+      omittedCount: 0,
+    },
   });
 
-  assert.match(rendered, /schema_version: core-mp-routed-package\/v1/);
-  assert.match(rendered, /source_class: mp_resolve_bundle/);
+  assert.match(rendered, /schema_version: core-mp-routed-package\/v2/);
+  assert.match(rendered, /package_ref: receipt-1/);
+  assert.match(rendered, /source_class: mp_native_resolve/);
   assert.match(rendered, /primary_memory_refs: memory-1/);
+  assert.match(rendered, /current_objective: 继续推进 MP native routing/);
+  assert.match(rendered, /governance_reason: selected via MP resolve routing discipline/);
+  assert.match(rendered, /receipt_id: receipt-1/);
 });

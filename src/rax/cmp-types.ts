@@ -23,6 +23,11 @@ import type {
   CmpFiveAgentSummary,
 } from "../agent_core/cmp-five-agent/index.js";
 import type {
+  AgentCoreCmpTapReviewApertureV1,
+  AgentCoreCmpWorksiteState,
+} from "../agent_core/cmp-api/index.js";
+import type { CoreCmpWorksitePackageV1 } from "../agent_core/core-prompt/types.js";
+import type {
   BootstrapCmpProjectInfraInput,
   CmpRuntimeDeliveryTruthSummary,
   CmpRuntimeProjectRecoverySummary,
@@ -620,11 +625,60 @@ export interface RaxCmpRolesPort {
   }): Promise<CmpPeerExchangeApprovalRecord> | CmpPeerExchangeApprovalRecord;
 }
 
+export interface RaxCmpWorksitePort {
+  observeTurn(input: {
+    sessionId: string;
+    turnIndex: number;
+    currentObjective: string;
+    observedAt?: string;
+    cmp: {
+      syncStatus: "skipped" | "warming" | "ingested" | "checked" | "materialized" | "synced" | "failed";
+      agentId: string;
+      packageId: string;
+      packageRef: string;
+      packageKind?: string;
+      packageMode?: string;
+      fidelityLabel?: string;
+      projectionId: string;
+      snapshotId: string;
+      intent: string;
+      operatorGuide: string;
+      childGuide: string;
+      checkerReason: string;
+      routeRationale: string;
+      scopePolicy: string;
+      packageStrategy: string;
+      timelineStrategy: string;
+      failureReason?: string;
+    };
+  }): Promise<AgentCoreCmpWorksiteState> | AgentCoreCmpWorksiteState;
+  getCurrent(input: {
+    sessionId: string;
+    agentId?: string;
+  }): Promise<AgentCoreCmpWorksiteState | undefined> | AgentCoreCmpWorksiteState | undefined;
+  clearSession(input: {
+    sessionId: string;
+    agentId?: string;
+  }): Promise<void> | void;
+  exportCorePackage(input: {
+    sessionId: string;
+    agentId?: string;
+    currentObjective?: string;
+  }): Promise<CoreCmpWorksitePackageV1> | CoreCmpWorksitePackageV1;
+  exportTapPackage(input: {
+    sessionId: string;
+    agentId?: string;
+    currentObjective?: string;
+    requestedCapabilityKey?: string;
+  }): Promise<AgentCoreCmpTapReviewApertureV1 | undefined> | AgentCoreCmpTapReviewApertureV1 | undefined;
+}
+
 export interface RaxCmpPort {
   readonly project: RaxCmpProjectPort;
   readonly flow: RaxCmpFlowPort;
   readonly fiveAgent: RaxCmpFiveAgentPort;
   readonly roles: RaxCmpRolesPort;
+  readonly worksite: RaxCmpWorksitePort;
 }
 
 export interface RaxCmpSessionApi {

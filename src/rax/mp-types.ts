@@ -159,6 +159,77 @@ export interface RaxMpRequestHistoryResult {
   summary: MpFiveAgentSummary;
 }
 
+export interface RaxMpFallbackOverlayEntry {
+  id: string;
+  label: string;
+  summary: string;
+  bodyRef?: string;
+}
+
+export interface RaxMpRoutingGovernanceSignals {
+  cmpPackageId?: string;
+  cmpRouteRationale?: string;
+  cmpScopePolicy?: string;
+  freshnessHint?: "fresh" | "aging" | "stale";
+  confidenceHint?: "high" | "medium" | "low";
+}
+
+export interface RaxMpRouteForCoreInput {
+  session: RaxMpSession;
+  payload: {
+    queryText: string;
+    currentObjective?: string;
+    requesterLineage: MpLineageNode;
+    requesterSessionId?: string;
+    sourceLineages: MpLineageNode[];
+    agentTableNames?: string[];
+    scopeLevels?: MpScopeLevel[];
+    limit?: number;
+    routeHint?: "resolve" | "history";
+    governanceSignals?: RaxMpRoutingGovernanceSignals;
+    fallbackEntries?: RaxMpFallbackOverlayEntry[];
+    metadata?: Record<string, unknown>;
+  };
+}
+
+export interface RaxMpRoutingReadback {
+  receiptId: string;
+  routeKind: "resolve" | "history" | "fallback";
+  deliveryStatus: "available" | "partial" | "absent";
+  objectiveSummary: string;
+  objectiveMatchSummary?: string;
+  governanceReason: string;
+  fallbackReason?: string;
+  primaryMemoryRefs: string[];
+  supportingMemoryRefs: string[];
+  omittedMemoryRefs: string[];
+  candidateCount: number;
+}
+
+export interface RaxMpRouteForCoreResult {
+  status: "routed";
+  routeKind: "resolve" | "history" | "fallback";
+  primaryRecords: MpMemoryRecord[];
+  supportingRecords: MpMemoryRecord[];
+  fallbackEntries: RaxMpFallbackOverlayEntry[];
+  readback: RaxMpRoutingReadback;
+}
+
+export interface RaxMpMaterializeFromCmpCandidatesInput {
+  session: RaxMpSession;
+  payload: {
+    candidates: RaxMpIngestInput["payload"][];
+  };
+}
+
+export interface RaxMpMaterializeFromCmpCandidatesResult {
+  status: "materialized_from_cmp_candidates";
+  records: MpMemoryRecord[];
+  supersededMemoryIds: string[];
+  staleMemoryIds: string[];
+  summary?: MpFiveAgentSummary;
+}
+
 export type RaxMpReadinessStatus = "ready" | "degraded" | "failed";
 
 export interface RaxMpReadinessCheck {
@@ -361,6 +432,11 @@ export interface RaxMpFacade {
   align(input: RaxMpAlignInput): Promise<RaxMpAlignResult>;
   resolve(input: RaxMpResolveInput): Promise<RaxMpResolveResult>;
   requestHistory(input: RaxMpRequestHistoryInput): Promise<RaxMpRequestHistoryResult>;
+  routeForCore(input: RaxMpRouteForCoreInput): Promise<RaxMpRouteForCoreResult>;
+  getRoutingReadback(session: RaxMpSession): RaxMpRoutingReadback | undefined;
+  materializeFromCmpCandidates(
+    input: RaxMpMaterializeFromCmpCandidatesInput,
+  ): Promise<RaxMpMaterializeFromCmpCandidatesResult>;
   materialize(input: RaxMpMaterializeInput): Promise<MpMemoryRecord[]>;
   materializeBatch(input: RaxMpMaterializeBatchInput): Promise<MpMemoryRecord[]>;
   search(input: RaxMpSearchInput): Promise<MpLanceSearchResult>;

@@ -3,6 +3,7 @@ import type {
   AgentCapabilityProfile,
   ReviewDecision,
 } from "../ta-pool-types/index.js";
+import type { AgentCoreCmpTapReviewApertureV1 } from "../cmp-api/index.js";
 import type { ReviewContextApertureSnapshot } from "../ta-pool-context/context-aperture.js";
 import {
   createReviewContextApertureSnapshot,
@@ -35,6 +36,7 @@ export interface ReviewerRuntimeSubmitInput {
   profile: AgentCapabilityProfile;
   inventory?: ReviewDecisionEngineInventory;
   reviewContext?: ReviewContextApertureSnapshot;
+  cmpTapReviewAperture?: AgentCoreCmpTapReviewApertureV1;
 }
 
 export interface ReviewerRuntimeHookInput {
@@ -103,6 +105,7 @@ function createDefaultReviewSections(input: {
   inventory?: ReviewDecisionEngineInventory;
   requestedAction: string;
   plainLanguageRisk: ReturnType<typeof formatPlainLanguageRisk>;
+  cmpTapReviewAperture?: AgentCoreCmpTapReviewApertureV1;
 }) {
   const availableCapabilityKeys = normalizeStringArray([
     ...(input.inventory?.availableCapabilityKeys ?? []),
@@ -153,6 +156,30 @@ function createDefaultReviewSections(input: {
         riskLevel: input.plainLanguageRisk.riskLevel,
       },
     },
+    ...(input.cmpTapReviewAperture
+      ? [{
+        sectionId: "review.cmp-worksite",
+        title: "CMP Worksite Aperture",
+        summary: [
+          input.cmpTapReviewAperture.currentObjective
+            ? `Objective ${input.cmpTapReviewAperture.currentObjective}.`
+            : undefined,
+          input.cmpTapReviewAperture.packageRef
+            ? `Package ${input.cmpTapReviewAperture.packageRef}.`
+            : undefined,
+          input.cmpTapReviewAperture.reviewStateSummary
+            ? `Review ${input.cmpTapReviewAperture.reviewStateSummary}.`
+            : undefined,
+        ].filter((value): value is string => Boolean(value)).join(" "),
+        status: "ready" as const,
+        source: "cmp-worksite-aperture",
+        freshness: "fresh" as const,
+        trustLevel: "derived" as const,
+        metadata: {
+          cmpTapReviewAperture: input.cmpTapReviewAperture,
+        },
+      }]
+      : []),
   ];
 }
 
@@ -303,10 +330,16 @@ export class ReviewerRuntime {
         inventory: input.inventory,
         requestedAction,
         plainLanguageRisk,
+        cmpTapReviewAperture: input.cmpTapReviewAperture,
       }),
       modeSnapshot: input.request.mode,
       metadata: {
         requestedCapabilityKey: input.request.requestedCapabilityKey,
+        ...(input.cmpTapReviewAperture
+          ? {
+            cmpTapReviewAperture: input.cmpTapReviewAperture,
+          }
+          : {}),
       },
     });
 

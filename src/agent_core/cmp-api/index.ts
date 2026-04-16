@@ -22,6 +22,7 @@ import type {
   CmpFiveAgentPassiveLiveRunInput,
   CmpFiveAgentTapBridgeContext,
 } from "../cmp-five-agent/index.js";
+import type { CoreCmpWorksitePackageV1 } from "../core-prompt/types.js";
 import type {
   CommitContextDeltaInput,
   CommitContextDeltaResult,
@@ -93,6 +94,64 @@ export interface ReviewCmpPeerExchangeApprovalInput {
   actorAgentId: string;
   decision: "approved" | "rejected";
   note?: string;
+}
+
+export interface AgentCoreCmpWorksiteTurnArtifactInput {
+  sessionId: string;
+  turnIndex: number;
+  currentObjective: string;
+  observedAt?: string;
+  cmp: {
+    syncStatus: "skipped" | "warming" | "ingested" | "checked" | "materialized" | "synced" | "failed";
+    agentId: string;
+    packageId: string;
+    packageRef: string;
+    packageKind?: string;
+    packageMode?: string;
+    fidelityLabel?: string;
+    projectionId: string;
+    snapshotId: string;
+    intent: string;
+    operatorGuide: string;
+    childGuide: string;
+    checkerReason: string;
+    routeRationale: string;
+    scopePolicy: string;
+    packageStrategy: string;
+    timelineStrategy: string;
+    failureReason?: string;
+  };
+}
+
+export interface AgentCoreCmpWorksiteState {
+  sessionId: string;
+  agentId: string;
+  activeTurnIndex: number;
+  currentObjective: string;
+  updatedAt: string;
+  deliveryStatus: "available" | "partial" | "absent" | "pending" | "skipped";
+  packageId?: string;
+  packageRef?: string;
+  packageMode?: string;
+  snapshotId?: string;
+}
+
+export interface AgentCoreCmpTapReviewApertureV1 {
+  schemaVersion: "cmp-tap-review-aperture/v1";
+  sessionId: string;
+  agentId: string;
+  currentObjective?: string;
+  requestedCapabilityKey?: string;
+  packageRef?: string;
+  packageFamilyId?: string;
+  snapshotId?: string;
+  checkerReason?: string;
+  routeRationale?: string;
+  reviewStateSummary?: string;
+  sourceAnchorRefs?: string[];
+  pendingPeerApprovalCount?: number;
+  parentPromoteReviewCount?: number;
+  reinterventionPendingCount?: number;
 }
 
 export interface AgentCoreCmpProjectApi {
@@ -183,9 +242,35 @@ export interface AgentCoreCmpTapBridgeApi {
   ): Promise<CmpPeerExchangeApprovalRecord> | CmpPeerExchangeApprovalRecord;
 }
 
+export interface AgentCoreCmpWorksiteApi {
+  observeTurn(
+    input: AgentCoreCmpWorksiteTurnArtifactInput,
+  ): AgentCoreCmpWorksiteState;
+  getCurrent(input: {
+    sessionId: string;
+    agentId?: string;
+  }): AgentCoreCmpWorksiteState | undefined;
+  clearSession(input: {
+    sessionId: string;
+    agentId?: string;
+  }): void;
+  exportCorePackage(input: {
+    sessionId: string;
+    agentId?: string;
+    currentObjective?: string;
+  }): CoreCmpWorksitePackageV1;
+  exportTapPackage(input: {
+    sessionId: string;
+    agentId?: string;
+    currentObjective?: string;
+    requestedCapabilityKey?: string;
+  }): AgentCoreCmpTapReviewApertureV1 | undefined;
+}
+
 export interface AgentCoreCmpApi {
   readonly project: AgentCoreCmpProjectApi;
   readonly workflow: AgentCoreCmpWorkflowApi;
   readonly fiveAgent: AgentCoreCmpFiveAgentApi;
   readonly tapBridge: AgentCoreCmpTapBridgeApi;
+  readonly worksite: AgentCoreCmpWorksiteApi;
 }

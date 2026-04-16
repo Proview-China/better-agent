@@ -4,6 +4,7 @@ import { renderCoreContextualUserV1 } from "./contextual.js";
 import { createLiveChatOverlayIndex } from "./live-chat-overlays.js";
 import type {
   CoreCmpContextPackageV1,
+  CoreCmpWorksitePackageV1,
   CoreContextualUserV1,
   CoreMpRoutedPackageV1,
   CoreOverlayIndexEntryV1,
@@ -122,6 +123,7 @@ function createCmpContextPackage(input: CmpTurnArtifacts | undefined): CoreCmpCo
 export function createLiveChatCoreContextualInput(input: {
   userMessage: string;
   transcript: DialogueTurn[];
+  cmpWorksitePackage?: CoreCmpWorksitePackageV1;
   cmp?: CmpTurnArtifacts;
   mpRoutedPackage?: CoreMpRoutedPackageV1;
   workspaceInitContext?: CoreWorkspaceInitContextV1;
@@ -139,6 +141,7 @@ export function createLiveChatCoreContextualInput(input: {
     currentObjective: input.userMessage,
     recentTranscript: formatTranscript(recentTurns),
     workspaceInitContext: input.workspaceInitContext,
+    cmpWorksitePackage: input.cmpWorksitePackage,
     cmpContextPackage: createCmpContextPackage(input.cmp),
     mpRoutedPackage: input.mpRoutedPackage,
     overlayIndex: createLiveChatOverlayIndex({
@@ -157,6 +160,7 @@ export function createLiveChatCoreContextualInput(input: {
 export function buildLiveChatCoreContextualPrompt(input: {
   userMessage: string;
   transcript: DialogueTurn[];
+  cmpWorksitePackage?: CoreCmpWorksitePackageV1;
   cmp?: CmpTurnArtifacts;
   mpRoutedPackage?: CoreMpRoutedPackageV1;
   workspaceInitContext?: CoreWorkspaceInitContextV1;

@@ -352,7 +352,35 @@ export function printAgentsViewPlaceholder(): void {
   ]);
 }
 
-export function printPermissionsView(runtime: LiveCliRuntime): void {
+interface DirectTapCapabilityDiagnosticView {
+  capabilityKey: string;
+  requestedMode?: string;
+  effectiveMode?: string;
+  derivedRiskLevel?: string;
+  routeDecision?: string;
+  routeReason?: string;
+  matchedToolPolicy?: string;
+  matchedToolPolicySelector?: string;
+  finalStatus?: string;
+  errorCode?: string;
+}
+
+interface DirectCapabilitiesSnapshotView {
+  registeredCount: number;
+  groups: Array<{
+    groupKey: string;
+    entries: Array<{
+      capabilityKey: string;
+    }>;
+  }>;
+  lastAttempt?: DirectTapCapabilityDiagnosticView;
+  writeDiagnostics?: DirectTapCapabilityDiagnosticView[];
+}
+
+export function printPermissionsView(
+  runtime: LiveCliRuntime,
+  capabilitySnapshot?: DirectCapabilitiesSnapshotView,
+): void {
   const governance = runtime.createTapGovernanceObject({
     userOverride: LIVE_CHAT_TAP_OVERRIDE,
   });
@@ -360,6 +388,16 @@ export function printPermissionsView(runtime: LiveCliRuntime): void {
     userOverride: LIVE_CHAT_TAP_OVERRIDE,
   });
   const snapshot = runtime.createTapGovernanceSnapshot();
+  const selectedMode = governance.taskPolicy.effectiveMode;
+  const previewLines = (capabilitySnapshot?.writeDiagnostics ?? [])
+    .filter((entry) => entry.requestedMode === selectedMode)
+    .slice(0, 6)
+    .map((entry) =>
+      `${entry.capabilityKey}: ${entry.routeDecision ?? "unknown"} / risk=${entry.derivedRiskLevel ?? "unknown"}${entry.matchedToolPolicy ? ` / policy=${entry.matchedToolPolicy}${entry.matchedToolPolicySelector ? `(${entry.matchedToolPolicySelector})` : ""}` : ""}${entry.effectiveMode && entry.effectiveMode !== selectedMode ? ` / effective=${entry.effectiveMode}` : ""}`,
+    );
+  const lastAttemptLine = capabilitySnapshot?.lastAttempt
+    ? `lastAttempt: ${capabilitySnapshot.lastAttempt.capabilityKey} / ${capabilitySnapshot.lastAttempt.routeDecision ?? "unknown"} / final=${capabilitySnapshot.lastAttempt.finalStatus ?? "unknown"}${capabilitySnapshot.lastAttempt.derivedRiskLevel ? ` / risk=${capabilitySnapshot.lastAttempt.derivedRiskLevel}` : ""}${capabilitySnapshot.lastAttempt.errorCode ? ` / error=${capabilitySnapshot.lastAttempt.errorCode}` : ""}`
+    : undefined;
   console.log("");
   printDirectBox("Permissions", [
     `effectiveMode: ${governance.taskPolicy.effectiveMode}`,
@@ -367,6 +405,8 @@ export function printPermissionsView(runtime: LiveCliRuntime): void {
     `capabilityOverrides: ${LIVE_CHAT_PERMISSIONS_CONFIG.capabilityOverrides.length}`,
     `pendingHumanGateCount: ${userSurface.pendingHumanGateCount}`,
     `blockingCapabilityKeys: ${snapshot.blockingCapabilityKeys.join(", ") || "(none)"}`,
+    ...(previewLines.length > 0 ? ["common write lanes:", ...previewLines] : []),
+    ...(lastAttemptLine ? [lastAttemptLine] : []),
   ]);
 }
 
@@ -501,19 +541,52 @@ export function printCoreArtifacts(turn: CoreTurnArtifacts): void {
   console.log(turn.answer);
 }
 
-export function printDirectCapabilities(runtime: LiveCliRuntime): void {
-  const capabilities = runtime.capabilityPool
-    .listCapabilities()
-    .map((manifest) => manifest.capabilityKey)
-    .sort();
-  const grouped = new Map<string, string[]>();
-  for (const capability of capabilities) {
-    const family = capability.split(".")[0] ?? "other";
-    const bucket = grouped.get(family) ?? [];
-    bucket.push(capability);
-    grouped.set(family, bucket);
+export function printDirectCapabilities(
+  runtime: LiveCliRuntime,
+  snapshot?: DirectCapabilitiesSnapshotView,
+): void {
+  const capabilities = snapshot
+    ? snapshot.groups
+      .slice()
+      .sort((left, right) => left.groupKey.localeCompare(right.groupKey))
+      .flatMap((group) => group.entries.map((entry) => entry.capabilityKey))
+    : runtime.capabilityPool
+      .listCapabilities()
+      .map((manifest) => manifest.capabilityKey)
+      .sort();
+  const grouped = snapshot
+    ? new Map(
+      snapshot.groups
+        .slice()
+        .sort((left, right) => left.groupKey.localeCompare(right.groupKey))
+        .map((group) => [group.groupKey, group.entries.map((entry) => entry.capabilityKey)]),
+    )
+    : (() => {
+      const map = new Map<string, string[]>();
+      for (const capability of capabilities) {
+        const family = capability.split(".")[0] ?? "other";
+        const bucket = map.get(family) ?? [];
+        bucket.push(capability);
+        map.set(family, bucket);
+      }
+      return map;
+    })();
+  const lines = [`${snapshot?.registeredCount ?? capabilities.length} registered`];
+  if (snapshot?.lastAttempt) {
+    lines.push(
+      `lastAttempt: ${snapshot.lastAttempt.capabilityKey} / ${snapshot.lastAttempt.routeDecision ?? "unknown"} / final=${snapshot.lastAttempt.finalStatus ?? "unknown"}${snapshot.lastAttempt.derivedRiskLevel ? ` / risk=${snapshot.lastAttempt.derivedRiskLevel}` : ""}${snapshot.lastAttempt.errorCode ? ` / error=${snapshot.lastAttempt.errorCode}` : ""}`,
+    );
+    if (snapshot.lastAttempt.routeReason) {
+      lines.push(`lastAttemptReason: ${snapshot.lastAttempt.routeReason}`);
+    }
   }
-  const lines = [`${capabilities.length} registered`];
+  for (const preview of (snapshot?.writeDiagnostics ?? [])
+    .filter((entry) => entry.requestedMode === LIVE_CHAT_TAP_OVERRIDE.requestedMode)
+    .slice(0, 6)) {
+    lines.push(
+      `preview ${preview.capabilityKey}: ${preview.routeDecision ?? "unknown"} / risk=${preview.derivedRiskLevel ?? "unknown"}${preview.matchedToolPolicy ? ` / policy=${preview.matchedToolPolicy}${preview.matchedToolPolicySelector ? `(${preview.matchedToolPolicySelector})` : ""}` : ""}${preview.effectiveMode && preview.requestedMode && preview.effectiveMode !== preview.requestedMode ? ` / effective=${preview.effectiveMode}` : ""}`,
+    );
+  }
   for (const [family, items] of grouped.entries()) {
     lines.push(`${family}: ${items.join(", ")}`);
   }

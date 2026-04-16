@@ -1,13 +1,11 @@
 import path from "node:path";
 
 import {
-  createCmpSection,
-  createCmpStoredSectionFromSection,
   createMpLineageNode,
-  createMpScopeDescriptor,
 } from "../index.js";
 import { rax } from "../../rax/runtime.js";
 import type {
+  CoreCmpWorksitePackageV1,
   CoreMpRoutedPackageV1,
   CoreOverlayIndexEntryV1,
 } from "../core-prompt/types.js";
@@ -21,55 +19,6 @@ function createProjectId(cwd: string): string {
     .toLowerCase()
     .slice(-48);
   return `project.mp-overlay.${slug || "default"}`;
-}
-
-function toStoredSection(input: {
-  projectId: string;
-  agentId: string;
-  entry: ReturnType<typeof loadRepoMemoryOverlaySnapshot>["entries"][number];
-}) {
-  const createdAt = new Date(input.entry.effectiveDateMs).toISOString();
-  const section = createCmpSection({
-    id: `section:${input.entry.id}`,
-    projectId: input.projectId,
-    agentId: input.agentId,
-    lineagePath: [input.agentId],
-    source: "system",
-    kind: "historical_context",
-    fidelity: "checked",
-    payloadRefs: [input.entry.bodyRef],
-    tags: [
-      input.entry.category,
-      input.entry.stabilityKind,
-      ...(input.entry.docStatus ? [input.entry.docStatus] : []),
-    ],
-    createdAt,
-    bodyRef: input.entry.bodyRef,
-    metadata: {
-      overlaySourcePath: input.entry.sourcePath,
-      overlaySummary: input.entry.summary,
-      bodyRef: input.entry.bodyRef,
-      semanticGroupId: `overlay:${input.entry.category}`,
-    },
-  });
-
-  return createCmpStoredSectionFromSection({
-    storedSectionId: `stored:${input.entry.id}`,
-    section,
-    plane: "postgresql",
-    storageRef: `postgresql:${input.entry.id}`,
-    state: "promoted",
-    visibility: "parent",
-    persistedAt: createdAt,
-    metadata: {
-      semanticGroupId: `overlay:${input.entry.category}`,
-      tags: [
-        input.entry.category,
-        input.entry.stabilityKind,
-        ...(input.entry.docStatus ? [input.entry.docStatus] : []),
-      ],
-    },
-  });
 }
 
 function toOverlayEntry(record: {
@@ -102,13 +51,56 @@ function toOverlayEntry(record: {
   };
 }
 
+function cloneFallbackEntry(entry: CoreOverlayIndexEntryV1): CoreOverlayIndexEntryV1 {
+  return {
+    id: entry.id,
+    label: entry.label,
+    summary: entry.summary,
+    bodyRef: entry.bodyRef,
+  };
+}
+
+function createMpRoutingQueryText(input: {
+  userMessage: string;
+  currentObjective?: string;
+  cmpWorksitePackage?: CoreCmpWorksitePackageV1;
+}): string {
+  const worksite = input.cmpWorksitePackage;
+  const parts = [
+    input.currentObjective,
+    input.userMessage,
+    worksite?.objective?.taskSummary,
+    worksite?.objective?.requestedAction,
+    worksite?.payload?.routeStateSummary,
+    ...(worksite?.payload?.sourceAnchorRefs ?? []),
+  ];
+  return [...new Set(parts.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))].join(" ");
+}
+
+function createMpRoutingGovernanceSignals(input: {
+  cmpWorksitePackage?: CoreCmpWorksitePackageV1;
+  fallbackPackage: CoreMpRoutedPackageV1;
+}) {
+  const worksite = input.cmpWorksitePackage;
+  return {
+    cmpPackageId: worksite?.identity?.packageId,
+    cmpRouteRationale: worksite?.governance?.routeRationale,
+    cmpScopePolicy: worksite?.governance?.scopePolicy,
+    freshnessHint: worksite?.governance?.freshness ?? input.fallbackPackage.freshnessLabel,
+    confidenceHint: worksite?.governance?.confidenceLabel ?? input.fallbackPackage.confidenceLabel,
+  };
+}
+
 export async function discoverMpOverlayEntries(input: {
   cwd: string;
   userMessage: string;
+  currentObjective?: string;
   limit?: number;
   projectId?: string;
   rootPath?: string;
   agentId?: string;
+  cmpWorksitePackage?: CoreCmpWorksitePackageV1;
+  cmpCandidatePayloads?: Parameters<typeof rax.mp.materializeFromCmpCandidates>[0]["payload"]["candidates"];
   facade?: typeof rax;
 }): Promise<CoreOverlayIndexEntryV1[]> {
   const artifacts = await discoverMpOverlayArtifacts(input);
@@ -118,10 +110,13 @@ export async function discoverMpOverlayEntries(input: {
 export async function discoverMpOverlayArtifacts(input: {
   cwd: string;
   userMessage: string;
+  currentObjective?: string;
   limit?: number;
   projectId?: string;
   rootPath?: string;
   agentId?: string;
+  cmpWorksitePackage?: CoreCmpWorksitePackageV1;
+  cmpCandidatePayloads?: Parameters<typeof rax.mp.materializeFromCmpCandidates>[0]["payload"]["candidates"];
   facade?: typeof rax;
 }): Promise<{
   entries: CoreOverlayIndexEntryV1[];
@@ -134,21 +129,6 @@ export async function discoverMpOverlayArtifacts(input: {
   const snapshot = loadRepoMemoryOverlaySnapshot({
     rootDir: path.join(input.cwd, "memory"),
   });
-  if (snapshot.entries.length === 0) {
-    return {
-      entries: [],
-      routedPackage: {
-        schemaVersion: "core-mp-routed-package/v1",
-        deliveryStatus: "absent",
-        packageId: `mp-empty:${projectId}`,
-        sourceClass: "repo_memory_fallback",
-        summary: "MP routed package is currently unavailable because no repo memory snapshot was found.",
-        relevanceLabel: "low",
-        freshnessLabel: "stale",
-        confidenceLabel: "low",
-      },
-    };
-  }
 
   const repoFallback = createRepoFallbackArtifacts({
     projectId,
@@ -177,57 +157,74 @@ export async function discoverMpOverlayArtifacts(input: {
       },
     });
 
-    await facade.mp.materializeBatch({
-      session,
-      payload: snapshot.entries.map((entry) => ({
-        projectId,
-        rootPath,
-        agentIds: [agentId],
-        storedSection: toStoredSection({
-          projectId,
-          agentId,
-          entry,
-        }),
-        checkedSnapshotRef: `snapshot:${entry.id}`,
-        branchRef: `mp/${agentId}`,
-        scope: createMpScopeDescriptor({
-          projectId,
-          agentId,
-          scopeLevel: "project",
-          sessionMode: "shared",
-        }),
-      })),
-    });
+    const cmpCandidatePayloads = input.cmpCandidatePayloads ?? [];
+    if (cmpCandidatePayloads.length > 0) {
+      await facade.mp.materializeFromCmpCandidates({
+        session,
+        payload: {
+          candidates: cmpCandidatePayloads,
+        },
+      });
+    }
 
     const requesterLineage = createMpLineageNode({
       projectId,
       agentId,
       depth: 0,
     });
-    const resolved = await facade.mp.resolve({
+    const routed = await facade.mp.routeForCore({
       session,
       payload: {
-        queryText: input.userMessage,
+        queryText: createMpRoutingQueryText({
+          userMessage: input.userMessage,
+          currentObjective: input.currentObjective,
+          cmpWorksitePackage: input.cmpWorksitePackage,
+        }),
+        currentObjective: input.currentObjective ?? input.userMessage,
         requesterLineage,
         sourceLineages: [requesterLineage],
         limit: input.limit ?? 6,
+        routeHint: "resolve",
+        fallbackEntries: repoFallback.entries.map((entry) => cloneFallbackEntry(entry)),
+        governanceSignals: createMpRoutingGovernanceSignals({
+          cmpWorksitePackage: input.cmpWorksitePackage,
+          fallbackPackage: repoFallback.routedPackage,
+        }),
+        metadata: {
+          currentObjective: input.currentObjective ?? input.userMessage,
+          cmpWorksitePackageRef: input.cmpWorksitePackage?.identity?.packageRef,
+          cmpCandidateCount: cmpCandidatePayloads.length,
+        },
       },
     });
 
-    const fromResolve = [...resolved.bundle.primary, ...resolved.bundle.supporting]
+    const fromResolve = [...routed.primaryRecords, ...routed.supportingRecords]
       .map((record) => toOverlayEntry(record))
       .slice(0, input.limit ?? 6);
-    const routedPackageFromResolve = toRoutedPackage({
-      packageId: `mp-resolve:${projectId}`,
-      sourceClass: "mp_resolve_bundle",
-      records: [...resolved.bundle.primary, ...resolved.bundle.supporting],
-      primaryRecords: resolved.bundle.primary,
-      supportingRecords: resolved.bundle.supporting,
-    });
-    if (fromResolve.length > 0) {
+    if (fromResolve.length > 0 || routed.fallbackEntries.length > 0) {
       return {
-        entries: fromResolve,
-        routedPackage: routedPackageFromResolve,
+        entries: fromResolve.length > 0 ? fromResolve : routed.fallbackEntries.map((entry) => cloneFallbackEntry(entry)),
+        routedPackage: toRoutedPackage({
+          packageId: routed.readback.routeKind === "fallback" ? `mp-fallback:${projectId}` : `mp-route:${projectId}`,
+          packageRef: routed.readback.receiptId,
+          sourceClass: routed.readback.routeKind === "history"
+            ? "mp_native_history"
+            : routed.readback.routeKind === "fallback"
+              ? "repo_memory_fallback"
+              : cmpCandidatePayloads.length > 0
+                ? "cmp_seeded_memory"
+                : "mp_native_resolve",
+          records: [...routed.primaryRecords, ...routed.supportingRecords],
+          primaryRecords: routed.primaryRecords,
+          supportingRecords: routed.supportingRecords,
+          deliveryStatus: routed.readback.deliveryStatus,
+          objectiveSummary: routed.readback.objectiveSummary,
+          objectiveMatchSummary: routed.readback.objectiveMatchSummary,
+          governanceReason: routed.readback.governanceReason,
+          fallbackReason: routed.readback.fallbackReason,
+          receiptId: routed.readback.receiptId,
+          omittedCount: routed.readback.omittedMemoryRefs.length,
+        }),
       };
     }
 
@@ -240,10 +237,18 @@ export async function discoverMpOverlayArtifacts(input: {
         entries: fallbackEntries,
         routedPackage: toRoutedPackage({
           packageId: `mp-fallback:${projectId}`,
+          packageRef: `mp-fallback:${projectId}:managed`,
           sourceClass: "repo_memory_fallback",
           records: fallbackRecords,
           primaryRecords: fallbackRecords.slice(0, input.limit ?? 3),
           supportingRecords: fallbackRecords.slice(input.limit ?? 3, input.limit ?? 6),
+          deliveryStatus: "partial",
+          objectiveSummary: input.userMessage,
+          objectiveMatchSummary: `fallback to managed MP records for "${input.userMessage}"`,
+          governanceReason: "native route returned no bundle, so managed MP records were used",
+          fallbackReason: "managed_records_fallback",
+          receiptId: `mp-fallback:${projectId}:managed`,
+          omittedCount: 0,
         }),
       };
     }
@@ -256,6 +261,7 @@ export async function discoverMpOverlayArtifacts(input: {
 
 function toRoutedPackage(input: {
   packageId: string;
+  packageRef?: string;
   sourceClass: CoreMpRoutedPackageV1["sourceClass"];
   records: Array<{
     memoryId: string;
@@ -264,17 +270,27 @@ function toRoutedPackage(input: {
   }>;
   primaryRecords: Array<{ memoryId: string }>;
   supportingRecords: Array<{ memoryId: string }>;
+  deliveryStatus?: CoreMpRoutedPackageV1["deliveryStatus"];
+  objectiveSummary?: string;
+  objectiveMatchSummary?: string;
+  governanceReason?: string;
+  fallbackReason?: string;
+  receiptId?: string;
+  omittedCount?: number;
 }): CoreMpRoutedPackageV1 {
   const freshest = input.records[0];
-  const deliveryStatus = input.records.length > 0 ? "available" : "absent";
+  const deliveryStatus = input.deliveryStatus ?? (input.records.length > 0 ? "available" : "absent");
   return {
-    schemaVersion: "core-mp-routed-package/v1",
+    schemaVersion: "core-mp-routed-package/v2",
     deliveryStatus,
     packageId: input.packageId,
+    packageRef: input.packageRef,
     sourceClass: input.sourceClass,
     summary: input.records.length > 0
-      ? `MP routed ${input.primaryRecords.length} primary and ${input.supportingRecords.length} supporting memories for the current objective.`
-      : "MP routed package is currently unavailable.",
+      ? `MP routed ${input.primaryRecords.length} primary and ${input.supportingRecords.length} supporting memories for "${input.objectiveSummary ?? "the current objective"}".`
+      : input.fallbackReason
+        ? `MP routed package fell back because ${input.fallbackReason}.`
+        : "MP routed package is currently unavailable.",
     relevanceLabel: input.records.length > 0 ? "high" : "low",
     freshnessLabel: freshest
       ? (freshest.freshness.status === "fresh" || freshest.freshness.status === "aging" || freshest.freshness.status === "stale"
@@ -286,6 +302,22 @@ function toRoutedPackage(input: {
       : "low",
     primaryMemoryRefs: input.primaryRecords.map((record) => record.memoryId),
     supportingMemoryRefs: input.supportingRecords.map((record) => record.memoryId),
+    objective: {
+      currentObjective: input.objectiveSummary,
+      retrievalMode: input.sourceClass === "mp_native_history" ? "history" : input.sourceClass === "repo_memory_fallback" ? "fallback" : "resolve",
+      objectiveMatchSummary: input.objectiveMatchSummary,
+    },
+    governance: {
+      routeLabel: input.sourceClass,
+      governanceReason: input.governanceReason,
+      fallbackReason: input.fallbackReason,
+    },
+    retrieval: {
+      receiptId: input.receiptId,
+      primaryCount: input.primaryRecords.length,
+      supportingCount: input.supportingRecords.length,
+      omittedCount: input.omittedCount,
+    },
   };
 }
 
@@ -306,9 +338,10 @@ function createRepoFallbackArtifacts(input: {
   return {
     entries,
     routedPackage: {
-      schemaVersion: "core-mp-routed-package/v1",
+      schemaVersion: "core-mp-routed-package/v2",
       deliveryStatus: entries.length > 0 ? "partial" : "absent",
       packageId: `mp-fallback:${input.projectId}`,
+      packageRef: `mp-fallback:${input.projectId}:repo`,
       sourceClass: "repo_memory_fallback",
       summary: entries.length > 0
         ? "MP-native routing is unavailable, so core is using repo-memory fallback entries for this turn."
@@ -318,6 +351,24 @@ function createRepoFallbackArtifacts(input: {
       confidenceLabel: entries.length > 0 ? "medium" : "low",
       primaryMemoryRefs: entries.slice(0, 3).map((entry) => entry.id),
       supportingMemoryRefs: entries.slice(3).map((entry) => entry.id),
+      objective: {
+        currentObjective: input.userMessage,
+        retrievalMode: "fallback",
+        objectiveMatchSummary: entries.length > 0
+          ? `repo-memory fallback selected ${entries.length} entries for "${input.userMessage}"`
+          : `no repo-memory fallback entries were available for "${input.userMessage}"`,
+      },
+      governance: {
+        routeLabel: "repo_memory_fallback",
+        governanceReason: "repo-memory bootstrap fallback remains enabled while MP-native routing is being strengthened",
+        fallbackReason: entries.length > 0 ? "repo_memory_bootstrap_fallback" : "repo_memory_snapshot_empty",
+      },
+      retrieval: {
+        receiptId: `mp-fallback:${input.projectId}:repo`,
+        primaryCount: Math.min(entries.length, 3),
+        supportingCount: Math.max(entries.length - 3, 0),
+        omittedCount: 0,
+      },
     },
   };
 }

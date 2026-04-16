@@ -190,6 +190,45 @@ test("tool reviewer runtime can stage a pre-TMA provision request into a concret
   assert.match(workOrder?.objective ?? "", /computer\.use/i);
 });
 
+test("tool reviewer runtime consumes cmp tap aperture into governance output and metadata", async () => {
+  const runtime = createToolReviewerRuntime();
+
+  const result = await runtime.submit({
+    sessionId: "tool-review:provision:cmp-aperture-1",
+    cmpTapReviewAperture: {
+      schemaVersion: "cmp-tap-review-aperture/v1",
+      sessionId: "session-cmp-aperture-1",
+      agentId: "cmp-agent-1",
+      currentObjective: "keep current worksite aligned",
+      requestedCapabilityKey: "computer.use",
+      packageRef: "cmp-package:computer.use",
+      reviewStateSummary: "parent review 1",
+    },
+    governanceAction: {
+      kind: "provision_request",
+      trace: createToolReviewGovernanceTrace({
+        actionId: "action-cmp-provision-request-1",
+        actorId: "tool-reviewer",
+        reason: "Attach CMP aperture to the governance record.",
+        createdAt: "2026-04-16T08:00:00.000Z",
+      }),
+      provisionId: "cmp-aperture-1",
+      capabilityKey: "computer.use",
+      requestedLane: "bootstrap",
+    },
+  });
+
+  assert.match(result.output.summary, /CMP objective: keep current worksite aligned/u);
+  assert.equal(
+    (result.output.metadata?.cmpTapReviewAperture as { packageRef?: string } | undefined)?.packageRef,
+    "cmp-package:computer.use",
+  );
+  assert.equal(
+    (result.input.metadata?.cmpTapReviewAperture as { currentObjective?: string } | undefined)?.currentObjective,
+    "keep current worksite aligned",
+  );
+});
+
 test("tool reviewer runtime records ready bundle delivery as a handoff-ready governance action", async () => {
   const runtime = createToolReviewerRuntime();
 

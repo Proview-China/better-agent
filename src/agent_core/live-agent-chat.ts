@@ -26,7 +26,11 @@ import {
 import {
   parseHumanGateDecisionEnvelope,
 } from "./live-agent-chat/human-gate-envelope.js";
-import { runCmpSidecarTurn } from "./live-agent-chat/cmp-sidecar.js";
+import {
+  createLiveCmpAgentId,
+  createLiveCmpTargetAgentId,
+  runCmpSidecarTurn,
+} from "./live-agent-chat/cmp-sidecar.js";
 import {
   createCmpFiveAgentConfiguration,
   createCmpFiveAgentRuntime,
@@ -217,6 +221,32 @@ interface CapabilityPanelSnapshotEntry {
   bindingState: string;
 }
 
+interface TapCapabilityDiagnosticSnapshotPayload {
+  capabilityKey: string;
+  requestedTier?: string;
+  requestedMode?: string;
+  effectiveMode?: string;
+  automationDepth?: string;
+  explanationStyle?: string;
+  derivedRiskLevel?: string;
+  matchedToolPolicy?: string;
+  matchedToolPolicySelector?: string;
+  forceHumanByRisk?: boolean;
+  accessStatus?: string;
+  accessAssignment?: string;
+  accessMatchedPattern?: string;
+  safetyOutcome?: string;
+  safetyReason?: string;
+  safetyMatchedPattern?: string;
+  requestedScopeKind?: string;
+  externalPathPrefixes?: string[];
+  routeDecision?: string;
+  routeReason?: string;
+  finalStatus?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 interface CapabilityPanelSnapshotGroup {
   groupKey: string;
   title: string;
@@ -232,6 +262,8 @@ interface CapabilityPanelSnapshotPayload {
   blockedCount: number;
   pendingHumanGateCount?: number;
   pendingHumanGates?: HumanGatePanelEntry[];
+  lastAttempt?: TapCapabilityDiagnosticSnapshotPayload;
+  writeDiagnostics?: TapCapabilityDiagnosticSnapshotPayload[];
   groups: CapabilityPanelSnapshotGroup[];
 }
 
@@ -239,12 +271,15 @@ interface InitPanelSnapshotPayload {
   summaryLines: string[];
   status:
     | "idle"
+    | "validating_workspace"
     | "awaiting_seed"
     | "analyzing_repo"
     | "asking_questions"
     | "synthesizing_agents"
+    | "synthesizing"
     | "registering_git"
     | "completed"
+    | "interrupted"
     | "ready"
     | "failed"
     | "degraded";
@@ -767,6 +802,7 @@ async function executeCliModelInference(
 }
 
 function buildCoreUserInput(input: {
+  sessionId: string;
   userMessage: string;
   transcript: DialogueTurn[];
   cmp?: CmpTurnArtifacts;
@@ -784,6 +820,7 @@ function buildCoreUserInput(input: {
 }
 
 function createCoreUserInputAssembly(input: {
+  sessionId: string;
   userMessage: string;
   transcript: DialogueTurn[];
   cmp?: CmpTurnArtifacts;
@@ -819,6 +856,10 @@ function createCoreUserInputAssembly(input: {
   const contextualInput = createLiveChatCoreContextualInput({
     userMessage: input.userMessage,
     transcript: input.transcript,
+    cmpWorksitePackage: input.runtime.cmp.worksite.exportCorePackage({
+      sessionId: input.sessionId,
+      currentObjective: input.userMessage,
+    }),
     cmp: input.cmp,
     mpRoutedPackage: input.mpRoutedPackage,
     availableCapabilitiesText: `Currently registered TAP capabilities: ${availableCapabilities || "(none)"}.`,
@@ -836,10 +877,11 @@ function createCoreUserInputAssembly(input: {
   };
   const modeInstructions = [
       "You are answering inside the Praxis live CLI harness.",
-      "Use the CMP package summary below as the current executable context.",
+      "Use the CMP worksite package below as the current project worksite when it is available.",
       "Execution mode is active.",
       "TAP governance is configured in bapr + prefer_auto for this CLI.",
       ...createCoreCmpHandoffLines({
+        cmpWorksitePackage: contextualInput.cmpWorksitePackage,
         cmpContextPackage: contextualInput.cmpContextPackage,
         forceFinalAnswer: input.forceFinalAnswer,
       }),
@@ -971,6 +1013,10 @@ function createCoreActionPlannerAssembly(
   const contextualInput = createLiveChatCoreContextualInput({
     userMessage,
     transcript: state.transcript,
+    cmpWorksitePackage: state.runtime.cmp.worksite.exportCorePackage({
+      sessionId: state.sessionId,
+      currentObjective: userMessage,
+    }),
     cmp,
     mpRoutedPackage: state.mpRoutedPackage,
     availableCapabilitiesText: `Available capabilities: ${availableCapabilities.join(", ") || "(none)"}`,
@@ -984,6 +1030,7 @@ function createCoreActionPlannerAssembly(
       "Execution mode is active.",
       "TAP governance is bapr + prefer_auto for this CLI.",
       ...createCoreCmpHandoffLines({
+        cmpWorksitePackage: contextualInput.cmpWorksitePackage,
         cmpContextPackage: contextualInput.cmpContextPackage,
       }),
       ...createCoreObjectiveAnchoringLines({}),
@@ -1060,6 +1107,7 @@ function createCoreContextTelemetry(input: {
 async function runCoreModelPass(input: {
   state: LiveCliState;
   userInput: string;
+  currentObjective?: string;
   promptBlocks?: import("./types/kernel-goal.js").GoalPromptBlock[];
   promptMessages?: Array<{ role: "system" | "developer" | "user"; content: string }>;
   cmp?: CmpTurnArtifacts;
@@ -1075,6 +1123,14 @@ async function runCoreModelPass(input: {
   usage?: CliUsageCounts;
   eventTypes: string[];
 }> {
+  const cmpWorksitePackage = input.state.runtime.cmp.worksite.exportCorePackage({
+    sessionId: input.state.sessionId,
+    currentObjective: input.currentObjective,
+  });
+  const cmpTapReviewAperture = input.state.runtime.cmp.worksite.exportTapPackage({
+    sessionId: input.state.sessionId,
+    currentObjective: input.currentObjective,
+  });
   const readKernelOutputText = (value: unknown): string | undefined => {
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
@@ -1116,6 +1172,17 @@ async function runCoreModelPass(input: {
           cmpPackageId: input.cmp.packageId,
           cmpPackageRef: input.cmp.packageRef,
       } : {}),
+        ...(cmpWorksitePackage.identity?.packageId
+          ? {
+            cmpWorksitePackageId: cmpWorksitePackage.identity.packageId,
+            cmpWorksitePackageRef: cmpWorksitePackage.identity.packageRef,
+          }
+          : {}),
+        ...(cmpTapReviewAperture
+          ? {
+            cmpTapReviewAperture,
+          }
+          : {}),
     },
   });
 
@@ -1352,6 +1419,23 @@ function createCmpViewerRuntimePort(state: LiveCliState): RaxCmpPort {
       },
       approvePeerExchange(input) {
         return state.runtime.reviewCmpPeerExchangeApproval(input);
+      },
+    },
+    worksite: {
+      observeTurn(input) {
+        return state.runtime.cmp.worksite.observeTurn(input);
+      },
+      getCurrent(input) {
+        return state.runtime.cmp.worksite.getCurrent(input);
+      },
+      clearSession(input) {
+        return state.runtime.cmp.worksite.clearSession(input);
+      },
+      exportCorePackage(input) {
+        return state.runtime.cmp.worksite.exportCorePackage(input);
+      },
+      exportTapPackage(input) {
+        return state.runtime.cmp.worksite.exportTapPackage(input);
       },
     },
   };
@@ -1717,6 +1801,71 @@ function buildCapabilitiesPanelSnapshot(state: LiveCliState): CapabilityPanelSna
       ...group,
       entries: group.entries.sort((left, right) => left.capabilityKey.localeCompare(right.capabilityKey)),
     }));
+  const writePreviewSpecs = [
+    { capabilityKey: "repo.write", requestedTier: "B0" as const, input: { path: "memory/generated/tap-write-preview.txt", content: "preview" } },
+    { capabilityKey: "code.edit", requestedTier: "B0" as const, input: { path: "src/example.ts", old_string: "before", new_string: "after" } },
+    { capabilityKey: "code.patch", requestedTier: "B0" as const, input: { patch: "*** Begin Patch\n*** Update File: src/example.ts\n@@\n-before\n+after\n*** End Patch\n" } },
+    { capabilityKey: "shell.restricted", requestedTier: "B0" as const, input: { command: "pwd", args: [], cwd: "." } },
+    { capabilityKey: "git.commit", requestedTier: "B0" as const, input: { cwd: ".", paths: ["src/example.ts"], message: "tap preview" } },
+    { capabilityKey: "git.push", requestedTier: "B0" as const, input: { cwd: ".", remote: "origin", branch: "tap-preview" } },
+  ];
+  const diagnosticModes = ["bapr", "yolo", "permissive", "standard", "restricted"] as const;
+  const writeDiagnostics = diagnosticModes.flatMap((mode) =>
+    writePreviewSpecs.map((spec) =>
+      state.runtime.inspectTapCapabilityRoute({
+        sessionId: state.sessionId,
+        runId: state.lastTurn?.core.runId ?? `${state.sessionId}:capabilities-preview`,
+        agentId: `live-cli-core:${state.sessionId}`,
+        capabilityKey: spec.capabilityKey,
+        reason: `Preview TAP route for ${spec.capabilityKey} in ${mode} mode.`,
+        requestedTier: spec.requestedTier,
+        mode,
+        requestInput: spec.input,
+        metadata: {
+          cliBridge: "capabilities-panel-preview",
+        },
+      }),
+    ),
+  ).map<TapCapabilityDiagnosticSnapshotPayload>((diagnostic) => ({
+    capabilityKey: diagnostic.capabilityKey,
+    requestedTier: diagnostic.requestedTier,
+    requestedMode: diagnostic.requestedMode,
+    effectiveMode: diagnostic.effectiveMode,
+    automationDepth: diagnostic.automationDepth,
+    explanationStyle: diagnostic.explanationStyle,
+    derivedRiskLevel: diagnostic.derivedRiskLevel,
+    matchedToolPolicy: diagnostic.matchedToolPolicy,
+    matchedToolPolicySelector: diagnostic.matchedToolPolicySelector,
+    forceHumanByRisk: diagnostic.forceHumanByRisk,
+    accessStatus: diagnostic.accessStatus,
+    accessAssignment: diagnostic.accessAssignment,
+    accessMatchedPattern: diagnostic.accessMatchedPattern,
+    safetyOutcome: diagnostic.safetyOutcome,
+    safetyReason: diagnostic.safetyReason,
+    safetyMatchedPattern: diagnostic.safetyMatchedPattern,
+    requestedScopeKind: diagnostic.requestedScopeKind,
+    externalPathPrefixes: diagnostic.externalPathPrefixes,
+    routeDecision: diagnostic.routeDecision,
+    routeReason: diagnostic.routeReason,
+  }));
+  const lastAttempt = state.lastTurn?.core.toolExecution?.diagnostics
+    ? {
+      ...state.lastTurn.core.toolExecution.diagnostics,
+      finalStatus: state.lastTurn.core.toolExecution.status,
+      errorCode:
+        state.lastTurn.core.toolExecution.error
+        && typeof state.lastTurn.core.toolExecution.error === "object"
+        && typeof (state.lastTurn.core.toolExecution.error as { code?: unknown }).code === "string"
+          ? (state.lastTurn.core.toolExecution.error as { code: string }).code
+          : undefined,
+      errorMessage:
+        state.lastTurn.core.toolExecution.error
+        && typeof state.lastTurn.core.toolExecution.error === "object"
+        && typeof (state.lastTurn.core.toolExecution.error as { message?: unknown }).message === "string"
+          ? (state.lastTurn.core.toolExecution.error as { message: string }).message
+          : undefined,
+    }
+    : undefined;
   const pendingHumanGates: HumanGatePanelEntry[] = tapRuntime.humanGates
     .filter((gate) => gate.sessionId === state.sessionId && gate.status === "waiting_human")
     .slice()
@@ -1754,6 +1903,8 @@ function buildCapabilitiesPanelSnapshot(state: LiveCliState): CapabilityPanelSna
     blockedCount: governance.blockingCapabilityKeys.length,
     pendingHumanGateCount: pendingHumanGates.length,
     pendingHumanGates,
+    lastAttempt,
+    writeDiagnostics,
     groups: orderedGroups,
   };
 }
@@ -2592,6 +2743,7 @@ async function emitInitialViewerPanelSnapshots(state: LiveCliState): Promise<voi
 async function emitViewerPanelSnapshots(state: LiveCliState): Promise<{
   cmp: CmpPanelSnapshotPayload;
   mp: MpPanelSnapshotPayload;
+  capabilities: CapabilityPanelSnapshotPayload;
 }> {
   const cwd = process.cwd();
   const emitSnapshot = async <T>(params: {
@@ -2612,7 +2764,7 @@ async function emitViewerPanelSnapshots(state: LiveCliState): Promise<{
     return snapshot;
   };
 
-  const [cmp, mp] = await Promise.all([
+  const [cmp, mp, capabilities] = await Promise.all([
     emitSnapshot({
       panel: "cmp",
       build: () => buildCmpPanelSnapshot(state),
@@ -2631,7 +2783,10 @@ async function emitViewerPanelSnapshots(state: LiveCliState): Promise<{
           "capabilities snapshot unavailable",
           error instanceof Error ? error.message : String(error),
         ],
-        status: "degraded",
+        status: "degraded" as const,
+        registeredCount: 0,
+        familyCount: 0,
+        blockedCount: 0,
         sourceKind: "capabilities_error",
         emptyReason: error instanceof Error ? error.message : String(error),
         groups: [],
@@ -2642,7 +2797,7 @@ async function emitViewerPanelSnapshots(state: LiveCliState): Promise<{
       build: () => buildInitPanelSnapshot(state),
       fallback: (error) => ({
         summaryLines: [],
-        status: "failed",
+        status: "failed" as const,
         sourceKind: "init_error",
         errorMessage: error instanceof Error ? error.message : String(error),
       }),
@@ -2662,6 +2817,7 @@ async function emitViewerPanelSnapshots(state: LiveCliState): Promise<{
   return {
     cmp,
     mp,
+    capabilities,
   };
 }
 
@@ -2670,63 +2826,96 @@ async function executeCoreCapabilityRequest(
   request: CoreCapabilityRequest,
 ): Promise<NonNullable<CoreTurnArtifacts["toolExecution"]>> {
   try {
+    const requestedTier = request.requestedTier ?? "B0";
+    const requestedMode = LIVE_CHAT_TAP_OVERRIDE.requestedMode ?? "bapr";
+    const bridgeMetadata = {
+      tapUserOverride: LIVE_CHAT_TAP_OVERRIDE,
+      cliBridge: "core-action-envelope",
+      cliUiMode: state.uiMode,
+    } satisfies Record<string, unknown>;
+    const diagnostics = state.runtime.inspectTapCapabilityRoute({
+      sessionId: state.sessionId,
+      runId: `${state.sessionId}:cli-direct-capability:${state.turnIndex}`,
+      agentId: `live-cli-core:${state.sessionId}`,
+      capabilityKey: request.capabilityKey,
+      reason: request.reason,
+      requestedTier,
+      mode: requestedMode,
+      requestInput: request.input,
+      metadata: bridgeMetadata,
+    });
     const intentId = randomUUID();
     const createdAt = new Date().toISOString();
+    const runId = `${state.sessionId}:cli-direct-capability:${state.turnIndex}`;
     const capabilityIntent = {
       intentId,
       sessionId: state.sessionId,
-      runId: `${state.sessionId}:cli-direct-capability:${state.turnIndex}`,
+      runId,
       kind: "capability_call" as const,
       createdAt,
       priority: "high" as const,
       correlationId: intentId,
+      metadata: bridgeMetadata,
       request: {
         requestId: randomUUID(),
         intentId,
         sessionId: state.sessionId,
-        runId: `${state.sessionId}:cli-direct-capability:${state.turnIndex}`,
+        runId,
         capabilityKey: request.capabilityKey,
         input: request.input,
         priority: "high" as const,
         timeoutMs: request.timeoutMs ?? 20_000,
-        metadata: {
-          cliBridge: "core-action-envelope",
-          cliUiMode: state.uiMode,
-        },
+        metadata: bridgeMetadata,
       },
     };
-    const plan = createInvocationPlanFromCapabilityIntent(capabilityIntent);
-    const lease = await state.runtime.capabilityGateway.acquire(plan);
-    const prepared = await state.runtime.capabilityGateway.prepare(lease, plan);
-
-    return await new Promise(async (resolve, reject) => {
-      const unsubscribe = state.runtime.capabilityGateway.onResult((result) => {
-        if (result.metadata?.preparedId !== prepared.preparedId) {
-          return;
-        }
-        unsubscribe();
-        if (result.status !== "success" && result.status !== "partial") {
-          resolve({
-            capabilityKey: request.capabilityKey,
-            status: result.status,
-            error: result.error,
-          });
-          return;
-        }
-        resolve({
-          capabilityKey: request.capabilityKey,
-          status: result.status,
-          output: result.output,
-        });
-      });
-
-      try {
-        await state.runtime.capabilityGateway.dispatch(prepared);
-      } catch (error) {
-        unsubscribe();
-        reject(error);
-      }
+    const dispatch = await state.runtime.dispatchCapabilityIntentViaTaPool(capabilityIntent, {
+      agentId: `live-cli-core:${state.sessionId}`,
+      requestedTier,
+      mode: requestedMode,
+      reason: request.reason,
+      metadata: bridgeMetadata,
     });
+    if (dispatch.status !== "dispatched") {
+      return {
+        capabilityKey: request.capabilityKey,
+        status: dispatch.status,
+        error: {
+          code: `ta_${dispatch.status}`,
+          message: dispatch.humanGate?.reason
+            ?? dispatch.reviewDecision?.reason
+            ?? dispatch.safety?.reason
+            ?? `Capability ${request.capabilityKey} did not reach execution; TAP returned ${dispatch.status}.`,
+          details: {
+            accessRequest: dispatch.accessRequest,
+            reviewDecision: dispatch.reviewDecision,
+            humanGate: dispatch.humanGate,
+            safety: dispatch.safety,
+          },
+        },
+        diagnostics,
+      };
+    }
+
+    const kernelResult = state.runtime.readKernelResult(runId);
+    if (!kernelResult) {
+      return {
+        capabilityKey: request.capabilityKey,
+        status: "failed",
+        error: {
+          code: "ta_kernel_result_missing",
+          message: `Capability ${request.capabilityKey} was dispatched but no kernel result was recorded for run ${runId}.`,
+        },
+        diagnostics,
+      };
+    }
+
+    return {
+      capabilityKey: request.capabilityKey,
+      status: kernelResult.status,
+      output: kernelResult.output,
+      error: kernelResult.error,
+      diagnostics,
+    };
   } catch (error) {
     return {
       capabilityKey: request.capabilityKey,
@@ -2734,6 +2923,12 @@ async function executeCoreCapabilityRequest(
       error: {
         code: "cli_capability_bridge_failed",
         message: error instanceof Error ? error.message : String(error),
+      },
+      diagnostics: {
+        capabilityKey: request.capabilityKey,
+        requestedMode: LIVE_CHAT_TAP_OVERRIDE.requestedMode ?? "bapr",
+        routeDecision: "deny",
+        routeReason: error instanceof Error ? error.message : String(error),
       },
     };
   }
@@ -3645,11 +3840,13 @@ function deriveTerminalCoreTaskStatus(params: {
 
 async function runCoreTurn(
   state: LiveCliState,
+  workspaceRoot: string,
   userMessage: string,
   cmp: CmpTurnArtifacts | undefined,
   config: ReturnType<typeof loadOpenAILiveConfig>,
   initialInputImageUrls?: string[],
 ): Promise<CoreTurnArtifacts> {
+  await refreshLiveMpOverlayForTurn(state, workspaceRoot, userMessage);
   const maxCapabilityLoops = 4;
   const maxIncompleteReplyRecoveries = 2;
   const initialContextPrompt = buildCoreActionPlannerInstructionText(state, "", cmp);
@@ -3753,6 +3950,7 @@ async function runCoreTurn(
   while (true) {
     if (!actionEnvelope) {
       const fallbackAssembly = createCoreUserInputAssembly({
+        sessionId: state.sessionId,
         userMessage,
         transcript: state.transcript,
         cmp,
@@ -3778,6 +3976,7 @@ async function runCoreTurn(
       const fallback = await runCoreModelPass({
         state,
         userInput: fallbackUserInput,
+        currentObjective: userMessage,
         promptBlocks: fallbackAssembly.promptBlocks,
         promptMessages: fallbackAssembly.promptMessages,
         cmp,
@@ -4065,6 +4264,7 @@ async function runCoreTurn(
     }
 
     const followupAssembly = createCoreUserInputAssembly({
+      sessionId: state.sessionId,
       userMessage,
       transcript: state.transcript,
       cmp,
@@ -4089,6 +4289,7 @@ async function runCoreTurn(
     const followup = await runCoreModelPass({
       state,
       userInput: followupUserInput,
+      currentObjective: userMessage,
       promptBlocks: followupAssembly.promptBlocks,
       promptMessages: followupAssembly.promptMessages,
       cmp,
@@ -4251,6 +4452,7 @@ async function runCoreTurn(
 
 async function handleUserTurn(
   state: LiveCliState,
+  workspaceRoot: string,
   inputPayload: {
     text: string;
     attachments?: DirectInputImageAttachment[];
@@ -4327,6 +4529,12 @@ async function handleUserTurn(
         quiet: state.uiMode === "direct",
       });
       state.latestCmp = cmp;
+      state.runtime.cmp.worksite.observeTurn({
+        sessionId: state.sessionId,
+        turnIndex: state.turnIndex,
+        currentObjective: userMessage,
+        cmp,
+      });
       state.lastTurn = state.lastTurn
         ? { ...state.lastTurn, cmp }
         : state.lastTurn;
@@ -4345,7 +4553,7 @@ async function handleUserTurn(
   if (state.uiMode === "direct") {
     printDirectSub("core 正在规划下一步");
   }
-  const core = await withStopwatch(coreLabel, () => runCoreTurn(state, userMessage, previousCmp, config, initialInputImageUrls), {
+  const core = await withStopwatch(coreLabel, () => runCoreTurn(state, workspaceRoot, userMessage, previousCmp, config, initialInputImageUrls), {
     quiet: state.uiMode === "direct",
   });
   await state.logger.log("stage_end", {
@@ -4384,7 +4592,7 @@ async function handleUserTurn(
       fidelityLabel: options.enableCmpSync === false ? "skipped" : "pending",
       projectionId: options.enableCmpSync === false ? "skipped" : "pending",
       snapshotId: options.enableCmpSync === false ? "skipped" : "pending",
-      summary: state.runtime.getCmpFiveAgentRuntimeSummary("cmp-live-cli-main"),
+      summary: state.runtime.getCmpFiveAgentRuntimeSummary(createLiveCmpAgentId(state.sessionId)),
       intent: options.enableCmpSync === false ? "skipped in once mode" : "pending",
       operatorGuide: options.enableCmpSync === false
         ? "CMP sidecar was intentionally skipped so once mode could return immediately."
@@ -4474,6 +4682,9 @@ async function applyTranscriptRewind(
   state.pendingCmpSync = undefined;
   state.latestCmp = undefined;
   state.lastTurn = undefined;
+  state.runtime.cmp.worksite.clearSession({
+    sessionId: state.sessionId,
+  });
   await emitViewerPanelSnapshots(state);
   await state.logger.log("rewind_applied", {
     sessionId: state.sessionId,
@@ -4701,7 +4912,8 @@ async function bootstrapLiveCmpInfra(state: LiveCliState, workspaceRoot: string)
   } catch {
     // keep fallback main
   }
-  const defaultAgentId = "cmp-live-cli-main";
+  const defaultAgentId = createLiveCmpAgentId(state.sessionId);
+  const targetAgentId = createLiveCmpTargetAgentId(state.sessionId);
   const sqlitePath = resolve(workspaceRoot, "memory", "generated", "cmp-db", "cmp.sqlite");
   await state.runtime.bootstrapCmpProjectInfra({
     projectId,
@@ -4709,7 +4921,7 @@ async function bootstrapLiveCmpInfra(state: LiveCliState, workspaceRoot: string)
     repoRootPath,
     agents: [
       { agentId: defaultAgentId, depth: 0 },
-      { agentId: "core-live-cli", parentAgentId: defaultAgentId, depth: 1 },
+      { agentId: targetAgentId, parentAgentId: defaultAgentId, depth: 1 },
     ],
     defaultAgentId,
     defaultBranchName,
@@ -4805,6 +5017,56 @@ function startLiveCliStartupWarmup(
   return warmup;
 }
 
+function readCmpMpCandidatePayloads(state: LiveCliState, currentObjective: string) {
+  const worksite = state.runtime.cmp.worksite as {
+    exportMpCandidates?: (input: {
+      sessionId: string;
+      agentId?: string;
+      currentObjective?: string;
+      limit?: number;
+    }) => unknown;
+  };
+  if (typeof worksite.exportMpCandidates !== "function") {
+    return undefined;
+  }
+  const exported = worksite.exportMpCandidates({
+    sessionId: state.sessionId,
+    currentObjective,
+    limit: 12,
+  });
+  if (Array.isArray(exported)) {
+    return exported;
+  }
+  if (exported && typeof exported === "object" && Array.isArray((exported as { candidates?: unknown[] }).candidates)) {
+    return (exported as { candidates: unknown[] }).candidates;
+  }
+  return undefined;
+}
+
+async function refreshLiveMpOverlayForTurn(
+  state: LiveCliState,
+  workspaceRoot: string,
+  currentObjective: string,
+): Promise<void> {
+  const cmpWorksitePackage = state.runtime.cmp.worksite.exportCorePackage({
+    sessionId: state.sessionId,
+    currentObjective,
+  });
+  const cmpCandidatePayloads = readCmpMpCandidatePayloads(state, currentObjective);
+  const refresh = discoverMpOverlayArtifacts({
+    cwd: workspaceRoot,
+    userMessage: currentObjective,
+    currentObjective,
+    cmpWorksitePackage,
+    cmpCandidatePayloads,
+  }).then((mpOverlay) => {
+    state.memoryOverlayEntries = mpOverlay.entries;
+    state.mpRoutedPackage = mpOverlay.routedPackage;
+  }).catch(() => undefined);
+  state.mpOverlayReady = refresh.then(() => undefined);
+  await refresh;
+}
+
 async function main(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
   CURRENT_UI_MODE = options.uiMode;
@@ -4864,7 +5126,7 @@ async function main(): Promise<void> {
   try {
     if (options.once) {
       await startupWarmup;
-      await handleUserTurn(state, {
+      await handleUserTurn(state, workspaceRoot, {
         text: options.once,
       }, config, {
         enableCmpSync: false,
@@ -4972,7 +5234,7 @@ async function main(): Promise<void> {
             await handleInitRequest(state, pendingQuestion.resumeSeedText ?? state.initFlow?.seedText ?? "", config, workspaceRoot);
             continue;
           }
-          await handleUserTurn(state, {
+          await handleUserTurn(state, workspaceRoot, {
             text: formatQuestionAnswersAsUserMessage({
               prompt: pendingQuestion,
               answers: questionAnswer.answers,
@@ -5005,6 +5267,9 @@ async function main(): Promise<void> {
           printStatus(state);
           continue;
         }
+        if (line === "/rush") {
+          continue;
+        }
         if (line === "/mp") {
           await state.mpOverlayReady?.catch(() => undefined);
           const snapshots = await emitViewerPanelSnapshots(state);
@@ -5012,8 +5277,8 @@ async function main(): Promise<void> {
           continue;
         }
         if (line === "/capabilities") {
-          await emitViewerPanelSnapshots(state);
-          printDirectCapabilities(state.runtime);
+          const snapshots = await emitViewerPanelSnapshots(state);
+          printDirectCapabilities(state.runtime, snapshots.capabilities);
           continue;
         }
         if (line === "/init") {
@@ -5029,7 +5294,8 @@ async function main(): Promise<void> {
           continue;
         }
         if (line === "/permissions") {
-          printPermissionsView(state.runtime);
+          const snapshots = await emitViewerPanelSnapshots(state);
+          printPermissionsView(state.runtime, snapshots.capabilities);
           continue;
         }
         if (line === "/workspace") {
@@ -5096,7 +5362,7 @@ async function main(): Promise<void> {
           continue;
         }
 
-        await handleUserTurn(state, {
+        await handleUserTurn(state, workspaceRoot, {
           text: messageText,
           attachments: parsedInput?.attachments,
           pastedContents: parsedInput?.pastedContents,

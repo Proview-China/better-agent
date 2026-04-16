@@ -13,6 +13,21 @@ test("buildLiveChatCoreContextualPrompt injects key live-chat blocks", () => {
       { role: "user", text: "上一轮说了什么" },
       { role: "assistant", text: "我们在看 core prompt" },
     ],
+    cmpWorksitePackage: {
+      schemaVersion: "core-cmp-worksite-package/v1",
+      deliveryStatus: "available",
+      identity: {
+        sessionId: "session-1",
+        agentId: "cmp-main",
+        packageId: "pkg-worksite-1",
+        packageRef: "cmp-worksite:1",
+      },
+      objective: {
+        currentObjective: "继续调研 core prompt engineering",
+        taskSummary: "keep current project worksite aligned",
+        activeTurnIndex: 4,
+      },
+    },
     cmp: {
       syncStatus: "synced",
       agentId: "cmp-main",
@@ -66,6 +81,9 @@ test("buildLiveChatCoreContextualPrompt injects key live-chat blocks", () => {
   assert.match(rendered, /继续调研 core prompt engineering/);
   assert.match(rendered, /<workspace_init_context>/);
   assert.match(rendered, /source_path: \.raxode\/AGENTS\.md/);
+  assert.match(rendered, /<cmp_worksite_package>/);
+  assert.match(rendered, /schema_version: core-cmp-worksite-package\/v1/);
+  assert.match(rendered, /current_objective: 继续调研 core prompt engineering/);
   assert.match(rendered, /<cmp_context_package>/);
   assert.match(rendered, /schema_version: core-cmp-context-package\/v1/);
   assert.match(rendered, /delivery_status: available/);
@@ -97,6 +115,17 @@ test("createLiveChatCoreContextualInput returns structured contextual object bef
   const contextual = createLiveChatCoreContextualInput({
     userMessage: "继续推进",
     transcript: [{ role: "user", text: "继续推进" }],
+    cmpWorksitePackage: {
+      schemaVersion: "core-cmp-worksite-package/v1",
+      deliveryStatus: "available",
+      identity: {
+        sessionId: "session-1",
+        agentId: "cmp-main",
+      },
+      objective: {
+        currentObjective: "继续推进",
+      },
+    },
     mpRoutedPackage: {
       schemaVersion: "core-mp-routed-package/v1",
       deliveryStatus: "available",
@@ -123,13 +152,26 @@ test("createLiveChatCoreContextualInput returns structured contextual object bef
     }],
   });
 
+  if (typeof contextual.workspaceInitContext === "string" || !contextual.workspaceInitContext) {
+    throw new Error("expected structured workspaceInitContext");
+  }
+  if (typeof contextual.cmpWorksitePackage === "string" || !contextual.cmpWorksitePackage) {
+    throw new Error("expected structured cmpWorksitePackage");
+  }
+  if (typeof contextual.cmpContextPackage === "string" || !contextual.cmpContextPackage) {
+    throw new Error("expected structured cmpContextPackage");
+  }
+  if (typeof contextual.mpRoutedPackage === "string" || !contextual.mpRoutedPackage) {
+    throw new Error("expected structured mpRoutedPackage");
+  }
+
   assert.equal(contextual.currentObjective, "继续推进");
   assert.match(contextual.recentTranscript, /继续推进/);
   assert.match(contextual.tapCapabilityWindow ?? "", /Currently registered TAP capabilities:/);
-  assert.equal(contextual.workspaceInitContext?.schemaVersion, "core-workspace-init-context/v1");
-  assert.equal(typeof contextual.cmpContextPackage, "object");
-  assert.equal(contextual.cmpContextPackage?.schemaVersion, "core-cmp-context-package/v1");
-  assert.equal(contextual.mpRoutedPackage?.schemaVersion, "core-mp-routed-package/v1");
+  assert.equal(contextual.workspaceInitContext.schemaVersion, "core-workspace-init-context/v1");
+  assert.equal(contextual.cmpWorksitePackage.schemaVersion, "core-cmp-worksite-package/v1");
+  assert.equal(contextual.cmpContextPackage.schemaVersion, "core-cmp-context-package/v1");
+  assert.equal(contextual.mpRoutedPackage.schemaVersion, "core-mp-routed-package/v1");
   assert.equal(contextual.overlayIndex?.schemaVersion, "core-overlay-index/v1");
   assert.equal(contextual.overlayIndex?.memories?.[0]?.id, "workspace-init:agents");
   assert.equal(contextual.overlayIndex?.memories?.[0]?.bodyRef, ".raxode/AGENTS.md");
@@ -142,9 +184,13 @@ test("createLiveChatCoreContextualInput degrades cleanly when cmp and capability
     availableCapabilitiesText: "Currently registered TAP capabilities: shell.restricted.",
   });
 
-  assert.equal(contextual.cmpContextPackage?.schemaVersion, "core-cmp-context-package/v1");
-  assert.equal(contextual.cmpContextPackage?.deliveryStatus, "absent");
-  assert.match(contextual.cmpContextPackage?.objective?.taskSummary ?? "", /no fresh CMP package/);
+  if (typeof contextual.cmpContextPackage === "string" || !contextual.cmpContextPackage) {
+    throw new Error("expected structured cmpContextPackage");
+  }
+
+  assert.equal(contextual.cmpContextPackage.schemaVersion, "core-cmp-context-package/v1");
+  assert.equal(contextual.cmpContextPackage.deliveryStatus, "absent");
+  assert.match(contextual.cmpContextPackage.objective?.taskSummary ?? "", /no fresh CMP package/);
   assert.equal(contextual.overlayIndex?.schemaVersion, "core-overlay-index/v1");
   assert.equal(contextual.overlayIndex?.capabilityFamilies, undefined);
   assert.ok((contextual.overlayIndex?.skills?.length ?? 0) > 0);
@@ -228,11 +274,22 @@ test("createLiveChatCoreContextualInput maps pending skipped and partial cmp sta
     availableCapabilitiesText: "Currently registered TAP capabilities: shell.restricted.",
   });
 
-  assert.equal(pending.cmpContextPackage?.deliveryStatus, "pending");
-  assert.equal(pending.cmpContextPackage?.governance?.confidenceLabel, "low");
-  assert.equal(skipped.cmpContextPackage?.deliveryStatus, "skipped");
-  assert.equal(skipped.cmpContextPackage?.governance?.freshness, "stale");
-  assert.equal(partial.cmpContextPackage?.deliveryStatus, "partial");
-  assert.equal(partial.cmpContextPackage?.governance?.confidenceLabel, "medium");
-  assert.equal(partial.cmpContextPackage?.governance?.freshness, "aging");
+  if (
+    typeof pending.cmpContextPackage === "string"
+    || !pending.cmpContextPackage
+    || typeof skipped.cmpContextPackage === "string"
+    || !skipped.cmpContextPackage
+    || typeof partial.cmpContextPackage === "string"
+    || !partial.cmpContextPackage
+  ) {
+    throw new Error("expected structured cmpContextPackage for pending/skipped/partial cases");
+  }
+
+  assert.equal(pending.cmpContextPackage.deliveryStatus, "pending");
+  assert.equal(pending.cmpContextPackage.governance?.confidenceLabel, "low");
+  assert.equal(skipped.cmpContextPackage.deliveryStatus, "skipped");
+  assert.equal(skipped.cmpContextPackage.governance?.freshness, "stale");
+  assert.equal(partial.cmpContextPackage.deliveryStatus, "partial");
+  assert.equal(partial.cmpContextPackage.governance?.confidenceLabel, "medium");
+  assert.equal(partial.cmpContextPackage.governance?.freshness, "aging");
 });

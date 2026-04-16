@@ -6,6 +6,7 @@ import { createAgentCoreCmpPackageFlowService } from "./package-flow-service.js"
 import { createAgentCoreCmpProjectService } from "./project-service.js";
 import { createAgentCoreCmpTapBridgeService } from "./tap-bridge-service.js";
 import { createAgentCoreCmpStateStore, type AgentCoreCmpStateStore } from "./state-store.js";
+import { createAgentCoreCmpWorksiteService } from "./worksite-service.js";
 
 export interface AgentCoreCmpServices {
   readonly stateStore: AgentCoreCmpStateStore;
@@ -27,6 +28,7 @@ export function createAgentCoreCmpServices(runtime: AgentCoreRuntime): AgentCore
       },
       fiveAgent: createAgentCoreCmpLiveService(runtime),
       tapBridge: createAgentCoreCmpTapBridgeService(runtime),
+      worksite: createAgentCoreCmpWorksiteService(stateStore),
     },
   };
 }

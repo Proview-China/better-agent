@@ -117,8 +117,8 @@ test("objective, workflow, validation, context, and continuation helpers expose 
 
 test("createCoreCmpHandoffLines changes discipline by delivery status", () => {
   const available = createCoreCmpHandoffLines({
-    cmpContextPackage: {
-      schemaVersion: "core-cmp-context-package/v1",
+    cmpWorksitePackage: {
+      schemaVersion: "core-cmp-worksite-package/v1",
       deliveryStatus: "available",
     },
   });
@@ -135,7 +135,7 @@ test("createCoreCmpHandoffLines changes discipline by delivery status", () => {
     },
   });
 
-  assert.match(available.join("\n"), /current executable context/);
+  assert.match(available.join("\n"), /current project worksite/);
   assert.match(partial.join("\n"), /conservatively/);
   assert.match(pending.join("\n"), /currently pending/);
 });

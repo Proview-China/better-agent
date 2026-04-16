@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   createAgentLineage,
   createCmpBranchFamily,
@@ -12,8 +14,16 @@ import {
 } from "./shared.js";
 
 const LIVE_CMP_PROJECT_ID = "praxis-live-cli";
-const LIVE_CMP_AGENT_ID = "cmp-live-cli-main";
-const LIVE_CMP_TARGET_AGENT_ID = "core-live-cli";
+
+export function createLiveCmpAgentId(sessionId: string): string {
+  const digest = createHash("sha256").update(sessionId).digest("hex").slice(0, 12);
+  return `cmp-live-cli-${digest}`;
+}
+
+export function createLiveCmpTargetAgentId(sessionId: string): string {
+  const digest = createHash("sha256").update(sessionId).digest("hex").slice(0, 12);
+  return `core-live-cli-${digest}`;
+}
 
 function readCmpMetadataRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? value as Record<string, unknown> : undefined;
@@ -118,7 +128,8 @@ export async function runCmpSidecarTurn(input: {
   userMessage: string;
 }): Promise<CmpTurnArtifacts> {
   const turnId = `${input.turnIndex}`;
-  const agentId = LIVE_CMP_AGENT_ID;
+  const agentId = createLiveCmpAgentId(input.sessionId);
+  const targetAgentId = createLiveCmpTargetAgentId(input.sessionId);
   const transcriptWindow = input.transcript.slice(-6);
   const previousAssistant = [...input.transcript].reverse().find((turn) => turn.role === "assistant")?.text;
   let latestProjectionId: string | undefined;
@@ -253,7 +264,7 @@ export async function runCmpSidecarTurn(input: {
       run: () => input.runtime.materializeContextPackage({
         agentId,
         snapshotId: resolveResult.snapshot!.snapshotId,
-        targetAgentId: LIVE_CMP_TARGET_AGENT_ID,
+        targetAgentId,
         packageKind: "active_reseed",
         fidelityLabel: "checked_high_fidelity",
         metadata: {
@@ -290,7 +301,7 @@ export async function runCmpSidecarTurn(input: {
         agentId,
         packageId: materializeResult.contextPackage.packageId,
         sourceAgentId: agentId,
-        targetAgentId: LIVE_CMP_TARGET_AGENT_ID,
+        targetAgentId,
         targetKind: "core_agent",
         metadata: {
           latestUserMessage: input.userMessage,

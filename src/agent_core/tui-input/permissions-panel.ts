@@ -51,6 +51,22 @@ export function buildPermissionModeMatrixLines(
   selectedMode: string,
   options: {
     persistedAllowRuleCount?: number;
+    previewRecords?: Array<{
+      capabilityKey: string;
+      requestedMode?: string;
+      effectiveMode?: string;
+      derivedRiskLevel?: string;
+      routeDecision?: string;
+      matchedToolPolicy?: string;
+      matchedToolPolicySelector?: string;
+    }>;
+    lastAttempt?: {
+      capabilityKey: string;
+      finalStatus?: string;
+      routeDecision?: string;
+      derivedRiskLevel?: string;
+      errorCode?: string;
+    };
   } = {},
 ): PraxisSlashPanelBodyLine[] {
   const lines: PraxisSlashPanelBodyLine[] = [
@@ -72,6 +88,35 @@ export function buildPermissionModeMatrixLines(
     lines.push({
       text: `${PERMISSION_MATRIX_INDENT}persisted allows in this workspace: ${options.persistedAllowRuleCount}`,
       tone: "success",
+    });
+  }
+  const previewRecords = (options.previewRecords ?? [])
+    .filter((entry) => entry.requestedMode === selectedMode)
+    .slice(0, 6);
+  if (previewRecords.length > 0) {
+    lines.push(
+      {
+        text: `${PERMISSION_MATRIX_INDENT}Common write lanes in ${selectedMode}:`,
+        tone: "info",
+      },
+      ...previewRecords.map((entry) => ({
+        text: `${PERMISSION_MATRIX_INDENT}${entry.capabilityKey.padEnd(18, " ")} ${String(entry.routeDecision ?? "unknown").padEnd(10, " ")} risk=${entry.derivedRiskLevel ?? "unknown"}${entry.matchedToolPolicy ? ` policy=${entry.matchedToolPolicy}${entry.matchedToolPolicySelector ? `(${entry.matchedToolPolicySelector})` : ""}` : ""}${entry.effectiveMode && entry.effectiveMode !== selectedMode ? ` effective=${entry.effectiveMode}` : ""}`,
+        tone: entry.routeDecision === "human_gate" || entry.routeDecision === "interrupt"
+          ? "warning" as const
+          : entry.routeDecision === "deny"
+            ? "danger" as const
+            : undefined,
+      })),
+      {
+        text: `${PERMISSION_MATRIX_INDENT}These rows show TAP governance routing; command-specific payload guards still run later.`,
+        tone: "warning",
+      },
+    );
+  }
+  if (options.lastAttempt) {
+    lines.push({
+      text: `${PERMISSION_MATRIX_INDENT}Last write attempt: ${options.lastAttempt.capabilityKey} · ${options.lastAttempt.routeDecision ?? "unknown"} · final=${options.lastAttempt.finalStatus ?? "unknown"}${options.lastAttempt.derivedRiskLevel ? ` · risk=${options.lastAttempt.derivedRiskLevel}` : ""}${options.lastAttempt.errorCode ? ` · error=${options.lastAttempt.errorCode}` : ""}`,
+      tone: options.lastAttempt.finalStatus === "failed" ? "danger" : "warning",
     });
   }
   return lines;

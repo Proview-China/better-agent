@@ -42,6 +42,7 @@ import type {
   ToolReviewerRuntimeLlmHook,
   ToolReviewerRuntimeLlmHookInput,
 } from "./tool-review-model-hook.js";
+import type { AgentCoreCmpTapReviewApertureV1 } from "../cmp-api/index.js";
 
 export const TA_TOOL_REVIEW_RUNTIME_STATUSES = [
   "recorded",
@@ -55,6 +56,7 @@ export type TaToolReviewRuntimeStatus =
 export interface ToolReviewerRuntimeSubmitInput {
   governanceAction: ToolReviewGovernanceInputShell;
   sessionId?: string;
+  cmpTapReviewAperture?: AgentCoreCmpTapReviewApertureV1;
 }
 
 export interface ToolReviewerRuntimeResult {
@@ -140,6 +142,49 @@ function resolveRecommendedNextStep(
     return "Session is fully settled; keep the evidence bundle for future audits or resumptions.";
   }
   return "Governance actions are recorded only; keep the session available for later runtime orchestration.";
+}
+
+function readCmpTapReviewAperture(
+  input: ToolReviewerRuntimeSubmitInput,
+): AgentCoreCmpTapReviewApertureV1 | undefined {
+  if (input.cmpTapReviewAperture) {
+    return input.cmpTapReviewAperture;
+  }
+  const value = input.governanceAction.metadata?.cmpTapReviewAperture;
+  return value && typeof value === "object"
+    ? value as AgentCoreCmpTapReviewApertureV1
+    : undefined;
+}
+
+function augmentGovernanceActionWithCmpAperture(
+  input: ToolReviewerRuntimeSubmitInput,
+  aperture: AgentCoreCmpTapReviewApertureV1 | undefined,
+): ToolReviewGovernanceInputShell {
+  if (!aperture) {
+    return input.governanceAction;
+  }
+  return {
+    ...input.governanceAction,
+    metadata: {
+      ...(input.governanceAction.metadata ?? {}),
+      cmpTapReviewAperture: aperture,
+    },
+  };
+}
+
+function appendCmpWorksiteSummary(
+  summary: string,
+  aperture: AgentCoreCmpTapReviewApertureV1 | undefined,
+): string {
+  if (!aperture) {
+    return summary;
+  }
+  const suffix = [
+    aperture.currentObjective ? `CMP objective: ${aperture.currentObjective}.` : undefined,
+    aperture.packageRef ? `CMP package: ${aperture.packageRef}.` : undefined,
+    aperture.reviewStateSummary ? `CMP review state: ${aperture.reviewStateSummary}.` : undefined,
+  ].filter((value): value is string => Boolean(value)).join(" ");
+  return suffix.length > 0 ? `${summary} ${suffix}` : summary;
 }
 
 function resolveQualityVerdict(
@@ -602,22 +647,36 @@ export class ToolReviewerRuntime {
   async submit(
     input: ToolReviewerRuntimeSubmitInput,
   ): Promise<ToolReviewerRuntimeResult> {
+    const cmpTapReviewAperture = readCmpTapReviewAperture(input);
+    const governanceAction = augmentGovernanceActionWithCmpAperture(input, cmpTapReviewAperture);
     const sessionId = input.sessionId
-      ?? input.governanceAction.trace.request?.sessionId
+      ?? governanceAction.trace.request?.sessionId
       ?? this.#sessionIdFactory();
     const existingSession = this.#sessions.get(sessionId);
     const session = existingSession ?? createToolReviewSessionState({
       sessionId,
-      createdAt: input.governanceAction.trace.createdAt,
+      createdAt: governanceAction.trace.createdAt,
       metadata: {
-        actorId: input.governanceAction.trace.actorId,
+        actorId: governanceAction.trace.actorId,
       },
     });
-    let output = this.createOutputShell(input.governanceAction);
+    let output = this.createOutputShell(governanceAction);
+    output = {
+      ...output,
+      summary: appendCmpWorksiteSummary(output.summary, cmpTapReviewAperture),
+      metadata: {
+        ...(output.metadata ?? {}),
+        ...(cmpTapReviewAperture
+          ? {
+            cmpTapReviewAperture,
+          }
+          : {}),
+      },
+    };
     if (this.#llmToolReviewerHook) {
       const advice = await this.#llmToolReviewerHook({
         sessionId,
-        governanceAction: input.governanceAction,
+        governanceAction,
         defaultOutput: output,
       } satisfies ToolReviewerRuntimeLlmHookInput);
       if (advice) {
@@ -634,15 +693,15 @@ export class ToolReviewerRuntime {
     }
     const runtimeStatus = toRuntimeStatus(output);
     const action = createToolReviewActionLedgerEntry({
-      reviewId: this.#reviewIdFactory(input.governanceAction.trace.actionId),
+      reviewId: this.#reviewIdFactory(governanceAction.trace.actionId),
       sessionId,
-      input: input.governanceAction,
+      input: governanceAction,
       output,
       status: toActionStatus(runtimeStatus),
-      recordedAt: input.governanceAction.trace.createdAt,
+      recordedAt: governanceAction.trace.createdAt,
       metadata: {
-        actorId: input.governanceAction.trace.actorId,
-        sourceDecisionId: input.governanceAction.trace.sourceDecision?.decisionId,
+        actorId: governanceAction.trace.actorId,
+        sourceDecisionId: governanceAction.trace.sourceDecision?.decisionId,
       },
     });
     this.#actions.set(action.reviewId, action);
@@ -651,15 +710,15 @@ export class ToolReviewerRuntime {
       reviewId: action.reviewId,
       sessionId,
       placeholder: false,
-      governanceKind: input.governanceAction.kind,
-      input: input.governanceAction,
+      governanceKind: governanceAction.kind,
+      input: governanceAction,
       runtimeStatus,
       output,
-      recordedAt: input.governanceAction.trace.createdAt,
+      recordedAt: governanceAction.trace.createdAt,
       action,
       metadata: {
-        actorId: input.governanceAction.trace.actorId,
-        sourceDecisionId: input.governanceAction.trace.sourceDecision?.decisionId,
+        actorId: governanceAction.trace.actorId,
+        sourceDecisionId: governanceAction.trace.sourceDecision?.decisionId,
         boundaryMode: action.boundaryMode,
       },
     };

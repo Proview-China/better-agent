@@ -776,6 +776,45 @@ test("AgentCoreRuntime default TAP dispatch applies governance tool-policy overr
   assert.match(userSurface.summary, /waiting for 2 human approval/i);
 });
 
+test("AgentCoreRuntime inspectTapCapabilityRoute explains when a human_gate override escalates a write capability", () => {
+  const runtime = createAgentCoreRuntime({
+    taProfile: createAgentCapabilityProfile({
+      profileId: "profile.runtime.tap-route-diagnostics",
+      agentClass: "main-agent",
+      baselineCapabilities: ["code.read", "docs.read", "code.edit"],
+    }),
+  });
+
+  const diagnostic = runtime.inspectTapCapabilityRoute({
+    sessionId: "session-route-diagnostics",
+    runId: "run-route-diagnostics",
+    agentId: "agent-route-diagnostics",
+    capabilityKey: "code.edit",
+    reason: "Need to preview whether code.edit stays writable in the current TAP policy.",
+    requestedTier: "B0",
+    mode: "permissive",
+    metadata: {
+      tapUserOverride: {
+        toolPolicyOverrides: [
+          {
+            capabilitySelector: "code.edit",
+            policy: "human_gate",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(diagnostic.capabilityKey, "code.edit");
+  assert.equal(diagnostic.requestedMode, "permissive");
+  assert.equal(diagnostic.effectiveMode, "restricted");
+  assert.equal(diagnostic.derivedRiskLevel, "risky");
+  assert.equal(diagnostic.matchedToolPolicy, "human_gate");
+  assert.equal(diagnostic.routeDecision, "human_gate");
+  assert.equal(diagnostic.accessStatus, "review_required");
+  assert.equal(diagnostic.safetyOutcome, "escalate_to_human");
+});
+
 test("AgentCoreRuntime dispatches MCP read family capability packages through the default TAP path", async () => {
   const listToolsPackage = createMcpReadCapabilityPackage({
     capabilityKey: "mcp.listTools",

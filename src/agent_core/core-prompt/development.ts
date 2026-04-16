@@ -1,5 +1,6 @@
 import type {
   CoreCmpContextPackageV1,
+  CoreCmpWorksitePackageV1,
   CoreDevelopmentPromptInput,
   CoreDevelopmentPromptPack,
 } from "./types.js";
@@ -249,11 +250,35 @@ export function createCoreCapabilityWindowLines(input: {
 }
 
 export function createCoreCmpHandoffLines(input: {
+  cmpWorksitePackage?: string | CoreCmpWorksitePackageV1;
   cmpContextPackage?: string | CoreCmpContextPackageV1;
   forceFinalAnswer?: boolean;
 }): string[] {
   if (input.forceFinalAnswer) {
     return [];
+  }
+  const cmpWorksite = typeof input.cmpWorksitePackage === "object"
+    ? input.cmpWorksitePackage
+    : undefined;
+  if (cmpWorksite) {
+    const status = cmpWorksite.deliveryStatus;
+    if (status === "available") {
+      return [
+        "Use the CMP worksite package as the current project worksite, but never let it override the explicit current user objective.",
+        "Treat CMP worksite requested_action as governed guidance, not as permission to drift away from the task now in front of you.",
+      ];
+    }
+    if (status === "partial") {
+      return [
+        "A partial CMP worksite package is available. Use it conservatively for project continuity, but verify critical facts before depending on it.",
+        "Keep the explicit current user objective ahead of partial CMP worksite guidance when they do not fully align.",
+      ];
+    }
+    if (status === "pending" || status === "skipped" || status === "absent") {
+      return [
+        `CMP worksite delivery is currently ${status}. Treat CMP worksite as unavailable for authoritative project context and continue from the explicit user objective plus verified current evidence.`,
+      ];
+    }
   }
   const cmpPackage = typeof input.cmpContextPackage === "object"
     ? input.cmpContextPackage

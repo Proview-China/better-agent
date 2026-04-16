@@ -144,5 +144,22 @@ export function createRaxCmpRuntime(input: CreateRaxCmpRuntimeInput): RaxCmpRunt
         return agentCoreRuntime.cmp.tapBridge.reviewPeerExchangeApproval(input);
       },
     },
+    worksite: {
+      observeTurn(input) {
+        return agentCoreRuntime.cmp.worksite.observeTurn(input);
+      },
+      getCurrent(input) {
+        return agentCoreRuntime.cmp.worksite.getCurrent(input);
+      },
+      clearSession(input) {
+        return agentCoreRuntime.cmp.worksite.clearSession(input);
+      },
+      exportCorePackage(input) {
+        return agentCoreRuntime.cmp.worksite.exportCorePackage(input);
+      },
+      exportTapPackage(input) {
+        return agentCoreRuntime.cmp.worksite.exportTapPackage(input);
+      },
+    },
   };
 }

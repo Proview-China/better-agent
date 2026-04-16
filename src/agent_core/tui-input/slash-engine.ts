@@ -125,6 +125,7 @@ export function applySlashSuggestion(
 export const DEFAULT_PRAXIS_SLASH_COMMANDS: PraxisSlashCommand[] = [
   { id: "model", name: "model", description: "Choose model and reasoning settings" },
   { id: "status", name: "status", description: "View current working status" },
+  { id: "rush", name: "rush", description: "Rush toward the goal at a faster speed." },
   { id: "exit", name: "exit", aliases: ["quit"], description: "Exit the current session" },
   { id: "cmp", name: "cmp", description: "View current context sections summary" },
   { id: "mp", name: "mp", description: "Browse current memory state" },

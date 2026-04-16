@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { MpFiveAgentSummary, MpMemoryRecord } from "../agent_core/index.js";
 import { createRaxMpConfig, type RaxMpConfig } from "./mp-config.js";
 import type {
   RaxMpAcceptanceReadiness,
@@ -14,12 +15,17 @@ import type {
   RaxMpIngestInput,
   RaxMpIngestResult,
   RaxMpMaterializeBatchInput,
+  RaxMpMaterializeFromCmpCandidatesInput,
+  RaxMpMaterializeFromCmpCandidatesResult,
   RaxMpMaterializeInput,
   RaxMpMergeInput,
   RaxMpMergeResult,
   RaxMpPromoteInput,
   RaxMpReadbackInput,
   RaxMpReadbackResult,
+  RaxMpRouteForCoreInput,
+  RaxMpRouteForCoreResult,
+  RaxMpRoutingReadback,
   RaxMpReindexInput,
   RaxMpRequestHistoryInput,
   RaxMpRequestHistoryResult,
@@ -54,6 +60,109 @@ function countBy<T extends string>(values: readonly T[]): Partial<Record<T, numb
     summary[value] = (summary[value] ?? 0) + 1;
     return summary;
   }, {});
+}
+
+function uniqueRouteTerms(values: Array<string | undefined>): string[] {
+  return [...new Set(values
+    .flatMap((value) => (typeof value === "string" ? value.split(/[\s|,.;:()\-_/]+/u) : []))
+    .map((value) => value.trim())
+    .filter(Boolean))];
+}
+
+function buildCoreRouteQuery(payload: RaxMpRouteForCoreInput["payload"]): string {
+  const routeHints = [
+    payload.routeHint === "history" ? "history" : undefined,
+    payload.currentObjective,
+    payload.governanceSignals?.cmpRouteRationale,
+    payload.governanceSignals?.cmpScopePolicy,
+    payload.governanceSignals?.freshnessHint,
+    payload.governanceSignals?.confidenceHint,
+    payload.queryText,
+  ];
+  return [...new Set(routeHints.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))].join(" ");
+}
+
+function freshnessScore(status: MpMemoryRecord["freshness"]["status"]): number {
+  switch (status) {
+    case "fresh":
+      return 40;
+    case "aging":
+      return 24;
+    case "stale":
+      return 8;
+    case "superseded":
+      return -24;
+  }
+}
+
+function confidenceScore(level: MpMemoryRecord["confidence"]): number {
+  switch (level) {
+    case "high":
+      return 18;
+    case "medium":
+      return 10;
+    case "low":
+      return 2;
+  }
+}
+
+function alignmentScore(status: MpMemoryRecord["alignment"]["alignmentStatus"]): number {
+  switch (status) {
+    case "aligned":
+      return 10;
+    case "unreviewed":
+      return 3;
+    case "drifted":
+      return -8;
+  }
+}
+
+function objectiveSignalScore(record: MpMemoryRecord, payload: RaxMpRouteForCoreInput["payload"]): number {
+  const haystack = [
+    record.semanticGroupId,
+    record.bodyRef,
+    ...(record.sourceRefs ?? []),
+    ...(record.tags ?? []),
+  ].join(" ").toLowerCase();
+  const terms = uniqueRouteTerms([
+    payload.currentObjective,
+    payload.queryText,
+    payload.governanceSignals?.cmpRouteRationale,
+    payload.governanceSignals?.cmpScopePolicy,
+  ]);
+  return terms.reduce((score, term) => {
+    const lowered = term.toLowerCase();
+    return lowered.length > 0 && haystack.includes(lowered) ? score + 6 : score;
+  }, 0);
+}
+
+function governancePreferenceScore(record: MpMemoryRecord, payload: RaxMpRouteForCoreInput["payload"]): number {
+  let score = 0;
+  if (payload.governanceSignals?.freshnessHint && record.freshness.status === payload.governanceSignals.freshnessHint) {
+    score += 7;
+  }
+  if (payload.governanceSignals?.confidenceHint && record.confidence === payload.governanceSignals.confidenceHint) {
+    score += 5;
+  }
+  return score;
+}
+
+function rerankRoutedRecords(
+  records: MpMemoryRecord[],
+  payload: RaxMpRouteForCoreInput["payload"],
+): MpMemoryRecord[] {
+  return [...records]
+    .map((record, index) => ({
+      record,
+      index,
+      score: freshnessScore(record.freshness.status)
+        + confidenceScore(record.confidence)
+        + alignmentScore(record.alignment.alignmentStatus)
+        + objectiveSignalScore(record, payload)
+        + governancePreferenceScore(record, payload),
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map((entry) => entry.record);
 }
 
 function createAcceptance(input: {
@@ -153,6 +262,7 @@ function createStatusPanel(input: {
 export function createRaxMpFacade(input: CreateRaxMpFacadeInput = {}): RaxMpFacade {
   const now = input.now ?? (() => new Date());
   const sessionIdFactory = input.sessionIdFactory ?? (() => `mp-session-${randomUUID()}`);
+  const routingReadbacks = new WeakMap<RaxMpSession, RaxMpRoutingReadback>();
 
   function resolveConfig(config: RaxMpCreateInput["config"]): RaxMpConfig {
     if ("searchDefaults" in config && "profileId" in config && "defaultAgentId" in config) {
@@ -418,6 +528,146 @@ export function createRaxMpFacade(input: CreateRaxMpFacadeInput = {}): RaxMpFaca
 
     async requestHistory(historyInput: RaxMpRequestHistoryInput): Promise<RaxMpRequestHistoryResult> {
       return historyInput.session.runtime.requestMemoryHistory(historyInput.payload);
+    },
+
+    async routeForCore(routeInput: RaxMpRouteForCoreInput): Promise<RaxMpRouteForCoreResult> {
+      const objectiveSummary = routeInput.payload.currentObjective?.trim()
+        || routeInput.payload.queryText.trim()
+        || "continue current work";
+      const routeKind = routeInput.payload.routeHint === "history" ? "history" : "resolve";
+      const routeQueryText = buildCoreRouteQuery(routeInput.payload);
+      const routed = routeKind === "history"
+        ? await this.requestHistory({
+          session: routeInput.session,
+          payload: {
+            queryText: routeQueryText,
+            requesterLineage: routeInput.payload.requesterLineage,
+            requesterSessionId: routeInput.payload.requesterSessionId,
+            sourceLineages: routeInput.payload.sourceLineages,
+            agentTableNames: routeInput.payload.agentTableNames,
+            scopeLevels: routeInput.payload.scopeLevels,
+            limit: routeInput.payload.limit,
+            metadata: {
+              ...(routeInput.payload.metadata ?? {}),
+              currentObjective: routeInput.payload.currentObjective,
+              governanceSignals: routeInput.payload.governanceSignals,
+            },
+          },
+        })
+        : await this.resolve({
+          session: routeInput.session,
+          payload: {
+            queryText: routeQueryText,
+            requesterLineage: routeInput.payload.requesterLineage,
+            requesterSessionId: routeInput.payload.requesterSessionId,
+            sourceLineages: routeInput.payload.sourceLineages,
+            agentTableNames: routeInput.payload.agentTableNames,
+            scopeLevels: routeInput.payload.scopeLevels,
+            limit: routeInput.payload.limit,
+            metadata: {
+              ...(routeInput.payload.metadata ?? {}),
+              currentObjective: routeInput.payload.currentObjective,
+              governanceSignals: routeInput.payload.governanceSignals,
+            },
+          },
+        });
+
+      const rerankedRecords = rerankRoutedRecords(
+        [...routed.bundle.primary, ...routed.bundle.supporting],
+        routeInput.payload,
+      );
+      const primaryCount = routed.bundle.primary.length > 0
+        ? routed.bundle.primary.length
+        : Math.min(3, rerankedRecords.length);
+      const primaryRecords = rerankedRecords.slice(0, primaryCount);
+      const supportingRecords = rerankedRecords.slice(primaryCount);
+      const omittedMemoryRefs = [...(routed.bundle.diagnostics.omittedSupersededMemoryIds ?? [])];
+      if (primaryRecords.length > 0 || supportingRecords.length > 0) {
+        const readback: RaxMpRoutingReadback = {
+          receiptId: `mp-route:${routeKind}:${randomUUID()}`,
+          routeKind,
+          deliveryStatus: "available",
+          objectiveSummary,
+          objectiveMatchSummary: `resolved ${primaryRecords.length} primary and ${supportingRecords.length} supporting memories for "${objectiveSummary}"`,
+          governanceReason: routeInput.payload.governanceSignals?.cmpRouteRationale
+            ? `governed by CMP route hint: ${routeInput.payload.governanceSignals.cmpRouteRationale}`
+            : `selected via MP ${routeKind} routing discipline`,
+          fallbackReason: undefined,
+          primaryMemoryRefs: primaryRecords.map((record) => record.memoryId),
+          supportingMemoryRefs: supportingRecords.map((record) => record.memoryId),
+          omittedMemoryRefs,
+          candidateCount: primaryRecords.length + supportingRecords.length + omittedMemoryRefs.length,
+        };
+        routingReadbacks.set(routeInput.session, readback);
+        return {
+          status: "routed",
+          routeKind,
+          primaryRecords,
+          supportingRecords,
+          fallbackEntries: [],
+          readback,
+        };
+      }
+
+      const fallbackEntries = [...(routeInput.payload.fallbackEntries ?? [])];
+      const readback: RaxMpRoutingReadback = {
+        receiptId: `mp-route:fallback:${randomUUID()}`,
+        routeKind: fallbackEntries.length > 0 ? "fallback" : routeKind,
+        deliveryStatus: fallbackEntries.length > 0 ? "partial" : "absent",
+        objectiveSummary,
+        objectiveMatchSummary: fallbackEntries.length > 0
+          ? `native routing produced no bundle, so ${fallbackEntries.length} fallback memory entries were used`
+          : `native routing produced no available memory bundle for "${objectiveSummary}"`,
+        governanceReason: routeInput.payload.governanceSignals?.cmpScopePolicy
+          ? `scope constrained by CMP policy: ${routeInput.payload.governanceSignals.cmpScopePolicy}`
+          : "native routing had no eligible memories after scope and freshness filtering",
+        fallbackReason: fallbackEntries.length > 0
+          ? "repo-memory bootstrap fallback"
+          : "no native bundle and no fallback entries were available",
+        primaryMemoryRefs: fallbackEntries.slice(0, 3).map((entry) => entry.id),
+        supportingMemoryRefs: fallbackEntries.slice(3).map((entry) => entry.id),
+        omittedMemoryRefs,
+        candidateCount: fallbackEntries.length,
+      };
+      routingReadbacks.set(routeInput.session, readback);
+      return {
+        status: "routed",
+        routeKind: fallbackEntries.length > 0 ? "fallback" : routeKind,
+        primaryRecords: [],
+        supportingRecords: [],
+        fallbackEntries,
+        readback,
+      };
+    },
+
+    getRoutingReadback(session: RaxMpSession): RaxMpRoutingReadback | undefined {
+      return routingReadbacks.get(session);
+    },
+
+    async materializeFromCmpCandidates(
+      candidateInput: RaxMpMaterializeFromCmpCandidatesInput,
+    ): Promise<RaxMpMaterializeFromCmpCandidatesResult> {
+      const records = [];
+      const supersededMemoryIds = new Set<string>();
+      const staleMemoryIds = new Set<string>();
+      let latestSummary: MpFiveAgentSummary | undefined;
+      for (const candidate of candidateInput.payload.candidates) {
+        const ingested = await this.ingest({
+          session: candidateInput.session,
+          payload: candidate,
+        });
+        records.push(...ingested.records);
+        ingested.supersededMemoryIds.forEach((memoryId) => supersededMemoryIds.add(memoryId));
+        ingested.staleMemoryIds.forEach((memoryId) => staleMemoryIds.add(memoryId));
+        latestSummary = ingested.summary;
+      }
+      return {
+        status: "materialized_from_cmp_candidates",
+        records,
+        supersededMemoryIds: [...supersededMemoryIds],
+        staleMemoryIds: [...staleMemoryIds],
+        summary: latestSummary,
+      };
     },
 
     async materialize(materializeInput: RaxMpMaterializeInput) {

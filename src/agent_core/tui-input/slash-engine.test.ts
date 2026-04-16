@@ -44,6 +44,7 @@ test("default slash commands expose the planned first-wave order", () => {
     [
       "model",
       "status",
+      "rush",
       "exit",
       "cmp",
       "mp",

@@ -169,6 +169,11 @@ import {
 } from "./cmp-five-agent/index.js";
 import type { AgentCoreCmpApi } from "./cmp-api/index.js";
 import { createAgentCoreCmpServices } from "./cmp-service/index.js";
+import type {
+  AgentCoreCmpStateStore,
+  AgentCoreCmpWorksiteStateRecord,
+} from "./cmp-service/state-store.js";
+import type { AgentCoreCmpTapReviewApertureV1 } from "./cmp-api/index.js";
 import {
   activateProvisionAsset,
   applyTaHumanGateEvent,
@@ -525,6 +530,29 @@ interface TapGovernanceDispatchDirective {
   forceHumanByRisk: boolean;
 }
 
+export interface TapCapabilityRouteDiagnostic {
+  capabilityKey: string;
+  requestedTier: TaCapabilityTier;
+  requestedMode: TaPoolMode;
+  effectiveMode: TaPoolMode;
+  automationDepth: string;
+  explanationStyle: string;
+  derivedRiskLevel: TaPoolRiskLevel;
+  matchedToolPolicy?: TapToolPolicyOverride["policy"];
+  matchedToolPolicySelector?: string;
+  forceHumanByRisk: boolean;
+  accessStatus: ResolveCapabilityAccessResult["status"];
+  accessAssignment?: string;
+  accessMatchedPattern?: string;
+  safetyOutcome: ReturnType<typeof evaluateSafetyInterception>["outcome"];
+  safetyReason: string;
+  safetyMatchedPattern?: string;
+  requestedScopeKind?: string;
+  externalPathPrefixes: string[];
+  routeDecision: "allow" | "review" | "human_gate" | "interrupt" | "deny";
+  routeReason: string;
+}
+
 export type TaCapabilityAssemblyStatus =
   | "dispatched"
   | "review_required"
@@ -611,6 +639,30 @@ function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
 
 function readTapUserOverrideCandidate(value: unknown): TapUserOverrideContract | undefined {
   return isRecord(value) ? value as TapUserOverrideContract : undefined;
+}
+
+function readCapabilityAccessMetadata(
+  request: AccessRequest | undefined,
+): {
+  assignment?: string;
+  matchedPattern?: string;
+} {
+  const metadata = request?.metadata;
+  if (!isRecord(metadata)) {
+    return {};
+  }
+  const capabilityAccess = metadata.capabilityAccess;
+  if (!isRecord(capabilityAccess)) {
+    return {};
+  }
+  return {
+    assignment: typeof capabilityAccess.assignment === "string"
+      ? capabilityAccess.assignment
+      : undefined,
+    matchedPattern: typeof capabilityAccess.matchedPattern === "string"
+      ? capabilityAccess.matchedPattern
+      : undefined,
+  };
 }
 
 function readTapGovernanceDispatchDirective(
@@ -1061,6 +1113,7 @@ export class AgentCoreRuntime {
   readonly #cmpSyncEvents = new Map<string, SyncEvent>();
   readonly #cmpProjectInfraBootstrapReceipts = new Map<string, CmpProjectInfraBootstrapReceipt>();
   readonly #cmpFiveAgentRuntime: CmpFiveAgentRuntime;
+  #cmpStateStore?: AgentCoreCmpStateStore;
   #cmpRuntimeInfraState: CmpRuntimeInfraState = createCmpRuntimeInfraState();
 
   constructor(options: AgentCoreRuntimeOptions = {}) {
@@ -1124,7 +1177,9 @@ export class AgentCoreRuntime {
     });
     this.sessionManager = options.sessionManager ?? new SessionManager();
     this.cmpInfraBackends = createCmpInfraBackends(options.cmpInfraBackends);
-    this.cmp = createAgentCoreCmpServices(this).api;
+    const cmpServices = createAgentCoreCmpServices(this);
+    this.#cmpStateStore = cmpServices.stateStore;
+    this.cmp = cmpServices.api;
     this.registerCapabilityAdapter(
       createModelInferenceCapabilityManifest(),
       createModelInferenceCapabilityAdapter({
@@ -1318,6 +1373,104 @@ export class AgentCoreRuntime {
           : {}),
       },
     });
+  }
+
+  inspectTapCapabilityRoute(input: ResolveTaCapabilityAccessInput): TapCapabilityRouteDiagnostic {
+    if (!this.taControlPlaneGateway) {
+      throw new Error("T/A control-plane gateway is not configured on this runtime.");
+    }
+
+    const governanceDirective = readTapGovernanceDispatchDirective(input.metadata)
+      ?? this.#createTapGovernanceDispatchDirectiveForCapability({
+        taskId: `${input.runId}:${input.capabilityKey}`,
+        capabilityKey: input.capabilityKey,
+        metadata: input.metadata,
+      });
+    const derivedScope = this.#deriveWorkspaceReadScope({
+      agentId: input.agentId,
+      capabilityKey: input.capabilityKey,
+      requestInput: input.requestInput,
+    });
+    const requestedTier = maxCapabilityTier(
+      input.requestedTier ?? "B1",
+      governanceDirective.matchedToolPolicy === "human_gate" ? "B3" : "B1",
+    );
+    const classifiedRisk = classifyCapabilityRisk({
+      capabilityKey: input.capabilityKey,
+      requestedTier,
+    });
+    const requestedMode = input.mode ?? this.taControlPlaneGateway.profile.defaultMode;
+    const effectiveMode = derivedScope?.modeOverride
+      ?? governanceDirective.effectiveMode
+      ?? requestedMode;
+    const resolved = this.taControlPlaneGateway.resolveCapabilityAccess({
+      ...input,
+      requestedTier,
+      mode: effectiveMode,
+      riskLevel: derivedScope?.riskLevel ?? input.riskLevel,
+      requestedScope: derivedScope?.requestedScope ?? input.requestedScope,
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(isRecordLike(derivedScope?.requestedScope?.metadata)
+          ? derivedScope.requestedScope?.metadata
+          : {}),
+      },
+    });
+    const accessMetadata = resolved.status === "review_required"
+      ? readCapabilityAccessMetadata(resolved.request)
+      : {};
+    const safety = evaluateSafetyInterception({
+      mode: effectiveMode,
+      requestedTier,
+      capabilityKey: input.capabilityKey,
+      riskLevel: derivedScope?.riskLevel ?? input.riskLevel,
+      reason: input.reason,
+      config: this.#taSafetyConfig,
+    });
+    const routeDecision = safety.outcome === "block"
+      ? "deny"
+      : safety.outcome === "interrupt"
+        ? "interrupt"
+        : safety.outcome === "escalate_to_human"
+          ? "human_gate"
+          : resolved.status === "baseline_granted"
+            ? "allow"
+            : "review";
+    const routeReason = routeDecision === "allow"
+      ? `TAP can keep ${input.capabilityKey} on the baseline path in ${effectiveMode} mode.`
+      : routeDecision === "review"
+        ? `TAP routes ${input.capabilityKey} into reviewer governance in ${effectiveMode} mode.`
+        : safety.reason;
+    const scopeMetadata = derivedScope?.requestedScope?.metadata;
+    const externalPathPrefixes = Array.isArray(scopeMetadata?.externalPathPrefixes)
+      ? scopeMetadata.externalPathPrefixes
+        .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [];
+
+    return {
+      capabilityKey: input.capabilityKey,
+      requestedTier,
+      requestedMode,
+      effectiveMode,
+      automationDepth: governanceDirective.automationDepth,
+      explanationStyle: governanceDirective.explanationStyle,
+      derivedRiskLevel: derivedScope?.riskLevel ?? input.riskLevel ?? classifiedRisk.riskLevel,
+      matchedToolPolicy: governanceDirective.matchedToolPolicy,
+      matchedToolPolicySelector: governanceDirective.matchedToolPolicySelector,
+      forceHumanByRisk: governanceDirective.forceHumanByRisk,
+      accessStatus: resolved.status,
+      accessAssignment: accessMetadata.assignment,
+      accessMatchedPattern: accessMetadata.matchedPattern,
+      safetyOutcome: safety.outcome,
+      safetyReason: safety.reason,
+      safetyMatchedPattern: safety.matchedPattern,
+      requestedScopeKind: typeof scopeMetadata?.filesystemScopeKind === "string"
+        ? scopeMetadata.filesystemScopeKind
+        : undefined,
+      externalPathPrefixes,
+      routeDecision,
+      routeReason,
+    };
   }
 
   async dispatchTaCapabilityGrant(input: DispatchTaCapabilityGrantInput): Promise<DispatchCapabilityPlanResult> {
@@ -1547,6 +1700,7 @@ export class AgentCoreRuntime {
 
     const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:provision:${params.provisionRequest.provisionId}`,
+      cmpTapReviewAperture: this.#exportCmpTapReviewApertureForAccessRequest(params.accessRequest),
       governanceAction: {
         kind: "provision_request",
         trace: createToolReviewGovernanceTrace({
@@ -3229,6 +3383,7 @@ export class AgentCoreRuntime {
       infraState: this.#cmpRuntimeInfraState,
       metadata: {
         cmpFiveAgentSnapshot: this.#cmpFiveAgentRuntime.createSnapshot(),
+        cmpWorksiteSnapshot: this.#cmpStateStore?.createWorksiteSnapshot(),
       },
     };
   }
@@ -3265,6 +3420,9 @@ export class AgentCoreRuntime {
     const hydrated = recovery.hydrated;
     this.#cmpFiveAgentRuntime.recover(
       snapshot.metadata?.cmpFiveAgentSnapshot as CmpFiveAgentRuntimeSnapshot | undefined,
+    );
+    this.#cmpStateStore?.recoverWorksiteSnapshot(
+      snapshot.metadata?.cmpWorksiteSnapshot as AgentCoreCmpWorksiteStateRecord[] | undefined,
     );
 
     for (const [projectId, repo] of hydrated.projectRepos) {
@@ -5904,12 +6062,41 @@ export class AgentCoreRuntime {
     return `use capability ${intent.request.capabilityKey}`;
   }
 
+  #exportCmpTapReviewAperture(input: {
+    sessionId?: string;
+    capabilityKey?: string;
+    currentObjective?: string;
+  }): AgentCoreCmpTapReviewApertureV1 | undefined {
+    if (!input.sessionId) {
+      return undefined;
+    }
+    return this.cmp.worksite.exportTapPackage({
+      sessionId: input.sessionId,
+      requestedCapabilityKey: input.capabilityKey,
+      currentObjective: input.currentObjective,
+    });
+  }
+
+  #exportCmpTapReviewApertureForAccessRequest(
+    accessRequest: AccessRequest | undefined,
+  ): AgentCoreCmpTapReviewApertureV1 | undefined {
+    if (!accessRequest) {
+      return undefined;
+    }
+    return this.#exportCmpTapReviewAperture({
+      sessionId: accessRequest.sessionId,
+      capabilityKey: accessRequest.requestedCapabilityKey,
+      currentObjective: accessRequest.requestedAction ?? accessRequest.reason,
+    });
+  }
+
   #assembleProvisionRequestForRuntime(params: {
     request: ProvisionRequest;
     accessRequest: AccessRequest;
     reviewDecision: ReviewDecision;
     inventory: ReviewDecisionEngineInventory;
   }): ProvisionRequest {
+    const cmpTapReviewAperture = this.#exportCmpTapReviewApertureForAccessRequest(params.accessRequest);
     const existingSiblingCapabilities = [...new Set([
       ...(params.inventory.availableCapabilityKeys ?? []),
       ...(params.inventory.readyProvisionAssetKeys ?? []),
@@ -5949,6 +6136,11 @@ export class AgentCoreRuntime {
           `Reason: ${params.reviewDecision.reason}`,
           "Do not self-approve activation or replay from inside the provisioner lane.",
         ],
+        ...(cmpTapReviewAperture
+          ? {
+            cmpTapReviewAperture,
+          }
+          : {}),
         runtimeAssembly: {
           sourceRequestId: params.accessRequest.requestId,
           sourceSessionId: params.accessRequest.sessionId,
@@ -7139,6 +7331,7 @@ export class AgentCoreRuntime {
       request: params.accessRequest,
       profile,
       inventory,
+      cmpTapReviewAperture: this.#exportCmpTapReviewApertureForAccessRequest(params.accessRequest),
     });
     this.#recordReviewerAgentRecord({
       accessRequest: params.accessRequest,
@@ -7358,6 +7551,7 @@ export class AgentCoreRuntime {
 
     const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:request:${params.gate.requestId}`,
+      cmpTapReviewAperture: this.#exportCmpTapReviewApertureForAccessRequest(params.accessRequest),
       governanceAction: {
         kind: "human_gate",
         trace: createToolReviewGovernanceTrace({
@@ -7395,6 +7589,7 @@ export class AgentCoreRuntime {
 
     const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:provision:${params.replay.provisionId}`,
+      cmpTapReviewAperture: this.#exportCmpTapReviewApertureForAccessRequest(params.accessRequest),
       governanceAction: {
         kind: "replay",
         trace: createToolReviewGovernanceTrace({
@@ -7441,6 +7636,11 @@ export class AgentCoreRuntime {
 
     const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:provision:${params.provisionId}`,
+      cmpTapReviewAperture: this.#exportCmpTapReviewAperture({
+        sessionId: params.sessionId,
+        capabilityKey: params.capabilityKey,
+        currentObjective: params.reason,
+      }),
       governanceAction: {
         kind: "delivery",
         trace: createToolReviewGovernanceTrace({
@@ -7514,6 +7714,11 @@ export class AgentCoreRuntime {
 
     const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:provision:${params.provisionId}`,
+      cmpTapReviewAperture: this.#exportCmpTapReviewAperture({
+        sessionId: params.sessionId,
+        capabilityKey: params.capabilityKey,
+        currentObjective: params.reason,
+      }),
       governanceAction: {
         kind: "activation",
         trace: createToolReviewGovernanceTrace({
@@ -7571,6 +7776,7 @@ export class AgentCoreRuntime {
 
     const result = await this.toolReviewerRuntime.submit({
       sessionId: `tool-review:lifecycle:${params.capabilityKey}`,
+      cmpTapReviewAperture: this.#exportCmpTapReviewApertureForAccessRequest(params.accessRequest),
       governanceAction: {
         kind: "lifecycle",
         trace: createToolReviewGovernanceTrace({
@@ -7762,12 +7968,18 @@ export class AgentCoreRuntime {
   }
 
   #readTapUserOverrideFromIntent(intent: CapabilityCallIntent): TapUserOverrideContract | undefined {
-    const intentOverride = readTapUserOverrideCandidate(intent.metadata?.tapUserOverride);
+    const intentOverride = this.#readTapUserOverrideFromMetadata(intent.metadata);
     if (intentOverride) {
       return intentOverride;
     }
 
-    return readTapUserOverrideCandidate(intent.request.metadata?.tapUserOverride);
+    return this.#readTapUserOverrideFromMetadata(intent.request.metadata);
+  }
+
+  #readTapUserOverrideFromMetadata(
+    metadata: Record<string, unknown> | undefined,
+  ): TapUserOverrideContract | undefined {
+    return readTapUserOverrideCandidate(metadata?.tapUserOverride);
   }
 
   #matchTapToolPolicyOverride(
@@ -7782,19 +7994,21 @@ export class AgentCoreRuntime {
     );
   }
 
-  #createTapGovernanceDispatchDirective(
-    intent: CapabilityCallIntent,
-  ): TapGovernanceDispatchDirective {
+  #createTapGovernanceDispatchDirectiveForCapability(params: {
+    taskId: string;
+    capabilityKey: string;
+    metadata?: Record<string, unknown>;
+  }): TapGovernanceDispatchDirective {
     const governance = this.createTapTaskGovernance({
-      taskId: intent.intentId,
-      userOverride: this.#readTapUserOverrideFromIntent(intent),
+      taskId: params.taskId,
+      userOverride: this.#readTapUserOverrideFromMetadata(params.metadata),
     });
     const matchedToolPolicy = this.#matchTapToolPolicyOverride(
       governance,
-      intent.request.capabilityKey,
+      params.capabilityKey,
     );
     const derivedRisk = classifyCapabilityRisk({
-      capabilityKey: intent.request.capabilityKey,
+      capabilityKey: params.capabilityKey,
       requestedTier: "B1",
     });
     const forceHumanByRisk = governance.taskPolicy.requireHumanOnRiskLevels.includes(
@@ -7815,6 +8029,16 @@ export class AgentCoreRuntime {
       matchedToolPolicySelector: matchedToolPolicy?.capabilitySelector,
       forceHumanByRisk,
     };
+  }
+
+  #createTapGovernanceDispatchDirective(
+    intent: CapabilityCallIntent,
+  ): TapGovernanceDispatchDirective {
+    return this.#createTapGovernanceDispatchDirectiveForCapability({
+      taskId: intent.intentId,
+      capabilityKey: intent.request.capabilityKey,
+      metadata: intent.metadata ?? intent.request.metadata,
+    });
   }
 
   #shouldRouteModelInferenceViaTaPool(): boolean {

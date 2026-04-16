@@ -37,6 +37,41 @@ test("buildPermissionModeMatrixLines can show persisted allow counts", () => {
   assert.match(persistedLine?.text ?? "", /persisted allows in this workspace: 2/u);
 });
 
+test("buildPermissionModeMatrixLines can show common write-lane previews and the latest attempt", () => {
+  const lines = buildPermissionModeMatrixLines("standard", {
+    previewRecords: [
+      {
+        capabilityKey: "repo.write",
+        requestedMode: "standard",
+        derivedRiskLevel: "normal",
+        routeDecision: "review",
+      },
+      {
+        capabilityKey: "code.edit",
+        requestedMode: "standard",
+        effectiveMode: "restricted",
+        derivedRiskLevel: "risky",
+        routeDecision: "human_gate",
+        matchedToolPolicy: "human_gate",
+        matchedToolPolicySelector: "code.edit",
+      },
+    ],
+    lastAttempt: {
+      capabilityKey: "code.edit",
+      routeDecision: "human_gate",
+      finalStatus: "failed",
+      derivedRiskLevel: "risky",
+      errorCode: "code_edit_old_string_not_found",
+    },
+  });
+
+  const joined = lines.map((line) => line.text).join("\n");
+  assert.match(joined, /Common write lanes in standard/u);
+  assert.match(joined, /repo\.write/u);
+  assert.match(joined, /policy=human_gate\(code\.edit\)/u);
+  assert.match(joined, /Last write attempt: code\.edit · human_gate · final=failed · risk=risky · error=code_edit_old_string_not_found/u);
+});
+
 test("findPermissionPanelFocusIndex selects the current requested mode row", () => {
   const fields: PraxisSlashPanelField[] = [
     { kind: "action", key: "permissions:mode:bapr", label: "bapr" },
