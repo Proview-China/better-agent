@@ -135,6 +135,7 @@ let package = Package(
     .executable(name: "PraxisRuntimeKitCmpTapExample", targets: ["PraxisRuntimeKitCmpTapExample"]),
     .executable(name: "PraxisRuntimeKitMpExample", targets: ["PraxisRuntimeKitMpExample"]),
     .executable(name: "PraxisRuntimeKitCapabilitiesExample", targets: ["PraxisRuntimeKitCapabilitiesExample"]),
+    .executable(name: "PraxisRuntimeKitGovernedExecutionExample", targets: ["PraxisRuntimeKitGovernedExecutionExample"]),
     .executable(name: "PraxisRuntimeKitSearchExample", targets: ["PraxisRuntimeKitSearchExample"]),
     .executable(name: "PraxisRuntimeKitDurableRuntimeExample", targets: ["PraxisRuntimeKitDurableRuntimeExample"]),
     .executable(name: "PraxisFFIEmbeddingExample", targets: ["PraxisFFIEmbeddingExample"]),
@@ -625,6 +626,13 @@ let package = Package(
         "PraxisRuntimeKit",
       ],
       path: "Examples/PraxisRuntimeKitCapabilitiesExample",
+    ),
+    .executableTarget(
+      name: "PraxisRuntimeKitGovernedExecutionExample",
+      dependencies: [
+        "PraxisRuntimeKit",
+      ],
+      path: "Examples/PraxisRuntimeKitGovernedExecutionExample",
     ),
     .executableTarget(
       name: "PraxisRuntimeKitSearchExample",
