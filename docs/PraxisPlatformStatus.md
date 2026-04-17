@@ -33,6 +33,6 @@ On Linux, the repository currently preserves:
 
 ## Related Docs
 
-- `docs/PraxisSupportMatrix.md`
-- `docs/PraxisHighRiskCapabilitySafety.md`
-- `docs/PraxisRepositoryBaseline.md`
+- [Praxis Support Matrix](./PraxisSupportMatrix.md)
+- [Praxis High Risk Capability Safety](./PraxisHighRiskCapabilitySafety.md)
+- [Praxis Repository Baseline](./PraxisRepositoryBaseline.md)

@@ -37,7 +37,8 @@ What success looks like:
 ## If You Need A Lower-Level Surface
 
 - Use `PraxisRuntimeKit` when you want the default caller-friendly Swift API.
-- Use `PraxisFFI` when you are integrating from a host boundary or another runtime.
+- Use `PraxisRuntimeInterface` when you need the schema-versioned encoded request / response surface without dropping to the opaque-handle bridge.
+- Use `PraxisFFI` when you are integrating from a host boundary and need the bridge layer over the encoded runtime interface.
 - Use `PraxisHostRuntime` when you are working on runtime assembly, facades, gateways, or export boundaries inside the Praxis host layer.
 
 ## Next Docs
