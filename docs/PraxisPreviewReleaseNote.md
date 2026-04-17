@@ -1,17 +1,19 @@
 # Praxis Preview Release Note
 
-This first preview exposes the current Praxis public baseline for Swift and Apple-hosted embedding without pretending that the broader repository is already a fully mature cross-platform agent framework.
+This first preview exposes the current Praxis public baseline for Swift, Apple-hosted embedding, and one native macOS demo-host lane without pretending that the broader repository is already a fully mature cross-platform agent framework.
 
 The goal of this preview is to make the current public contract reviewable from the outside: what the default Swift integration surface is, what the encoded export boundary looks like today, how the shipped embedding paths are expected to behave, and which verification commands and reference documents define the current baseline.
 
 ## What This First Preview Exposes
 
-This preview is intended to expose five things clearly:
+This preview is intended to expose seven things clearly:
 
 - the default Swift integration surface through `PraxisRuntimeKit`
 - the current encoded export boundary through `PraxisRuntimeInterface` and `PraxisFFI`
 - the first public schema-versioned host-embedding story, including explicit request, response, and event schema version fields
-- the shipped executable verification paths that outside evaluators can run without needing internal team context
+- the current governed-execution, reviewer-context, and durable-runtime readback baseline through shipped examples and smoke coverage
+- one native macOS demo-host baseline that proves the same exported bridge can be hosted outside terminal-only examples
+- the shipped executable verification paths and public evaluation docs that outside evaluators can run without needing internal team context
 - the current macOS-first support truth together with honest Linux placeholder or degraded semantics where parity is not yet implemented
 
 In other words, this preview is less about breadth and more about making the current public runtime surfaces inspectable, testable, and documentable.
@@ -25,8 +27,12 @@ The preview scope currently covers these outward-facing surfaces:
 - `PraxisFFI` as the bridge-level export surface for host-boundary embedding
 - `PraxisFFIEmbeddingExample` as the smallest shipped example of the encoded embedding path
 - `PraxisAppleHostEmbeddingExample` as the more host-like Apple embedding flow with architecture negotiation first
+- `PraxisRuntimeKitCmpTapExample` as the current reviewer-context and CMP/TAP readback example
+- `PraxisRuntimeKitGovernedExecutionExample` as the current governed execution and approval-boundary example
+- `PraxisRuntimeKitDurableRuntimeExample` as the current durable recovery, checkpoint, provisioning, and replay readback example
 - `PraxisExportBaselineExample` as the repeatable export latency, payload-size, and resident-memory baseline path
 - `PraxisRuntimeKitSmoke` as the shipped smoke harness for checking the current runtime and capability baseline
+- `PraxisDemoHostApp` together with `./script/build_and_run.sh --verify` as the first native macOS demo-host baseline
 
 These surfaces are the parts of Praxis that this preview expects outside readers and early integrators to evaluate first.
 
@@ -52,20 +58,29 @@ For this first preview, the documented verification baseline is:
 swift test
 swift run PraxisRuntimeKitRunExample
 swift run PraxisRuntimeKitCapabilitiesExample
+swift run PraxisRuntimeKitCmpTapExample
+swift run PraxisRuntimeKitGovernedExecutionExample
 swift run PraxisRuntimeKitSearchExample
+swift run PraxisRuntimeKitDurableRuntimeExample
 swift run PraxisFFIEmbeddingExample
 swift run PraxisAppleHostEmbeddingExample
 swift run PraxisExportBaselineExample --iterations 5 --format json
 swift run PraxisRuntimeKitSmoke --suite all
+swift build --product PraxisDemoHostApp
+./script/build_and_run.sh --verify
 ```
 
 This command set defines the baseline that an outside evaluator should expect to run when checking the current preview story.
-It intentionally goes beyond the narrower exported-surface minimum in the release policy so the preview can cover both the export boundary and the current caller-facing RuntimeKit baseline.
+It intentionally goes beyond the narrower exported-surface minimum in the release policy so the preview can cover the export boundary, the current caller-facing RuntimeKit baseline, and the first native macOS demo-host proof point.
+If you want the surface-by-surface smoke gates behind governed execution, reviewer context, durable recovery, or provisioning, use [PraxisEvaluationChecklist.md](./PraxisEvaluationChecklist.md) as the deeper evaluation guide.
 
 ## Docs That Define The Current Truth
 
 Use these documents as the source of truth for the current preview:
 
+- external positioning and evaluation framing: [PraxisPositioning.md](./PraxisPositioning.md)
+- outside-evaluator command guide and stop conditions: [PraxisEvaluationChecklist.md](./PraxisEvaluationChecklist.md)
+- native macOS demo-host scope and build/run interpretation: [PraxisDemoHost.md](./PraxisDemoHost.md)
 - support truth: [PraxisSupportMatrix.md](./PraxisSupportMatrix.md)
 - safety truth for bounded shell, code, sandbox, and provider-backed high-risk capabilities: [PraxisHighRiskCapabilitySafety.md](./PraxisHighRiskCapabilitySafety.md)
 - migration truth for embedding hosts moving onto explicit schema versions: [PraxisMigrationNotes.md](./PraxisMigrationNotes.md)
@@ -82,4 +97,6 @@ For example, support labels come from the support matrix, sandbox and approval c
 
 If you are evaluating Praxis from the outside, start with `PraxisRuntimeKit` if you want the default Swift caller path.
 Start with `PraxisFFI` and the embedding examples if you are validating host-boundary export behavior.
+Start with `PraxisDemoHostApp` and [PraxisDemoHost.md](./PraxisDemoHost.md) if you need proof that the same baseline bridge flow can be hosted in a native macOS app.
+Use [PraxisEvaluationChecklist.md](./PraxisEvaluationChecklist.md) when you want the deeper smoke suites and the stop conditions that keep unsupported Linux or non-parity assumptions out of scope.
 Read the support matrix before assuming any macOS behavior also exists on Linux, and read the safety note before treating any bounded execution surface as a claim of unrestricted execution.
