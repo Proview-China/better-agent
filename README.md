@@ -1,8 +1,7 @@
 # Praxis
 
-Praxis 是一个基于 Swift + SwiftPM 的本地 agent runtime framework。仓库当前主线不是 CLI、TUI 或 GUI，而是一组可嵌入、可测试、可导出的 runtime products，用来承载 run lifecycle、capability governance、project context、memory retrieval 和 host export boundary。
+Praxis 是一个基于 Swift + SwiftPM 的本地 agent runtime framework，当前主线面向 Swift / Apple host embedding 与可导出的 runtime surfaces。对大多数 Swift 调用方，默认公开入口是 `PraxisRuntimeKit`；当前更适合把它评估为一组正在收束的集成型 runtime products，而不是已经成熟的通用跨平台 agent framework。
 
-对大多数 Swift 调用方，默认公开入口是 `PraxisRuntimeKit`。
 当前文档默认使用四级成熟度语义：`recommended`、`ready`、`declared-only contract`、`placeholder / degraded`。如果某个 surface 没有被明确标成前两类，不要把它当成与 macOS 本地 baseline 等价的稳定能力；当前状态标签和 qualifier 以 [docs/PraxisSupportMatrix.md](./docs/PraxisSupportMatrix.md) 为准。
 
 如果你先看顶层文档，建议从这里开始：
