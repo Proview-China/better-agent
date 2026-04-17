@@ -12,7 +12,7 @@ Target the first preview only after the outward-facing docs, RuntimeKit examples
 - release state: pre-tag preparation only
 - publication state: no tag yet, not yet published
 - canonical evidence source: [PraxisPreviewReleaseEvidence.md](./PraxisPreviewReleaseEvidence.md)
-- deferred future version-scoped handoff path: `docs/releases/v0.1.0-preview.1/`
+- version-scoped draft handoff package: [releases/v0.1.0-preview.1/README.md](./releases/v0.1.0-preview.1/README.md)
 
 ## Public Blocking CI Baseline
 
@@ -58,7 +58,7 @@ swift run PraxisRuntimeKitSmoke --suite all
 
 Use `PraxisRuntimeKitSmoke --suite all` as the aggregate regression sweep and `./script/build_and_run.sh --verify` as native demo-host launch evidence.
 
-Record the command evidence in [PraxisPreviewReleaseEvidence.md](./PraxisPreviewReleaseEvidence.md). Treat `docs/releases/v0.1.0-preview.1/` only as a later handoff location for a future version-scoped draft set, not as a prerequisite for the current Task 2 evidence record.
+Record the command evidence in [PraxisPreviewReleaseEvidence.md](./PraxisPreviewReleaseEvidence.md), keep this checklist as the generic rules layer, then use [releases/v0.1.0-preview.1/README.md](./releases/v0.1.0-preview.1/README.md) as the concrete pre-tag handoff package derived for this version.
 
 ## Required Docs
 
@@ -66,6 +66,9 @@ Record the command evidence in [PraxisPreviewReleaseEvidence.md](./PraxisPreview
 - `CHANGELOG.md`
 - `docs/PraxisPreviewReleaseNote.md`
 - `docs/PraxisPreviewReleaseEvidence.md`
+- `docs/releases/v0.1.0-preview.1/README.md`
+- `docs/releases/v0.1.0-preview.1/RELEASE_NOTE.md`
+- `docs/releases/v0.1.0-preview.1/CHECKLIST.md`
 - `docs/PraxisPositioning.md`
 - `docs/PraxisEvaluationChecklist.md`
 - `docs/PraxisDemoHost.md`
@@ -85,6 +88,7 @@ Record the command evidence in [PraxisPreviewReleaseEvidence.md](./PraxisPreview
 - `v0.1.0-preview.1` is threaded through the release-facing docs as a pre-tag first preview target
 - blocking CI workflow green on the release branch
 - canonical evidence is captured through `docs/PraxisPreviewReleaseEvidence.md` before any future tag is cut
+- the version-scoped draft package under `docs/releases/v0.1.0-preview.1/` is internally linked and ready as a later tag handoff set derived from the generic preview docs
 - Linux placeholder / degraded language reviewed for honesty
 - governed execution wording keeps declared contract separate from enforced host behavior where relevant
 - durable runtime and reviewer-context wording stays scoped to recovery/readback evidence rather than a general execution-console claim
