@@ -16,10 +16,6 @@ Project-context and approval domain. CMP owns project-scoped context, approval f
 
 Memory and retrieval domain. MP covers search, resolve, history, alignment, and workflow-oriented memory state.
 
-### TMA
-
-Provisioning and activation runtime chain used to stage, activate, replay, and recover governed runtime work.
-
 ### FFI
 
 Encoded host boundary for non-default callers that need request/response/event bridging and schema-version negotiation.
@@ -28,13 +24,21 @@ Encoded host boundary for non-default callers that need request/response/event b
 
 The document that records current support truth per surface and per platform.
 
-### Placeholder
+### Recommended
 
-A path that preserves contract shape without claiming real implementation parity.
+A surface explicitly called out as the preferred entry point or integration baseline for current callers.
 
-### Degraded
+### Ready
 
-A path that returns honest reduced capability or host truth rather than pretending the full baseline exists.
+A surface or behavior that is implemented and supported for the stated platform and scope today.
+
+### Declared-Only Contract
+
+A surface that publishes the contract shape and caller-facing semantics, but does not claim a fully backed runtime implementation yet.
+
+### Placeholder / Degraded
+
+Placeholder preserves contract shape without claiming real implementation parity. Degraded returns honest reduced capability or host truth instead of pretending the full baseline exists.
 
 ### Stable
 
