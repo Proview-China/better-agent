@@ -42,6 +42,7 @@ What success looks like:
 
 ## Next Docs
 
-- repository baseline: `docs/PraxisRepositoryBaseline.md`
-- support matrix: `docs/PraxisSupportMatrix.md`
-- FFI compatibility: `docs/PraxisFFICompatibility.md`
+- entry surfaces: [Praxis Entry Surfaces](./PraxisEntrySurfaces.md)
+- platform status: [Praxis Platform Status](./PraxisPlatformStatus.md)
+- glossary: [Praxis Glossary](./PraxisGlossary.md)
+- support matrix: [Praxis Support Matrix](./PraxisSupportMatrix.md)

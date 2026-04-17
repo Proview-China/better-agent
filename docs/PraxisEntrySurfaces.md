@@ -21,6 +21,19 @@ Do not choose this first when:
 - you are implementing the export boundary itself
 - you need an encoded bridge for another host runtime
 
+### `PraxisRuntimeInterface`
+
+Choose this when:
+
+- you need the encoded request / response surface without dropping to the lower-level FFI bridge
+- you are defining or validating schema-versioned export-boundary payloads
+- you need a host-neutral boundary model shared across export adapters
+
+Do not choose this first when:
+
+- a pure Swift caller can use `PraxisRuntimeKit`
+- you need the opaque-handle bridge layer that `PraxisFFI` exposes
+
 ### `PraxisFFI`
 
 Choose this when:
@@ -48,5 +61,6 @@ Do not choose this first when:
 ## Short Rule
 
 - app integrator: `PraxisRuntimeKit`
+- export-boundary model integrator: `PraxisRuntimeInterface`
 - embedding host integrator: `PraxisFFI`
 - Praxis runtime maintainer: `PraxisHostRuntime`
