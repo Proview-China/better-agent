@@ -15,7 +15,7 @@ This document summarizes current platform truth for Praxis.
 On macOS, the repository currently validates:
 
 - `swift test`
-- shipped Swift examples
+- key shipped Swift examples
 - `PraxisRuntimeKitSmoke`
 - local host adapters for runtime, approval, search, and export-baseline flows
 

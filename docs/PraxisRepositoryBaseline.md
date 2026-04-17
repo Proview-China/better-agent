@@ -10,8 +10,8 @@ The primary public Swift entry surface is `PraxisRuntimeKit`.
 ## Current Export Surfaces
 
 - `PraxisRuntimeKit` is the default public Swift integration surface.
-- `PraxisRuntimeInterface` is the current schema-versioned encoded request / response export surface.
-- `PraxisFFI` is the current bridge-level export surface for host-boundary embedding.
+- `PraxisRuntimeInterface` is the current schema-versioned encoded request / response export surface exposed through the current runtime/export paths, not a standalone SwiftPM library product.
+- `PraxisFFI` is the current bridge-level export surface for host-boundary embedding exposed through the current runtime/export paths, not a standalone SwiftPM library product.
 
 ## Current Product Surface
 
@@ -23,8 +23,6 @@ The primary public Swift entry surface is `PraxisRuntimeKit`.
 - `PraxisHostContracts`
 - `PraxisHostRuntime`
 - `PraxisRuntimeKit`
-- `PraxisRuntimeInterface`
-- `PraxisFFI`
 - `PraxisArchitectureTests`
 
 ## Current Executable Surface
