@@ -64,3 +64,7 @@ Do not choose this first when:
 - export-boundary model integrator: `PraxisRuntimeInterface`
 - embedding host integrator: `PraxisFFI`
 - Praxis runtime maintainer: `PraxisHostRuntime`
+
+## Related Docs
+
+- export compatibility details: [Praxis FFI Compatibility Note](./PraxisFFICompatibility.md)
