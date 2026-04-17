@@ -6,6 +6,10 @@ The format follows a lightweight Keep a Changelog style and uses `Unreleased` un
 
 ## [Unreleased]
 
+### Planned
+
+- first public preview baseline after repository-truth alignment and public Swift CI land
+
 ### Added
 
 - explicit `requestSchemaVersion`, `responseSchemaVersion`, and `eventSchemaVersion` fields for `PraxisRuntimeInterface` / `PraxisFFI`

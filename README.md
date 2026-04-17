@@ -462,6 +462,7 @@ dependencies: [
 - [docs/PraxisReleasePolicy.md](./docs/PraxisReleasePolicy.md)
 - [docs/PraxisMigrationNotes.md](./docs/PraxisMigrationNotes.md)
 - [docs/PraxisSupportMatrix.md](./docs/PraxisSupportMatrix.md)
+- preview release working checklist 见 [docs/PraxisPreviewReleaseChecklist.md](./docs/PraxisPreviewReleaseChecklist.md)。
 - 当前仓库事实基线见 [docs/PraxisRepositoryBaseline.md](./docs/PraxisRepositoryBaseline.md)。
 - [docs/PraxisHighRiskCapabilitySafety.md](./docs/PraxisHighRiskCapabilitySafety.md)
 - [CHANGELOG.md](./CHANGELOG.md)
