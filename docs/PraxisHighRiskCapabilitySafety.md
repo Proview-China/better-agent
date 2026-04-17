@@ -14,6 +14,19 @@ These notes currently cover:
 - provider-backed `skill.activate`
 - provider-backed `tool.call`
 
+## Public Entry And Verification Paths
+
+Use these shipped entry points when you need to inspect or verify the current governed high-risk execution story:
+
+- public example: `swift run PraxisRuntimeKitGovernedExecutionExample`
+- bounded code verification: `swift run PraxisRuntimeKitSmoke --suite code`
+- bounded code patch verification: `swift run PraxisRuntimeKitSmoke --suite code-patch`
+- bounded shell verification: `swift run PraxisRuntimeKitSmoke --suite shell`
+- durable shell approval verification: `swift run PraxisRuntimeKitSmoke --suite shell-approval`
+- provider capability verification: `swift run PraxisRuntimeKitSmoke --suite capabilities`
+
+These paths are intentionally split. The focused example shows the public caller story in one place, while the smoke suites verify the bounded execution lanes, durable approval readback, and provider audit truth independently.
+
 ## General Guardrails
 
 High-risk capability work in Praxis is expected to satisfy these conditions before it is considered usable:
@@ -30,6 +43,61 @@ The current repository baseline already enforces these principles unevenly but i
 - shell and code execution are bounded, not arbitrary open-ended transports
 - TAP inspection and reviewer workbench expose persisted evidence rather than only in-memory status
 - provider activity is audited only after successful outcomes
+
+## Safety Truth Model
+
+### Declared sandbox contract: `code.sandbox`
+
+- Current status: declared-only contract
+- The contract is structured and caller-visible
+- The contract currently does not claim kernel-enforced isolation
+- Public read path: `swift run PraxisRuntimeKitGovernedExecutionExample`
+- Verification path: `swift run PraxisRuntimeKitSmoke --suite code`
+
+Hosts should treat `code.sandbox` as an execution contract description, not as proof of OS-level isolation.
+
+### Bounded code and shell execution surfaces
+
+- Covered surfaces: `code.run`, `code.patch`, `shell.run`
+- Current risk labels remain `risky`
+- Execution is bounded to caller-visible runtimes, writable roots, and workspace writer lanes rather than an arbitrary open transport
+- Public read path: `swift run PraxisRuntimeKitGovernedExecutionExample`
+- Verification paths:
+  - `swift run PraxisRuntimeKitSmoke --suite code`
+  - `swift run PraxisRuntimeKitSmoke --suite code-patch`
+  - `swift run PraxisRuntimeKitSmoke --suite shell`
+
+These surfaces are real on the macOS baseline, but they stay deliberately bounded. They should not be described as unrestricted execution or as a claim of PTY / streaming parity.
+
+### Durable shell approval readback
+
+- Covered surfaces: `shell.approve` and approval readback
+- Approval is routed through CMP/TAP durable state
+- Readback survives fresh-client recovery
+- Public read path: `swift run PraxisRuntimeKitGovernedExecutionExample`
+- Verification path: `swift run PraxisRuntimeKitSmoke --suite shell-approval`
+
+The important safety property is not only that approval can be requested, but that it can be read back durably instead of inferred from volatile in-memory state.
+
+### Provider skill and tool audit truth
+
+- Covered surfaces: provider-backed `skill.activate` and `tool.call`
+- Only registered provider skill keys and MCP tool names are accepted
+- TAP audit evidence is appended only after successful provider outcomes
+- Public read path: `swift run PraxisRuntimeKitGovernedExecutionExample`
+- Verification path: `swift run PraxisRuntimeKitSmoke --suite capabilities`
+
+Queued, declined, failed, or no-op provider activity must not be projected as already completed or already approved high-risk work.
+
+### Placeholder and degraded Linux truth
+
+- Linux host execution remains compile-safe placeholder or degraded host truth
+- macOS is the only baseline that currently claims real local code and shell execution
+- Unsupported paths should surface placeholder or unsupported semantics instead of pretending success
+- Public comparison path: `swift run PraxisRuntimeKitGovernedExecutionExample`
+- Verification paths: `swift run PraxisRuntimeKitSmoke --suite code`, `swift run PraxisRuntimeKitSmoke --suite shell`, `swift run PraxisRuntimeKitSmoke --suite capabilities`
+
+Praxis prefers honest degraded behavior over fake parity. Callers should treat placeholder-backed Linux semantics as authoritative current truth, not as a hidden macOS-equivalent lane.
 
 ## Capability Notes
 
@@ -65,11 +133,7 @@ This surface is intentionally constrained. It does not yet claim streaming or PT
 
 ### `code.sandbox`
 
-- Current status: declared-only contract
-- The contract is structured and caller-visible
-- The contract currently does not claim kernel-enforced isolation
-
-Hosts should treat this as an execution contract description, not as proof of OS-level isolation.
+- Declared contract truth is documented above in "Safety Truth Model"
 
 ### `skill.activate`
 

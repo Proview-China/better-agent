@@ -64,6 +64,7 @@ swift run PraxisRuntimeKitSmoke --suite all
   展示 Phase 5 第一条 bounded shell 路径；macOS 走真实本地 shell，Linux 诚实返回 placeholder failed-to-launch 语义。
 - `PraxisRuntimeKitSmoke --suite shell-approval`
   展示 Phase 5 第二条 bounded shell approval 路径；请求、readback 与 fresh-client recovery 都通过 CMP/TAP durable approval state 完成。
+- 高风险 capability 安全说明与入口见 [docs/PraxisHighRiskCapabilitySafety.md](./docs/PraxisHighRiskCapabilitySafety.md)。
 - `PraxisRuntimeKitSmoke --suite cmp-tap`
   展示 reviewer context 的 CMP/TAP baseline：`tap.inspect()`、project-scoped `reviewWorkbench()`、CMP approval 与 TAP overview；这不是跨平台 fully-backed execution console 声明，也不单独宣称 recent provider activity coverage。
 - `PraxisRuntimeKitSmoke --suite recovery`
