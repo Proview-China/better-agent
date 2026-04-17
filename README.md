@@ -421,6 +421,8 @@ swift test
 - `PraxisRuntimeKitSmoke` 是当前 shipped 的可执行 smoke harness，用来做跨模块快速回归和 operator-friendly 验收。
 - 当前仓库还没有单独发布 `PraxisRuntimeKitE2E` 之类的独立 e2e executable product；如果后续补上，README 和执行手册会一起更新。
 
+当前公开 CI 以 `.github/workflows/swift-ci.yml` 为准，默认在 macOS runner 上执行 `swift test`、关键 examples，以及 `recovery` / `capabilities` / `search` smoke。`PraxisRuntimeKitSmoke --suite all` 继续保留为更重的本地或 release 前验证。
+
 如果只想先验证公开 API 或边界守卫，可以按需执行：
 
 ```bash

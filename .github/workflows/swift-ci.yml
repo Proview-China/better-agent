@@ -1,0 +1,56 @@
+name: Swift CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "codex/**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify Swift Package
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show Swift Version
+        run: swift --version
+
+      - name: Run Unit And Architecture Tests
+        run: swift test
+
+      - name: Run RuntimeKit Example
+        run: swift run PraxisRuntimeKitRunExample
+
+      - name: Run Capabilities Example
+        run: swift run PraxisRuntimeKitCapabilitiesExample
+
+      - name: Run Search Example
+        run: swift run PraxisRuntimeKitSearchExample
+
+      - name: Run FFI Embedding Example
+        run: swift run PraxisFFIEmbeddingExample
+
+      - name: Run Apple Host Embedding Example
+        run: swift run PraxisAppleHostEmbeddingExample
+
+      - name: Run Export Baseline Example
+        run: swift run PraxisExportBaselineExample --iterations 3 --format json
+
+      - name: Run Recovery Smoke
+        run: swift run PraxisRuntimeKitSmoke --suite recovery
+
+      - name: Run Capabilities Smoke
+        run: swift run PraxisRuntimeKitSmoke --suite capabilities
+
+      - name: Run Search Smoke
+        run: swift run PraxisRuntimeKitSmoke --suite search

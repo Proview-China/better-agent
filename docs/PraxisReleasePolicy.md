@@ -71,4 +71,6 @@ swift run PraxisExportBaselineExample --iterations 5 --format json
 swift run PraxisRuntimeKitSmoke --suite all
 ```
 
+The public GitHub Actions baseline should stay aligned with this release baseline. If release verification intentionally exceeds CI coverage, document the extra local-only checks in the release note.
+
 If one of these is intentionally skipped, the release note should state which check was skipped and why.
