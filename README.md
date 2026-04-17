@@ -47,7 +47,7 @@ swift run PraxisRuntimeKitSmoke --suite all
 - `PraxisRuntimeKitCapabilitiesExample`
   展示当前 thin capability baseline：catalog、generate、stream、embed、`code.sandbox` contract、bounded `code.run` / `code.patch` / `shell.approve` / `shell.run`、provider `skill.list` / `skill.activate` / MCP tool discovery、tool、file、batch、session。
 - `PraxisRuntimeKitGovernedExecutionExample`
-  展示当前 shipped governed execution public story：读取 `code.sandbox` declared execution contract，执行 bounded `code.run` / `code.patch` / `shell.run`，请求并读回 durable shell approval，并展示 provider `skill.activate` / `tool.call` 的 successful-outcome audit truth。这里的 sandbox 描述是 caller-visible contract，不是 OS-level isolation guarantee。
+  展示当前 shipped governed execution public story：读取 declared `code.sandbox` contract，执行 bounded `code.run` / `code.patch` / `shell.run`，请求并读回 durable `shell.approve` state，并展示 provider `skill.activate` / `tool.call` 的即时 invocation receipt。这里的 sandbox 描述是 caller-visible contract，不是 OS-level isolation guarantee。
 - `PraxisRuntimeKitSearchExample`
   展示 Phase 3 search chain：`search.web`、`search.fetch`、`search.ground`。
 - `PraxisRuntimeKitDurableRuntimeExample`
@@ -81,7 +81,7 @@ swift run PraxisRuntimeKitSmoke --suite all
 当前这些 examples 依赖本地 baseline host adapters，默认按 macOS 本地运行验证。
 Linux 路径当前只保留 compile-safe placeholder 和条件编译接缝，待 macOS 实现完备后再推进兼容实现。
 `PraxisRuntimeKitSmoke` 是独立于测试 target 的 smoke harness 骨架，适合在 examples 之外做快速回归验收。
-当前 governed execution 的 shipped public story 以 `swift run PraxisRuntimeKitGovernedExecutionExample` 为入口，并以 `swift run PraxisRuntimeKitSmoke --suite code`、`swift run PraxisRuntimeKitSmoke --suite code-sandbox`、`swift run PraxisRuntimeKitSmoke --suite code-patch`、`swift run PraxisRuntimeKitSmoke --suite shell`、`swift run PraxisRuntimeKitSmoke --suite shell-approval`、`swift run PraxisRuntimeKitSmoke --suite capabilities` 分别验证 bounded code、declared sandbox contract、bounded patch、bounded shell、durable shell approval readback，以及 provider skill/tool successful-outcome audit truth。这里的 `code.sandbox` 仍是 declared execution contract，不宣称 OS-level isolation；`code.*` / `shell.*` 是 risky but controlled surfaces；Linux 在文档标明处继续返回 placeholder-backed 或 degraded truth。
+当前 governed execution 的 public story 以 `swift run PraxisRuntimeKitGovernedExecutionExample` 为入口；对应 smoke 入口分别是 `swift run PraxisRuntimeKitSmoke --suite code`、`swift run PraxisRuntimeKitSmoke --suite code-sandbox`、`swift run PraxisRuntimeKitSmoke --suite code-patch`、`swift run PraxisRuntimeKitSmoke --suite shell`、`swift run PraxisRuntimeKitSmoke --suite shell-approval`、`swift run PraxisRuntimeKitSmoke --suite capabilities`。其中 provider skill/tool 的独立 audit truth 继续以 `capabilities` smoke 与 safety note 为准；`code.sandbox` 仍只是 declared execution contract，`code.*` / `shell.*` 仍是 risky but controlled surfaces，Linux 继续按文档返回 placeholder-backed 或 degraded truth。
 当前 durable-runtime 已公开的 shipped entry points 是 `swift run PraxisRuntimeKitDurableRuntimeExample`、`swift run PraxisRuntimeKitSmoke --suite recovery`、`swift run PraxisRuntimeKitSmoke --suite provisioning`。它们分别覆盖 checkpoint / provisioning / replay recovery 示例、fresh-client run / TAP recovery 验证，以及 staged replay / activation / recovered provisioning readback 验证。
 当前 `tap.project(...).provision(...)` 会返回 host-neutral staged receipt，不会执行真实安装副作用，但会把 bundle / activation / replay 证据写入 TAP checkpoint 与 recovery readback。现在也可以通过 `tap.project(...).provisioning()` 单独读取 durable provisioning state；当 `advanceReplay` 触发 activation 时，对应 replay 会被消费并回写 activation receipt / replay status。
 - durable runtime 说明见 [docs/PraxisDurableRuntimeGuide.md](./docs/PraxisDurableRuntimeGuide.md)。
@@ -244,7 +244,7 @@ print(run.phaseSummary)
 
 ## Phase 3 Thin Capability Baseline
 
-Phase 3 当前已经落地 thin capability baseline、第一条 search chain，以及 reviewer context inspection；当前 shipped baseline 也已经包含 provider skill surface、`code.sandbox` 合同读面，以及 bounded `code.*` / `shell.*` seams：
+Phase 3 当前已经落地 thin capability baseline、第一条 search chain，以及 reviewer context inspection。governed execution 的示例与 smoke 入口见上面的 Quick Start；这里仅列当前 SDK 可调用面：
 
 - `client.capabilities.catalog()`
 - `client.capabilities.generate(...)`
