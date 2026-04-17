@@ -31,8 +31,8 @@ Use this checklist when you need to decide whether Praxis is ready for your host
 - [ ] Read [docs/PraxisDurableRuntimeGuide.md](./PraxisDurableRuntimeGuide.md) for what durable runtime does cover today and what it explicitly does not claim.
 - [ ] Read [docs/PraxisReviewerContextGuide.md](./PraxisReviewerContextGuide.md) for the current reviewer-facing read surfaces and evidence model.
 - [ ] Read [docs/PraxisMigrationNotes.md](./PraxisMigrationNotes.md) before depending on exported schema behavior, legacy versionless payloads, or host upgrade sequencing.
-- [ ] Read [docs/PraxisReleasePolicy.md](./docs/PraxisReleasePolicy.md) to understand which contract changes are patch / minor / major and which release artifacts must move together.
-- [ ] Read [docs/PraxisPerformanceBaseline.md](./docs/PraxisPerformanceBaseline.md) if your host evaluation depends on export-latency, payload-size, or resident-memory baseline evidence.
+- [ ] Read [docs/PraxisReleasePolicy.md](./PraxisReleasePolicy.md) to understand which contract changes are patch / minor / major and which release artifacts must move together.
+- [ ] Read [docs/PraxisPerformanceBaseline.md](./PraxisPerformanceBaseline.md) if your host evaluation depends on export-latency, payload-size, or resident-memory baseline evidence.
 
 ## 4. Run The Commands That Verify The Current Story
 
@@ -73,7 +73,7 @@ swift run PraxisExportBaselineExample --iterations 5 --format json
 swift run PraxisRuntimeKitSmoke --suite all
 ```
 
-Use the corresponding evidence notes in [docs/PraxisDurableRuntimeGuide.md](./PraxisDurableRuntimeGuide.md), [docs/PraxisHighRiskCapabilitySafety.md](./PraxisHighRiskCapabilitySafety.md), [docs/PraxisReviewerContextGuide.md](./PraxisReviewerContextGuide.md), [docs/PraxisReleasePolicy.md](./docs/PraxisReleasePolicy.md), and [docs/PraxisPerformanceBaseline.md](./docs/PraxisPerformanceBaseline.md) to interpret what each command actually proves.
+Use the corresponding evidence notes in [docs/PraxisDurableRuntimeGuide.md](./PraxisDurableRuntimeGuide.md), [docs/PraxisHighRiskCapabilitySafety.md](./PraxisHighRiskCapabilitySafety.md), [docs/PraxisReviewerContextGuide.md](./PraxisReviewerContextGuide.md), [docs/PraxisReleasePolicy.md](./PraxisReleasePolicy.md), and [docs/PraxisPerformanceBaseline.md](./PraxisPerformanceBaseline.md) to interpret what each command actually proves.
 
 ## 5. Ask The Questions That Decide Host Fit
 
@@ -100,7 +100,7 @@ Use the corresponding evidence notes in [docs/PraxisDurableRuntimeGuide.md](./Pr
 - [ ] Stop assuming release compatibility for undocumented payload shapes or permanent support for versionless payloads.
   [docs/PraxisMigrationNotes.md](./PraxisMigrationNotes.md) treats versionless decode as a legacy bridge, not a permanent preferred wire shape.
 - [ ] Stop assuming performance notes are end-to-end product benchmarks.
-  [docs/PraxisPerformanceBaseline.md](./docs/PraxisPerformanceBaseline.md) measures only the thin export path.
+  [docs/PraxisPerformanceBaseline.md](./PraxisPerformanceBaseline.md) measures only the thin export path.
 
 ## 7. Exit Criteria For An Outside Evaluator
 
