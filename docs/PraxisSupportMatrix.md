@@ -48,7 +48,7 @@ This document records the current support baseline for exported Praxis surfaces.
 | `capabilities.searchWeb(...)` / `fetchSearchResult(...)` / `groundSearchResult(...)` | ready | placeholder-backed SDK seam | macOS uses local deterministic baseline; Linux still lacks a real browser / search substrate. |
 | `tap.inspect()` | ready | ready with degraded host summaries | Exposes reviewer backlog, latest decision, section summaries, provider skill / provider MCP tool discovery, and recovery / durable evidence readback hints; Linux still reports honest degraded host summaries. |
 | `tap.project(...).overview(...)` | ready | ready | Capability visibility still depends on host wiring truth. |
-| `tap.project(...).reviewWorkbench(...)` | ready | ready with degraded host summaries | Aggregates inspection, TAP history, CMP overview, reviewer queue, recent provider activity, and durable evidence readback when available; Linux still reports honest degraded host summaries. |
+| `tap.project(...).reviewWorkbench(...)` | ready | ready with degraded host summaries | Aggregates inspection, TAP history, CMP overview, reviewer queue, provider skill discovery, provider MCP tool discovery, and recent provider activity / durable evidence readback when available; Linux still reports honest degraded host summaries. |
 | `cmp.project(...).overview(...)` / `approvalOverview(...)` | ready | ready with degraded host summaries | Linux still degrades git / shell / process truth. |
 | `cmp.project(...).smoke()` | ready | degraded | Smoke reports degraded host readiness honestly. |
 | `mp.project(...).overview(...)` / `search(...)` / `resolve(...)` / `history(...)` | ready | ready | Uses local semantic memory and heuristic baseline. |
