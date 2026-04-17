@@ -226,16 +226,23 @@ print(run.phaseSummary)
 
 ## Phase 3 Thin Capability Baseline
 
-Phase 3 当前已经落地三部分：thin capability baseline、第一条 search chain，以及 reviewer context inspection；高副作用执行面仍然继续后置：
+Phase 3 当前已经落地 thin capability baseline、第一条 search chain，以及 reviewer context inspection；当前 shipped baseline 也已经包含 provider skill surface、`code.sandbox` 合同读面，以及 bounded `code.*` / `shell.*` seams：
 
 - `client.capabilities.catalog()`
 - `client.capabilities.generate(...)`
 - `client.capabilities.stream(...)`
 - `client.capabilities.embed(...)`
+- `client.capabilities.listSkills()` / `activateSkill(...)`
 - `client.capabilities.callTool(...)`
 - `client.capabilities.uploadFile(...)`
 - `client.capabilities.submitBatch(...)`
 - `client.capabilities.openSession(...)`
+- `client.capabilities.describeCodeSandbox(...)`
+- `client.capabilities.runCode(...)`
+- `client.capabilities.patchCode(...)`
+- `client.capabilities.requestShellApproval(...)`
+- `client.capabilities.readbackShellApproval(...)`
+- `client.capabilities.runShell(...)`
 - `client.capabilities.searchWeb(...)`
 - `client.capabilities.fetchSearchResult(...)`
 - `client.capabilities.groundSearchResult(...)`
@@ -246,8 +253,11 @@ Phase 3 当前已经落地三部分：thin capability baseline、第一条 searc
 
 - catalog 暴露当前 thin capability registry，而不是只给内部 boundary summary
 - generate / stream 复用当前 provider inference lane
+- skill.list / activateSkill 暴露当前 provider skill registry / activation 基线，但只对已注册 skill key 宣称稳定行为
 - embed / tool / file / batch 分别复用现有本地 baseline adapter
 - session.open 先给出 caller-scoped runtime session header，durable runtime 再接更深恢复链
+- code.sandbox 当前先暴露结构化 contract 读面，不宣称 kernel-enforced isolation
+- bounded code / shell 当前已经作为受约束 execution seam shipped，对应 approval / readback / placeholder 语义仍然按 support matrix 说真话
 - search.web / fetch / ground 先接本地 deterministic baseline，验证 SDK surface、evidence handoff 和 smoke 链路
 - tap.inspect 现在用真实 TAP status/history、capability inventory、checkpoint/journal readback 组装 reviewer context，而不是硬编码 placeholder 摘要
 - reviewWorkbench 把 TAP inspection、TAP overview、CMP overview 和 reviewer queue 收成一个项目级 reviewer surface，减少调用方手动拼装
