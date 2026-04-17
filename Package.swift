@@ -710,6 +710,13 @@ let package = Package(
       path: "Examples/PraxisExportBaselineExample",
     ),
     .testTarget(
+      name: "PraxisDemoHostAppTests",
+      dependencies: [
+        "PraxisDemoHostApp",
+      ],
+      path: "Tests/PraxisDemoHostAppTests",
+    ),
+    .testTarget(
       name: "PraxisFoundationArchitectureTests",
       dependencies: [
         "PraxisCoreTypes",

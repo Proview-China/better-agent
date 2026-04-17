@@ -89,23 +89,40 @@ final class PraxisDemoHostClient: Sendable {
     codec: PraxisJSONRuntimeInterfaceCodec,
     handle: PraxisRuntimeInterfaceSessionHandle
   ) async throws -> DemoHostNegotiatedSchemaBaseline {
-    let responseData = try await bridge.handleEncodedRequest(try codec.encode(.inspectArchitecture), on: handle)
-    let response = try codec.decodeResponse(responseData)
+    DemoHostTelemetry.architectureNegotiationStarted(handle: handle.rawValue)
 
-    guard response.status == .success, let snapshot = response.snapshot else {
-      throw PraxisDemoHostClientError.missingArchitectureSnapshot
-    }
-    guard let requestSchemaVersion = snapshot.supportedRequestSchemaVersion,
-          let responseSchemaVersion = snapshot.supportedResponseSchemaVersion,
-          let eventSchemaVersion = snapshot.supportedEventSchemaVersion else {
-      throw PraxisDemoHostClientError.missingNegotiatedSchemaVersions
-    }
+    do {
+      let responseData = try await bridge.handleEncodedRequest(try codec.encode(.inspectArchitecture), on: handle)
+      let response = try codec.decodeResponse(responseData)
 
-    return DemoHostNegotiatedSchemaBaseline(
-      request: requestSchemaVersion,
-      response: responseSchemaVersion,
-      event: eventSchemaVersion
-    )
+      guard response.status == .success, let snapshot = response.snapshot else {
+        throw PraxisDemoHostClientError.missingArchitectureSnapshot
+      }
+      guard let requestSchemaVersion = snapshot.supportedRequestSchemaVersion,
+            let responseSchemaVersion = snapshot.supportedResponseSchemaVersion,
+            let eventSchemaVersion = snapshot.supportedEventSchemaVersion else {
+        throw PraxisDemoHostClientError.missingNegotiatedSchemaVersions
+      }
+
+      DemoHostTelemetry.architectureNegotiationSucceeded(
+        handle: handle.rawValue,
+        requestSchemaVersion: requestSchemaVersion.rawValue,
+        responseSchemaVersion: responseSchemaVersion.rawValue,
+        eventSchemaVersion: eventSchemaVersion.rawValue
+      )
+
+      return DemoHostNegotiatedSchemaBaseline(
+        request: requestSchemaVersion,
+        response: responseSchemaVersion,
+        event: eventSchemaVersion
+      )
+    } catch {
+      DemoHostTelemetry.architectureNegotiationFailed(
+        handle: handle.rawValue,
+        error: error.localizedDescription
+      )
+      throw error
+    }
   }
 
   private func runGoal(
@@ -113,39 +130,64 @@ final class PraxisDemoHostClient: Sendable {
     codec: PraxisJSONRuntimeInterfaceCodec,
     handle: PraxisRuntimeInterfaceSessionHandle
   ) async throws -> PraxisRuntimeInterfaceResponse {
+    let goalID = "goal.native-demo-host"
+    let sessionID = "session.native-demo-host"
     let request = PraxisRuntimeInterfaceRequest.runGoal(
       .init(
         payloadSummary: "Run one native demo host goal",
-        goalID: "goal.native-demo-host",
+        goalID: goalID,
         goalTitle: "Native Demo Host Goal",
-        sessionID: "session.native-demo-host"
+        sessionID: sessionID
       )
     )
-    let responseData = try await bridge.handleEncodedRequest(try codec.encode(request), on: handle)
-    let response = try codec.decodeResponse(responseData)
+    DemoHostTelemetry.runGoalStarted(handle: handle.rawValue, goalID: goalID, sessionID: sessionID)
 
-    guard response.status == .success else {
-      throw PraxisDemoHostClientError.failedRunResponse(
-        response.error?.message ?? "The runtime returned an unknown runGoal failure."
+    do {
+      let responseData = try await bridge.handleEncodedRequest(try codec.encode(request), on: handle)
+      let response = try codec.decodeResponse(responseData)
+
+      guard response.status == .success else {
+        throw PraxisDemoHostClientError.failedRunResponse(
+          response.error?.message ?? "The runtime returned an unknown runGoal failure."
+        )
+      }
+
+      DemoHostTelemetry.runGoalSucceeded(
+        handle: handle.rawValue,
+        snapshotKind: response.snapshot?.kind.rawValue ?? "none",
+        sessionID: response.snapshot?.sessionID?.rawValue ?? "none"
       )
-    }
 
-    return response
+      return response
+    } catch {
+      DemoHostTelemetry.runGoalFailed(handle: handle.rawValue, error: error.localizedDescription)
+      throw error
+    }
   }
 
   private func drainEvents(
     using bridge: PraxisFFIBridge,
     handle: PraxisRuntimeInterfaceSessionHandle
   ) async throws -> PraxisFFIEventEnvelope {
-    let eventData = try await bridge.drainEncodedEvents(for: handle)
-    let eventEnvelope = try JSONDecoder().decode(PraxisFFIEventEnvelope.self, from: eventData)
+    do {
+      let eventData = try await bridge.drainEncodedEvents(for: handle)
+      let eventEnvelope = try JSONDecoder().decode(PraxisFFIEventEnvelope.self, from: eventData)
 
-    guard eventEnvelope.status == .success else {
-      throw PraxisDemoHostClientError.failedEventDrain(
-        eventEnvelope.error?.message ?? "The runtime returned an unknown event-drain failure."
+      guard eventEnvelope.status == .success else {
+        throw PraxisDemoHostClientError.failedEventDrain(
+          eventEnvelope.error?.message ?? "The runtime returned an unknown event-drain failure."
+        )
+      }
+
+      DemoHostTelemetry.eventDrainSucceeded(
+        handle: handle.rawValue,
+        eventNames: eventEnvelope.events.map(\.name.rawValue)
       )
-    }
 
-    return eventEnvelope
+      return eventEnvelope
+    } catch {
+      DemoHostTelemetry.eventDrainFailed(handle: handle.rawValue, error: error.localizedDescription)
+      throw error
+    }
   }
 }

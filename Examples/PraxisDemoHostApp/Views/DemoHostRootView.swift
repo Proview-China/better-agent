@@ -66,6 +66,7 @@ struct DemoHostRootView: View {
   }
 
   private func runDemo() {
+    DemoHostTelemetry.userTriggeredDemoRun()
     isRunning = true
     statusMessage = "Opening bridge session and negotiating architecture..."
     errorMessage = nil
@@ -77,6 +78,11 @@ struct DemoHostRootView: View {
           self.snapshot = snapshot
           isRunning = false
           statusMessage = "Demo goal completed."
+          DemoHostTelemetry.uiRunSucceeded(
+            sessionHandle: snapshot.sessionHandle,
+            sessionID: snapshot.sessionID,
+            drainedEventCount: snapshot.drainedEventNames.count
+          )
         }
       } catch {
         await MainActor.run {
@@ -84,6 +90,7 @@ struct DemoHostRootView: View {
           isRunning = false
           errorMessage = error.localizedDescription
           statusMessage = "Demo goal failed."
+          DemoHostTelemetry.uiRunFailed(error: error.localizedDescription)
         }
       }
     }
