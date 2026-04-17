@@ -71,6 +71,7 @@ Linux 路径当前只保留 compile-safe placeholder 和条件编译接缝，待
 `PraxisRuntimeKitSmoke` 是独立于测试 target 的 smoke harness 骨架，适合在 examples 之外做快速回归验收。
 当前 `--suite recovery` 会验证重建 RuntimeKit client 后，run checkpoint 和 TAP approval checkpoint 仍然能恢复出最新状态。
 当前 `tap.project(...).provision(...)` 会返回 host-neutral staged receipt，不会执行真实安装副作用，但会把 bundle / activation / replay 证据写入 TAP checkpoint 与 recovery readback。现在也可以通过 `tap.project(...).provisioning()` 单独读取 durable provisioning state；当 `retryDispatch` 清除 gate 并成功继续时，对应 replay 会被消费并回写 activation receipt / replay status。
+- durable runtime 说明见 [docs/PraxisDurableRuntimeGuide.md](./docs/PraxisDurableRuntimeGuide.md)。
 
 ## Technical Overview
 
