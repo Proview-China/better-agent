@@ -5,6 +5,7 @@ This guide explains which public Praxis surface to choose first.
 ## Default Recommendation
 
 Start with `PraxisRuntimeKit` unless you already know you need a lower-level embedding or host-runtime boundary.
+For SwiftPM package integration, `PraxisRuntimeInterface` and `PraxisFFI` are currently carried by the `PraxisHostRuntime` library product rather than standalone library products.
 
 ## Surface Selection
 

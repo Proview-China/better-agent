@@ -41,6 +41,8 @@ What success looks like:
 - Use `PraxisFFI` when you are integrating from a host boundary and need the bridge layer over the encoded runtime interface.
 - Use `PraxisHostRuntime` when you are working on runtime assembly, facades, gateways, or export boundaries inside the Praxis host layer.
 
+For SwiftPM package integration, `PraxisRuntimeInterface` and `PraxisFFI` are currently carried by the `PraxisHostRuntime` library product rather than standalone library products.
+
 ## Next Docs
 
 - entry surfaces: [Praxis Entry Surfaces](./PraxisEntrySurfaces.md)
