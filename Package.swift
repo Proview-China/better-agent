@@ -140,6 +140,7 @@ let package = Package(
     .executable(name: "PraxisRuntimeKitDurableRuntimeExample", targets: ["PraxisRuntimeKitDurableRuntimeExample"]),
     .executable(name: "PraxisFFIEmbeddingExample", targets: ["PraxisFFIEmbeddingExample"]),
     .executable(name: "PraxisAppleHostEmbeddingExample", targets: ["PraxisAppleHostEmbeddingExample"]),
+    .executable(name: "PraxisDemoHostApp", targets: ["PraxisDemoHostApp"]),
     .executable(name: "PraxisExportBaselineExample", targets: ["PraxisExportBaselineExample"]),
   ],
   targets: sqliteSystemLibraryTargets + [
@@ -691,6 +692,14 @@ let package = Package(
         "PraxisRuntimeInterface",
       ],
       path: "Examples/PraxisAppleHostEmbeddingExample",
+    ),
+    .executableTarget(
+      name: "PraxisDemoHostApp",
+      dependencies: [
+        "PraxisFFI",
+        "PraxisRuntimeInterface",
+      ],
+      path: "Examples/PraxisDemoHostApp",
     ),
     .executableTarget(
       name: "PraxisExportBaselineExample",
