@@ -37,6 +37,7 @@ swift run PraxisRuntimeKitSmoke --suite all
   展示 `runs.run(...)` 与 `runs.resumeRun(...)`。
 - `PraxisRuntimeKitCmpTapExample`
   展示 project-scoped CMP approval、TAP overview、`tap.inspect()` reviewer context，以及 `reviewWorkbench()` 聚合读面。
+- reviewer context 说明见 [docs/PraxisReviewerContextGuide.md](./docs/PraxisReviewerContextGuide.md)。
 - `PraxisRuntimeKitMpExample`
   展示 MP overview、search、resolve、history。
 - `PraxisRuntimeKitCapabilitiesExample`
