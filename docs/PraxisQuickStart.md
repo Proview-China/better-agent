@@ -42,7 +42,6 @@ What success looks like:
 
 ## Next Docs
 
-- entry-surface guide: `docs/PraxisEntrySurfaces.md`
-- platform status: `docs/PraxisPlatformStatus.md`
-- terminology: `docs/PraxisGlossary.md`
+- repository baseline: `docs/PraxisRepositoryBaseline.md`
 - support matrix: `docs/PraxisSupportMatrix.md`
+- FFI compatibility: `docs/PraxisFFICompatibility.md`
