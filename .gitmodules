@@ -1,0 +1,3 @@
+[submodule "Packages/swift-ai-sdk"]
+	path = Packages/swift-ai-sdk
+	url = https://github.com/yuemingruoan/swift-ai-sdk.git
